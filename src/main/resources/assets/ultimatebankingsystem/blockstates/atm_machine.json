@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "" : {
+      "model": "ultimatebankingsystem:block/atm_machine"
+    }
+  }
+}
