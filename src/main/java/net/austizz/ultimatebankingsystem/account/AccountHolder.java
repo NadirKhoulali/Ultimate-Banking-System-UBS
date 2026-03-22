@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.account;
 
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
+import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.minecraft.world.entity.player.Player;
 
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ public class AccountHolder {
     private String surname;
     private String password;
     private double balance;
+    private UUID BankId;
 
 
 
