@@ -1,7 +1,10 @@
 package net.austizz.ultimatebankingsystem;
 
+import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -17,8 +20,11 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
+import java.util.UUID;
+
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(UltimateBankingSystem.MODID)
+
 public class UltimateBankingSystem {
     // Define mod id in a common place for everything to reference
     public static final String MODID = "ultimatebankingsystem";
@@ -56,8 +62,13 @@ public class UltimateBankingSystem {
         }
     }
 
+
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
+        CentralBank CentralBank = new CentralBank();
+        LOGGER.info("CentralBank Loaded");
+        LOGGER.info("Central Bank: " + CentralBank.getBankName() + CentralBank.getBankAccounts() + CentralBank.getBankReserve());
     }
+
 }
