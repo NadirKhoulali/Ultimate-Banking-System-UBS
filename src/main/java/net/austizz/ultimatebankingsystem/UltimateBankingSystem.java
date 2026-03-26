@@ -2,9 +2,18 @@ package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
+import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.data.DataHandler;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.storage.DimensionDataStorage;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -19,7 +28,9 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
+import java.util.Objects;
 import java.util.UUID;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -62,13 +73,20 @@ public class UltimateBankingSystem {
         }
     }
 
-
+    public static CentralBank CentralBank ;
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
-        CentralBank CentralBank = new CentralBank();
-        LOGGER.info("CentralBank Loaded");
-        LOGGER.info("Central Bank: " + CentralBank.getBankName() + CentralBank.getBankAccounts() + CentralBank.getBankReserve());
+    public void onServerStarting(ServerAboutToStartEvent event) {
+        BankManager.init(event.getServer());
+    }
+    @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        BankManager.init(event.getServer());
+    }
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        // Clear cached references so singleplayer world switches don't leak state across worlds
+        BankManager.shutdown();
     }
 
 }

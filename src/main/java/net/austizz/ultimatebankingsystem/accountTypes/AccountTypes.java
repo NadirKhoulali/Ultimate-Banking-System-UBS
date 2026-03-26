@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.accountTypes;
 
+
 public enum AccountTypes {
     CheckingAccount("Checking Account"),
     SavingAccount("Saving Account"),
