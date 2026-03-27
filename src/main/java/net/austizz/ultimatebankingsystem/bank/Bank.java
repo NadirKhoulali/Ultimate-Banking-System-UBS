@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.handler.Response;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -76,9 +77,24 @@ public class Bank {
         };
         return null;
     }
-    public void AddAccount(AccountHolder AccountHolder) {
+    public boolean AddAccount(AccountHolder AccountHolder) {
+
+        // Only prevent duplicates for the same player AND same account type.
+        // (Previously this blocked *any* second account of the same type in the whole bank.)
+        for (AccountHolder account : this.BankAccounts.values()) {
+            if (account == null) continue;
+
+            if (account.getPlayerUUID() != null
+                    && account.getPlayerUUID().equals(AccountHolder.getPlayerUUID())
+                    && account.getAccountType() != null
+                    && account.getAccountType().equals(AccountHolder.getAccountType())) {
+                return false;
+            }
+        }
+
         this.BankAccounts.put(AccountHolder.getAccountUUID(), AccountHolder);
         BankManager.markDirty();
+        return true;
     }
     public void RemoveAccount(AccountHolder AccountHolder) {
         BigDecimal removedBalance = new BigDecimal("0");

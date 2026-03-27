@@ -11,6 +11,7 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
+import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
@@ -42,7 +43,6 @@ public class UBSCommands {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-
         event.getDispatcher().register(
                 Commands.literal("account")
                         .executes(context -> {
@@ -67,31 +67,122 @@ public class UBSCommands {
                                                     CentralBank centralBank = BankManager.getCentralBank(server);
 
                                                     String BankName = StringArgumentType.getString(context, "Bank Name");
-                                                    Bank BankChoise = centralBank.getBankByName(BankName);
+                                                    Bank BankChoice = centralBank.getBankByName(BankName);
                                                     String AccountType = StringArgumentType.getString(context, "Account Type");
 
-                                                    if (BankChoise == null) {
+                                                    if (BankChoice == null) {
                                                         context.getSource().sendSystemMessage(Component.literal("§cThe bank '§e" + BankName + "§c' could not be found."));
                                                         return 1;
                                                     }
-                                                    BankChoise.AddAccount(new AccountHolder(
+
+                                                    // Validate/parse the account type once.
+                                                    AccountTypes selectedType = Arrays.stream(AccountTypes.values())
+                                                            .filter(t -> t.name().equalsIgnoreCase(AccountType))
+                                                            .findFirst()
+                                                            .orElse(null);
+
+                                                    if (selectedType == null) {
+                                                        context.getSource().sendSystemMessage(Component.literal("§cAccount Type does not exist!"));
+                                                        return 1;
+                                                    }
+
+                                                    if (!BankChoice.AddAccount(new AccountHolder(
                                                             context.getSource().getPlayer().getUUID(),
-                                                            new BigDecimal(BigInteger.ZERO),
-                                                            Arrays.stream(
-                                                                    AccountTypes.values()).filter(
-                                                                            account -> account.name().equals(AccountType)
-                                                                    ).findFirst().orElse(null),
+                                                            BigDecimal.ZERO,
+                                                            selectedType,
                                                             "test",
-                                                            BankChoise.getBankId(),
-                                                            null));
+                                                            BankChoice.getBankId(),
+                                                            null
+                                                    ))) {
+                                                        context.getSource().sendSystemMessage(Component.literal("§cAccount with exact Account Type already exists at this bank!"));
+                                                        return 1;
+                                                    }
+
                                                     BankManager.markDirty();
-                                                    context.getSource().sendSystemMessage(Component.literal("§aSuccessfully created a §e" + AccountType + " §aaccount at §e" + BankChoise.getBankName() + "§a!"));
+                                                    context.getSource().sendSystemMessage(Component.literal("§aSuccessfully created a §e" + selectedType.name() + " §aaccount at §e" + BankChoice.getBankName() + "§a!"));
+
                                                     return 1;
                                                 })
                                         )
                                 )
                         )
+                        .then(Commands.literal("transfer")
+                                .then(Commands.argument("Account ID (sending)", UuidArgument.uuid())
+                                        .then(Commands.argument("Account ID (receiving)", UuidArgument.uuid())
+                                                .then(Commands.argument("amount", StringArgumentType.greedyString())
+                                                        .executes(context -> {
+                                                            MinecraftServer server = context.getSource().getServer();
+                                                            CentralBank centralBank = BankManager.getCentralBank(server);
+                                                            AccountHolder sender = centralBank.SearchForAccountByAccountId(UuidArgument.getUuid(context, "Account ID (sending)"));
+                                                            AccountHolder receiver = centralBank.SearchForAccountByAccountId(UuidArgument.getUuid(context, "Account ID (receiving)"));
+
+                                                            if (sender == null) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cThe sender's account could not be found."));
+                                                                return 1;
+                                                            }
+                                                            if (receiver == null) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cThe receiver's account could not be found."));
+                                                                return 1;
+                                                            }
+
+                                                            String amountStr = StringArgumentType.getString(context, "amount");
+                                                            BigDecimal amount;
+                                                            try {
+                                                                amount = new BigDecimal(amountStr);
+                                                            } catch (NumberFormatException e) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cThe amount '§e" + amountStr + "§c' is not a valid number."));
+                                                                return 1;
+                                                            }
+                                                            
+                                                            if(!sender.sendMoney(receiver, amount)) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cTransaction of amount '§e" + amount + "§c' to account holder '§e" + server.getPlayerList().getPlayer(receiver.getPlayerUUID()).getName() + "§c'. has failed, Please try again."));
+                                                                return 1;
+                                                            }
+                                                            context.getSource().sendSystemMessage(Component.literal("§aTransaction of amount '§e" + amount + "§a' to account holder '§e" + server.getPlayerList().getPlayer(receiver.getPlayerUUID()).getName().getString() + "§a' has been completed successfully!"));
+                                                            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), amount, false));
+                                                            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), amount, true));
+
+
+                                                            return 1;
+                                                            }
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
                         .then(Commands.literal("info")
+                                .executes(context -> {
+                                    MinecraftServer server = context.getSource().getServer();
+                                    CentralBank centralBank = BankManager.getCentralBank(server);
+                                    ConcurrentHashMap<UUID, AccountHolder> account = centralBank.SearchForAccount(context.getSource().getPlayer().getUUID());
+                                    if (account.isEmpty()) {
+                                        context.getSource().sendSystemMessage(Component.literal("§cYou currently do not have any accounts."));
+                                        return 1;
+                                    }
+                                    for(AccountHolder a :  account.values()){
+                                        if (a.isPrimaryAccount()){
+                                            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                                            Component info = Component.literal("§6§lUltimate Banking System §7- §eAccount Info\n"
+                                                    + "§7Bank: §e" + centralBank.getBank(a.getBankId()).getBankName() + "\n"
+                                                    + "§8(§7ID: §f" + a.getBankId() + "§8)\n")
+                                                    .append(Component.literal("§7Account ID: §f" + a.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, a.getAccountUUID().toString()))))
+                                                    .append(Component.literal("§7Primary Account: §f" + a.isPrimaryAccount() + "\n"
+                                                    + "§7Type: §f" + (a.getAccountType() != null ? a.getAccountType().label : "Unknown") + "\n"
+                                                    + "§7Balance: §a" + a.getBalance().toPlainString() + "\n"
+                                                    + "§7Created: §f" + a.getDateOfCreation().format(fmt) + "\n"
+                                                    + "Actions: ")
+                                                    .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + a.getAccountUUID()))))
+                                                    .append(Component.literal(" "))
+                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + a.getAccountUUID())))))
+                                                    .append(Component.literal(" \n"))
+                                                    .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + a.getAccountUUID()))));
+                                            context.getSource().sendSystemMessage(info);
+                                            return 1;
+                                        }
+                                    }
+                                    context.getSource().sendSystemMessage(Component.literal("§cNo primary account could be determined. Please check your accounts and set a primary account."));
+                                    return 1;
+                                })
                                 .then(Commands.literal("list")
                                         .executes(context -> {
                                             MinecraftServer server = context.getSource().getServer();
@@ -123,7 +214,7 @@ public class UBSCommands {
                                                         : Component.empty();
 
                                                 // Build a compact multi-line card per account
-                                                net.minecraft.network.chat.MutableComponent entry = Component.literal("§7" + index + ". §e" + (a.getAccountType() != null ? a.getAccountType().label : "Account"));
+                                                MutableComponent entry = Component.literal("§7" + index + ". §e" + (a.getAccountType() != null ? a.getAccountType().label : "Account"));
                                                 entry.append(primaryBadge);
                                                 entry.append(Component.literal("\n§7Bank: §f" + bankName + " §8(§7ID: §f" + a.getBankId() + "§8)"));
                                                 entry.append(Component.literal("\n§7Balance: §a" + a.getBalance().toPlainString() + " §7Created: §f" + a.getDateOfCreation().format(fmt)));
@@ -184,7 +275,9 @@ public class UBSCommands {
                                                                             + "Actions: ")
                                                                     .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
                                                                     .append(Component.literal(" "))
-                                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))));
+                                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
+                                                                    .append(Component.literal(" \n"))
+                                                                    .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))));
                                                     context.getSource().sendSystemMessage(info);
                                                     return 1;
                                                 })
@@ -213,7 +306,9 @@ public class UBSCommands {
                                                     + "Actions: ")
                                                     .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
                                                     .append(Component.literal(" "))
-                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))));
+                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
+                                                    .append(Component.literal(" \n"))
+                                                    .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))));
                                             context.getSource().sendSystemMessage(info);
                                             return 1;
                                         })

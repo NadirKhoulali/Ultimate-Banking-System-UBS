@@ -5,9 +5,12 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.data.DataHandler;
+import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
@@ -44,7 +47,6 @@ public class UltimateBankingSystem {
     public UltimateBankingSystem(IEventBus modEventBus, ModContainer modContainer) {
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
-
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (UltimateBankingSystem) to respond directly to events.
@@ -87,6 +89,13 @@ public class UltimateBankingSystem {
     public void onServerStopping(ServerStoppingEvent event) {
         // Clear cached references so singleplayer world switches don't leak state across worlds
         BankManager.shutdown();
+    }
+    @SubscribeEvent
+    public void onBalanceChanged(BalanceChangedEvent event) {
+        String message = event.isPositiveNumber()
+                ? "§a✅ Deposit Successful! You have received: " + event.getChangeAmount() + " into your bank account. Current Balance: §6" + event.getNewBalance() + "\n §aAccount ID: §6" + event.getAccount().getAccountUUID()
+                : "§c❌ Withdrawal Notice: " + event.getChangeAmount() + " has been deducted from your account. Current Balance: §6" + event.getNewBalance() + "\n §cAccount ID: §6" + event.getAccount().getAccountUUID();
+        ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(event.getAccount().getPlayerUUID()).sendSystemMessage(Component.literal(message));
     }
 
 }

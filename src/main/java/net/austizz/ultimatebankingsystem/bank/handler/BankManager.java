@@ -7,6 +7,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 public class BankManager {
     private static MinecraftServer serverInstance;
     private static CentralBank centralBank;
@@ -93,5 +97,26 @@ public class BankManager {
         dataRef = null;
         UltimateBankingSystem.LOGGER.info("[UBS] BankManager shutdown: cleared cached references.");
     }
+//    public  static void CountDownDirty() {
+//        ScheduledExecutorService scheduler = null;
+//        try {
+//             scheduler = Executors.newSingleThreadScheduledExecutor();
+//
+//        }catch (Exception e) {
+//            UltimateBankingSystem.LOGGER.error(e.getMessage());
+//        }finally {
+//            Runnable task = ()-> {
+//                markDirty();
+//                String timestamp = java.time.LocalDateTime.now().toString();
+//                UltimateBankingSystem.LOGGER.info("saved files at: {}", timestamp);
+//            };
+//
+//            // Start na 1 seconde en herhaal elke 3 seconden
+//            assert scheduler != null;
+//            scheduler.scheduleAtFixedRate(task, 1, 10, TimeUnit.SECONDS);
+//
+//        }
+//
+//    }
 }
 

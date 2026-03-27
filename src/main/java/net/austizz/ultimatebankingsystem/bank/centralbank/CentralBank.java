@@ -26,9 +26,13 @@ public class CentralBank extends Bank{
         this.banks.put(bank.getBankId(), bank);
         BankManager.markDirty();
     }
-    public void removeBank(Bank bank) {
+    public boolean removeBank(Bank bank) {
+        if (bank.getBankId().equals(this.getBankId())) {
+            return false;
+        }
         this.banks.remove(bank.getBankId());
         BankManager.markDirty();
+        return true;
     }
     public Bank getBank(UUID uuid) {
         return this.banks.get(uuid);

@@ -46,6 +46,7 @@ public class AccountHolder {
         this.balance = balance == null ? new  BigDecimal("0") : balance;
         this.BankId = BankId;
         this.isPrimaryAccount = false;
+
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -70,26 +71,38 @@ public class AccountHolder {
         return balance;
     }
     // Adds to Players Balance
-    public void AddBalance(BigDecimal balance) {
+    public boolean AddBalance(BigDecimal balance) {
+        if(balance.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
         this.balance = this.balance.add(balance);
         BankManager.markDirty();
+        return true;
     }
     // Removes from Players Balance
     public boolean RemoveBalance(BigDecimal balance) {
+
+        if(this.balance.compareTo(balance) <= 0) {
+            return false;
+        }
+        if(balance.compareTo(BigDecimal.ZERO) <= 0 ) {
+            return false;
+        }
         this.balance =  this.balance.subtract(balance);
         BankManager.markDirty();
         return true;
 
     }
     public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
-        if (this.balance.compareTo(amount) >= 0) {
-            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(accountUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
+        if (this.balance.compareTo(amount) <= 0) {
+            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
             return false;
         }
 
-        if (this.RemoveBalance(amount)){
-            accountHolder.AddBalance(amount);
+        if (!this.RemoveBalance(amount)){
+            return false;
         }
+        accountHolder.AddBalance(amount);
         BankManager.markDirty();
         return true;
     }
