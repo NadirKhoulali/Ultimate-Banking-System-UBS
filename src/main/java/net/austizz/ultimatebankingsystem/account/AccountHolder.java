@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.account;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -9,6 +10,8 @@ import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -22,7 +25,9 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class AccountHolder {
@@ -34,6 +39,7 @@ public class AccountHolder {
     private BigDecimal balance;
     private final UUID BankId;
     private boolean isPrimaryAccount;
+    private ConcurrentHashMap<UUID, Transaction> transactions;
 
 
 
@@ -46,7 +52,7 @@ public class AccountHolder {
         this.balance = balance == null ? new  BigDecimal("0") : balance;
         this.BankId = BankId;
         this.isPrimaryAccount = false;
-
+        this.transactions = new ConcurrentHashMap<>();
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -93,19 +99,22 @@ public class AccountHolder {
         return true;
 
     }
-    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
-        if (this.balance.compareTo(amount) <= 0) {
-            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
-            return false;
-        }
-
-        if (!this.RemoveBalance(amount)){
-            return false;
-        }
-        accountHolder.AddBalance(amount);
-        BankManager.markDirty();
-        return true;
+    public void addTransaction(Transaction transaction) {
+        this.transactions.put(transaction.getTransactionUUID(), transaction);
     }
+//    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
+//        if (this.balance.compareTo(amount) <= 0) {
+//            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
+//            return false;
+//        }
+//
+//        if (!this.RemoveBalance(amount)){
+//            return false;
+//        }
+//        accountHolder.AddBalance(amount);
+//        BankManager.markDirty();
+//        return true;
+//    }
 
     public void RequestAccountTermination(ServerPlayer player) {
         // Maak de callback aan: wat moet er gebeuren als ze op 'JA' klikken?
@@ -158,6 +167,17 @@ public class AccountHolder {
         BankManager.markDirty();
     }
 
+    /**
+     * Returns the transaction map, ensuring it is always non-null.
+     * Key = transaction UUID.
+     */
+    public ConcurrentHashMap<UUID, Transaction> getTransactions() {
+        if (transactions == null) {
+            transactions = new ConcurrentHashMap<>();
+        }
+        return transactions;
+    }
+
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putUUID("playerUUID", this.playerUUID);
         tag.putString("balance", this.balance.toString()); // BigDecimal als String opslaan
@@ -168,12 +188,26 @@ public class AccountHolder {
         tag.putString("dateOfCreation", this.DateOfCreation.toString());
         tag.putString("password", this.password);
         tag.putUUID("playerUUID", this.playerUUID);
+
+        // Transactions
+        ListTag txList = new ListTag();
+        for (Map.Entry<UUID, Transaction> entry : getTransactions().entrySet()) {
+            Transaction tx = entry.getValue();
+            if (tx == null) continue;
+
+            CompoundTag txTag = new CompoundTag();
+            tx.save(txTag, registries);
+            // store the key too, in case it diverges from tx.getTransactionUUID()
+            txTag.putUUID("mapKey", entry.getKey());
+            txList.add(txTag);
+        }
+        tag.put("transactions", txList);
+
         // voeg andere velden toe...
         return tag;
     }
 
     public static AccountHolder load(CompoundTag tag, HolderLookup.Provider registries) {
-        UUID uuid = tag.getUUID("playerUUID");
         BigDecimal balance = new BigDecimal(tag.getString("balance"));
         AccountTypes accountType = AccountTypes.valueOf(tag.getString("AccountType"));
         String password = tag.getString("password");
@@ -183,6 +217,21 @@ public class AccountHolder {
         AccountHolder account = new AccountHolder(playerUUID, balance, accountType, password, BankId, accountUUID);
         account.DateOfCreation = LocalDateTime.parse(tag.getString("dateOfCreation"));
         account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount");
+
+        // Transactions
+        account.transactions = new ConcurrentHashMap<>();
+        if (tag.contains("transactions", Tag.TAG_LIST)) {
+            ListTag txList = tag.getList("transactions", Tag.TAG_COMPOUND);
+            for (int i = 0; i < txList.size(); i++) {
+                CompoundTag txTag = txList.getCompound(i);
+                Transaction tx = Transaction.load(txTag, registries);
+                if (tx == null) continue;
+
+                UUID key = txTag.hasUUID("mapKey") ? txTag.getUUID("mapKey") : tx.getTransactionUUID();
+                account.transactions.put(key, tx);
+            }
+        }
+
         return account;
     }
 }

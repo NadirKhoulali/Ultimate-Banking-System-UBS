@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.bank.centralbank;
 
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
@@ -59,6 +60,18 @@ public class CentralBank extends Bank{
             for (AccountHolder account : bank.getBankAccounts().values()){
                 if (account.getAccountUUID().equals(accountId)) {
                     return account;
+                }
+            }
+        }
+        return null;
+    }
+    public Transaction getTransaction(UUID transactionID) {
+        // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
+        for (Bank bank : this.banks.values()) {
+            for (AccountHolder account : bank.getBankAccounts().values()) {
+                Transaction tx = account.getTransactions().get(transactionID);
+                if (tx != null) {
+                    return tx;
                 }
             }
         }
