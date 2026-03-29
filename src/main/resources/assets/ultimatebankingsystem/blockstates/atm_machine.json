@@ -1,18 +1,33 @@
 {
   "variants": {
-    "facing=north": {
+    "facing=north,half=lower": {
       "model": "ultimatebankingsystem:block/atm_machine"
     },
-    "facing=south": {
+    "facing=south,half=lower": {
       "model": "ultimatebankingsystem:block/atm_machine",
       "y": 180
     },
-    "facing=east": {
+    "facing=east,half=lower": {
       "model": "ultimatebankingsystem:block/atm_machine",
       "y": 90
     },
-    "facing=west": {
+    "facing=west,half=lower": {
       "model": "ultimatebankingsystem:block/atm_machine",
+      "y": 270
+    },
+    "facing=north,half=upper": {
+      "model": "ultimatebankingsystem:block/atm_machine_upper"
+    },
+    "facing=south,half=upper": {
+      "model": "ultimatebankingsystem:block/atm_machine_upper",
+      "y": 180
+    },
+    "facing=east,half=upper": {
+      "model": "ultimatebankingsystem:block/atm_machine_upper",
+      "y": 90
+    },
+    "facing=west,half=upper": {
+      "model": "ultimatebankingsystem:block/atm_machine_upper",
       "y": 270
     }
   }

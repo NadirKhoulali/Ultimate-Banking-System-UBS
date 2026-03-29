@@ -23,6 +23,7 @@ public class ModBlocks {
                     .strength(4f)
                     .sound(SoundType.METAL)
 
+
             ));
 
 
