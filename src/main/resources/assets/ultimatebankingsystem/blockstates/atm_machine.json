@@ -1,7 +1,19 @@
 {
   "variants": {
-    "" : {
+    "facing=north": {
       "model": "ultimatebankingsystem:block/atm_machine"
+    },
+    "facing=south": {
+      "model": "ultimatebankingsystem:block/atm_machine",
+      "y": 180
+    },
+    "facing=east": {
+      "model": "ultimatebankingsystem:block/atm_machine",
+      "y": 90
+    },
+    "facing=west": {
+      "model": "ultimatebankingsystem:block/atm_machine",
+      "y": 270
     }
   }
 }

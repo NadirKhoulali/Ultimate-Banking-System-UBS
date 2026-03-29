@@ -132,6 +132,14 @@ dependencies {
     // The group id is ignored when searching -- in this case, it is "blank"
     // implementation "blank:coolmod-${mc_version}:${coolmod_version}"
     implementation 'com.mojang:brigadier:1.0.18'
+    jarJar(implementation('com.bucket4j:bucket4j_jdk17-core')) {
+        version {
+            strictly '[8.17.0, 9.0.0)'
+            prefer '8.17.0'
+        }
+    }
+    additionalRuntimeClasspath 'com.bucket4j:bucket4j_jdk17-core:8.17.0'
+
     // Example mod dependency using a file as dependency
     // implementation files("libs/coolmod-${mc_version}-${coolmod_version}.jar")
 

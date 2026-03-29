@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.block;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.block.custom.ATMBlock;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -17,11 +18,13 @@ public class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(UltimateBankingSystem.MODID);
 
     public static final DeferredBlock<Block> ATM_MACHINE = registerBlock("atm_machine",
-            () -> new Block(BlockBehaviour.Properties.of()
+            () -> new ATMBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
                     .strength(4f)
-                    .requiresCorrectToolForDrops()
                     .sound(SoundType.METAL)
+
             ));
+
 
     private static <T extends Block> DeferredBlock<T> registerBlock(String name, Supplier<T> block) {
         DeferredBlock<T> toReturn = BLOCKS.register(name, block);

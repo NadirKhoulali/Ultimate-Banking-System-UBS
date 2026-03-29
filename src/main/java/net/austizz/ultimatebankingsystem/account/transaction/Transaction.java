@@ -8,7 +8,12 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
+import java.time.Duration;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -21,6 +26,7 @@ public class Transaction {
     private final BigDecimal amount;
     private final LocalDateTime timestamp;
     private final String transactionDescription;
+
 
 
     public Transaction(UUID senderUUID, UUID receiverUUID, BigDecimal amount, LocalDateTime timestamp, String TransactionDescription, UUID transactionUUID) {
@@ -63,21 +69,38 @@ public class Transaction {
         AccountHolder sender = centralBank.SearchForAccountByAccountId(senderUUID);
         AccountHolder receiver = centralBank.SearchForAccountByAccountId(receiverUUID);
 
-        if (sender.getBalance().compareTo(amount) <= 0) {
-           server.getPlayerList().getPlayer(sender.getPlayerUUID()).sendSystemMessage(Component.literal("§cNot enough balance to perform this transaction!"));
+        if (sender == null || receiver == null) {
+            return false;
+        }
+
+        // Per-account rate limit (outgoing)
+        if (!sender.tryConsumeOutgoingTransaction()) {
+            ServerPlayer sp = server.getPlayerList().getPlayer(sender.getPlayerUUID());
+            if (sp != null) {
+                sp.sendSystemMessage(Component.literal("§cYou're sending transactions too fast. Please wait a moment."));
+            }
+            return false;
+        }
+
+        Player player = server.getPlayerList().getPlayer(this.senderUUID);
+
+        if (player != null && sender.getBalance().compareTo(amount) < 0) {
+            player.sendSystemMessage(Component.literal("§cNot enough balance to perform this transaction!"));
             return false;
         }
 
         if (!sender.RemoveBalance(amount)) {
-            server.getPlayerList().getPlayer(sender.getPlayerUUID()).sendSystemMessage(Component.literal("§cSomething went wrong, Please try again!"));
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("§cSomething went wrong, Please try again!"));
+            }
             return false;
         }
+
         receiver.AddBalance(amount);
 
         // Record the transaction on both accounts
-        Transaction tx = new Transaction(senderUUID, receiverUUID, amount, timestamp, transactionDescription, transactionUUID);
-        sender.addTransaction(tx);
-        receiver.addTransaction(tx);
+        sender.addTransaction(this);
+        receiver.addTransaction(this);
 
         BankManager.markDirty();
         return true;

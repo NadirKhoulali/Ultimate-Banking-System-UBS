@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.account;
 
+import io.github.bucket4j.Bucket;
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
@@ -24,6 +26,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -40,7 +43,6 @@ public class AccountHolder {
     private final UUID BankId;
     private boolean isPrimaryAccount;
     private ConcurrentHashMap<UUID, Transaction> transactions;
-
 
 
     public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String password, UUID BankId, UUID AccountUUID) {
@@ -233,5 +235,26 @@ public class AccountHolder {
         }
 
         return account;
+    }
+
+    private static final int OUTGOING_TX_CAPACITY = Config.TRANSACTIONS_PER_MINUTE.get();
+    private static final Duration OUTGOING_TX_REFILL_PERIOD = Duration.ofMinutes(1);
+
+    /**
+     * Rate limiter for outgoing transactions for this account.
+     * Not persisted; recreated on load (per AccountHolder instance).
+     */
+    private final Bucket outgoingTxBucket = Bucket.builder()
+            .addLimit(limit -> limit.capacity(OUTGOING_TX_CAPACITY)
+                    .refillIntervally(OUTGOING_TX_CAPACITY, OUTGOING_TX_REFILL_PERIOD))
+            .build();
+
+    /**
+     * Try to consume 1 outgoing transaction token.
+     *
+     * @return true if the transaction is allowed right now.
+     */
+    public boolean tryConsumeOutgoingTransaction() {
+        return outgoingTxBucket.tryConsume(1);
     }
 }

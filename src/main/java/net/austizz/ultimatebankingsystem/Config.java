@@ -15,9 +15,10 @@ public class Config {
             .comment("Whether to log the dirt block on common setup")
             .define("logDirtBlock", true);
 
-    public static final ModConfigSpec.IntValue MAGIC_NUMBER = BUILDER
-            .comment("A magic number")
-            .defineInRange("magicNumber", 42, 0, Integer.MAX_VALUE);
+    public static final ModConfigSpec.IntValue TRANSACTIONS_PER_MINUTE = BUILDER
+            .comment("The Amount of transactions possible per player per minute")
+            .defineInRange("TransactionsPerMinute", 10, 1, Integer.MAX_VALUE);
+
 
     public static final ModConfigSpec.ConfigValue<String> MAGIC_NUMBER_INTRODUCTION = BUILDER
             .comment("What you want the introduction message to be for the magic number")

@@ -371,7 +371,7 @@ public class UBSCommands {
 
                                             MutableComponent body = (Component.literal("§7Transaction ID: §f" + transaction.getTransactionUUID() + "\n"))
                                                     .append(Component.literal("§7Amount: §a" + transaction.getAmount().toPlainString() + "\n"))
-                                                    .append(Component.literal("§7Tim    e: §f" + timeStr + "\n"))
+                                                    .append(Component.literal("§7Time: §f" + timeStr + "\n"))
                                                     .append(Component.literal("§7Description: §f" + transaction.getTransactionDescription()));
 
                                             context.getSource().sendSystemMessage(
