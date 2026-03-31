@@ -11,18 +11,35 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final ModConfigSpec.BooleanValue LOG_DIRT_BLOCK = BUILDER
-            .comment("Whether to log the dirt block on common setup")
-            .define("logDirtBlock", true);
+
 
     public static final ModConfigSpec.IntValue TRANSACTIONS_PER_MINUTE = BUILDER
             .comment("The Amount of transactions possible per player per minute")
             .defineInRange("TransactionsPerMinute", 10, 1, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.BooleanValue ALLOW_BANK_CUSTOM_INTEREST_RATE = BUILDER
+            .comment("Allow player made banks to set their own interest rate")
+            .define("AllowBankCustomInterestRate", true);
 
-    public static final ModConfigSpec.ConfigValue<String> MAGIC_NUMBER_INTRODUCTION = BUILDER
-            .comment("What you want the introduction message to be for the magic number")
-            .define("magicNumberIntroduction", "The magic number is... ");
+    public static final ModConfigSpec.DoubleValue DEFAULT_SERVER_INTEREST_RATE = BUILDER
+            .comment("The default server interest rate across all banks (default: 1.4)")
+            .defineInRange("ServerInterestRate", 1.4, 0.01, Double.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue MIN_CUSTOM_BANK_INTEREST_RATE = BUILDER
+            .comment(
+                    "Minimum allowed interest rate when custom bank interest rates are enabled.",
+                    "Used to clamp/validate player-made bank rates.",
+                    "Example: 0.50 means 50% of the base value; 1.00 means no change; 1.40 means +40%."
+            )
+            .defineInRange("MinCustomBankInterestRate", 0.50, 0.01, Double.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue MAX_CUSTOM_BANK_INTEREST_RATE = BUILDER
+            .comment(
+                    "Maximum allowed interest rate when custom bank interest rates are enabled.",
+                    "Used to clamp/validate player-made bank rates.",
+                    "Example: 2.00 means 200% of the base value."
+            )
+            .defineInRange("MaxCustomBankInterestRate", 100.00, 0.01, Double.MAX_VALUE);
 
     // a list of strings that are treated as resource locations for items
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER

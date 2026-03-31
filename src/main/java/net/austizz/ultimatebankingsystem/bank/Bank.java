@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.bank;
 
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
@@ -60,6 +61,10 @@ public class Bank {
         BankManager.markDirty();
     }
     public void setInterestRate(double InterestRate) {
+
+        if (InterestRate < Config.MIN_CUSTOM_BANK_INTEREST_RATE.get() || InterestRate > Config.MAX_CUSTOM_BANK_INTEREST_RATE.get()) {
+            return;
+        }
         this.InterestRate = InterestRate;
         BankManager.markDirty();
     }

@@ -1,4 +1,8 @@
 {
   "block.ultimatebankingsystem.atm_machine" : "ATM Machine",
-  "ultimatebankingsystem.configuration.TransactionsPerMinute": "Transactions Per Minute"
+  "ultimatebankingsystem.configuration.TransactionsPerMinute": "Transactions Per Minute",
+  "ultimatebankingsystem.configuration.AllowBankCustomInterestRate": "Allow Bank Custom Interest Rate",
+  "ultimatebankingsystem.configuration.ServerInterestRate": "Global Server Default Interest Rate",
+  "ultimatebankingsystem.configuration.MinCustomBankInterestRate": "Min Custom Bank Interest Rate",
+  "ultimatebankingsystem.configuration.MaxCustomBankInterestRate": "Max Custom Bank Interest Rate"
 }
