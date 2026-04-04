@@ -1,12 +1,10 @@
 package net.austizz.ultimatebankingsystem.command;
 
 
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
-import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
+import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -14,23 +12,17 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.minecraft.ChatFormatting;
-import net.minecraft.commands.CommandSource;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.UuidArgument;
 import net.minecraft.network.chat.*;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.austizz.ultimatebankingsystem.UltimateBankingSystem.*;
-import org.checkerframework.checker.units.qual.C;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -321,7 +313,7 @@ public class UBSCommands {
                                                                 return 1;
                                                             }
                                                             
-                                                            if(!new Transaction(sender.getAccountUUID(),receiver.getAccountUUID(), amount, LocalDateTime.now(), "Bank to Bank Transaction").makeTransaction(server)) {
+                                                            if(!new UserTransaction(sender.getAccountUUID(),receiver.getAccountUUID(), amount, LocalDateTime.now(), "Bank to Bank UserTransaction").makeTransaction(server)) {
                                                                 String receiverName = server.getPlayerList().getPlayer(receiver.getPlayerUUID()) != null
                                                                         ? server.getPlayerList().getPlayer(receiver.getPlayerUUID()).getName().getString()
                                                                         : receiver.getPlayerUUID().toString();
@@ -355,14 +347,14 @@ public class UBSCommands {
                                 )
                         )
                         .then(Commands.literal("transaction")
-                                .then(Commands.argument("Transaction ID", UuidArgument.uuid())
+                                .then(Commands.argument("UserTransaction ID", UuidArgument.uuid())
                                         .executes(context -> {
                                             MinecraftServer server = context.getSource().getServer();
                                             CentralBank centralBank = BankManager.getCentralBank(server);
-                                            Transaction transaction = centralBank.getTransaction(UuidArgument.getUuid(context, "Transaction ID"));
+                                            UserTransaction transaction = centralBank.getTransaction(UuidArgument.getUuid(context, "UserTransaction ID"));
 
                                             if (transaction == null) {
-                                                context.getSource().sendSystemMessage(ubsError("Transaction Info","Transaction not found."));
+                                                context.getSource().sendSystemMessage(ubsError("UserTransaction Info","UserTransaction not found."));
                                                 return 1;
                                             }
 

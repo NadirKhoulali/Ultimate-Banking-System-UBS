@@ -2,8 +2,7 @@ package net.austizz.ultimatebankingsystem.account;
 
 import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
-import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
+import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -20,10 +19,6 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -42,7 +37,7 @@ public class AccountHolder {
     private BigDecimal balance;
     private final UUID BankId;
     private boolean isPrimaryAccount;
-    private ConcurrentHashMap<UUID, Transaction> transactions;
+    private ConcurrentHashMap<UUID, UserTransaction> transactions;
 
 
     public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String password, UUID BankId, UUID AccountUUID) {
@@ -101,7 +96,7 @@ public class AccountHolder {
         return true;
 
     }
-    public void addTransaction(Transaction transaction) {
+    public void addTransaction(UserTransaction transaction) {
         this.transactions.put(transaction.getTransactionUUID(), transaction);
     }
 //    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
@@ -173,7 +168,7 @@ public class AccountHolder {
      * Returns the transaction map, ensuring it is always non-null.
      * Key = transaction UUID.
      */
-    public ConcurrentHashMap<UUID, Transaction> getTransactions() {
+    public ConcurrentHashMap<UUID, UserTransaction> getTransactions() {
         if (transactions == null) {
             transactions = new ConcurrentHashMap<>();
         }
@@ -193,8 +188,8 @@ public class AccountHolder {
 
         // Transactions
         ListTag txList = new ListTag();
-        for (Map.Entry<UUID, Transaction> entry : getTransactions().entrySet()) {
-            Transaction tx = entry.getValue();
+        for (Map.Entry<UUID, UserTransaction> entry : getTransactions().entrySet()) {
+            UserTransaction tx = entry.getValue();
             if (tx == null) continue;
 
             CompoundTag txTag = new CompoundTag();
@@ -226,7 +221,7 @@ public class AccountHolder {
             ListTag txList = tag.getList("transactions", Tag.TAG_COMPOUND);
             for (int i = 0; i < txList.size(); i++) {
                 CompoundTag txTag = txList.getCompound(i);
-                Transaction tx = Transaction.load(txTag, registries);
+                UserTransaction tx = UserTransaction.load(txTag, registries);
                 if (tx == null) continue;
 
                 UUID key = txTag.hasUUID("mapKey") ? txTag.getUUID("mapKey") : tx.getTransactionUUID();

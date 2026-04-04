@@ -1,7 +1,6 @@
 package net.austizz.ultimatebankingsystem.account.transaction;
 
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
-import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
@@ -10,16 +9,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import java.time.Duration;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public class Transaction {
+public class UserTransaction {
     private final UUID senderUUID;
     private final UUID receiverUUID;
     private final UUID transactionUUID;
@@ -29,7 +24,7 @@ public class Transaction {
 
 
 
-    public Transaction(UUID senderUUID, UUID receiverUUID, BigDecimal amount, LocalDateTime timestamp, String TransactionDescription, UUID transactionUUID) {
+    public UserTransaction(UUID senderUUID, UUID receiverUUID, BigDecimal amount, LocalDateTime timestamp, String TransactionDescription, UUID transactionUUID) {
         this.senderUUID = senderUUID;
         this.receiverUUID = receiverUUID;
         this.amount = amount;
@@ -37,7 +32,7 @@ public class Transaction {
         this.transactionUUID = transactionUUID ;
         this.transactionDescription = TransactionDescription;
     }
-    public Transaction(UUID senderUUID, UUID receiverUUID, BigDecimal amount, LocalDateTime timestamp, String TransactionDescription) {
+    public UserTransaction(UUID senderUUID, UUID receiverUUID, BigDecimal amount, LocalDateTime timestamp, String TransactionDescription) {
         this.senderUUID = senderUUID;
         this.receiverUUID = receiverUUID;
         this.amount = amount;
@@ -45,6 +40,7 @@ public class Transaction {
         this.transactionUUID = UUID.randomUUID();
         this.transactionDescription = TransactionDescription;
     }
+
     public UUID getSenderUUID() {
         return senderUUID;
     }
@@ -116,14 +112,14 @@ public class Transaction {
         return tag;
     }
 
-    public static Transaction  load(CompoundTag tag, HolderLookup.Provider registries) {
+    public static UserTransaction load(CompoundTag tag, HolderLookup.Provider registries) {
         UUID senderUUID = tag.getUUID("senderUUID");
         UUID receiverUUID = tag.getUUID("receiverUUID");
         BigDecimal amount = new BigDecimal(tag.getString("amount"));
         UUID transactionUUID = tag.getUUID("transactionUUID");
         String transactionDescription = tag.getString("transactionDescription");
         LocalDateTime timestamp = LocalDateTime.parse(tag.getString("timeStamp"));
-        Transaction transaction = new Transaction(senderUUID, receiverUUID, amount, timestamp, transactionDescription, transactionUUID);
+        UserTransaction transaction = new UserTransaction(senderUUID, receiverUUID, amount, timestamp, transactionDescription, transactionUUID);
         return transaction;
     }
 }

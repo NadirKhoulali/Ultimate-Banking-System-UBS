@@ -1,12 +1,14 @@
 package net.austizz.ultimatebankingsystem.bank.centralbank;
 
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
-import net.austizz.ultimatebankingsystem.account.transaction.Transaction;
+import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.NeoForge;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -25,6 +27,7 @@ public class CentralBank extends Bank{
     }
     public void addBank(Bank bank) {
         this.banks.put(bank.getBankId(), bank);
+        NeoForge.EVENT_BUS.register(bank);
         BankManager.markDirty();
     }
     public boolean removeBank(Bank bank) {
@@ -65,11 +68,11 @@ public class CentralBank extends Bank{
         }
         return null;
     }
-    public Transaction getTransaction(UUID transactionID) {
+    public UserTransaction getTransaction(UUID transactionID) {
         // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
         for (Bank bank : this.banks.values()) {
             for (AccountHolder account : bank.getBankAccounts().values()) {
-                Transaction tx = account.getTransactions().get(transactionID);
+                UserTransaction tx = account.getTransactions().get(transactionID);
                 if (tx != null) {
                     return tx;
                 }
