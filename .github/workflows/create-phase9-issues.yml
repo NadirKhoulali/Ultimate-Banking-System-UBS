@@ -1,0 +1,610 @@
+name: Create Phase 9 Banking Issues
+
+# Manually trigger this workflow once to bulk-create all Phase 9 GitHub issues.
+# It is safe to run multiple times — each run checks for existing issue titles
+# before creating to avoid duplicates.
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      # ── 1. Create the phase-9 label if it does not exist ─────────────────────
+      - name: Ensure phase-9 label exists
+        run: |
+          gh api repos/$REPO/labels \
+            -f name="phase-9" \
+            -f color="0075ca" \
+            -f description="Phase 9 — Central Bank Monetary Policy & Reserve Mechanics" \
+            || echo "Label phase-9 may already exist, continuing."
+
+      # ── 2. Create the Phase 9 milestone ───────────────────────────────────────
+      - name: Ensure Phase 9 milestone exists
+        run: |
+          gh api repos/$REPO/milestones \
+            -f title="Phase 9 — Central Bank Monetary Policy & Reserve Mechanics" \
+            -f state="open" \
+            -f description="Features covering the Central Bank federal funds rate, fractional reserve enforcement, interest rate mechanics (compound interest, CD tiers, MMA variable rates), bank run detection, withdrawal demand management, and inter-bank lending." \
+            || echo "Milestone may already exist, continuing."
+
+      # ── 3. Create all issues via Python ───────────────────────────────────────
+      - name: Create all Phase 9 issues
+        run: |
+          python3 - << 'PYEOF'
+          import subprocess, sys, json, os
+
+          REPO = os.environ["REPO"]
+
+          def existing_titles():
+              result = subprocess.run(
+                  ["gh", "issue", "list", "--repo", REPO, "--state", "all",
+                   "--limit", "200", "--json", "title"],
+                  capture_output=True, text=True
+              )
+              return {item["title"] for item in json.loads(result.stdout)}
+
+          def create_issue(title, body, labels, milestone):
+              titles = existing_titles()
+              if title in titles:
+                  print(f"SKIP (already exists): {title}")
+                  return
+              args = [
+                  "gh", "issue", "create",
+                  "--repo", REPO,
+                  "--title", title,
+                  "--body", body,
+                  "--milestone", milestone,
+              ]
+              for label in labels:
+                  args += ["--label", label]
+              result = subprocess.run(args, capture_output=True, text=True)
+              if result.returncode == 0:
+                  print(f"CREATED: {title}")
+                  print(f"  URL: {result.stdout.strip()}")
+              else:
+                  print(f"ERROR creating: {title}", file=sys.stderr)
+                  print(result.stderr, file=sys.stderr)
+
+          PHASE9 = "Phase 9 — Central Bank Monetary Policy & Reserve Mechanics"
+          PHASE8 = "Phase 8 — Player-Owned Banks"
+
+          # ════════════════════════════════════════════════════════════════════
+          # SECTION A — CENTRAL BANK MONETARY POLICY
+          # ════════════════════════════════════════════════════════════════════
+
+          create_issue(
+              title="As a Server Admin, I want the Central Bank to publish a configurable Federal Funds Rate so that all player banks have a monetary policy benchmark to follow",
+              body="""## User Story
+          As a Server Admin, I want the Central Bank to publish a configurable Federal Funds Rate so that all player banks have a monetary policy benchmark to follow.
+
+          ## Acceptance Criteria
+          - [ ] A Central Bank admin command `/centralbank rate set <rate>` allows the server admin to update the Federal Funds Rate
+          - [ ] The Federal Funds Rate is persisted in NBT alongside all other Central Bank data
+          - [ ] All online players are notified with an in-game broadcast message whenever the rate is changed
+          - [ ] `/centralbank rate` (no arguments) displays the current rate to any player
+          - [ ] The rate is readable by the `Bank` class so that individual banks can reference it when calculating interest
+          - [ ] A configurable minimum and maximum allowed Federal Funds Rate is exposed in the mod config
+          - [ ] The `CentralBank` class exposes a `getFederalFundsRate()` method accessible to all sub-banks
+
+          ## Benefits
+          - [ ] Introduces real monetary policy mechanics that mirror the Federal Reserve system
+          - [ ] Gives server admins a single lever to raise or lower interest rates economy-wide
+          - [ ] Creates a foundation for linking player bank savings rates, CD rates, and MMA rates to a central benchmark
+
+          ## Considerations
+          - [ ] Rate changes should apply to newly opened accounts; existing accounts may need a grace period
+          - [ ] Consider emitting a `FederalFundsRateChangedEvent` so other systems can react
+          - [ ] The rate should be denominated in the same unit as `InterestRate` in `Bank.java` (percentage points)
+          - [ ] Ensure the rate is stored as a `BigDecimal` to avoid floating-point precision loss""",
+              labels=["feature", "banking", "economy", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want the Central Bank to perform open market operations to inject or withdraw currency so that the server-wide money supply can be controlled",
+              body="""## User Story
+          As a Server Admin, I want the Central Bank to perform open market operations to inject or withdraw currency so that the server-wide money supply can be controlled.
+
+          ## Acceptance Criteria
+          - [ ] `/centralbank opm inject <amount>` credits the specified amount to the Central Bank's reserve, effectively increasing the money supply
+          - [ ] `/centralbank opm withdraw <amount>` debits the specified amount from the Central Bank's reserve, reducing the money supply
+          - [ ] Both operations are recorded in the Central Bank's transaction audit log with an `OMO` type tag
+          - [ ] `/centralbank opm history` shows the last N open market operations (N configurable in mod config, default 20)
+          - [ ] The total money supply (sum of all account balances + all bank reserves) is recalculated and cached after each operation
+          - [ ] Withdrawals that would make the CB reserve negative are rejected with a clear error message
+          - [ ] Admin permission level is required for all `opm` sub-commands
+
+          ## Benefits
+          - [ ] Gives server admins a macro-economic tool to fight in-game inflation or deflation
+          - [ ] Makes the Central Bank feel like a genuine central authority rather than a passive observer
+          - [ ] Provides a mechanism to bootstrap new economies or course-correct runaway economies
+
+          ## Considerations
+          - [ ] Large injections should generate a warning to the admin about potential inflationary effects
+          - [ ] Consider a cooldown between operations to prevent rapid oscillations
+          - [ ] All OMO actions should be reflected in the economy report (`/centralbank report`)
+          - [ ] Thread-safety: ensure reserve mutations use the same synchronisation as `BankManager.markDirty()`""",
+              labels=["feature", "banking", "economy", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want the Central Bank to actively audit and enforce reserve requirements on all player banks so that systemic financial stability is maintained",
+              body="""## User Story
+          As a Server Admin, I want the Central Bank to actively audit and enforce reserve requirements on all player banks so that systemic financial stability is maintained.
+
+          ## Acceptance Criteria
+          - [ ] The Central Bank runs a periodic reserve-ratio audit on all registered player banks (interval configurable in mod config, default every in-game day)
+          - [ ] Any bank whose reserve ratio falls below the configured minimum receives an in-game warning sent to the bank owner
+          - [ ] Banks that remain non-compliant after a configurable grace period (default: 3 in-game days) are automatically placed into `RESTRICTED` status
+          - [ ] `RESTRICTED` banks cannot open new accounts or approve new loans until compliance is restored
+          - [ ] `/centralbank audit` (admin only) lists all banks with their current reserve ratio, compliance status, and days remaining in any active grace period
+          - [ ] `/centralbank audit <bankName>` shows the detailed compliance history for a single bank
+          - [ ] When a bank returns to compliance, its `RESTRICTED` status is lifted automatically and the owner is notified
+          - [ ] All audit events (warning issued, restriction applied, restriction lifted) are written to the audit log
+
+          ## Benefits
+          - [ ] Elevates the Central Bank from a passive data store to an active regulatory body
+          - [ ] Protects depositors system-wide from banks that chronically under-reserve
+          - [ ] Complements the existing per-bank reserve minimum (issue #49) with Central Bank oversight
+
+          ## Considerations
+          - [ ] The Central Bank itself must be exempt from all reserve audits
+          - [ ] Audit logic should be lightweight — avoid full account scans every tick
+          - [ ] Grace period timers should be persisted so they survive server restarts
+          - [ ] Consider distinguishing between a "soft" warning state and a "hard" restriction state""",
+              labels=["feature", "banking", "backend", "security", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want an economy-wide money supply dashboard accessible through the Central Bank so that I can monitor inflation risk and systemic financial health",
+              body="""## User Story
+          As a Server Admin, I want an economy-wide money supply dashboard accessible through the Central Bank so that I can monitor inflation risk and systemic financial health.
+
+          ## Acceptance Criteria
+          - [ ] `/centralbank report` (admin only) outputs a formatted summary containing:
+            - Total circulating money supply (sum of all account balances across all banks)
+            - Total Central Bank reserve
+            - Number of active player banks
+            - Average reserve ratio across all player banks
+            - Number of banks in WARNING or RESTRICTED status
+            - Total outstanding loans across all banks
+            - Federal Funds Rate (current)
+            - Net OMO injections/withdrawals since server start
+          - [ ] Report data is recalculated on demand rather than cached to ensure accuracy
+          - [ ] An optional `--history` flag shows how each metric has changed across the last N report snapshots
+          - [ ] Report snapshots are saved periodically (configurable interval) to NBT so history survives restarts
+
+          ## Benefits
+          - [ ] Gives server admins a bird's-eye view of economic health without reading raw data files
+          - [ ] Enables data-driven decisions about when to adjust the Federal Funds Rate or perform OMOs
+          - [ ] Surfaces systemic risk (e.g., many banks near reserve minimum) before it becomes a crisis
+
+          ## Considerations
+          - [ ] Large servers with many banks may have expensive report generation — consider async calculation
+          - [ ] The report format should match the style of existing admin output commands
+          - [ ] Consider a machine-readable JSON output mode for integration with external tools
+          - [ ] Protect the command behind a permission node to prevent information leakage""",
+              labels=["feature", "banking", "economy", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Developer, I want all cross-bank transactions to settle through a Central Bank clearing ledger so that there is a single authoritative record of all inter-bank fund movements",
+              body="""## User Story
+          As a Developer, I want all cross-bank transactions to settle through a Central Bank clearing ledger so that there is a single authoritative record of all inter-bank fund movements.
+
+          ## Acceptance Criteria
+          - [ ] All `BankToBankTransaction` executions are routed through a new `CentralBank.settle(BankToBankTransaction)` method that records a settlement entry before crediting the receiving bank
+          - [ ] Each settlement entry records: sender bank ID, receiver bank ID, amount, timestamp, and a unique settlement reference number
+          - [ ] Settlement entries are persisted in NBT as a `ListTag` on the `CentralBank` object
+          - [ ] `/centralbank ledger` (admin only) displays the last N settlement entries (N configurable, default 50)
+          - [ ] Failed settlements (e.g., insufficient reserve) are written to a separate suspense log with reason
+          - [ ] `/centralbank ledger suspense` shows all unsettled or failed transactions awaiting resolution
+          - [ ] The clearing ledger is included in the `/centralbank report` summary as "Total inter-bank settlements (24 h)"
+
+          ## Benefits
+          - [ ] Creates a single source of truth for auditing all money flows between banks
+          - [ ] Makes it impossible for funds to appear or disappear between banks without a ledger entry
+          - [ ] Mirrors real-world Fedwire / ACH clearing-house architecture in a Minecraft context
+
+          ## Considerations
+          - [ ] Backwards-compatible: existing `BankToBankTransaction` code paths should require minimal changes
+          - [ ] The suspense log must be monitored — entries left unresolved may indicate bugs
+          - [ ] Consider a maximum ledger size with configurable rolling eviction to prevent unbounded NBT growth
+          - [ ] Thread-safety: settlement must be atomic with respect to reserve mutations""",
+              labels=["feature", "banking", "backend", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          # ════════════════════════════════════════════════════════════════════
+          # SECTION B — INTEREST RATE MECHANICS
+          # ════════════════════════════════════════════════════════════════════
+
+          create_issue(
+              title="As a Player, I want Certificate of Deposit accounts to offer configurable tiered interest rates based on term length so that longer commitments earn proportionally higher returns",
+              body="""## User Story
+          As a Player, I want Certificate of Deposit accounts to offer configurable tiered interest rates based on term length so that longer commitments earn proportionally higher returns.
+
+          ## Acceptance Criteria
+          - [ ] Three CD tiers are configurable in the mod config: short-term (default 3 in-game months), medium-term (6 months), and long-term (12 months), each with its own interest rate
+          - [ ] When opening a `CertificateAccount`, the player selects a tier via `/bank open certificate <tier>` where tier is `short`, `medium`, or `long`
+          - [ ] The selected tier and its maturity date are stored on the `AccountHolder` object and persisted in NBT
+          - [ ] Funds are locked for the entire term — withdrawal commands on a locked CD return a clear error message showing the maturity date
+          - [ ] On maturity, principal + accumulated interest is automatically credited and the account transitions to an unlocked state; the player is notified
+          - [ ] `/bank account` shows the CD tier, interest rate, locked balance, and maturity date for CD accounts
+          - [ ] Bank owners can view all active CDs and their maturity schedule via `/bank cds`
+
+          ## Benefits
+          - [ ] Rewards players who commit funds for longer periods, incentivising long-term savings
+          - [ ] Gives bank owners a predictable funding source (locked deposits) to back longer-term loans
+          - [ ] Differentiates the four account types with meaningful mechanical distinctions
+
+          ## Considerations
+          - [ ] "In-game months" should map to a configurable number of server ticks for flexibility
+          - [ ] Consider auto-rolling matured CDs into a new term of the same length unless the player opts out
+          - [ ] CD interest should compound over the term rather than paying out monthly
+          - [ ] Account for the case where the bank is dissolved before a CD matures""",
+              labels=["feature", "banking", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Player, I want Money Market accounts to automatically adjust their interest rate to track the Central Bank Federal Funds Rate so that my savings reflect current monetary policy",
+              body="""## User Story
+          As a Player, I want Money Market accounts to automatically adjust their interest rate to track the Central Bank Federal Funds Rate so that my savings reflect current monetary policy.
+
+          ## Acceptance Criteria
+          - [ ] The effective interest rate for a `MoneyMarketAccount` is calculated as: `federalFundsRate × mmRateMultiplier` where `mmRateMultiplier` is configurable in the mod config (default: 0.85)
+          - [ ] When the Central Bank Federal Funds Rate changes, all `MoneyMarketAccount` holders in all banks are automatically affected on the next interest payout cycle
+          - [ ] Players with a Money Market account receive an in-game notification when the rate changes, showing the old and new effective rate
+          - [ ] `/bank account` displays the current MMA effective rate and indicates it is variable
+          - [ ] The rate multiplier is validated to stay within `MinCustomBankInterestRate` / `MaxCustomBankInterestRate` bounds already defined in `Config.java`
+          - [ ] Bank owners cannot manually override the MMA rate — it is always derived from the CB rate
+
+          ## Benefits
+          - [ ] Makes Money Market accounts meaningfully different from fixed-rate Savings accounts
+          - [ ] Ties individual player savings directly to Central Bank monetary policy decisions
+          - [ ] Encourages players to monitor CB rate changes as they directly affect their earnings
+
+          ## Considerations
+          - [ ] Players should be able to close their MMA and move funds if they dislike a rate decrease
+          - [ ] Consider a floor rate below which the MMA rate cannot fall regardless of CB rate
+          - [ ] The multiplier should be per-bank (configurable by bank owner within CB-set bounds) to enable competition
+          - [ ] Ensure rate changes are reflected before the next scheduled `payInterestAllSavingAccounts` tick""",
+              labels=["feature", "banking", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Developer, I want savings and Money Market account interest to use compound interest calculations instead of simple annual division so that interest accrual is mathematically accurate",
+              body="""## User Story
+          As a Developer, I want savings and Money Market account interest to use compound interest calculations instead of simple annual division so that interest accrual is mathematically accurate.
+
+          ## Acceptance Criteria
+          - [ ] The current formula in `Bank.payInterestAllSavingAccounts()` (`balance × rate / 100 / 12`) is replaced with the compound interest formula: `A = P × (1 + r/n)^(n×t) − P` where `n` = compounding frequency and `t` = elapsed periods
+          - [ ] Savings accounts compound monthly (`n = 12`)
+          - [ ] Money Market accounts compound daily (`n = 365`); the tick-to-day ratio is derived from the server's tick rate
+          - [ ] All intermediate calculations use `BigDecimal` with `RoundingMode.HALF_EVEN` and a precision of at least 10 decimal places
+          - [ ] A unit test verifies that the compound formula produces correct results for known inputs (e.g., $1000 at 5% APR compounded monthly for 12 months ≈ $1051.16)
+          - [ ] The change is backwards-compatible: existing accounts receive compound interest from the next payout cycle onward
+
+          ## Benefits
+          - [ ] Corrects a mathematical inaccuracy in the existing implementation
+          - [ ] Aligns the mod with real-world banking conventions
+          - [ ] Higher compounding frequency for MMA accounts further differentiates account types
+
+          ## Considerations
+          - [ ] The impact on per-payout amounts is small but compounds over time — document the change in the changelog
+          - [ ] The tick counter in `Bank.java` represents months; re-evaluate whether it should track days for MMA
+          - [ ] Verify that very small balances do not produce sub-cent payouts that are rounded to zero
+          - [ ] `THIRTY_DAYS_IN_TICKS = 100` appears to be a placeholder — ensure this is updated to a realistic value or made configurable""",
+              labels=["feature", "banking", "backend", "enhancement", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Developer, I want Certificate of Deposit accounts to enforce an early withdrawal penalty so that the term commitment is meaningful and discourages premature cash-outs",
+              body="""## User Story
+          As a Developer, I want Certificate of Deposit accounts to enforce an early withdrawal penalty so that the term commitment is meaningful and discourages premature cash-outs.
+
+          ## Acceptance Criteria
+          - [ ] Attempting to withdraw from a locked CD before maturity triggers a two-step confirmation: the player is shown the penalty amount and must confirm with `/bank confirm`
+          - [ ] The penalty is calculated as: `interestEarned × earlyWithdrawalPenaltyFactor` where the factor is configurable per tier in the mod config (default: 0.50 = 50% of earned interest forfeited)
+          - [ ] If no interest has accrued yet, the penalty is a flat configurable amount (default: 1% of principal)
+          - [ ] The penalty is deducted from the payout before releasing funds; the remaining balance is credited to the player's checking account at the same bank
+          - [ ] Early withdrawal events are recorded in the transaction log with an `EARLY_WITHDRAWAL` type tag
+          - [ ] The bank owner keeps the penalty amount, which is credited to the bank's reserve
+          - [ ] `/bank account` clearly shows a CD is locked and warns that early withdrawal incurs a penalty
+
+          ## Benefits
+          - [ ] Makes CD accounts a genuine long-term commitment rather than a regular savings account with a label
+          - [ ] Provides an additional revenue stream for bank owners that rewards running a CD program
+          - [ ] Aligns the mod with real-world CD mechanics (typical US bank penalty = 3–6 months interest)
+
+          ## Considerations
+          - [ ] The confirmation step must time out after a configurable period to prevent dangling confirmations
+          - [ ] Penalty amounts must use `BigDecimal` arithmetic to avoid precision loss
+          - [ ] Ensure the penalty cannot make the returned amount negative — add a floor of zero net payout
+          - [ ] Log which admin (if any) force-withdrew a CD on behalf of a player""",
+              labels=["feature", "banking", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want player bank savings rates to be constrained within a band relative to the Central Bank Federal Funds Rate so that banks cannot offer exploitably high or dangerously low rates",
+              body="""## User Story
+          As a Server Admin, I want player bank savings rates to be constrained within a band relative to the Central Bank Federal Funds Rate so that banks cannot offer exploitably high or dangerously low rates.
+
+          ## Acceptance Criteria
+          - [ ] The minimum allowed savings rate is `federalFundsRate × minSavingsRateFloor` (configurable multiplier, default: 0.50)
+          - [ ] The maximum allowed savings rate is `federalFundsRate × maxSavingsRateCeiling` (configurable multiplier, default: 3.00)
+          - [ ] `Bank.setInterestRate()` is updated to enforce these dynamic bounds in addition to the static `MIN/MAX_CUSTOM_BANK_INTEREST_RATE` already in `Config.java`
+          - [ ] When the Central Bank changes the Federal Funds Rate, all player banks whose current savings rate falls outside the new band are notified with a grace period (configurable, default: 1 in-game day) to adjust
+          - [ ] After the grace period, non-compliant rates are automatically clamped to the nearest band boundary and the bank owner is notified
+          - [ ] `/centralbank rate` output includes the current implied savings rate floor and ceiling for reference
+          - [ ] Admins can grant individual banks an exemption from rate bands via `/bank admin rateexempt <bankName>`
+
+          ## Benefits
+          - [ ] Prevents a single bank from attracting all players with an unsustainably high savings rate
+          - [ ] Ensures that rate competition between banks stays within economically reasonable bounds
+          - [ ] Links individual bank behaviour directly to Central Bank monetary policy
+
+          ## Considerations
+          - [ ] The Central Bank itself must be exempt from band enforcement
+          - [ ] Rate band changes should be broadcast to all bank owners so they can prepare
+          - [ ] The static `MIN_CUSTOM_BANK_INTEREST_RATE` / `MAX_CUSTOM_BANK_INTEREST_RATE` in config should remain as hard absolute limits below/above which even the dynamic band cannot go
+          - [ ] Exemptions should be logged and auditable""",
+              labels=["feature", "banking", "backend", "security", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          # ════════════════════════════════════════════════════════════════════
+          # SECTION C — RESERVE REQUIREMENTS & WITHDRAWAL DEMAND
+          # ════════════════════════════════════════════════════════════════════
+
+          create_issue(
+              title="As a Developer, I want player banks to be limited in how much they can lend out based on a fractional reserve ratio so that the lending system correctly models fractional reserve banking",
+              body="""## User Story
+          As a Developer, I want player banks to be limited in how much they can lend out based on a fractional reserve ratio so that the lending system correctly models fractional reserve banking.
+
+          ## Acceptance Criteria
+          - [ ] A new `Bank.getMaxLendableAmount()` method computes: `totalDeposits × (1 − reserveRatio)` where `reserveRatio` is the configured minimum reserve ratio from the mod config
+          - [ ] New loan disbursements from a player bank are blocked if `totalOutstandingLoans + loanAmount > getMaxLendableAmount()`
+          - [ ] The bank owner receives a clear error message explaining the reserve constraint when a loan is blocked
+          - [ ] `getMaxLendableAmount()` and current outstanding loans are shown in the bank owner dashboard (see liquidity dashboard issue)
+          - [ ] The reserve ratio used for the lending limit is the same value enforced by the Central Bank audit (single source of truth in `Config.java`)
+          - [ ] Outstanding loan total is derived by summing all active loan balances associated with the bank
+
+          ## Benefits
+          - [ ] Implements the core mechanics of fractional reserve banking in a Minecraft mod for the first time
+          - [ ] Creates a direct relationship between deposit growth and lending capacity, making deposit attraction strategically important for bank owners
+          - [ ] Prevents banks from lending out more than they actually have, which would be economically incoherent
+
+          ## Considerations
+          - [ ] `getBankReserve()` currently sums all account balances — review whether this is the correct definition of "reserve" for lending limit purposes
+          - [ ] Repaid loans must immediately free up lending capacity
+          - [ ] The Central Bank should be exempt from fractional reserve lending limits
+          - [ ] Consider a configurable per-bank reserve ratio override for testing or special-purpose banks""",
+              labels=["feature", "banking", "backend", "loans", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Player, I want large withdrawal requests that would breach the bank minimum reserve to be queued and processed automatically when reserves recover so that withdrawals are not simply rejected",
+              body="""## User Story
+          As a Player, I want large withdrawal requests that would breach the bank minimum reserve to be queued and processed automatically when reserves recover so that withdrawals are not simply rejected.
+
+          ## Acceptance Criteria
+          - [ ] When a withdrawal would drop the bank's reserve below `minimumReserve`, instead of failing immediately the request is added to a `withdrawalQueue` on the `Bank` object
+          - [ ] The withdrawal queue is a `List<PendingWithdrawal>` (containing account UUID, amount, timestamp, and expiry ticks) persisted in NBT
+          - [ ] On each server tick, the bank processes pending withdrawals in FIFO order if the reserve can accommodate them
+          - [ ] Queued withdrawals expire after a configurable number of ticks (default: 1 in-game day); expired requests are cancelled and the player is notified
+          - [ ] When a withdrawal is queued, the player receives an in-game message explaining the delay and showing their position in the queue
+          - [ ] When a queued withdrawal is processed, the player receives a notification with the transaction ID
+          - [ ] Admins can view the withdrawal queue for any bank with `/bank admin queue <bankName>`
+
+          ## Benefits
+          - [ ] Greatly improves player experience compared to a flat rejection when reserve is temporarily low
+          - [ ] Gives banks a chance to receive incoming deposits and process pending withdrawals organically
+          - [ ] Models real-world liquidity management where banks prioritise withdrawal obligations
+
+          ## Considerations
+          - [ ] The queue must be thread-safe (`ConcurrentLinkedQueue` or synchronised access)
+          - [ ] Queued amounts should be "reserved" (soft-locked) so the bank cannot double-spend them
+          - [ ] If the bank is suspended or dissolved, all queued withdrawals must be cancelled and players refunded
+          - [ ] Maximum queue depth should be configurable to prevent memory issues on busy servers""",
+              labels=["feature", "banking", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want the system to detect bank run conditions and automatically trigger a configurable withdrawal lockdown so that a single failing bank cannot cascade into a server-wide economic crisis",
+              body="""## User Story
+          As a Server Admin, I want the system to detect bank run conditions and automatically trigger a configurable withdrawal lockdown so that a single failing bank cannot cascade into a server-wide economic crisis.
+
+          ## Acceptance Criteria
+          - [ ] Bank run detection fires when the total amount withdrawn from a single bank within a configurable rolling window (default: 100 ticks) exceeds a configurable percentage of total deposits (default: 30%)
+          - [ ] When a bank run is detected, the bank enters `LOCKDOWN` status: new withdrawals are paused for a configurable cooldown period (default: 300 ticks)
+          - [ ] All online players with accounts at the locked-down bank are notified immediately
+          - [ ] Server admins are alerted with a prominent warning message that includes the bank name, triggering withdrawal amount, and current reserve ratio
+          - [ ] Admins can manually lift the lockdown early with `/bank admin unlock <bankName>`
+          - [ ] `/bank admin bankrun <bankName>` shows the withdrawal history and triggered thresholds for audit purposes
+          - [ ] After the lockdown period expires, the bank returns to normal operation and all affected players are notified
+          - [ ] Bank run events are written to the Central Bank audit log
+
+          ## Benefits
+          - [ ] Prevents a coordinated player strategy of draining a bank rapidly from succeeding
+          - [ ] Gives admins time to investigate and intervene before a bank failure causes broader economic damage
+          - [ ] Models a realistic emergency mechanism used by real central banks during financial crises
+
+          ## Considerations
+          - [ ] Distinguish between a legitimate sudden withdrawal demand and malicious activity — admins must review before permanent penalties
+          - [ ] The rolling window and threshold must be tunable to avoid false positives on small servers
+          - [ ] Lockdowns should not apply to admin-initiated operations
+          - [ ] The `LOCKDOWN` state must be persisted so it survives a server restart during the cooldown""",
+              labels=["feature", "banking", "security", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Developer, I want each player bank to have a daily withdrawal cap derived from its reserve health so that banks cannot be drained faster than their liquidity allows",
+              body="""## User Story
+          As a Developer, I want each player bank to have a daily withdrawal cap derived from its reserve health so that banks cannot be drained faster than their liquidity allows.
+
+          ## Acceptance Criteria
+          - [ ] Each `Bank` object tracks `dailyWithdrawnAmount` (a `BigDecimal`) that resets to zero at the start of each in-game day
+          - [ ] The daily withdrawal cap per bank is computed as: `currentReserve × dailyLiquidityRatio` where `dailyLiquidityRatio` is configurable in the mod config (default: 0.20 — 20% of reserve per day)
+          - [ ] Any withdrawal that would push `dailyWithdrawnAmount` above the cap is rejected with a message telling the player the cap, how much has already been withdrawn today, and when the cap resets
+          - [ ] Bank owners can view the current daily cap and usage via `/bank reserve`
+          - [ ] The cap and the `dailyWithdrawnAmount` counter are both persisted in NBT to survive restarts
+          - [ ] Admins can override the cap for a specific bank with `/bank admin setcap <bankName> <amount>` for emergency situations
+
+          ## Benefits
+          - [ ] Provides a lightweight first line of defence against rapid reserve depletion before a full bank run triggers
+          - [ ] Creates a natural pacing mechanism that gives bank owners time to replenish reserves
+          - [ ] Easy to understand and communicate to players: "you can withdraw up to X per day from this bank"
+
+          ## Considerations
+          - [ ] Per-player daily withdrawal limits (issue #24) and per-bank daily caps are orthogonal — both should apply
+          - [ ] "In-game day" tick count should be derived from the server's day length setting for accuracy
+          - [ ] The cap should be recalculated each time the reserve changes, not just once per day
+          - [ ] Ensure admin overrides are logged for audit purposes""",
+              labels=["feature", "banking", "backend", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Bank Owner, I want a real-time liquidity dashboard so that I can monitor my bank's reserve ratio, withdrawal capacity, outstanding loans, and risk level proactively",
+              body="""## User Story
+          As a Bank Owner, I want a real-time liquidity dashboard so that I can monitor my bank's reserve ratio, withdrawal capacity, outstanding loans, and risk level proactively.
+
+          ## Acceptance Criteria
+          - [ ] `/bank dashboard` (bank owner and Director role only) outputs a formatted summary containing:
+            - Bank name and current status (ACTIVE / WARNING / RESTRICTED / LOCKDOWN)
+            - Total deposits held
+            - Current reserve amount and reserve ratio (%)
+            - Minimum required reserve ratio and shortfall (if any)
+            - Maximum daily withdrawal capacity and amount withdrawn today
+            - Total outstanding loans and remaining lendable headroom
+            - Number of accounts in withdrawal queue (if any)
+            - Current savings interest rate and its position relative to the CB rate band
+            - Next scheduled interest payout (ticks remaining)
+          - [ ] Risk level is colour-coded: GREEN (all metrics healthy), YELLOW (any metric within 10% of a threshold), RED (any metric breaching a threshold)
+          - [ ] The dashboard is updated in real time — each call re-reads live data rather than a cache
+
+          ## Benefits
+          - [ ] Empowers bank owners to manage their bank proactively rather than reactively
+          - [ ] Reduces the need for admins to answer basic "how is my bank doing?" questions
+          - [ ] Surfaces problems (low reserve, high queue depth, rate out of band) before they escalate
+
+          ## Considerations
+          - [ ] The dashboard should use Minecraft chat formatting codes for colour-coding where supported
+          - [ ] Keep the output compact enough to fit in the chat window without excessive scrolling
+          - [ ] Ensure the command is restricted to the bank owner and Director-level roles only
+          - [ ] Consider a compact single-line summary mode for players who want minimal output""",
+              labels=["feature", "banking", "gui", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          # ════════════════════════════════════════════════════════════════════
+          # SECTION D — PLAYER BANK CHARTERING & OPERATIONS
+          # ════════════════════════════════════════════════════════════════════
+
+          create_issue(
+              title="As a Player, I want founding a bank to require a non-refundable charter fee paid to the Central Bank so that there is a meaningful economic barrier to entry and reckless bank creation is discouraged",
+              body="""## User Story
+          As a Player, I want founding a bank to require a non-refundable charter fee paid to the Central Bank so that there is a meaningful economic barrier to entry and reckless bank creation is discouraged.
+
+          ## Acceptance Criteria
+          - [ ] A configurable `bankCharterFee` (default: 10000) is added to the mod config
+          - [ ] During bank creation (the `/bank create` flow) the system checks whether the founding player's primary account has sufficient balance to cover the charter fee
+          - [ ] If the player has sufficient funds, the fee is deducted from their account and credited to the Central Bank's reserve before the bank is registered
+          - [ ] If the player cannot afford the fee, bank creation is aborted with a clear error message showing the required amount and their current balance
+          - [ ] The charter fee payment is recorded as a `BankToUserTransaction` in the Central Bank's ledger with a `CHARTER_FEE` type tag
+          - [ ] The fee amount is shown to the player during the creation confirmation step so they can back out before paying
+          - [ ] Admins can waive the charter fee for a specific creation using `/bank admin waivefee` before the player submits their application
+
+          ## Benefits
+          - [ ] Introduces a meaningful economic cost that prevents players from casually creating dozens of throwaway banks
+          - [ ] Transfers value into the Central Bank reserve, reinforcing the CB as the monetary anchor of the server
+          - [ ] Mirrors the real-world concept of a bank charter application fee and regulatory capital requirement
+
+          ## Considerations
+          - [ ] The charter fee should scale with server inflation if an inflation metric is implemented
+          - [ ] Distinguish the charter fee (one-time founding cost) from the ongoing annual license renewal fee
+          - [ ] The fee should not be refunded if the bank is later dissolved by the owner or suspended by an admin
+          - [ ] Ensure the fee deduction and bank registration happen atomically to prevent exploits""",
+              labels=["feature", "banking", "economy", "phase-8"],
+              milestone=PHASE8,
+          )
+
+          create_issue(
+              title="As a Bank Owner, I want to participate in an inter-bank overnight lending market where banks with surplus reserves can lend to banks with deficits so that liquidity flows freely between player banks",
+              body="""## User Story
+          As a Bank Owner, I want to participate in an inter-bank overnight lending market where banks with surplus reserves can lend to banks with deficits so that liquidity flows freely between player banks.
+
+          ## Acceptance Criteria
+          - [ ] Bank owners can post a lending offer via `/bank lend offer <amount> <annualRate> <termTicks>` — this creates a visible offer in the inter-bank lending market
+          - [ ] Bank owners can browse available offers with `/bank lend market` which lists: lender bank, amount available, offered rate, and term
+          - [ ] Bank owners can accept an offer with `/bank lend accept <offerId>` — this triggers a `BankToBankTransaction` moving the agreed amount from lender to borrower reserve
+          - [ ] Accepted loans are tracked on both the lender and borrower `Bank` objects with a `InterbankLoan` record (persisted in NBT)
+          - [ ] At maturity, repayment (principal + interest calculated using the agreed rate) is automatically processed via a `BankToBankTransaction` from borrower to lender
+          - [ ] If the borrower cannot repay at maturity, their reserve is partially seized up to the outstanding balance and the shortfall is logged for admin review
+          - [ ] Outstanding inter-bank loans appear in `/bank dashboard` for both lender and borrower
+
+          ## Benefits
+          - [ ] Enables a self-regulating inter-bank liquidity market without requiring admin intervention
+          - [ ] Gives surplus-reserve banks a way to earn passive interest income beyond savings account payouts
+          - [ ] Models the real-world federal funds market where banks lend excess reserves overnight
+
+          ## Considerations
+          - [ ] The Central Bank should not participate as a borrower in this market (use the discount window instead)
+          - [ ] Offer expiry: unaccepted offers should expire after a configurable number of ticks
+          - [ ] Maximum inter-bank exposure: cap how much any single bank can owe to other banks as a % of its deposits
+          - [ ] All inter-bank loan events should route through the Central Bank clearing ledger for auditability""",
+              labels=["feature", "banking", "economy", "loans", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          create_issue(
+              title="As a Server Admin, I want player banks to pay an annual license renewal fee to the Central Bank so that inactive or under-capitalised banks face a recurring cost that incentivises active management",
+              body="""## User Story
+          As a Server Admin, I want player banks to pay an annual license renewal fee to the Central Bank so that inactive or under-capitalised banks face a recurring cost that incentivises active management.
+
+          ## Acceptance Criteria
+          - [ ] A configurable `bankAnnualLicenseFee` (default: 2000) is added to the mod config
+          - [ ] The fee is automatically deducted from the bank's reserve once per in-game year (configurable tick interval)
+          - [ ] Bank owners receive a warning notification 7 in-game days before the fee is due
+          - [ ] If the bank's reserve is insufficient to cover the fee, the bank enters WARNING status and the owner has a configurable grace period to replenish
+          - [ ] If the grace period expires without payment, the bank is automatically suspended (same as reserve non-compliance in the CB audit issue)
+          - [ ] Fee collection is recorded in the Central Bank's clearing ledger with a `LICENSE_FEE` tag
+          - [ ] Admins can defer or waive a fee for a specific bank using `/bank admin deferrenwal <bankName>`
+          - [ ] `/bank info <bankName>` shows the next renewal date and fee amount
+
+          ## Benefits
+          - [ ] Discourages "ghost banks" — banks created and then abandoned by owners who have moved on
+          - [ ] Creates a steady inflow into the Central Bank reserve that can fund open market operations
+          - [ ] Adds a realistic recurring operational cost that bank owners must plan for
+
+          ## Considerations
+          - [ ] The fee should be proportional to the bank's total deposit base to be fair across banks of different sizes — consider making it a percentage rather than a flat amount
+          - [ ] New banks should receive a grace period (e.g., the first 30 in-game days) before their first fee is due
+          - [ ] Fee deferral history should be auditable to prevent admins from abusing the waiver
+          - [ ] Consider whether the Central Bank itself should be exempt from the fee (it should)""",
+              labels=["feature", "banking", "economy", "admin", "phase-9"],
+              milestone=PHASE9,
+          )
+
+          print("All issues processed.")
+          PYEOF
