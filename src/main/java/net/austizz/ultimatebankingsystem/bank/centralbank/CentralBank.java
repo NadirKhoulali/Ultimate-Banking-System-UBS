@@ -27,7 +27,7 @@ public class CentralBank extends Bank{
     }
     public void addBank(Bank bank) {
         this.banks.put(bank.getBankId(), bank);
-        NeoForge.EVENT_BUS.register(bank);
+//        NeoForge.EVENT_BUS.register(bank);
         BankManager.markDirty();
     }
     public boolean removeBank(Bank bank) {

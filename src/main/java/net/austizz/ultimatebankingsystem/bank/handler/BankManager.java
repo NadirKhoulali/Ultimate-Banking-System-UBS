@@ -7,7 +7,6 @@ import net.austizz.ultimatebankingsystem.bank.data.BankSavedData;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -36,10 +35,6 @@ public class BankManager {
             );
 
             centralBank = dataRef.getCentralBank();
-
-            for (Bank bank : centralBank.getBanks().values()) {
-                NeoForge.EVENT_BUS.register(bank);
-            }
 
             // Log even of het gelukt is
             UltimateBankingSystem.LOGGER.info("[UBS] Central Bank loaded with {} bank(s).", centralBank.getBanks().size());
@@ -96,11 +91,6 @@ public class BankManager {
 
     public static void shutdown() {
         // Mark current data dirty so it gets flushed on save, then clear references
-        if (centralBank != null) {
-            for (Bank bank : centralBank.getBanks().values()) {
-                NeoForge.EVENT_BUS.unregister(bank);
-            }
-        }
         if (dataRef != null) {
             dataRef.setDirty();
         }

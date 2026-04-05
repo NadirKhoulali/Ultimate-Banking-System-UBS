@@ -4,17 +4,12 @@ import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.BankToUserTransaction;
-import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -120,16 +115,16 @@ public class Bank {
         BankManager.markDirty();
     }
 
-    @SubscribeEvent
-    public void onServerTick(ServerTickEvent.Post event) {
-        this.tickCounter++;
-
-        if (this.tickCounter >= THIRTY_DAYS_IN_TICKS) {
-            payInterestAllSavingAccounts();
-            this.tickCounter = 0;
-            BankManager.markDirty(); // Zorg dat de nieuwe stand (0) wordt opgeslagen
-        }
-    }
+//    @SubscribeEvent
+//    public void onServerTick(ServerTickEvent.Post event) {
+//        this.tickCounter++;
+//
+//        if (this.tickCounter >= THIRTY_DAYS_IN_TICKS) {
+//            payInterestAllSavingAccounts();
+//            this.tickCounter = 0;
+//            BankManager.markDirty(); // Zorg dat de nieuwe stand (0) wordt opgeslagen
+//        }
+//    }
 
     public void payInterestAllSavingAccounts() {
         for (AccountHolder account : this.BankAccounts.values()) {
@@ -206,7 +201,6 @@ public class Bank {
             AccountHolder acc = AccountHolder.load(accountsList.getCompound(i), registries);
             bank.AddAccount(acc);
         }
-        NeoForge.EVENT_BUS.register(bank);
         return bank;
     }
 
