@@ -22,8 +22,16 @@ public class Config {
             .define("AllowBankCustomInterestRate", true);
 
     public static final ModConfigSpec.DoubleValue DEFAULT_SERVER_INTEREST_RATE = BUILDER
-            .comment("The default server interest rate across all banks (default: 1.4)")
+            .comment("The default server interest rate across all banks")
             .defineInRange("ServerInterestRate", 1.4, 0.01, Double.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue DEFAULT_FEDERAL_FUNDS_RATE = BUILDER
+            .comment(
+                    "The interest rate at which depository institutions (banks) lend reserve balances to other depository institutions overnight on an unsecured basis.",
+                    "Higher Rates: Increase the cost of borrowing for mortgages, auto loans, and credit cards.",
+                    "Lower Rates: Encourage borrowing and spending, but can lower interest earned on savings accounts.")
+            .defineInRange("FederalFundsRate", 3.5, 0.00, Double.MAX_VALUE);
+
 
     public static final ModConfigSpec.DoubleValue MIN_CUSTOM_BANK_INTEREST_RATE = BUILDER
             .comment(
