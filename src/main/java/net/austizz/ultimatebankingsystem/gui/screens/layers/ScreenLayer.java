@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -24,6 +25,8 @@ public interface ScreenLayer {
     default void tick() {}
 
     default void removed() {}
+
+    default void setBankScreen(BankScreen screen) {}
 
     List<? extends GuiEventListener> children();
 

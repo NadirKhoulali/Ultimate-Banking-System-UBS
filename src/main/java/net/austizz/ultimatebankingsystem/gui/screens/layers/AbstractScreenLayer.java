@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -17,6 +18,7 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
 
     protected final Minecraft minecraft;
     protected final Font font;
+    protected BankScreen bankScreen;
 
     protected int screenWidth;
     protected int screenHeight;
@@ -27,6 +29,11 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
     protected AbstractScreenLayer(Minecraft minecraft) {
         this.minecraft = minecraft;
         this.font = minecraft.font;
+    }
+
+    @Override
+    public void setBankScreen(BankScreen screen) {
+        this.bankScreen = screen;
     }
 
     @Override

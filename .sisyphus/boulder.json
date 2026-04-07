@@ -1,0 +1,61 @@
+{
+  "active_plan": "C:\\Users\\famil\\Documents\\Ultimate-Banking-System-UBS-\\.sisyphus\\plans\\atm-gui.md",
+  "started_at": "2026-04-07T18:37:45.495Z",
+  "session_ids": [
+    "ses_297712251ffeJdNo2jSae6CjUw",
+    "ses_296c1da9dffeJ4MtNa2WJGm3Ay"
+  ],
+  "session_origins": {
+    "ses_297712251ffeJdNo2jSae6CjUw": "direct",
+    "ses_296c1da9dffeJ4MtNa2WJGm3Ay": "appended"
+  },
+  "plan_name": "atm-gui",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Fix BankScreen Rendering Order + Build Stack-Based Layer Navigation",
+      "session_id": "ses_296bb4248ffebyEaXhtVK97esu",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T18:48:33.248Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Create Themed ATM Panel Background Rendering",
+      "session_id": "ses_296b71ed5fferrve6xhN46f8Mg",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-07T18:52:00.434Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "OpenATM Handshake Packets + Client Data Cache",
+      "session_id": "ses_296b4e817ffeyHb4Q1r5x7pqZT",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T18:58:27.121Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "MainMenuLayer Overhaul — 6 ATM Buttons + Account Selector",
+      "session_id": "ses_296aef615ffeGCZ6geZ1Ujb3ui",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T19:04:09.397Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "BalanceInquiryLayer + Balance Request Packet",
+      "session_id": "ses_296aa3163ffekbecYbku3DOLW0",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T19:08:34.995Z"
+    }
+  }
+}

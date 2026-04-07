@@ -5,5 +5,6 @@
   "ultimatebankingsystem.configuration.ServerInterestRate": "Global Server Default Interest Rate",
   "ultimatebankingsystem.configuration.MinCustomBankInterestRate": "Min Custom Bank Interest Rate",
   "ultimatebankingsystem.configuration.MaxCustomBankInterestRate": "Max Custom Bank Interest Rate",
+
   "ultimatebankingsystem.configuration.FederalFundsRate": "Default Federal Funds Rate"
 }

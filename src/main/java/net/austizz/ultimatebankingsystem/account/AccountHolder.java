@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.account;
 
 import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -85,13 +86,14 @@ public class AccountHolder {
     // Removes from Players Balance
     public boolean RemoveBalance(BigDecimal balance) {
 
-        if(this.balance.compareTo(balance) <= 0) {
+        if(this.balance.compareTo(balance) < 0) {
             return false;
         }
         if(balance.compareTo(BigDecimal.ZERO) <= 0 ) {
             return false;
         }
         this.balance =  this.balance.subtract(balance);
+        UltimateBankingSystem.LOGGER.debug("[UBS] RemoveBalance: ${} from account {}, new balance: ${}", balance, this.accountUUID, this.balance);
         BankManager.markDirty();
         return true;
 
