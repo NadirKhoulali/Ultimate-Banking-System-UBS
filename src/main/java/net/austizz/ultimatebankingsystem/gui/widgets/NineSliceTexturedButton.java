@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.function.Consumer;
@@ -126,10 +127,11 @@ public class NineSliceTexturedButton extends AbstractButton {
 
         // Optional label
         if (!getMessage().getString().isEmpty()) {
-            int color = 0xFF000000;
+            String fittedText = fitToWidth(getMessage().getString(), Math.max(0, this.width - 8));
+            int color = resolveTextColor(getMessage().getStyle().getColor(), this.active);
             graphics.drawCenteredString(
                     Minecraft.getInstance().font,
-                    this.getMessage(),
+                    fittedText,
                     this.getX() + this.width / 2,
                     this.getY() + (this.height - 8) / 2,
                     color
@@ -167,9 +169,41 @@ public class NineSliceTexturedButton extends AbstractButton {
         }
     }
 
+    private static String fitToWidth(String text, int maxWidth) {
+        if (text == null || text.isEmpty() || maxWidth <= 0) {
+            return "";
+        }
+
+        var font = Minecraft.getInstance().font;
+        if (font.width(text) <= maxWidth) {
+            return text;
+        }
+
+        String ellipsis = "...";
+        int ellipsisWidth = font.width(ellipsis);
+        if (ellipsisWidth > maxWidth) {
+            return "";
+        }
+
+        int end = text.length();
+        while (end > 0 && font.width(text.substring(0, end)) + ellipsisWidth > maxWidth) {
+            end--;
+        }
+        return text.substring(0, end) + ellipsis;
+    }
+
+    private static int resolveTextColor(TextColor styledColor, boolean active) {
+        if (!active) {
+            return 0xFF7F7F7F;
+        }
+        if (styledColor != null) {
+            return 0xFF000000 | styledColor.getValue();
+        }
+        return 0xFFFFFFFF;
+    }
+
     @Override
     protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
         this.defaultButtonNarrationText(narrationElementOutput);
     }
 }
-

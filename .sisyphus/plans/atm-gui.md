@@ -802,7 +802,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `MainMenuLayer.java`, stub layer files for compilation
   - Pre-commit: `./gradlew build`
 
-- [ ] 8. BalanceInquiryLayer + Balance Request Packet
+- [x] 8. BalanceInquiryLayer + Balance Request Packet
 
   **What to do**:
   - **Create `BalanceInquiryLayer.java`** in `gui/screens/layers/`:
@@ -895,7 +895,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `layers/BalanceInquiryLayer.java`, `network/BalanceRequestPayload.java`, `network/BalanceResponsePayload.java`, `network/ModPayloads.java`
   - Pre-commit: `./gradlew build`
 
-- [ ] 9. WithdrawLayer + Withdraw Packets
+- [x] 9. WithdrawLayer + Withdraw Packets
 
   **What to do**:
   - **Create `WithdrawLayer.java`** in `gui/screens/layers/`:
@@ -993,7 +993,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `layers/WithdrawLayer.java`, `network/WithdrawRequestPayload.java`, `network/WithdrawResponsePayload.java`, `network/ModPayloads.java`
   - Pre-commit: `./gradlew build`
 
-- [ ] 10. DepositLayer + Deposit Packets
+- [x] 10. DepositLayer + Deposit Packets
 
   **What to do**:
   - **Create `DepositLayer.java`** in `gui/screens/layers/`:
@@ -1084,7 +1084,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `layers/DepositLayer.java`, `network/DepositRequestPayload.java`, `network/DepositResponsePayload.java`, `network/ModPayloads.java`
   - Pre-commit: `./gradlew build`
 
-- [ ] 11. TransferLayer + Transfer Packets
+- [x] 11. TransferLayer + Transfer Packets
 
   **What to do**:
   - **Create `TransferLayer.java`** in `gui/screens/layers/`:
@@ -1182,7 +1182,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `layers/TransferLayer.java`, `network/TransferRequestPayload.java`, `network/TransferResponsePayload.java`, `network/ModPayloads.java`
   - Pre-commit: `./gradlew build`
 
-- [ ] 12. TransactionHistoryLayer + Transaction History Packet
+- [x] 12. TransactionHistoryLayer + Transaction History Packet
 
   **What to do**:
   - **Create `TransactionHistoryLayer.java`** in `gui/screens/layers/`:
@@ -1281,7 +1281,7 @@ Max Concurrent: 6 (Wave 3)
   - Files: `layers/TransactionHistoryLayer.java`, `network/TxHistoryRequestPayload.java`, `network/TxHistoryResponsePayload.java`, `network/TransactionSummary.java`, `network/ModPayloads.java`
   - Pre-commit: `./gradlew build`
 
-- [ ] 13. AccountSettingsLayer + Settings Packets
+- [x] 13. AccountSettingsLayer + Settings Packets
 
   **What to do**:
   - **Create `AccountSettingsLayer.java`** in `gui/screens/layers/`:

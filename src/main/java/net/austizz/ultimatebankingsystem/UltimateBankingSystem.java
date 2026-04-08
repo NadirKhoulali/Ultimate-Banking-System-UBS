@@ -69,6 +69,9 @@ public class UltimateBankingSystem {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
             event.accept(ModItems.CASH);
+            for (var bill : ModItems.USD_BILLS) {
+                event.accept(bill);
+            }
         }
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS){
             event.accept(ModBlocks.ATM_MACHINE);

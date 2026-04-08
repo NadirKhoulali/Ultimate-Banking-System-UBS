@@ -38,6 +38,10 @@ public class BankScreen extends Screen {
         return PANEL_HEIGHT;
     }
 
+    public ScreenLayer getTopLayer() {
+        return layerStack.peek();
+    }
+
     @Override
     protected void init() {
         this.clearWidgets();
@@ -90,6 +94,15 @@ public class BankScreen extends Screen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        ScreenLayer top = layerStack.peek();
+        if (top != null && top.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override

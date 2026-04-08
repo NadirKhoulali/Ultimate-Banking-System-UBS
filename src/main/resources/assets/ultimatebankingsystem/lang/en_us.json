@@ -1,5 +1,13 @@
 {
   "block.ultimatebankingsystem.atm_machine" : "ATM Machine",
+  "item.ultimatebankingsystem.cash": "Cash",
+  "item.ultimatebankingsystem.one_dollar_bill": "1 Dollar Bill",
+  "item.ultimatebankingsystem.two_dollar_bill": "2 Dollar Bill",
+  "item.ultimatebankingsystem.five_dollar_bill": "5 Dollar Bill",
+  "item.ultimatebankingsystem.ten_dollar_bill": "10 Dollar Bill",
+  "item.ultimatebankingsystem.twenty_dollar_bill": "20 Dollar Bill",
+  "item.ultimatebankingsystem.fifty_dollar_bill": "50 Dollar Bill",
+  "item.ultimatebankingsystem.hundred_dollar_bill": "100 Dollar Bill",
   "ultimatebankingsystem.configuration.TransactionsPerMinute": "Transactions Per Minute",
   "ultimatebankingsystem.configuration.AllowBankCustomInterestRate": "Allow Bank Custom Interest Rate",
   "ultimatebankingsystem.configuration.ServerInterestRate": "Global Server Default Interest Rate",

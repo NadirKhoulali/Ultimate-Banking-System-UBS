@@ -166,6 +166,21 @@ public class AccountHolder {
         BankManager.markDirty();
     }
 
+    public boolean matchesPassword(String candidatePassword) {
+        if (candidatePassword == null) {
+            return false;
+        }
+        return this.password.equals(candidatePassword);
+    }
+
+    public void setPassword(String newPassword) {
+        if (newPassword == null) {
+            return;
+        }
+        this.password = newPassword;
+        BankManager.markDirty();
+    }
+
     /**
      * Returns the transaction map, ensuring it is always non-null.
      * Key = transaction UUID.

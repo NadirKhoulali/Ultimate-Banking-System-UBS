@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "ultimatebankingsystem:item/hundred_dollar_american"
+  }
+}

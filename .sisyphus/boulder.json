@@ -52,10 +52,19 @@
       "task_key": "todo:8",
       "task_label": "8",
       "task_title": "BalanceInquiryLayer + Balance Request Packet",
-      "session_id": "ses_296aa3163ffekbecYbku3DOLW0",
+      "session_id": "ses_291ecb5d4ffeUtuS5L394RS6H1",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-04-07T19:08:34.995Z"
+      "updated_at": "2026-04-08T17:14:07.693Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "TransactionHistoryLayer + Transaction History Packet",
+      "session_id": "ses_291e58f2effebG28nnTooZEYqN",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-08T17:33:26.507Z"
     }
   }
 }

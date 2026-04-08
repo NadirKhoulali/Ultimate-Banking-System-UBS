@@ -28,6 +28,10 @@ public interface ScreenLayer {
 
     default void setBankScreen(BankScreen screen) {}
 
+    default boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return false;
+    }
+
     List<? extends GuiEventListener> children();
 
     List<? extends Renderable> renderables();
