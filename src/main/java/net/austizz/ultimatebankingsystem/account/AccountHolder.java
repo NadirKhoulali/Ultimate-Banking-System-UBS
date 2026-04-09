@@ -34,19 +34,19 @@ public class AccountHolder {
     private final UUID playerUUID;
     private LocalDateTime DateOfCreation;
     private AccountTypes AccountType;
-    private String password;
+    private String pinCode;
     private BigDecimal balance;
     private final UUID BankId;
     private boolean isPrimaryAccount;
     private ConcurrentHashMap<UUID, UserTransaction> transactions;
 
 
-    public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String password, UUID BankId, UUID AccountUUID) {
+    public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String pinCode, UUID BankId, UUID AccountUUID) {
         this.accountUUID = AccountUUID == null ? UUID.randomUUID() : AccountUUID;
         this.playerUUID = playerUUID;
         this.DateOfCreation = LocalDateTime.now();
         this.AccountType = accountType;
-        this.password = password;
+        this.pinCode = normalizePin(pinCode);
         this.balance = balance == null ? new  BigDecimal("0") : balance;
         this.BankId = BankId;
         this.isPrimaryAccount = false;
@@ -166,19 +166,24 @@ public class AccountHolder {
         BankManager.markDirty();
     }
 
-    public boolean matchesPassword(String candidatePassword) {
-        if (candidatePassword == null) {
-            return false;
-        }
-        return this.password.equals(candidatePassword);
+    public boolean hasPin() {
+        return isFourDigitPin(this.pinCode);
     }
 
-    public void setPassword(String newPassword) {
-        if (newPassword == null) {
-            return;
+    public boolean matchesPin(String candidatePin) {
+        if (!hasPin() || candidatePin == null) {
+            return false;
         }
-        this.password = newPassword;
+        return this.pinCode.equals(candidatePin);
+    }
+
+    public boolean setPin(String newPin) {
+        if (!isFourDigitPin(newPin)) {
+            return false;
+        }
+        this.pinCode = newPin;
         BankManager.markDirty();
+        return true;
     }
 
     /**
@@ -200,7 +205,7 @@ public class AccountHolder {
         tag.putString("AccountType", this.AccountType.name());
         tag.putUUID("accountUUID", this.accountUUID);
         tag.putString("dateOfCreation", this.DateOfCreation.toString());
-        tag.putString("password", this.password);
+        tag.putString("pinCode", this.pinCode == null ? "" : this.pinCode);
         tag.putUUID("playerUUID", this.playerUUID);
 
         // Transactions
@@ -224,11 +229,20 @@ public class AccountHolder {
     public static AccountHolder load(CompoundTag tag, HolderLookup.Provider registries) {
         BigDecimal balance = new BigDecimal(tag.getString("balance"));
         AccountTypes accountType = AccountTypes.valueOf(tag.getString("AccountType"));
-        String password = tag.getString("password");
+        String pinCode = "";
+        if (tag.contains("pinCode")) {
+            pinCode = tag.getString("pinCode");
+        } else if (tag.contains("password")) {
+            // Legacy migration: old worlds saved the value under "password".
+            String legacyPassword = tag.getString("password");
+            if (isFourDigitPin(legacyPassword)) {
+                pinCode = legacyPassword;
+            }
+        }
         UUID accountUUID = tag.getUUID("accountUUID");
         UUID BankId = tag.getUUID("BankId");
         UUID playerUUID = tag.getUUID("playerUUID");
-        AccountHolder account = new AccountHolder(playerUUID, balance, accountType, password, BankId, accountUUID);
+        AccountHolder account = new AccountHolder(playerUUID, balance, accountType, pinCode, BankId, accountUUID);
         account.DateOfCreation = LocalDateTime.parse(tag.getString("dateOfCreation"));
         account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount");
 
@@ -268,5 +282,13 @@ public class AccountHolder {
      */
     public boolean tryConsumeOutgoingTransaction() {
         return outgoingTxBucket.tryConsume(1);
+    }
+
+    private static boolean isFourDigitPin(String pin) {
+        return pin != null && pin.matches("\\d{4}");
+    }
+
+    private static String normalizePin(String pin) {
+        return isFourDigitPin(pin) ? pin : "";
     }
 }

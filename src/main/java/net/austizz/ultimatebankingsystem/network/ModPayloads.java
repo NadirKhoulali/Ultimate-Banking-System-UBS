@@ -12,6 +12,7 @@ import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.AccountSettingsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.BalanceInquiryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.DepositLayer;
+import net.austizz.ultimatebankingsystem.gui.screens.layers.PinEntryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.TransactionHistoryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.TransferLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.WithdrawLayer;
@@ -90,6 +91,8 @@ public final class ModPayloads {
         // --- Register payloads below this line ---
         registrar.playToServer(OpenATMPayload.TYPE, OpenATMPayload.STREAM_CODEC, ModPayloads::handleOpenATM);
         registrar.playToClient(AccountListPayload.TYPE, AccountListPayload.STREAM_CODEC, ModPayloads::handleAccountList);
+        registrar.playToServer(PinAuthRequestPayload.TYPE, PinAuthRequestPayload.STREAM_CODEC, ModPayloads::handlePinAuthRequest);
+        registrar.playToClient(PinAuthResponsePayload.TYPE, PinAuthResponsePayload.STREAM_CODEC, ModPayloads::handlePinAuthResponse);
 
         // Balance inquiry
         registrar.playToServer(BalanceRequestPayload.TYPE, BalanceRequestPayload.STREAM_CODEC, ModPayloads::handleBalanceRequest);
@@ -137,7 +140,8 @@ public final class ModPayloads {
                     account.getAccountType().label,
                     bankName,
                     account.getBalance().toPlainString(),
-                    account.isPrimaryAccount()
+                    account.isPrimaryAccount(),
+                    account.hasPin()
                 ));
             }
 
@@ -149,6 +153,8 @@ public final class ModPayloads {
     private static void handleAccountList(AccountListPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             ClientATMData.setAccounts(payload.accounts());
+            ClientATMData.setSelectedAccount(null);
+            ClientATMData.setAuthenticatedAccountId(null);
             // Auto-select primary account if one exists
             for (var acc : payload.accounts()) {
                 if (acc.isPrimary()) {
@@ -157,6 +163,53 @@ public final class ModPayloads {
                 }
             }
             ATMScreenHelper.openATMScreen();
+        });
+    }
+
+    // ─── PIN Auth ───────────────────────────────────────────────────────
+
+    private static void handlePinAuthRequest(PinAuthRequestPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var player = (net.minecraft.server.level.ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player, new PinAuthResponsePayload(false, false, "Account not found."));
+                return;
+            }
+
+            if (!account.hasPin()) {
+                PacketDistributor.sendToPlayer(player, new PinAuthResponsePayload(
+                        false, true, "PIN not set. Create a new 4-digit PIN."));
+                return;
+            }
+
+            String pin = payload.pin() == null ? "" : payload.pin().trim();
+            if (!pin.matches("\\d{4}")) {
+                PacketDistributor.sendToPlayer(player, new PinAuthResponsePayload(false, false, "PIN must be exactly 4 digits."));
+                return;
+            }
+
+            boolean success = account.matchesPin(pin);
+            PacketDistributor.sendToPlayer(player, new PinAuthResponsePayload(
+                    success,
+                    false,
+                    success ? "" : "Incorrect PIN."
+            ));
+        });
+    }
+
+    private static void handlePinAuthResponse(PinAuthResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof BankScreen bs
+                    && bs.getTopLayer() instanceof PinEntryLayer layer) {
+                layer.updateAuthResult(payload);
+            }
         });
     }
 
@@ -572,7 +625,7 @@ public final class ModPayloads {
             }
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
-            if (account == null) {
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
                 PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "Account not found."));
                 UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
                     payload.accountId(), false);
@@ -580,21 +633,37 @@ public final class ModPayloads {
             }
 
             String newPin = payload.newPin() == null ? "" : payload.newPin().trim();
-            if (newPin.isEmpty()) {
-                PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "New PIN cannot be empty."));
+            if (!newPin.matches("\\d{4}")) {
+                PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "PIN must be exactly 4 digits."));
                 UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
                     payload.accountId(), false);
                 return;
             }
 
-            if (!account.matchesPassword(payload.currentPin())) {
-                PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "Current PIN is incorrect."));
+            if (account.hasPin()) {
+                String currentPin = payload.currentPin() == null ? "" : payload.currentPin().trim();
+                if (!currentPin.matches("\\d{4}")) {
+                    PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "Current PIN must be 4 digits."));
+                    UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
+                            payload.accountId(), false);
+                    return;
+                }
+
+                if (!account.matchesPin(currentPin)) {
+                    PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "Current PIN is incorrect."));
+                    UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
+                            payload.accountId(), false);
+                    return;
+                }
+            }
+
+            if (!account.setPin(newPin)) {
+                PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(false, "PIN must be exactly 4 digits."));
                 UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
-                    payload.accountId(), false);
+                        payload.accountId(), false);
                 return;
             }
 
-            account.setPassword(newPin);
             PacketDistributor.sendToPlayer(player, new ChangePinResponsePayload(true, ""));
             UltimateBankingSystem.LOGGER.info("[UBS] PIN change for account {} — success: {}",
                 payload.accountId(), true);
@@ -606,6 +675,9 @@ public final class ModPayloads {
             if (Minecraft.getInstance().screen instanceof BankScreen bs
                     && bs.getTopLayer() instanceof AccountSettingsLayer layer) {
                 layer.updatePinResult(payload);
+            } else if (Minecraft.getInstance().screen instanceof BankScreen bs2
+                    && bs2.getTopLayer() instanceof PinEntryLayer pinLayer) {
+                pinLayer.updatePinSetupResult(payload);
             }
         });
     }

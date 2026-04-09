@@ -75,6 +75,7 @@ public class UltimateBankingSystem {
         }
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS){
             event.accept(ModBlocks.ATM_MACHINE);
+            event.accept(ModBlocks.COLOR_BUTTON_BLOCK);
         }
     }
 

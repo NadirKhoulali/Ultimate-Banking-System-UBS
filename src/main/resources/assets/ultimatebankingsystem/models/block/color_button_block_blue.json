@@ -1,0 +1,11 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "up": "ultimatebankingsystem:block/color_button_block_top",
+    "down": "ultimatebankingsystem:block/color_button_block_side_blue",
+    "north": "ultimatebankingsystem:block/color_button_block_side_blue",
+    "south": "ultimatebankingsystem:block/color_button_block_side_blue",
+    "west": "ultimatebankingsystem:block/color_button_block_side_blue",
+    "east": "ultimatebankingsystem:block/color_button_block_side_blue"
+  }
+}

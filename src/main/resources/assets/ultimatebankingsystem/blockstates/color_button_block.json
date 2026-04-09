@@ -1,0 +1,9 @@
+{
+  "variants": {
+    "color=white": { "model": "ultimatebankingsystem:block/color_button_block_white" },
+    "color=red": { "model": "ultimatebankingsystem:block/color_button_block_red" },
+    "color=green": { "model": "ultimatebankingsystem:block/color_button_block_green" },
+    "color=blue": { "model": "ultimatebankingsystem:block/color_button_block_blue" },
+    "color=yellow": { "model": "ultimatebankingsystem:block/color_button_block_yellow" }
+  }
+}

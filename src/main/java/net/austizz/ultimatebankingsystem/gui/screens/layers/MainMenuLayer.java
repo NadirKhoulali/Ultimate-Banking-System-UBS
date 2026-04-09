@@ -41,6 +41,12 @@ public class MainMenuLayer extends AbstractScreenLayer {
             ClientATMData.setSelectedAccount(accounts.getFirst());
         }
 
+        AccountSummary selectedAccount = ClientATMData.getSelectedAccount();
+        if (selectedAccount != null && !ClientATMData.isSelectedAccountAuthenticated()) {
+            bankScreen.setRootLayer(new PinEntryLayer(minecraft));
+            return;
+        }
+
         int selectBtnY = panelTop + 76;
         if (!accounts.isEmpty()) {
             addWidget(new NineSliceTexturedButton(

@@ -114,7 +114,8 @@ public class WithdrawLayer extends AbstractScreenLayer {
                     selected.accountType(),
                     selected.bankName(),
                     payload.newBalance(),
-                    selected.isPrimary()
+                    selected.isPrimary(),
+                    selected.pinSet()
                 ));
             }
         } else {

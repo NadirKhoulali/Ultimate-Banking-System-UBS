@@ -1,6 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
-import net.austizz.ultimatebankingsystem.gui.screens.layers.MainMenuLayer;
+import net.austizz.ultimatebankingsystem.gui.screens.layers.PinEntryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.ScreenLayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -49,7 +49,7 @@ public class BankScreen extends Screen {
         this.clearWidgets();
 
         if (layerStack.isEmpty()) {
-            pushLayer(new MainMenuLayer(Minecraft.getInstance()));
+            pushLayer(new PinEntryLayer(Minecraft.getInstance()));
         } else {
             // Screen resize — re-init the top layer and re-register its widgets.
             ScreenLayer top = layerStack.peek();
@@ -59,6 +59,18 @@ public class BankScreen extends Screen {
     }
 
     public void pushLayer(ScreenLayer layer) {
+        this.clearWidgets();
+        layerStack.push(layer);
+        layer.setBankScreen(this);
+        layer.init(this.width, this.height);
+        registerLayerWidgets(layer);
+    }
+
+    public void setRootLayer(ScreenLayer layer) {
+        while (!layerStack.isEmpty()) {
+            ScreenLayer removed = layerStack.pop();
+            removed.removed();
+        }
         this.clearWidgets();
         layerStack.push(layer);
         layer.setBankScreen(this);
@@ -91,11 +103,25 @@ public class BankScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        ScreenLayer top = layerStack.peek();
+        if (top != null && top.keyPressed(keyCode, scanCode, modifiers)) {
+            return true;
+        }
+
         if (keyCode == 256 && layerStack.size() > 1) { // 256 = GLFW_KEY_ESCAPE
             popLayer();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        ScreenLayer top = layerStack.peek();
+        if (top != null && top.charTyped(codePoint, modifiers)) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     @Override

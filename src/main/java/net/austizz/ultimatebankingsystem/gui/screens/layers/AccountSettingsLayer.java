@@ -131,20 +131,20 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         ));
 
         currentPinField = new AtmEditBox(font, contentLeft, panelTop + 108, contentWidth, 20, Component.literal(""));
-        currentPinField.setMaxLength(32);
-        currentPinField.setHint(Component.literal("Current PIN...").withStyle(ChatFormatting.WHITE));
+        currentPinField.setMaxLength(4);
+        currentPinField.setHint(Component.literal("Current 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(currentPinField);
         addWidget(currentPinField);
 
         newPinField = new AtmEditBox(font, contentLeft, panelTop + 142, contentWidth, 20, Component.literal(""));
-        newPinField.setMaxLength(32);
-        newPinField.setHint(Component.literal("New PIN...").withStyle(ChatFormatting.WHITE));
+        newPinField.setMaxLength(4);
+        newPinField.setHint(Component.literal("New 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(newPinField);
         addWidget(newPinField);
 
         confirmPinField = new AtmEditBox(font, contentLeft, panelTop + 176, contentWidth, 20, Component.literal(""));
-        confirmPinField.setMaxLength(32);
-        confirmPinField.setHint(Component.literal("Confirm new PIN...").withStyle(ChatFormatting.WHITE));
+        confirmPinField.setMaxLength(4);
+        confirmPinField.setHint(Component.literal("Repeat new 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(confirmPinField);
         addWidget(confirmPinField);
 
@@ -270,8 +270,23 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             statusSuccess = false;
             return;
         }
+        if (!currentPin.matches("\\d{4}")) {
+            statusMessage = "Current PIN must be exactly 4 digits.";
+            statusSuccess = false;
+            return;
+        }
         if (newPin.isEmpty()) {
             statusMessage = "Enter a new PIN.";
+            statusSuccess = false;
+            return;
+        }
+        if (!newPin.matches("\\d{4}")) {
+            statusMessage = "New PIN must be exactly 4 digits.";
+            statusSuccess = false;
+            return;
+        }
+        if (!confirmPin.matches("\\d{4}")) {
+            statusMessage = "Confirm PIN must be exactly 4 digits.";
             statusSuccess = false;
             return;
         }
@@ -333,7 +348,8 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                     accountType,
                     bankName,
                     balance,
-                    isPrimary
+                    isPrimary,
+                    selected.pinSet()
             ));
         }
     }
@@ -352,7 +368,8 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                         selected.accountType(),
                         selected.bankName(),
                         selected.balance(),
-                        isPrimary
+                        isPrimary,
+                        selected.pinSet()
                 ));
             }
         } else {
@@ -370,6 +387,18 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             confirmPinField.setValue("");
             pendingCurrentPin = "";
             pendingNewPin = "";
+
+            AccountSummary selected = ClientATMData.getSelectedAccount();
+            if (selected != null) {
+                ClientATMData.setSelectedAccount(new AccountSummary(
+                        selected.accountId(),
+                        selected.accountType(),
+                        selected.bankName(),
+                        selected.balance(),
+                        selected.isPrimary(),
+                        true
+                ));
+            }
         } else {
             statusMessage = payload.errorMessage().isEmpty() ? "PIN change failed." : payload.errorMessage();
             statusSuccess = false;

@@ -32,8 +32,15 @@ public interface ScreenLayer {
         return false;
     }
 
+    default boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        return false;
+    }
+
+    default boolean charTyped(char codePoint, int modifiers) {
+        return false;
+    }
+
     List<? extends GuiEventListener> children();
 
     List<? extends Renderable> renderables();
 }
-

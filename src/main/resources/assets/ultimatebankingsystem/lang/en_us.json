@@ -1,5 +1,6 @@
 {
   "block.ultimatebankingsystem.atm_machine" : "ATM Machine",
+  "block.ultimatebankingsystem.color_button_block": "Color Button Block",
   "item.ultimatebankingsystem.cash": "Cash",
   "item.ultimatebankingsystem.one_dollar_bill": "1 Dollar Bill",
   "item.ultimatebankingsystem.two_dollar_bill": "2 Dollar Bill",

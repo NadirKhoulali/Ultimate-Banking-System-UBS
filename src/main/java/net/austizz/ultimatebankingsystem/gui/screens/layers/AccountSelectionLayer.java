@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class AccountSelectionLayer extends AbstractScreenLayer {
 
@@ -23,11 +24,17 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
     private final List<AccountSummary> accounts = new ArrayList<>();
     private final List<NineSliceTexturedButton> rowButtons = new ArrayList<>();
+    private final Consumer<AccountSummary> onAccountSelected;
 
     private int scrollIndex;
 
     public AccountSelectionLayer(Minecraft minecraft) {
+        this(minecraft, null);
+    }
+
+    public AccountSelectionLayer(Minecraft minecraft, Consumer<AccountSummary> onAccountSelected) {
         super(minecraft);
+        this.onAccountSelected = onAccountSelected;
     }
 
     @Override
@@ -88,7 +95,11 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             return;
         }
 
-        ClientATMData.setSelectedAccount(accounts.get(index));
+        AccountSummary selected = accounts.get(index);
+        ClientATMData.setSelectedAccount(selected);
+        if (onAccountSelected != null) {
+            onAccountSelected.accept(selected);
+        }
         bankScreen.popLayer();
     }
 

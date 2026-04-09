@@ -18,7 +18,8 @@ public record AccountSummary(
     String accountType,
     String bankName,
     String balance,
-    boolean isPrimary
+    boolean isPrimary,
+    boolean pinSet
 ) {
 
     /** StreamCodec for UUID — serialises as two longs (mostSigBits, leastSigBits). */
@@ -35,6 +36,7 @@ public record AccountSummary(
             ByteBufCodecs.STRING_UTF8, AccountSummary::bankName,
             ByteBufCodecs.STRING_UTF8, AccountSummary::balance,
             ByteBufCodecs.BOOL,        AccountSummary::isPrimary,
+            ByteBufCodecs.BOOL,        AccountSummary::pinSet,
             AccountSummary::new
         );
 }
