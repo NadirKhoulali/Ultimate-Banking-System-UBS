@@ -108,7 +108,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
         AccountSummary selected = ClientATMData.getSelectedAccount();
         String selectedLine = selected == null
                 ? "None selected"
-                : selected.accountType() + " @ " + selected.bankName() + "  $" + selected.balance();
+                : selected.accountType() + " @ " + selected.bankName();
 
         drawCenteredFittedString(
                 graphics,

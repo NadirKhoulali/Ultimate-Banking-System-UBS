@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,8 +18,8 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
     private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
-    private static final int VISIBLE_ROWS = 6;
-    private static final int ROW_HEIGHT = 18;
+    private static final int VISIBLE_ROWS = 5;
+    private static final int ROW_HEIGHT = 22;
     private static final int ROW_SPACING = 3;
 
     private final List<AccountSummary> accounts = new ArrayList<>();
@@ -93,18 +94,11 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
     }
 
     private void refreshRows() {
-        AccountSummary selected = ClientATMData.getSelectedAccount();
         for (int i = 0; i < rowButtons.size(); i++) {
             NineSliceTexturedButton button = rowButtons.get(i);
             int index = scrollIndex + i;
             if (index >= 0 && index < accounts.size()) {
-                AccountSummary account = accounts.get(index);
-                boolean isSelected = selected != null && selected.accountId().equals(account.accountId());
-                String label = (isSelected ? "> " : "  ") + account.accountType() + " @ " + account.bankName()
-                        + "  $" + account.balance();
-                int labelMaxWidth = Math.max(12, button.getWidth() - 8);
-                button.setMessage(Component.literal(fitToWidth(label, labelMaxWidth))
-                        .withStyle(isSelected ? ChatFormatting.YELLOW : ChatFormatting.WHITE));
+                button.setMessage(Component.literal(""));
                 button.active = true;
                 button.visible = true;
             } else {
@@ -180,20 +174,99 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                     panelTop + 186,
                     0xFF55FFFF
             );
-
-            AccountSummary selected = ClientATMData.getSelectedAccount();
-            String selectedLabel = selected == null
-                    ? "No account selected"
-                    : "Current: " + selected.accountType() + " @ " + selected.bankName();
-            drawCenteredFittedString(
-                    graphics,
-                    selectedLabel,
-                    panelLeft + panelWidth / 2,
-                    panelTop + 198,
-                    panelWidth - 20,
-                    0xFFFFFFFF
-            );
+            renderAccountBlocks(graphics);
         }
+    }
+
+    private void renderAccountBlocks(GuiGraphics graphics) {
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        long now = System.currentTimeMillis();
+
+        for (int i = 0; i < rowButtons.size(); i++) {
+            NineSliceTexturedButton button = rowButtons.get(i);
+            if (!button.visible) {
+                continue;
+            }
+
+            int accountIndex = scrollIndex + i;
+            if (accountIndex < 0 || accountIndex >= accounts.size()) {
+                continue;
+            }
+
+            AccountSummary account = accounts.get(accountIndex);
+            boolean isSelected = selected != null && selected.accountId().equals(account.accountId());
+            boolean isHovered = button.isHoveredOrFocused();
+
+            int x1 = button.getX() + 1;
+            int y1 = button.getY() + 1;
+            int x2 = button.getX() + button.getWidth() - 1;
+            int y2 = button.getY() + button.getHeight() - 1;
+
+            drawAnimatedBlock(graphics, x1, y1, x2, y2, i, now, isSelected);
+            int borderColor = isSelected ? 0xFFFFE066 : (isHovered ? 0xFF7BCBFF : 0xFF2A4768);
+            graphics.fill(x1, y1, x2, y1 + 1, borderColor);
+            graphics.fill(x1, y2 - 1, x2, y2, borderColor);
+            graphics.fill(x1, y1, x1 + 1, y2, borderColor);
+            graphics.fill(x2 - 1, y1, x2, y2, borderColor);
+
+            int textX = x1 + 6;
+            int textWidth = Math.max(20, (x2 - x1) - 12);
+            int titleColor = isSelected ? 0xFFFFFF99 : 0xFFFFFFFF;
+            int bankColor = isSelected ? 0xFFAAE6FF : 0xFF8AC7E8;
+
+            String title = fitToWidth(account.accountType(), textWidth);
+            String bank = fitToWidth(account.bankName(), textWidth);
+            graphics.drawString(font, title, textX, y1 + 3, titleColor);
+            graphics.drawString(font, bank, textX, y1 + 12, bankColor);
+        }
+    }
+
+    private void drawAnimatedBlock(GuiGraphics graphics,
+                                   int x1, int y1, int x2, int y2,
+                                   int rowOffset, long now, boolean selected) {
+        int height = Math.max(1, y2 - y1);
+        float timePhase = (now % 6000L) / 6000.0F;
+        float hueBase = wrapHue(0.56F + (rowOffset * 0.035F) + (timePhase * 0.22F));
+        float lightHue = wrapHue(hueBase - 0.02F);
+        float darkHue = wrapHue(hueBase + 0.03F);
+        float lightBrightness = selected ? 0.92F : 0.78F;
+        float darkBrightness = selected ? 0.56F : 0.40F;
+
+        int topColor = withAlpha(0xD8, Color.HSBtoRGB(lightHue, 0.52F, lightBrightness));
+        int bottomColor = withAlpha(0xD8, Color.HSBtoRGB(darkHue, 0.66F, darkBrightness));
+
+        for (int y = 0; y < height; y++) {
+            float ratio = height <= 1 ? 0.0F : (float) y / (float) (height - 1);
+            int lineColor = lerpColor(topColor, bottomColor, ratio);
+            graphics.fill(x1, y1 + y, x2, y1 + y + 1, lineColor);
+        }
+    }
+
+    private static float wrapHue(float hue) {
+        float wrapped = hue % 1.0F;
+        return wrapped < 0.0F ? wrapped + 1.0F : wrapped;
+    }
+
+    private static int withAlpha(int alpha, int rgbColor) {
+        return ((alpha & 0xFF) << 24) | (rgbColor & 0x00FFFFFF);
+    }
+
+    private static int lerpColor(int from, int to, float t) {
+        float clamped = Math.max(0.0F, Math.min(1.0F, t));
+        int a1 = (from >>> 24) & 0xFF;
+        int r1 = (from >>> 16) & 0xFF;
+        int g1 = (from >>> 8) & 0xFF;
+        int b1 = from & 0xFF;
+        int a2 = (to >>> 24) & 0xFF;
+        int r2 = (to >>> 16) & 0xFF;
+        int g2 = (to >>> 8) & 0xFF;
+        int b2 = to & 0xFF;
+
+        int a = (int) (a1 + (a2 - a1) * clamped);
+        int r = (int) (r1 + (r2 - r1) * clamped);
+        int g = (int) (g1 + (g2 - g1) * clamped);
+        int b = (int) (b1 + (b2 - b1) * clamped);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private int getListLeft() {

@@ -99,10 +99,19 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 btn -> switchTab(Tab.SECURITY)
         ));
 
+        int accountIdLabelX = contentLeft;
+        int accountIdLabelY = panelTop + 72;
+        int copyButtonWidth = 36;
+        int copyButtonHeight = 16;
+        int copyButtonX = Math.min(
+                accountIdLabelX + font.width("Account ID:") + 6,
+                panelLeft + panelWidth - 8 - copyButtonWidth
+        );
+        int copyButtonY = accountIdLabelY - 4;
         copyButton = addWidget(new NineSliceTexturedButton(
-                panelLeft + panelWidth - 46,
-                panelTop + 84,
-                36, 16,
+                copyButtonX,
+                copyButtonY,
+                copyButtonWidth, copyButtonHeight,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Copy").withStyle(ChatFormatting.WHITE),
@@ -119,12 +128,12 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 btn -> togglePrimary()
         ));
 
-        currentPinField = new EditBox(font, contentLeft, panelTop + 96, contentWidth, 18, Component.literal(""));
+        currentPinField = new EditBox(font, contentLeft, panelTop + 76, contentWidth, 18, Component.literal(""));
         currentPinField.setMaxLength(32);
         currentPinField.setHint(Component.literal("Current PIN...").withStyle(ChatFormatting.DARK_GRAY));
         addWidget(currentPinField);
 
-        newPinField = new EditBox(font, contentLeft, panelTop + 120, contentWidth, 18, Component.literal(""));
+        newPinField = new EditBox(font, contentLeft, panelTop + 110, contentWidth, 18, Component.literal(""));
         newPinField.setMaxLength(32);
         newPinField.setHint(Component.literal("New PIN...").withStyle(ChatFormatting.DARK_GRAY));
         addWidget(newPinField);
@@ -372,22 +381,19 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 panelLeft + panelWidth / 2, panelTop + 27, contentWidth, 0xFFFFFFFF);
 
         if (activeTab == Tab.INFO) {
-            graphics.drawString(font, "Account Info", panelLeft + 8, panelTop + 72, sectionColor);
-            graphics.drawString(font, "Account ID:", panelLeft + 8, panelTop + 84, sectionColor);
-            drawFittedString(graphics, accountId, panelLeft + 8, panelTop + 94, contentWidth, valueColor);
+            graphics.drawString(font, "Account ID:", panelLeft + 8, panelTop + 72, sectionColor);
+            drawFittedString(graphics, accountId, panelLeft + 8, panelTop + 84, contentWidth, valueColor);
             drawFittedString(graphics, "Type: " + accountType, panelLeft + 8, panelTop + 108, contentWidth, valueColor);
             drawFittedString(graphics, "Bank: " + bankName, panelLeft + 8, panelTop + 120, contentWidth, valueColor);
             drawFittedString(graphics, "Created: " + createdDate, panelLeft + 8, panelTop + 132, contentWidth, valueColor);
-            drawFittedString(graphics, "Balance: $" + balance, panelLeft + 8, panelTop + 144, contentWidth, 0xFF55FF55);
             graphics.drawString(font, "Primary Account", panelLeft + 8, panelTop + 172, sectionColor);
         } else {
-            graphics.drawString(font, "PIN / Password", panelLeft + 8, panelTop + 72, sectionColor);
             if (showPinConfirmation) {
                 drawWrappedCentered(graphics, "Are you sure you want to change your PIN?",
                         panelLeft + panelWidth / 2, panelTop + 128, contentWidth, 0xFFFFFF55, 2);
             } else {
-                graphics.drawString(font, "Current PIN:", panelLeft + 8, panelTop + 84, sectionColor);
-                graphics.drawString(font, "New PIN:", panelLeft + 8, panelTop + 108, sectionColor);
+                graphics.drawString(font, "Current PIN:", panelLeft + 8, panelTop + 68, sectionColor);
+                graphics.drawString(font, "New PIN:", panelLeft + 8, panelTop + 98, sectionColor);
                 graphics.drawString(font, "Confirm PIN:", panelLeft + 8, panelTop + 132, sectionColor);
             }
         }
