@@ -18,8 +18,8 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
     private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int MAX_ENTRIES = 50;
-    private static final int ENTRY_HEIGHT = 30;
-    private static final int SCROLL_STEP = 14;
+    private static final int ENTRY_HEIGHT = 32;
+    private static final int SCROLL_STEP = 16;
 
     private final List<TransactionSummary> summaries = new ArrayList<>();
     private boolean loaded;
@@ -32,9 +32,9 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
     @Override
     protected void onInit() {
         addWidget(new NineSliceTexturedButton(
-            bankScreen.getPanelLeft() + 10,
-            bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 30,
-            50, 20,
+            bankScreen.getPanelLeft() + 14,
+            bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 36,
+            56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
             Component.literal("Back").withStyle(ChatFormatting.WHITE),
@@ -90,19 +90,19 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
     }
 
     private int getListLeft() {
-        return bankScreen.getPanelLeft() + 10;
+        return bankScreen.getPanelLeft() + 14;
     }
 
     private int getListTop() {
-        return bankScreen.getPanelTop() + 46;
+        return bankScreen.getPanelTop() + 58;
     }
 
     private int getListRight() {
-        return bankScreen.getPanelLeft() + bankScreen.getPanelWidth() - 10;
+        return bankScreen.getPanelLeft() + bankScreen.getPanelWidth() - 14;
     }
 
     private int getListBottom() {
-        return bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 36;
+        return bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 52;
     }
 
     private int getListHeight() {
@@ -129,28 +129,29 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int contentWidth = panelWidth - 20;
+        int contentWidth = panelWidth - 28;
 
         drawCenteredFittedString(graphics, "Transaction History",
-                panelLeft + panelWidth / 2, panelTop + 27, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
+        drawCenteredFittedString(graphics, "Scroll inside the list",
+                panelLeft + panelWidth / 2, panelTop + 44, contentWidth, COLOR_MUTED);
 
         int listLeft = getListLeft();
         int listTop = getListTop();
         int listRight = getListRight();
         int listBottom = getListBottom();
 
-        graphics.fill(listLeft - 1, listTop - 1, listRight + 1, listBottom + 1, 0xFF3A3A5E);
-        graphics.fill(listLeft, listTop, listRight, listBottom, 0xFF1A1A2E);
+        drawSectionBox(graphics, listLeft, listTop, listRight, listBottom);
 
         if (!loaded) {
             drawCenteredFittedString(graphics, "Loading...",
-                    panelLeft + panelWidth / 2, panelTop + 105, contentWidth, 0xFFAAAAAA);
+                    panelLeft + panelWidth / 2, listTop + 40, contentWidth, COLOR_MUTED);
             return;
         }
 
         if (summaries.isEmpty()) {
             drawCenteredFittedString(graphics, "No transactions yet.",
-                    panelLeft + panelWidth / 2, panelTop + 105, contentWidth, 0xFF888888);
+                    panelLeft + panelWidth / 2, listTop + 40, contentWidth, COLOR_MUTED);
             return;
         }
 
@@ -163,7 +164,7 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
             int entryBottom = y + ENTRY_HEIGHT - 2;
 
             if (entryBottom >= listTop && entryTop <= listBottom) {
-                int fillColor = ((y / ENTRY_HEIGHT) & 1) == 0 ? 0x332A2A44 : 0x33404062;
+                int fillColor = ((y / ENTRY_HEIGHT) & 1) == 0 ? 0x33406992 : 0x33345278;
                 graphics.fill(listLeft + 2, entryTop + 1, listRight - 2, entryBottom, fillColor);
 
                 String amountPrefix = summary.isIncoming() ? "+" : "-";
@@ -174,9 +175,9 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
                 int textMaxWidth = Math.max(10, amountX - 8 - textLeft);
                 graphics.drawString(font, amountText, amountX, entryTop + 3, amountColor);
 
-                drawFittedString(graphics, summary.date(), textLeft, entryTop + 3, textMaxWidth, 0xFFAAAAAA);
-                drawFittedString(graphics, summary.description(), textLeft, entryTop + 13, textMaxWidth, 0xFFFFFFFF);
-                drawFittedString(graphics, "Acct: " + summary.counterpartyId(), textLeft, entryTop + 22, textMaxWidth, 0xFF88CCFF);
+                drawFittedString(graphics, summary.date(), textLeft, entryTop + 3, textMaxWidth, COLOR_MUTED);
+                drawFittedString(graphics, summary.description(), textLeft, entryTop + 13, textMaxWidth, COLOR_VALUE);
+                drawFittedString(graphics, "Acct: " + summary.counterpartyId(), textLeft, entryTop + 22, textMaxWidth, 0xFF9AD9FF);
             }
 
             y += ENTRY_HEIGHT;

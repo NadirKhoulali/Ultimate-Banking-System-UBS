@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
 import net.austizz.ultimatebankingsystem.network.TransferRequestPayload;
@@ -41,56 +42,55 @@ public class TransferLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
+        int panelHeight = bankScreen.getPanelHeight();
 
-        int contentLeft = panelLeft + 8;
-        int contentWidth = panelWidth - 16;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 58;
 
-        // Recipient UUID edit box
-        recipientField = new EditBox(font, contentLeft, panelTop + 50, contentWidth, 16, Component.literal(""));
+        recipientField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, Component.literal(""));
         recipientField.setMaxLength(36);
-        recipientField.setHint(Component.literal("Recipient Account UUID...").withStyle(ChatFormatting.DARK_GRAY));
+        recipientField.setHint(Component.literal("Recipient Account UUID...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(recipientField);
         addWidget(recipientField);
 
-        // Amount edit box
-        amountField = new EditBox(font, contentLeft, panelTop + 84, contentWidth, 16, Component.literal(""));
+        amountField = new AtmEditBox(font, contentLeft, sectionTop + 56, contentWidth, 20, Component.literal(""));
         amountField.setMaxLength(20);
-        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.DARK_GRAY));
+        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(amountField);
         addWidget(amountField);
 
-        // Confirm button — shows confirmation dialog
         confirmBtn = addWidget(new NineSliceTexturedButton(
-                contentLeft, panelTop + 108, contentWidth, 20,
+                contentLeft, sectionTop + 86, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Confirm Transfer").withStyle(ChatFormatting.WHITE),
                 btn -> showConfirmationDialog()
         ));
 
-        // Yes/Cancel confirmation buttons (hidden by default)
-        int btnWidth = (contentWidth - 10) / 2;
+        int btnWidth = (contentWidth - 8) / 2;
+        int confirmY = panelTop + 150;
         yesBtn = addWidget(new NineSliceTexturedButton(
-                contentLeft, panelTop + 140, btnWidth, 20,
+                contentLeft, confirmY, btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Yes").withStyle(ChatFormatting.GREEN),
                 btn -> sendTransfer()
         ));
         cancelBtn = addWidget(new NineSliceTexturedButton(
-                contentLeft + btnWidth + 10, panelTop + 140, btnWidth, 20,
+                contentLeft + btnWidth + 8, confirmY, btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Cancel").withStyle(ChatFormatting.RED),
                 btn -> cancelConfirmation()
         ));
 
-        // Back button
         addWidget(new NineSliceTexturedButton(
-                panelLeft + 10,
-                panelTop + bankScreen.getPanelHeight() - 30,
-                50, 20,
+                panelLeft + 14,
+                panelTop + panelHeight - 36,
+                56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
-        // Apply initial visibility
         updateVisibility();
     }
 
@@ -186,30 +186,32 @@ public class TransferLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int contentWidth = panelWidth - 20;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 58;
 
         drawCenteredFittedString(graphics, "Transfer Funds",
-                panelLeft + panelWidth / 2, panelTop + 28, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (showConfirmation) {
-            // Confirmation dialog text
             String confirmationText = "Transfer $" + pendingAmount + " to account ["
                     + pendingRecipient.substring(0, Math.min(8, pendingRecipient.length())) + "...]?";
             drawWrappedCentered(graphics, confirmationText,
-                    panelLeft + panelWidth / 2, panelTop + 82, contentWidth, 0xFFFFFF55, 2);
+                    panelLeft + panelWidth / 2, sectionTop + 28, contentWidth - 10, 0xFFFFFF77, 2);
             drawCenteredFittedString(graphics, "Are you sure?",
-                    panelLeft + panelWidth / 2, panelTop + 112, contentWidth, 0xFFFFFFFF);
+                    panelLeft + panelWidth / 2, sectionTop + 72, contentWidth, COLOR_TITLE);
         } else {
-            // Field labels
-            graphics.drawString(font, "Recipient:", panelLeft + 8, panelTop + 42, 0xFF55FFFF);
-            graphics.drawString(font, "Amount:", panelLeft + 8, panelTop + 76, 0xFF55FFFF);
+            int recipientLabelY = sectionTop + Math.max(0, (recipientField.getY() - sectionTop - font.lineHeight) / 2);
+            int recipientBottom = recipientField.getY() + recipientField.getHeight();
+            int amountLabelY = recipientBottom + Math.max(0, (amountField.getY() - recipientBottom - font.lineHeight) / 2);
+            graphics.drawString(font, "Recipient Account", contentLeft + 6, recipientLabelY, COLOR_LABEL);
+            graphics.drawString(font, "Amount", contentLeft + 6, amountLabelY, COLOR_LABEL);
         }
 
-        // Result message
         if (!resultMessage.isEmpty()) {
-            int color = resultSuccess ? 0xFF55FF55 : 0xFFFF5555;
-            drawWrappedCentered(graphics, resultMessage,
-                    panelLeft + panelWidth / 2, panelTop + 168, contentWidth, color, 2);
+            int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
+            drawCenteredFittedString(graphics, resultMessage,
+                    panelLeft + panelWidth / 2, panelTop + 44, contentWidth, color);
         }
     }
 }

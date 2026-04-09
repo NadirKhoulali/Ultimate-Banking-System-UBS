@@ -5,6 +5,7 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
@@ -18,12 +19,14 @@ import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.minecraft.client.Minecraft;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -73,6 +76,9 @@ import java.util.UUID;
  */
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public final class ModPayloads {
+
+    private static final UUID ATM_TERMINAL_ID = UUID.nameUUIDFromBytes(
+            "ultimatebankingsystem:atm-terminal".getBytes(StandardCharsets.UTF_8));
 
     private ModPayloads() {}
 
@@ -260,6 +266,13 @@ public final class ModPayloads {
             }
 
             DollarBills.giveBills(player, withdrawPlan);
+            account.addTransaction(new UserTransaction(
+                payload.accountId(),
+                ATM_TERMINAL_ID,
+                BigDecimal.valueOf(dollarAmount),
+                LocalDateTime.now(),
+                "ATM Cash Withdrawal"
+            ));
             UltimateBankingSystem.LOGGER.info(
                 "[UBS] Withdraw ${} from account {} — dispensed [{}] — success: {}",
                 dollarAmount, payload.accountId(), DollarBills.formatPlan(withdrawPlan), true);
@@ -348,6 +361,13 @@ public final class ModPayloads {
                 dollarAmount, payload.accountId(), success);
 
             if (success) {
+                account.addTransaction(new UserTransaction(
+                    ATM_TERMINAL_ID,
+                    payload.accountId(),
+                    BigDecimal.valueOf(dollarAmount),
+                    LocalDateTime.now(),
+                    "ATM Cash Deposit"
+                ));
                 UltimateBankingSystem.LOGGER.info("[UBS] Deposit bills consumed [{}] from player {}",
                     DollarBills.formatPlan(depositPlan), player.getName().getString());
                 PacketDistributor.sendToPlayer(player,
@@ -427,6 +447,12 @@ public final class ModPayloads {
             String newBalance = updatedSender != null ? updatedSender.getBalance().toPlainString() : "0";
 
             if (success) {
+                NeoForge.EVENT_BUS.post(new BalanceChangedEvent(
+                    recipient,
+                    recipient.getBalance(),
+                    amount,
+                    true
+                ));
                 PacketDistributor.sendToPlayer(player,
                     new TransferResponsePayload(true, newBalance, ""));
             } else {
@@ -475,6 +501,8 @@ public final class ModPayloads {
                     UUID counterparty = isIncoming ? tx.getSenderUUID() : tx.getReceiverUUID();
                     String counterpartyShort = counterparty == null
                         ? "unknown"
+                        : counterparty.equals(ATM_TERMINAL_ID)
+                            ? "ATM"
                         : counterparty.toString().substring(0, Math.min(8, counterparty.toString().length()));
                     return new TransactionSummary(
                         formatter.format(tx.getTimestamp()),

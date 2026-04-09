@@ -36,21 +36,18 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
     protected void onInit() {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
-        int panelWidth = bankScreen.getPanelWidth();
         int panelHeight = bankScreen.getPanelHeight();
 
-        // Back button at bottom
         addWidget(new NineSliceTexturedButton(
-            panelLeft + 10,
-            panelTop + panelHeight - 30,
-            50, 20,
+            panelLeft + 14,
+            panelTop + panelHeight - 36,
+            56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
             Component.literal("Back").withStyle(ChatFormatting.WHITE),
             btn -> bankScreen.popLayer()
         ));
 
-        // Send balance request to server
         var selected = ClientATMData.getSelectedAccount();
         if (selected != null) {
             PacketDistributor.sendToServer(new BalanceRequestPayload(selected.accountId()));
@@ -82,25 +79,29 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int panelRight = panelLeft + panelWidth;
-        int contentWidth = panelWidth - 20;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 58;
+        int sectionBottom = sectionTop + 110;
 
         drawCenteredFittedString(graphics, "Balance Inquiry",
-                panelLeft + panelWidth / 2, panelTop + 27, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
+        drawSectionBox(graphics, contentLeft, sectionTop, contentLeft + contentWidth, sectionBottom);
 
         if (!loaded) {
             drawCenteredFittedString(graphics, "Loading...",
-                    panelLeft + panelWidth / 2, panelTop + 80, contentWidth, 0xFFAAAAAA);
+                    panelLeft + panelWidth / 2, sectionTop + 46, contentWidth, COLOR_MUTED);
             return;
         }
 
-        int labelX = panelLeft + 12;
-        int valueX = panelLeft + 106;
-        int valueMaxWidth = Math.max(20, panelRight - 12 - valueX);
-        int y = panelTop + 48;
+        int labelX = contentLeft + 8;
+        int labelWidth = 98;
+        int valueX = labelX + labelWidth;
+        int valueMaxWidth = Math.max(20, contentLeft + contentWidth - 8 - valueX);
+        int y = sectionTop + 10;
         int lineSpacing = 20;
-        int labelColor = 0xFF55FFFF;
-        int valueColor = 0xFFFFFFFF;
+        int labelColor = COLOR_LABEL;
+        int valueColor = COLOR_VALUE;
 
         graphics.drawString(font, "Account Type:", labelX, y, labelColor);
         drawFittedString(graphics, accountType, valueX, y, valueMaxWidth, valueColor);
@@ -115,7 +116,7 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         y += lineSpacing;
 
         graphics.drawString(font, "Balance:", labelX, y, labelColor);
-        drawFittedString(graphics, "$" + balance, valueX, y, valueMaxWidth, 0xFF55FF55);
+        drawFittedString(graphics, "$" + balance, valueX, y, valueMaxWidth, COLOR_SUCCESS);
         y += lineSpacing;
 
         graphics.drawString(font, "Created:", labelX, y, labelColor);

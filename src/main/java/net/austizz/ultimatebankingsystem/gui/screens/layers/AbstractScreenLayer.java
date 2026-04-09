@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 
@@ -15,6 +16,12 @@ import java.util.List;
  * Convenience base class for layers that own their own widget lists.
  */
 public abstract class AbstractScreenLayer implements ScreenLayer {
+    protected static final int COLOR_TITLE = 0xFFFFFFFF;
+    protected static final int COLOR_LABEL = 0xFF7ED0FF;
+    protected static final int COLOR_VALUE = 0xFFFFFFFF;
+    protected static final int COLOR_MUTED = 0xFF9AB2CF;
+    protected static final int COLOR_SUCCESS = 0xFF63E07C;
+    protected static final int COLOR_ERROR = 0xFFFF6B6B;
 
     protected final Minecraft minecraft;
     protected final Font font;
@@ -171,5 +178,37 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
             lineY += lineSpacing;
         }
     }
-}
 
+    protected void drawSectionBox(GuiGraphics graphics, int left, int top, int right, int bottom) {
+        graphics.fill(left - 1, top - 1, right + 1, bottom + 1, 0xFF304E76);
+        for (int y = top; y < bottom; y++) {
+            float ratio = (float) (y - top) / (float) Math.max(1, (bottom - top) - 1);
+            int rowColor = lerpColor(0xAA183253, 0xAA12263F, ratio);
+            graphics.fill(left, y, right, y + 1, rowColor);
+        }
+    }
+
+    protected static int lerpColor(int from, int to, float t) {
+        float clamped = Math.max(0.0F, Math.min(1.0F, t));
+        int a1 = (from >>> 24) & 0xFF;
+        int r1 = (from >>> 16) & 0xFF;
+        int g1 = (from >>> 8) & 0xFF;
+        int b1 = from & 0xFF;
+        int a2 = (to >>> 24) & 0xFF;
+        int r2 = (to >>> 16) & 0xFF;
+        int g2 = (to >>> 8) & 0xFF;
+        int b2 = to & 0xFF;
+
+        int a = (int) (a1 + (a2 - a1) * clamped);
+        int r = (int) (r1 + (r2 - r1) * clamped);
+        int g = (int) (g1 + (g2 - g1) * clamped);
+        int b = (int) (b1 + (b2 - b1) * clamped);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    protected void styleEditBox(EditBox box) {
+        box.setBordered(false);
+        box.setTextColor(0xFFFFFFFF);
+        box.setTextColorUneditable(0xFFE0E0E0);
+    }
+}

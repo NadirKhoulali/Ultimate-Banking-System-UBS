@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.WithdrawRequestPayload;
 import net.austizz.ultimatebankingsystem.network.WithdrawResponsePayload;
@@ -34,15 +35,17 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int panelWidth = bankScreen.getPanelWidth();
         int panelHeight = bankScreen.getPanelHeight();
 
-        int contentLeft = panelLeft + 10;
-        int contentWidth = panelWidth - 20;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
 
-        // Preset amount buttons — row of 5
-        int btnWidth = 44;
+        int quickTop = panelTop + 58;
+        int customTop = panelTop + 122;
         int btnSpacing = 4;
+        int btnWidth = (contentWidth - ((PRESET_AMOUNTS.length - 1) * btnSpacing)) / PRESET_AMOUNTS.length;
+        btnWidth = Math.max(40, btnWidth);
         int totalBtnWidth = PRESET_AMOUNTS.length * btnWidth + (PRESET_AMOUNTS.length - 1) * btnSpacing;
         int startX = panelLeft + (panelWidth - totalBtnWidth) / 2;
-        int presetY = panelTop + 48;
+        int presetY = quickTop + 20;
 
         for (int i = 0; i < PRESET_AMOUNTS.length; i++) {
             String amt = PRESET_AMOUNTS[i];
@@ -57,18 +60,18 @@ public class WithdrawLayer extends AbstractScreenLayer {
             ));
         }
 
-        // Custom amount EditBox
-        int fieldY = presetY + 32;
-        int fieldWidth = contentWidth - 80;
-        amountField = new EditBox(font, contentLeft, fieldY, fieldWidth, 20, Component.literal(""));
-        amountField.setHint(Component.literal("Custom amount...").withStyle(ChatFormatting.DARK_GRAY));
+        int fieldY = customTop + 20;
+        int confirmWidth = 84;
+        int fieldWidth = contentWidth - (confirmWidth + 8);
+        amountField = new AtmEditBox(font, contentLeft, fieldY, fieldWidth, 20, Component.literal(""));
+        amountField.setHint(Component.literal("Custom amount...").withStyle(ChatFormatting.WHITE));
         amountField.setMaxLength(15);
+        styleEditBox(amountField);
         addWidget(amountField);
 
-        // Confirm button next to EditBox
         addWidget(new NineSliceTexturedButton(
-            contentLeft + fieldWidth + 4, fieldY,
-            72, 20,
+            contentLeft + fieldWidth + 8, fieldY,
+            confirmWidth, 20,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
             Component.literal("Confirm").withStyle(ChatFormatting.WHITE),
@@ -80,11 +83,10 @@ public class WithdrawLayer extends AbstractScreenLayer {
             }
         ));
 
-        // Back button at bottom
         addWidget(new NineSliceTexturedButton(
-            panelLeft + 10,
-            panelTop + panelHeight - 30,
-            50, 20,
+            panelLeft + 14,
+            panelTop + panelHeight - 36,
+            56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
             Component.literal("Back").withStyle(ChatFormatting.WHITE),
@@ -126,19 +128,21 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int contentWidth = panelWidth - 20;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int quickTop = panelTop + 58;
+        int customTop = panelTop + 122;
 
         drawCenteredFittedString(graphics, "Withdraw Cash",
-                panelLeft + panelWidth / 2, panelTop + 27, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        // "Select amount:" label above preset buttons
-        graphics.drawString(font, "Select amount:", panelLeft + 10, panelTop + 38, 0xFF55FFFF);
+        graphics.drawString(font, "Quick Withdraw", contentLeft + 6, quickTop + 6, COLOR_LABEL);
+        graphics.drawString(font, "Custom Amount", contentLeft + 6, customTop + 6, COLOR_LABEL);
 
-        // Result message
         if (resultMessage != null) {
-            int resultY = panelTop + 130;
-            int color = resultSuccess ? 0xFF55FF55 : 0xFFFF5555;
-            drawWrappedCentered(graphics, resultMessage, panelLeft + panelWidth / 2, resultY, contentWidth, color, 2);
+            int resultY = panelTop + 44;
+            int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
+            drawCenteredFittedString(graphics, resultMessage, panelLeft + panelWidth / 2, resultY, contentWidth, color);
         }
     }
 }

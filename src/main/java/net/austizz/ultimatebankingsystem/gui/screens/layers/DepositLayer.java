@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
 import net.austizz.ultimatebankingsystem.network.DepositRequestPayload;
@@ -31,20 +32,21 @@ public class DepositLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
+        int panelHeight = bankScreen.getPanelHeight();
 
-        int contentLeft = panelLeft + 8;
-        int contentWidth = panelWidth - 16;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 58;
 
-        // Amount edit box
-        amountField = new EditBox(font, contentLeft, panelTop + 50, contentWidth, 16, Component.literal(""));
+        amountField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, Component.literal(""));
         amountField.setMaxLength(20);
-        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.DARK_GRAY));
+        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(amountField);
         addWidget(amountField);
 
-        // Quick amount buttons: $50, $100, $500
-        int quickBtnY = panelTop + 72;
-        int quickBtnWidth = 60;
-        int spacing = (contentWidth - quickBtnWidth * 3) / 2;
+        int quickBtnY = sectionTop + 54;
+        int quickBtnWidth = (contentWidth - 12) / 3;
+        int spacing = 6;
 
         addWidget(new NineSliceTexturedButton(
                 contentLeft, quickBtnY, quickBtnWidth, 20,
@@ -65,19 +67,17 @@ public class DepositLayer extends AbstractScreenLayer {
                 btn -> amountField.setValue("500")
         ));
 
-        // Confirm button
         addWidget(new NineSliceTexturedButton(
-                contentLeft, panelTop + 100, contentWidth, 20,
+                contentLeft, sectionTop + 84, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Confirm Deposit").withStyle(ChatFormatting.WHITE),
                 btn -> sendDeposit()
         ));
 
-        // Back button
         addWidget(new NineSliceTexturedButton(
-                panelLeft + 10,
-                panelTop + bankScreen.getPanelHeight() - 30,
-                50, 20,
+                panelLeft + 14,
+                panelTop + panelHeight - 36,
+                56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 Component.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
@@ -123,19 +123,20 @@ public class DepositLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int contentWidth = panelWidth - 20;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 58;
+        int sectionBottom = sectionTop + 112;
 
         drawCenteredFittedString(graphics, "Deposit Funds",
-                panelLeft + panelWidth / 2, panelTop + 28, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        // Amount label
-        graphics.drawString(font, "Amount:", panelLeft + 8, panelTop + 42, 0xFF55FFFF);
+        graphics.drawString(font, "Amount to Deposit", contentLeft + 6, sectionTop + 6, COLOR_LABEL);
 
-        // Result message
         if (!resultMessage.isEmpty()) {
-            int color = resultSuccess ? 0xFF55FF55 : 0xFFFF5555;
-            drawWrappedCentered(graphics, resultMessage,
-                    panelLeft + panelWidth / 2, panelTop + 128, contentWidth, color, 2);
+            int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
+            drawCenteredFittedString(graphics, resultMessage,
+                    panelLeft + panelWidth / 2, panelTop + 44, contentWidth, color);
         }
     }
 }

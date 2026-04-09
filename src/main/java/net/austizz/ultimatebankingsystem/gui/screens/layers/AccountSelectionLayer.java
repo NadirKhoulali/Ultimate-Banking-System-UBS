@@ -9,7 +9,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,8 +18,8 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private static final int VISIBLE_ROWS = 5;
-    private static final int ROW_HEIGHT = 22;
-    private static final int ROW_SPACING = 3;
+    private static final int ROW_HEIGHT = 27;
+    private static final int ROW_SPACING = 2;
 
     private final List<AccountSummary> accounts = new ArrayList<>();
     private final List<NineSliceTexturedButton> rowButtons = new ArrayList<>();
@@ -39,7 +38,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
         int panelHeight = bankScreen.getPanelHeight();
         int listLeft = getListLeft();
         int listWidth = getListRight() - getListLeft();
-        int rowY = getListTop() + 4;
+        int rowY = getListTop() + 2;
 
         accounts.clear();
         accounts.addAll(ClientATMData.getAccounts());
@@ -62,8 +61,8 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
         addWidget(new NineSliceTexturedButton(
                 panelLeft + 8,
-                panelTop + panelHeight - 24,
-                52, 20,
+                panelTop + panelHeight - 36,
+                56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Back").withStyle(ChatFormatting.WHITE),
@@ -72,8 +71,8 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
         addWidget(new NineSliceTexturedButton(
                 panelLeft + panelWidth - 62,
-                panelTop + panelHeight - 24,
-                54, 20,
+                panelTop + panelHeight - 36,
+                54, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Use").withStyle(ChatFormatting.WHITE),
@@ -141,27 +140,26 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                 font,
                 Component.literal("Select Account").withStyle(ChatFormatting.AQUA),
                 panelLeft + panelWidth / 2,
-                panelTop + 27,
+                panelTop + 31,
                 0xFFFFFFFF
         );
 
         drawCenteredFittedString(graphics,
                 "Choose an account (mouse wheel to scroll)",
                 panelLeft + panelWidth / 2,
-                panelTop + 40,
+                panelTop + 44,
                 panelWidth - 20,
-                0xFFBBBBBB);
+                COLOR_MUTED);
 
-        graphics.fill(listLeft - 1, listTop - 1, listRight + 1, listBottom + 1, 0xFF3A3A5E);
-        graphics.fill(listLeft, listTop, listRight, listBottom, 0xFF1A1A2E);
+        drawSectionBox(graphics, listLeft, listTop, listRight, listBottom);
 
         if (accounts.isEmpty()) {
             graphics.drawCenteredString(
                     font,
                     Component.literal("No accounts available.").withStyle(ChatFormatting.GRAY),
                     panelLeft + panelWidth / 2,
-                    panelTop + 100,
-                    0xFF999999
+                    listTop + (listBottom - listTop) / 2 - 4,
+                    COLOR_MUTED
             );
         } else {
             int from = scrollIndex + 1;
@@ -171,7 +169,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                     Component.literal("Showing " + from + "-" + to + " of " + accounts.size())
                             .withStyle(ChatFormatting.DARK_AQUA),
                     panelLeft + panelWidth / 2,
-                    panelTop + 186,
+                    listBottom + 7,
                     0xFF55FFFF
             );
             renderAccountBlocks(graphics);
@@ -213,11 +211,15 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             int textWidth = Math.max(20, (x2 - x1) - 12);
             int titleColor = isSelected ? 0xFFFFFF99 : 0xFFFFFFFF;
             int bankColor = isSelected ? 0xFFAAE6FF : 0xFF8AC7E8;
+            int textBlockHeight = (font.lineHeight * 2) + 1;
+            int blockHeight = Math.max(1, y2 - y1);
+            int line1Y = y1 + Math.max(1, (blockHeight - textBlockHeight) / 2);
+            int line2Y = line1Y + font.lineHeight + 1;
 
             String title = fitToWidth(account.accountType(), textWidth);
             String bank = fitToWidth(account.bankName(), textWidth);
-            graphics.drawString(font, title, textX, y1 + 3, titleColor);
-            graphics.drawString(font, bank, textX, y1 + 12, bankColor);
+            graphics.drawString(font, title, textX, line1Y, titleColor);
+            graphics.drawString(font, bank, textX, line2Y, bankColor);
         }
     }
 
@@ -225,15 +227,12 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                                    int x1, int y1, int x2, int y2,
                                    int rowOffset, long now, boolean selected) {
         int height = Math.max(1, y2 - y1);
-        float timePhase = (now % 6000L) / 6000.0F;
-        float hueBase = wrapHue(0.56F + (rowOffset * 0.035F) + (timePhase * 0.22F));
-        float lightHue = wrapHue(hueBase - 0.02F);
-        float darkHue = wrapHue(hueBase + 0.03F);
-        float lightBrightness = selected ? 0.92F : 0.78F;
-        float darkBrightness = selected ? 0.56F : 0.40F;
-
-        int topColor = withAlpha(0xD8, Color.HSBtoRGB(lightHue, 0.52F, lightBrightness));
-        int bottomColor = withAlpha(0xD8, Color.HSBtoRGB(darkHue, 0.66F, darkBrightness));
+        float cycle = ((now + (rowOffset * 420L)) % 3200L) / 3200.0F;
+        float pulse = cycle <= 0.5F ? (cycle * 2.0F) : ((1.0F - cycle) * 2.0F);
+        int baseDark = selected ? 0xE41A4F86 : 0xCC173F6A;
+        int baseLight = selected ? 0xF06FCFFF : 0xE25EB8EE;
+        int topColor = lerpColor(baseDark, baseLight, pulse);
+        int bottomColor = lerpColor(baseLight, baseDark, pulse);
 
         for (int y = 0; y < height; y++) {
             float ratio = height <= 1 ? 0.0F : (float) y / (float) (height - 1);
@@ -242,39 +241,12 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
         }
     }
 
-    private static float wrapHue(float hue) {
-        float wrapped = hue % 1.0F;
-        return wrapped < 0.0F ? wrapped + 1.0F : wrapped;
-    }
-
-    private static int withAlpha(int alpha, int rgbColor) {
-        return ((alpha & 0xFF) << 24) | (rgbColor & 0x00FFFFFF);
-    }
-
-    private static int lerpColor(int from, int to, float t) {
-        float clamped = Math.max(0.0F, Math.min(1.0F, t));
-        int a1 = (from >>> 24) & 0xFF;
-        int r1 = (from >>> 16) & 0xFF;
-        int g1 = (from >>> 8) & 0xFF;
-        int b1 = from & 0xFF;
-        int a2 = (to >>> 24) & 0xFF;
-        int r2 = (to >>> 16) & 0xFF;
-        int g2 = (to >>> 8) & 0xFF;
-        int b2 = to & 0xFF;
-
-        int a = (int) (a1 + (a2 - a1) * clamped);
-        int r = (int) (r1 + (r2 - r1) * clamped);
-        int g = (int) (g1 + (g2 - g1) * clamped);
-        int b = (int) (b1 + (b2 - b1) * clamped);
-        return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
     private int getListLeft() {
         return bankScreen.getPanelLeft() + 8;
     }
 
     private int getListTop() {
-        return bankScreen.getPanelTop() + 50;
+        return bankScreen.getPanelTop() + 56;
     }
 
     private int getListRight() {
@@ -282,7 +254,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
     }
 
     private int getListBottom() {
-        return bankScreen.getPanelTop() + 182;
+        return bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 52;
     }
 
     private int getMaxScrollIndex() {

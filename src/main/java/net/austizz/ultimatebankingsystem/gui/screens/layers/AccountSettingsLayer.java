@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
 import net.austizz.ultimatebankingsystem.network.BalanceRequestPayload;
@@ -68,8 +69,8 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
         int panelHeight = bankScreen.getPanelHeight();
-        int contentLeft = panelLeft + 8;
-        int contentWidth = panelWidth - 16;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
 
         AccountSummary selected = ClientATMData.getSelectedAccount();
         if (selected != null) {
@@ -80,34 +81,35 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             isPrimary = selected.isPrimary();
         }
 
-        int tabY = panelTop + 48;
-        int tabWidth = (contentWidth - 6) / 2;
+        int tabY = panelTop + 58;
+        int tabWidth = (contentWidth - 8) / 2;
         infoTabButton = addWidget(new NineSliceTexturedButton(
                 contentLeft, tabY,
-                tabWidth, 18,
+                tabWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Info"),
                 btn -> switchTab(Tab.INFO)
         ));
         securityTabButton = addWidget(new NineSliceTexturedButton(
-                contentLeft + tabWidth + 6, tabY,
-                tabWidth, 18,
+                contentLeft + tabWidth + 8, tabY,
+                tabWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Security"),
                 btn -> switchTab(Tab.SECURITY)
         ));
 
+        int infoTop = panelTop + 88;
         int accountIdLabelX = contentLeft;
-        int accountIdLabelY = panelTop + 72;
-        int copyButtonWidth = 36;
-        int copyButtonHeight = 16;
+        int accountIdLabelY = infoTop + 8;
+        int copyButtonWidth = 40;
+        int copyButtonHeight = 18;
         int copyButtonX = Math.min(
-                accountIdLabelX + font.width("Account ID:") + 6,
-                panelLeft + panelWidth - 8 - copyButtonWidth
+                accountIdLabelX + font.width("Account ID:") + 10,
+                panelLeft + panelWidth - 14 - copyButtonWidth
         );
-        int copyButtonY = accountIdLabelY - 4;
+        int copyButtonY = accountIdLabelY - 6;
         copyButton = addWidget(new NineSliceTexturedButton(
                 copyButtonX,
                 copyButtonY,
@@ -120,53 +122,59 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
 
         primaryToggleButton = addWidget(new NineSliceTexturedButton(
                 contentLeft,
-                panelTop + 150,
-                contentWidth, 20,
+                panelTop + 176,
+                contentWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 primaryLabel(),
                 btn -> togglePrimary()
         ));
 
-        currentPinField = new EditBox(font, contentLeft, panelTop + 76, contentWidth, 18, Component.literal(""));
+        currentPinField = new AtmEditBox(font, contentLeft, panelTop + 108, contentWidth, 20, Component.literal(""));
         currentPinField.setMaxLength(32);
-        currentPinField.setHint(Component.literal("Current PIN...").withStyle(ChatFormatting.DARK_GRAY));
+        currentPinField.setHint(Component.literal("Current PIN...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(currentPinField);
         addWidget(currentPinField);
 
-        newPinField = new EditBox(font, contentLeft, panelTop + 110, contentWidth, 18, Component.literal(""));
+        newPinField = new AtmEditBox(font, contentLeft, panelTop + 142, contentWidth, 20, Component.literal(""));
         newPinField.setMaxLength(32);
-        newPinField.setHint(Component.literal("New PIN...").withStyle(ChatFormatting.DARK_GRAY));
+        newPinField.setHint(Component.literal("New PIN...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(newPinField);
         addWidget(newPinField);
 
-        confirmPinField = new EditBox(font, contentLeft, panelTop + 144, contentWidth, 18, Component.literal(""));
+        confirmPinField = new AtmEditBox(font, contentLeft, panelTop + 176, contentWidth, 20, Component.literal(""));
         confirmPinField.setMaxLength(32);
-        confirmPinField.setHint(Component.literal("Confirm new PIN...").withStyle(ChatFormatting.DARK_GRAY));
+        confirmPinField.setHint(Component.literal("Confirm new PIN...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(confirmPinField);
         addWidget(confirmPinField);
 
+        int confirmButtonWidth = (contentWidth - 8) / 2;
+        int pinActionY = panelTop + 204;
+        int changePinButtonWidth = confirmButtonWidth;
+        int changePinButtonX = contentLeft + (contentWidth - changePinButtonWidth) / 2;
         changePinButton = addWidget(new NineSliceTexturedButton(
-                contentLeft,
-                panelTop + 168,
-                contentWidth, 20,
+                changePinButtonX,
+                pinActionY,
+                changePinButtonWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Change PIN").withStyle(ChatFormatting.WHITE),
                 btn -> requestPinChangeConfirmation()
         ));
 
-        int confirmButtonWidth = (contentWidth - 6) / 2;
         confirmPinYesButton = addWidget(new NineSliceTexturedButton(
                 contentLeft,
-                panelTop + 168,
-                confirmButtonWidth, 20,
+                pinActionY,
+                confirmButtonWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Yes").withStyle(ChatFormatting.GREEN),
                 btn -> sendPinChange()
         ));
         confirmPinCancelButton = addWidget(new NineSliceTexturedButton(
-                contentLeft + confirmButtonWidth + 6,
-                panelTop + 168,
-                confirmButtonWidth, 20,
+                contentLeft + confirmButtonWidth + 8,
+                pinActionY,
+                confirmButtonWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Cancel").withStyle(ChatFormatting.RED),
@@ -174,9 +182,9 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         ));
 
         addWidget(new NineSliceTexturedButton(
-                panelLeft + 8,
-                panelTop + panelHeight - 24,
-                50, 20,
+                panelLeft + 14,
+                panelTop + panelHeight - 36,
+                56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Back").withStyle(ChatFormatting.WHITE),
@@ -373,35 +381,43 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
-        int contentWidth = panelWidth - 16;
-        int sectionColor = 0xFF55FFFF;
-        int valueColor = 0xFFFFFFFF;
+        int contentLeft = panelLeft + 14;
+        int contentWidth = panelWidth - 28;
+        int sectionTop = panelTop + 88;
 
         drawCenteredFittedString(graphics, "Account Settings",
-                panelLeft + panelWidth / 2, panelTop + 27, contentWidth, 0xFFFFFFFF);
+                panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (activeTab == Tab.INFO) {
-            graphics.drawString(font, "Account ID:", panelLeft + 8, panelTop + 72, sectionColor);
-            drawFittedString(graphics, accountId, panelLeft + 8, panelTop + 84, contentWidth, valueColor);
-            drawFittedString(graphics, "Type: " + accountType, panelLeft + 8, panelTop + 108, contentWidth, valueColor);
-            drawFittedString(graphics, "Bank: " + bankName, panelLeft + 8, panelTop + 120, contentWidth, valueColor);
-            drawFittedString(graphics, "Created: " + createdDate, panelLeft + 8, panelTop + 132, contentWidth, valueColor);
-            graphics.drawString(font, "Primary Account", panelLeft + 8, panelTop + 172, sectionColor);
+            graphics.drawString(font, "Account ID:", contentLeft + 8, sectionTop + 8, COLOR_LABEL);
+            drawFittedString(graphics, accountId, contentLeft + 8, sectionTop + 20, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Type: " + accountType, contentLeft + 8, sectionTop + 36, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Bank: " + bankName, contentLeft + 8, sectionTop + 48, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Created: " + createdDate, contentLeft + 8, sectionTop + 60, contentWidth - 16, COLOR_VALUE);
+            graphics.drawString(font, "Primary Account", contentLeft + 2, panelTop + 168, COLOR_LABEL);
         } else {
             if (showPinConfirmation) {
                 drawWrappedCentered(graphics, "Are you sure you want to change your PIN?",
-                        panelLeft + panelWidth / 2, panelTop + 128, contentWidth, 0xFFFFFF55, 2);
+                        panelLeft + panelWidth / 2, panelTop + 124, contentWidth, 0xFFFFFF77, 2);
             } else {
-                graphics.drawString(font, "Current PIN:", panelLeft + 8, panelTop + 68, sectionColor);
-                graphics.drawString(font, "New PIN:", panelLeft + 8, panelTop + 98, sectionColor);
-                graphics.drawString(font, "Confirm PIN:", panelLeft + 8, panelTop + 132, sectionColor);
+                int currentBottom = currentPinField.getY() + currentPinField.getHeight();
+                int newTop = newPinField.getY();
+                int newLabelY = currentBottom + Math.max(0, (newTop - currentBottom - font.lineHeight) / 2);
+
+                int newBottom = newPinField.getY() + newPinField.getHeight();
+                int confirmTop = confirmPinField.getY();
+                int confirmLabelY = newBottom + Math.max(0, (confirmTop - newBottom - font.lineHeight) / 2);
+
+                graphics.drawString(font, "Current PIN", contentLeft + 6, panelTop + 94, COLOR_LABEL);
+                graphics.drawString(font, "New PIN", contentLeft + 6, newLabelY, COLOR_LABEL);
+                graphics.drawString(font, "Confirm PIN", contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
         }
 
         if (!statusMessage.isEmpty()) {
-            int statusColor = statusSuccess ? 0xFF55FF55 : 0xFFFF5555;
-            drawWrappedCentered(graphics, statusMessage,
-                    panelLeft + panelWidth / 2, panelTop + 194, contentWidth, statusColor, 2);
+            int statusColor = statusSuccess ? COLOR_SUCCESS : COLOR_ERROR;
+            drawCenteredFittedString(graphics, statusMessage,
+                    panelLeft + panelWidth / 2, panelTop + 44, contentWidth, statusColor);
         }
     }
 

@@ -98,7 +98,15 @@ public class UltimateBankingSystem {
         String message = event.isPositiveNumber()
                 ? "§a✅ Deposit Successful! You have received: " + event.getChangeAmount() + " into your bank account. Current Balance: §6" + event.getNewBalance() + "\n §aAccount ID: §6" + event.getAccount().getAccountUUID()
                 : "§c❌ Withdrawal Notice: " + event.getChangeAmount() + " has been deducted from your account. Current Balance: §6" + event.getNewBalance() + "\n §cAccount ID: §6" + event.getAccount().getAccountUUID();
-        ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(event.getAccount().getPlayerUUID()).sendSystemMessage(Component.literal(message));
+        var server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return;
+        }
+        var targetPlayer = server.getPlayerList().getPlayer(event.getAccount().getPlayerUUID());
+        if (targetPlayer == null) {
+            return;
+        }
+        targetPlayer.sendSystemMessage(Component.literal(message));
     }
 
 }
