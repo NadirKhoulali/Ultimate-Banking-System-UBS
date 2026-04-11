@@ -17,6 +17,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class PinEntryLayer extends AbstractScreenLayer {
 
@@ -42,9 +43,22 @@ public class PinEntryLayer extends AbstractScreenLayer {
     private int statusColor = COLOR_MUTED;
     private boolean awaitingServer;
     private boolean initialAccountDecisionDone;
+    private final boolean confirmationOnly;
+    private final Component confirmationTitle;
+    private final Consumer<String> onConfirmedPin;
 
     public PinEntryLayer(Minecraft minecraft) {
         super(minecraft);
+        this.confirmationOnly = false;
+        this.confirmationTitle = Component.literal("ATM PIN Access");
+        this.onConfirmedPin = null;
+    }
+
+    public PinEntryLayer(Minecraft minecraft, Component confirmationTitle, Consumer<String> onConfirmedPin) {
+        super(minecraft);
+        this.confirmationOnly = true;
+        this.confirmationTitle = confirmationTitle == null ? Component.literal("PIN Confirmation") : confirmationTitle;
+        this.onConfirmedPin = onConfirmedPin;
     }
 
     @Override
@@ -87,7 +101,13 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
                 Component.literal("Back").withStyle(ChatFormatting.WHITE),
-                btn -> bankScreen.onClose()
+                btn -> {
+                    if (confirmationOnly) {
+                        bankScreen.popLayer();
+                    } else {
+                        bankScreen.onClose();
+                    }
+                }
         ));
 
         switchAccountButton = addWidget(new NineSliceTexturedButton(
@@ -112,7 +132,9 @@ public class PinEntryLayer extends AbstractScreenLayer {
 
         syncModeFromSelectedAccount();
 
-        if (!initialAccountDecisionDone) {
+        if (confirmationOnly) {
+            setStatusInfo("Enter your 4-digit PIN to confirm.");
+        } else if (!initialAccountDecisionDone) {
             initialAccountDecisionDone = true;
             maybeOpenInitialAccountChooser();
         }
@@ -128,7 +150,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
         }
 
         AccountSummary selected = ClientATMData.getSelectedAccount();
-        if (selected == null || !selected.isPrimary()) {
+        if (selected == null) {
             setStatusInfo("Select an account to continue.");
             bankScreen.pushLayer(new AccountSelectionLayer(minecraft, this::onAccountSelected));
             return;
@@ -161,6 +183,11 @@ public class PinEntryLayer extends AbstractScreenLayer {
     }
 
     private void syncModeFromSelectedAccount() {
+        if (confirmationOnly) {
+            mode = PinMode.ENTER_PIN;
+            return;
+        }
+
         AccountSummary selected = ClientATMData.getSelectedAccount();
         if (selected == null) {
             mode = PinMode.ENTER_PIN;
@@ -196,6 +223,9 @@ public class PinEntryLayer extends AbstractScreenLayer {
 
     private void openAccountChooser() {
         if (awaitingServer) {
+            return;
+        }
+        if (confirmationOnly) {
             return;
         }
         if (ClientATMData.getAccounts().isEmpty()) {
@@ -301,15 +331,23 @@ public class PinEntryLayer extends AbstractScreenLayer {
     }
 
     public void updateAuthResult(PinAuthResponsePayload payload) {
+        String enteredPin = pinInput;
         awaitingServer = false;
         pinInput = "";
 
         if (payload.success()) {
-            AccountSummary selected = ClientATMData.getSelectedAccount();
-            if (selected != null) {
-                ClientATMData.setAuthenticatedAccountId(selected.accountId());
+            if (confirmationOnly) {
+                if (onConfirmedPin != null) {
+                    onConfirmedPin.accept(enteredPin);
+                }
+                bankScreen.popLayer();
+            } else {
+                AccountSummary selected = ClientATMData.getSelectedAccount();
+                if (selected != null) {
+                    ClientATMData.setAuthenticatedAccountId(selected.accountId());
+                }
+                bankScreen.setRootLayer(new MainMenuLayer(minecraft));
             }
-            bankScreen.setRootLayer(new MainMenuLayer(minecraft));
             return;
         }
 
@@ -337,7 +375,15 @@ public class PinEntryLayer extends AbstractScreenLayer {
                         selected.bankName(),
                         selected.balance(),
                         selected.isPrimary(),
-                        true
+                        true,
+                        selected.defaultWithdrawalLimit(),
+                        selected.effectiveWithdrawalLimit(),
+                        selected.temporaryWithdrawalLimit(),
+                        selected.temporaryLimitExpiresAtGameTime(),
+                        selected.dailyWithdrawalLimit(),
+                        selected.dailyWithdrawnToday(),
+                        selected.dailyWithdrawalRemaining(),
+                        selected.dailyResetEpochMillis()
                 ));
                 ClientATMData.setAuthenticatedAccountId(selected.accountId());
             }
@@ -362,7 +408,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
         }
 
         if (switchAccountButton != null) {
-            switchAccountButton.active = !awaitingServer && ClientATMData.getAccounts().size() > 1;
+            switchAccountButton.active = !confirmationOnly && !awaitingServer && ClientATMData.getAccounts().size() > 1;
         }
 
         if (unlockButton != null) {
@@ -430,6 +476,9 @@ public class PinEntryLayer extends AbstractScreenLayer {
         int contentWidth = panelWidth - 28;
 
         String title = mode == PinMode.ENTER_PIN ? "ATM PIN Access" : "Set Account PIN";
+        if (confirmationOnly) {
+            title = confirmationTitle.getString();
+        }
         drawCenteredFittedString(graphics, title,
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 

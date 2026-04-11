@@ -19,7 +19,15 @@ public record AccountSummary(
     String bankName,
     String balance,
     boolean isPrimary,
-    boolean pinSet
+    boolean pinSet,
+    String defaultWithdrawalLimit,
+    String effectiveWithdrawalLimit,
+    String temporaryWithdrawalLimit,
+    long temporaryLimitExpiresAtGameTime,
+    String dailyWithdrawalLimit,
+    String dailyWithdrawnToday,
+    String dailyWithdrawalRemaining,
+    long dailyResetEpochMillis
 ) {
 
     /** StreamCodec for UUID — serialises as two longs (mostSigBits, leastSigBits). */
@@ -29,14 +37,42 @@ public record AccountSummary(
             buf -> new UUID(buf.readLong(), buf.readLong())
         );
 
+    private static final StreamCodec<RegistryFriendlyByteBuf, Long> LONG_CODEC =
+        StreamCodec.of((buf, value) -> buf.writeLong(value), RegistryFriendlyByteBuf::readLong);
+
     public static final StreamCodec<RegistryFriendlyByteBuf, AccountSummary> STREAM_CODEC =
-        StreamCodec.composite(
-            UUID_CODEC,              AccountSummary::accountId,
-            ByteBufCodecs.STRING_UTF8, AccountSummary::accountType,
-            ByteBufCodecs.STRING_UTF8, AccountSummary::bankName,
-            ByteBufCodecs.STRING_UTF8, AccountSummary::balance,
-            ByteBufCodecs.BOOL,        AccountSummary::isPrimary,
-            ByteBufCodecs.BOOL,        AccountSummary::pinSet,
-            AccountSummary::new
+        StreamCodec.of(
+            (buf, summary) -> {
+                UUID_CODEC.encode(buf, summary.accountId());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.accountType());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.bankName());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.balance());
+                ByteBufCodecs.BOOL.encode(buf, summary.isPrimary());
+                ByteBufCodecs.BOOL.encode(buf, summary.pinSet());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.defaultWithdrawalLimit());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.effectiveWithdrawalLimit());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.temporaryWithdrawalLimit());
+                LONG_CODEC.encode(buf, summary.temporaryLimitExpiresAtGameTime());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.dailyWithdrawalLimit());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.dailyWithdrawnToday());
+                ByteBufCodecs.STRING_UTF8.encode(buf, summary.dailyWithdrawalRemaining());
+                LONG_CODEC.encode(buf, summary.dailyResetEpochMillis());
+            },
+            buf -> new AccountSummary(
+                UUID_CODEC.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.BOOL.decode(buf),
+                ByteBufCodecs.BOOL.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                LONG_CODEC.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                ByteBufCodecs.STRING_UTF8.decode(buf),
+                LONG_CODEC.decode(buf)
+            )
         );
 }

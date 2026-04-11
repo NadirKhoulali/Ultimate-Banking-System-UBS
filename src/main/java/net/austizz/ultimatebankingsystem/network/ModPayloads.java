@@ -12,12 +12,17 @@ import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.AccountSettingsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.BalanceInquiryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.DepositLayer;
+import net.austizz.ultimatebankingsystem.gui.screens.layers.PayRequestsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.PinEntryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.TransactionHistoryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.TransferLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.WithdrawLayer;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
+import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
@@ -119,6 +124,14 @@ public final class ModPayloads {
         registrar.playToClient(SetPrimaryResponsePayload.TYPE, SetPrimaryResponsePayload.STREAM_CODEC, ModPayloads::handleSetPrimaryResponse);
         registrar.playToServer(ChangePinPayload.TYPE, ChangePinPayload.STREAM_CODEC, ModPayloads::handleChangePin);
         registrar.playToClient(ChangePinResponsePayload.TYPE, ChangePinResponsePayload.STREAM_CODEC, ModPayloads::handleChangePinResponse);
+        registrar.playToServer(SetTemporaryWithdrawalLimitPayload.TYPE, SetTemporaryWithdrawalLimitPayload.STREAM_CODEC, ModPayloads::handleSetTemporaryWithdrawalLimit);
+        registrar.playToClient(SetTemporaryWithdrawalLimitResponsePayload.TYPE, SetTemporaryWithdrawalLimitResponsePayload.STREAM_CODEC, ModPayloads::handleSetTemporaryWithdrawalLimitResponse);
+
+        // Pay requests
+        registrar.playToServer(PayRequestInboxRequestPayload.TYPE, PayRequestInboxRequestPayload.STREAM_CODEC, ModPayloads::handlePayRequestInboxRequest);
+        registrar.playToClient(PayRequestInboxResponsePayload.TYPE, PayRequestInboxResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestInboxResponse);
+        registrar.playToServer(PayRequestActionPayload.TYPE, PayRequestActionPayload.STREAM_CODEC, ModPayloads::handlePayRequestAction);
+        registrar.playToClient(PayRequestActionResponsePayload.TYPE, PayRequestActionResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestActionResponse);
     }
 
     // ─── OpenATM ────────────────────────────────────────────────────────
@@ -129,19 +142,34 @@ public final class ModPayloads {
             var server = player.getServer();
             var centralBank = BankManager.getCentralBank(server);
             if (centralBank == null) return;
+            long gameTime = currentOverworldGameTime(server);
 
             var playerAccounts = centralBank.SearchForAccount(player.getUUID());
             List<AccountSummary> summaries = new ArrayList<>();
             for (var account : playerAccounts.values()) {
                 var bank = centralBank.getBank(account.getBankId());
                 String bankName = bank != null ? bank.getBankName() : "Unknown";
+                BigDecimal defaultLimit = account.getConfiguredWithdrawalLimit();
+                BigDecimal effectiveLimit = account.getEffectiveWithdrawalLimit(gameTime);
+                BigDecimal temporaryLimit = account.getTemporaryWithdrawalLimitIfActive(gameTime);
+                BigDecimal dailyLimit = account.getConfiguredDailyWithdrawalLimit();
+                BigDecimal dailyWithdrawn = account.getDailyWithdrawnAmount();
+                BigDecimal dailyRemaining = account.getRemainingDailyWithdrawalLimit();
                 summaries.add(new AccountSummary(
                     account.getAccountUUID(),
                     account.getAccountType().label,
                     bankName,
                     account.getBalance().toPlainString(),
                     account.isPrimaryAccount(),
-                    account.hasPin()
+                    account.hasPin(),
+                    defaultLimit.toPlainString(),
+                    effectiveLimit.toPlainString(),
+                    temporaryLimit == null ? "" : temporaryLimit.toPlainString(),
+                    account.getTemporaryWithdrawalLimitExpiresAtGameTime(gameTime),
+                    dailyLimit.toPlainString(),
+                    dailyWithdrawn.toPlainString(),
+                    dailyRemaining.toPlainString(),
+                    account.getDailyWithdrawalResetEpochMillis()
                 ));
             }
 
@@ -223,7 +251,9 @@ public final class ModPayloads {
             if (centralBank == null) return;
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
-            if (account == null) return;
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
+                return;
+            }
 
             Bank bank = centralBank.getBank(account.getBankId());
             String bankName = bank != null ? bank.getBankName() : "Unknown";
@@ -267,20 +297,17 @@ public final class ModPayloads {
             try {
                 amount = new BigDecimal(payload.amount());
             } catch (NumberFormatException e) {
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, "0", "Invalid amount format."));
+                sendWithdrawResponse(player, null, false, "0", "Invalid amount format.");
                 return;
             }
 
             if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, "0", "Amount must be greater than zero."));
+                sendWithdrawResponse(player, null, false, "0", "Amount must be greater than zero.");
                 return;
             }
 
             if (amount.stripTrailingZeros().scale() > 0) {
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, "0", "ATM withdraw only supports whole-dollar bills."));
+                sendWithdrawResponse(player, null, false, "0", "ATM withdraw only supports whole-dollar bills.");
                 return;
             }
 
@@ -288,15 +315,59 @@ public final class ModPayloads {
             try {
                 dollarAmount = amount.intValueExact();
             } catch (ArithmeticException e) {
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, "0", "Amount is too large."));
+                sendWithdrawResponse(player, null, false, "0", "Amount is too large.");
                 return;
             }
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
             if (account == null) {
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, "0", "Account not found."));
+                sendWithdrawResponse(player, null, false, "0", "Account not found.");
+                return;
+            }
+
+            if (!account.getPlayerUUID().equals(player.getUUID())) {
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(), "You do not own this account.");
+                return;
+            }
+
+            if (account.isFrozen()) {
+                String reason = account.getFrozenReason();
+                sendWithdrawResponse(
+                        player,
+                        account,
+                        false,
+                        account.getBalance().toPlainString(),
+                        "This account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
+                );
+                return;
+            }
+
+            long gameTime = currentOverworldGameTime(server);
+            BigDecimal effectiveLimit = account.getEffectiveWithdrawalLimit(gameTime);
+            if (amount.compareTo(effectiveLimit) > 0) {
+                sendWithdrawResponse(
+                        player,
+                        account,
+                        false,
+                        account.getBalance().toPlainString(),
+                        "Amount exceeds your active ATM withdrawal limit of $" + effectiveLimit.toPlainString() + "."
+                );
+                return;
+            }
+
+            BigDecimal dailyLimit = account.getConfiguredDailyWithdrawalLimit();
+            BigDecimal dailyWithdrawn = account.getDailyWithdrawnAmount();
+            BigDecimal remainingToday = account.getRemainingDailyWithdrawalLimit();
+            if (amount.compareTo(remainingToday) > 0) {
+                sendWithdrawResponse(
+                        player,
+                        account,
+                        false,
+                        account.getBalance().toPlainString(),
+                        "Daily ATM limit exceeded. Limit: $" + dailyLimit.toPlainString()
+                                + ", used today: $" + dailyWithdrawn.toPlainString()
+                                + ", remaining: $" + remainingToday.toPlainString() + "."
+                );
                 return;
             }
 
@@ -305,16 +376,18 @@ public final class ModPayloads {
             if (!success) {
                 UltimateBankingSystem.LOGGER.info("[UBS] Withdraw ${} from account {} — success: {}",
                     payload.amount(), payload.accountId(), false);
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, account.getBalance().toPlainString(), "Insufficient funds."));
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(), "Insufficient funds.");
                 return;
             }
+
+            account.registerDailyWithdrawal(BigDecimal.valueOf(dollarAmount));
 
             int[] withdrawPlan = DollarBills.buildWithdrawPlan(dollarAmount);
             if (withdrawPlan == null) {
                 account.AddBalance(BigDecimal.valueOf(dollarAmount));
-                PacketDistributor.sendToPlayer(player,
-                    new WithdrawResponsePayload(false, account.getBalance().toPlainString(), "ATM could not dispense the requested bill combination."));
+                account.rollbackDailyWithdrawal(BigDecimal.valueOf(dollarAmount));
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(),
+                        "ATM could not dispense the requested bill combination.");
                 return;
             }
 
@@ -330,8 +403,7 @@ public final class ModPayloads {
                 "[UBS] Withdraw ${} from account {} — dispensed [{}] — success: {}",
                 dollarAmount, payload.accountId(), DollarBills.formatPlan(withdrawPlan), true);
 
-            PacketDistributor.sendToPlayer(player,
-                new WithdrawResponsePayload(true, account.getBalance().toPlainString(), ""));
+            sendWithdrawResponse(player, account, true, account.getBalance().toPlainString(), "");
         });
     }
 
@@ -387,6 +459,20 @@ public final class ModPayloads {
             if (account == null) {
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(false, "0", "Account not found."));
+                return;
+            }
+
+            if (!account.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player,
+                    new DepositResponsePayload(false, account.getBalance().toPlainString(), "You do not own this account."));
+                return;
+            }
+
+            if (account.isFrozen()) {
+                String reason = account.getFrozenReason();
+                PacketDistributor.sendToPlayer(player,
+                    new DepositResponsePayload(false, account.getBalance().toPlainString(),
+                        "This account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)));
                 return;
             }
 
@@ -473,10 +559,30 @@ public final class ModPayloads {
                 return;
             }
 
+            if (!sender.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player,
+                    new TransferResponsePayload(false, sender.getBalance().toPlainString(), "You do not own the sender account."));
+                return;
+            }
+
+            if (sender.isFrozen()) {
+                String reason = sender.getFrozenReason();
+                PacketDistributor.sendToPlayer(player,
+                    new TransferResponsePayload(false, sender.getBalance().toPlainString(),
+                        "Sender account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)));
+                return;
+            }
+
             AccountHolder recipient = centralBank.SearchForAccountByAccountId(payload.recipientAccountId());
             if (recipient == null) {
                 PacketDistributor.sendToPlayer(player,
                     new TransferResponsePayload(false, sender.getBalance().toPlainString(), "Recipient account not found."));
+                return;
+            }
+
+            if (recipient.isFrozen()) {
+                PacketDistributor.sendToPlayer(player,
+                    new TransferResponsePayload(false, sender.getBalance().toPlainString(), "Recipient account is frozen."));
                 return;
             }
 
@@ -536,7 +642,7 @@ public final class ModPayloads {
             }
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
-            if (account == null) {
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
                 PacketDistributor.sendToPlayer(player, new TxHistoryResponsePayload(List.of()));
                 return;
             }
@@ -594,11 +700,18 @@ public final class ModPayloads {
             }
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
-            if (account == null) {
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
                 PacketDistributor.sendToPlayer(player, new SetPrimaryResponsePayload(false, false));
                 return;
             }
 
+            if (payload.setPrimary()) {
+                for (AccountHolder candidate : centralBank.SearchForAccount(player.getUUID()).values()) {
+                    if (!candidate.getAccountUUID().equals(account.getAccountUUID())) {
+                        candidate.setPrimaryAccount(false);
+                    }
+                }
+            }
             account.setPrimaryAccount(payload.setPrimary());
             UltimateBankingSystem.LOGGER.info("[UBS] Set primary={} for account {}",
                 payload.setPrimary(), payload.accountId());
@@ -611,6 +724,65 @@ public final class ModPayloads {
             if (Minecraft.getInstance().screen instanceof BankScreen bs
                     && bs.getTopLayer() instanceof AccountSettingsLayer layer) {
                 layer.updatePrimaryResult(payload);
+            }
+        });
+    }
+
+    private static void handleSetTemporaryWithdrawalLimit(SetTemporaryWithdrawalLimitPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var player = (net.minecraft.server.level.ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player, new SetTemporaryWithdrawalLimitResponsePayload(
+                        false, "0", "0", "", -1L, "Account not found."));
+                return;
+            }
+
+            String pin = payload.pin() == null ? "" : payload.pin().trim();
+            if (!pin.matches("\\d{4}")) {
+                sendTemporaryLimitResponse(player, account, server, false, "PIN must be exactly 4 digits.");
+                return;
+            }
+
+            if (!account.hasPin()) {
+                sendTemporaryLimitResponse(player, account, server, false, "PIN not set for this account.");
+                return;
+            }
+
+            if (!account.matchesPin(pin)) {
+                sendTemporaryLimitResponse(player, account, server, false, "Incorrect PIN.");
+                return;
+            }
+
+            BigDecimal customLimit;
+            try {
+                customLimit = new BigDecimal(payload.customLimit());
+            } catch (NumberFormatException ex) {
+                sendTemporaryLimitResponse(player, account, server, false, "Invalid custom limit format.");
+                return;
+            }
+
+            if (!account.setTemporaryWithdrawalLimit(customLimit, currentOverworldGameTime(server))) {
+                sendTemporaryLimitResponse(player, account, server, false,
+                        "Custom limit must be a whole dollar amount greater than zero.");
+                return;
+            }
+
+            sendTemporaryLimitResponse(player, account, server, true, "");
+        });
+    }
+
+    private static void handleSetTemporaryWithdrawalLimitResponse(SetTemporaryWithdrawalLimitResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof BankScreen bs
+                    && bs.getTopLayer() instanceof AccountSettingsLayer layer) {
+                layer.updateWithdrawalLimitResult(payload);
             }
         });
     }
@@ -680,5 +852,285 @@ public final class ModPayloads {
                 pinLayer.updatePinSetupResult(payload);
             }
         });
+    }
+
+    private static void handlePayRequestInboxRequest(PayRequestInboxRequestPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var player = (net.minecraft.server.level.ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
+            if (account == null || !account.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player, new PayRequestInboxResponsePayload(List.of(), "None"));
+                return;
+            }
+
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("MM/dd HH:mm");
+            List<PayRequestEntry> entries = new ArrayList<>();
+            for (PayRequestManager.PayRequest req : PayRequestManager.getPendingForPayer(player.getUUID())) {
+                String requesterName = resolveServerPlayerName(server, req.getRequesterUUID());
+                String createdAt = fmt.format(java.time.Instant.ofEpochMilli(req.getCreatedAtMillis()).atZone(java.time.ZoneId.systemDefault()));
+                entries.add(new PayRequestEntry(
+                        req.getRequestId(),
+                        requesterName,
+                        req.getAmount().toPlainString(),
+                        createdAt
+                ));
+            }
+
+            PacketDistributor.sendToPlayer(player, new PayRequestInboxResponsePayload(
+                    entries,
+                    resolvePrimaryAccountLabel(centralBank, player.getUUID())
+            ));
+        });
+    }
+
+    private static void handlePayRequestInboxResponse(PayRequestInboxResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof BankScreen bs
+                    && bs.getTopLayer() instanceof PayRequestsLayer layer) {
+                layer.updateInbox(payload.requests(), payload.primaryAccountLabel());
+            }
+        });
+    }
+
+    private static void handlePayRequestAction(PayRequestActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var player = (net.minecraft.server.level.ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            AccountHolder selected = centralBank.SearchForAccountByAccountId(payload.accountId());
+            if (selected == null || !selected.getPlayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Account mismatch."));
+                return;
+            }
+
+            PayRequestManager.PayRequest request = PayRequestManager.getRequest(payload.requestId());
+            if (request == null) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Pay request expired or missing."));
+                return;
+            }
+            if (!request.getPayerUUID().equals(player.getUUID())) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "This request is not for you."));
+                return;
+            }
+            if (request.getStatus() != PayRequestManager.Status.PENDING || PayRequestManager.isExpired(request)) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Pay request is no longer pending."));
+                return;
+            }
+
+            String action = payload.action() == null ? "" : payload.action().trim().toLowerCase();
+            if ("decline".equals(action)) {
+                PayRequestManager.markDeclined(request.getRequestId());
+                ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+                if (requester != null) {
+                    requester.sendSystemMessage(Component.literal(
+                            "§c" + player.getName().getString() + " declined your pay request for $" + request.getAmount().toPlainString() + "."
+                    ));
+                }
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(true, "Request declined."));
+                return;
+            }
+
+            AccountHolder sender = null;
+            if ("accept_account".equals(action)) {
+                String senderRaw = payload.senderAccountId() == null ? "" : payload.senderAccountId().trim();
+                if (!senderRaw.isBlank()) {
+                    try {
+                        UUID senderId = UUID.fromString(senderRaw);
+                        AccountHolder candidate = centralBank.SearchForAccountByAccountId(senderId);
+                        if (candidate != null && candidate.getPlayerUUID().equals(player.getUUID())) {
+                            sender = candidate;
+                        }
+                    } catch (IllegalArgumentException ignored) {
+                        sender = null;
+                    }
+                }
+                if (sender == null) {
+                    PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Choose a valid account."));
+                    return;
+                }
+            } else {
+                sender = findPrimaryAccount(centralBank, player.getUUID());
+                if (sender == null) {
+                    PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "No primary account set. Use Choose Account."));
+                    return;
+                }
+            }
+
+            AccountHolder receiver = findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
+            if (receiver == null) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Requester has no valid receiving account."));
+                ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+                if (requester != null) {
+                    requester.sendSystemMessage(Component.literal(
+                            "§cYour pay request could not be completed because no receiving account is set."
+                    ));
+                }
+                return;
+            }
+
+            if (sender.getAccountUUID().equals(receiver.getAccountUUID())) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Cannot pay the same account."));
+                return;
+            }
+
+            boolean success = new UserTransaction(
+                    sender.getAccountUUID(),
+                    receiver.getAccountUUID(),
+                    request.getAmount(),
+                    LocalDateTime.now(),
+                    "Pay Request"
+            ).makeTransaction(server);
+
+            if (!success) {
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Payment failed. Check balance/account status."));
+                ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+                if (requester != null) {
+                    requester.sendSystemMessage(Component.literal(
+                            "§e" + player.getName().getString() + " tried to accept your pay request, but payment failed."
+                    ));
+                }
+                return;
+            }
+
+            PayRequestManager.markAccepted(request.getRequestId());
+
+            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), request.getAmount(), false));
+            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), request.getAmount(), true));
+
+            ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+            if (requester != null) {
+                requester.sendSystemMessage(Component.literal(
+                        "§a" + player.getName().getString() + " accepted your pay request for $" + request.getAmount().toPlainString() + "."
+                ));
+            }
+
+            PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(
+                    true,
+                    "Paid $" + request.getAmount().toPlainString() + " using " + sender.getAccountType().label + "."
+            ));
+        });
+    }
+
+    private static void handlePayRequestActionResponse(PayRequestActionResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof BankScreen bs
+                    && bs.getTopLayer() instanceof PayRequestsLayer layer) {
+                layer.updateActionResult(payload);
+            }
+        });
+    }
+
+    private static long currentOverworldGameTime(net.minecraft.server.MinecraftServer server) {
+        var overworld = server.getLevel(Level.OVERWORLD);
+        return overworld != null ? overworld.getGameTime() : 0L;
+    }
+
+    private static void sendTemporaryLimitResponse(net.minecraft.server.level.ServerPlayer player,
+                                                   AccountHolder account,
+                                                   net.minecraft.server.MinecraftServer server,
+                                                   boolean success,
+                                                   String errorMessage) {
+        long gameTime = currentOverworldGameTime(server);
+        BigDecimal defaultLimit = account.getConfiguredWithdrawalLimit();
+        BigDecimal effectiveLimit = account.getEffectiveWithdrawalLimit(gameTime);
+        BigDecimal temporaryLimit = account.getTemporaryWithdrawalLimitIfActive(gameTime);
+        PacketDistributor.sendToPlayer(player, new SetTemporaryWithdrawalLimitResponsePayload(
+                success,
+                defaultLimit.toPlainString(),
+                effectiveLimit.toPlainString(),
+                temporaryLimit == null ? "" : temporaryLimit.toPlainString(),
+                account.getTemporaryWithdrawalLimitExpiresAtGameTime(gameTime),
+                errorMessage == null ? "" : errorMessage
+        ));
+    }
+
+    private static void sendWithdrawResponse(net.minecraft.server.level.ServerPlayer player,
+                                             AccountHolder account,
+                                             boolean success,
+                                             String newBalance,
+                                             String errorMessage) {
+        PacketDistributor.sendToPlayer(player, buildWithdrawResponse(
+                success,
+                newBalance == null ? "0" : newBalance,
+                errorMessage == null ? "" : errorMessage,
+                account
+        ));
+    }
+
+    private static WithdrawResponsePayload buildWithdrawResponse(boolean success,
+                                                                String newBalance,
+                                                                String errorMessage,
+                                                                AccountHolder account) {
+        if (account == null) {
+            return new WithdrawResponsePayload(success, newBalance, errorMessage, "", "", "", -1L);
+        }
+        return new WithdrawResponsePayload(
+                success,
+                newBalance,
+                errorMessage,
+                account.getConfiguredDailyWithdrawalLimit().toPlainString(),
+                account.getDailyWithdrawnAmount().toPlainString(),
+                account.getRemainingDailyWithdrawalLimit().toPlainString(),
+                account.getDailyWithdrawalResetEpochMillis()
+        );
+    }
+
+    private static AccountHolder findPrimaryAccount(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                    UUID playerId) {
+        for (AccountHolder account : centralBank.SearchForAccount(playerId).values()) {
+            if (account.isPrimaryAccount()) {
+                return account;
+            }
+        }
+        return null;
+    }
+
+    private static AccountHolder findPreferredReceiverAccount(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                              UUID requesterId) {
+        var accounts = centralBank.SearchForAccount(requesterId);
+        if (accounts.isEmpty()) {
+            return null;
+        }
+        for (AccountHolder account : accounts.values()) {
+            if (account.isPrimaryAccount()) {
+                return account;
+            }
+        }
+        if (accounts.size() == 1) {
+            return accounts.values().iterator().next();
+        }
+        return null;
+    }
+
+    private static String resolvePrimaryAccountLabel(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                     UUID playerId) {
+        AccountHolder primary = findPrimaryAccount(centralBank, playerId);
+        if (primary == null) {
+            return "None";
+        }
+        return primary.getAccountType().label + " (" + shortId(primary.getAccountUUID()) + ")";
+    }
+
+    private static String resolveServerPlayerName(net.minecraft.server.MinecraftServer server, UUID playerId) {
+        var player = server.getPlayerList().getPlayer(playerId);
+        if (player != null) {
+            return player.getName().getString();
+        }
+        return shortId(playerId);
+    }
+
+    private static String shortId(UUID uuid) {
+        String raw = uuid.toString();
+        return raw.substring(0, Math.min(8, raw.length()));
     }
 }

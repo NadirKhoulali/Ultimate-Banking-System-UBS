@@ -147,7 +147,7 @@ public final class DollarBills {
         }
     }
 
-    private static int indexForItem(Item item) {
+    public static int indexForItem(Item item) {
         if (item == ModItems.HUNDRED_DOLLAR_BILL.get()) return 0;
         if (item == ModItems.FIFTY_DOLLAR_BILL.get()) return 1;
         if (item == ModItems.TWENTY_DOLLAR_BILL.get()) return 2;
@@ -158,7 +158,7 @@ public final class DollarBills {
         return -1;
     }
 
-    private static Item getItemForDenomination(int denomination) {
+    public static Item getItemForDenomination(int denomination) {
         return switch (denomination) {
             case 100 -> ModItems.HUNDRED_DOLLAR_BILL.get();
             case 50 -> ModItems.FIFTY_DOLLAR_BILL.get();
@@ -169,5 +169,12 @@ public final class DollarBills {
             case 1 -> ModItems.ONE_DOLLAR_BILL.get();
             default -> null;
         };
+    }
+
+    public static Item getItemForIndex(int index) {
+        if (index < 0 || index >= DENOMINATIONS_DESC.length) {
+            return null;
+        }
+        return getItemForDenomination(DENOMINATIONS_DESC[index]);
     }
 }

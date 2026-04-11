@@ -32,6 +32,10 @@ public interface ScreenLayer {
         return false;
     }
 
+    default boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return false;
+    }
+
     default boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         return false;
     }

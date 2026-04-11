@@ -31,10 +31,12 @@ This file explains the current playable features of UBS in a user-friendly way f
 
 ## First-Time Important Notes
 
-- New accounts currently start with default PIN: `test`.
-- Change your PIN in `Account Settings` immediately.
+- New accounts no longer use a default PIN.
+- On first ATM login, you are prompted to create a 4-digit PIN.
 - Most ATM actions are disabled until an account is selected.
 - ATM withdraw/deposit uses real bill items (physical currency).
+- Frozen accounts cannot withdraw, deposit, or transfer.
+- Daily ATM withdrawal limits apply per account.
 
 ## ATM Features
 
@@ -185,11 +187,46 @@ Sets one account as primary and clears primary on your other accounts.
 - `/ubs bank rename <new name>`
 - `/ubs money deposit <accountUUID> <amount>`
 - `/ubs money withdraw <accountUUID> <amount>`
+- `/ubs admin view <player>`
+- `/ubs admin freeze <player> [reason]`
+- `/ubs admin unfreeze <player>`
+- `/ubs admin freeze account <accountUUID> [reason]`
+- `/ubs admin unfreeze account <accountUUID>`
+- `/ubs admin report`
+- `/ubs admin import csv <path>`
+- `/ubs admin import essentialsx <path>`
+- `/ubs admin import cmi <path>`
+- `/ubs admin import iconomy <path>`
+
+Alias:
+- `/bank admin ...` supports the same admin subcommands.
+
+## Migration Import Notes
+
+- `csv` format supports:
+`player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
+- `history` is optional:
+`timestamp|signedAmount|description;timestamp|signedAmount|description`
+- `essentialsx` and `cmi` imports accept either a userdata folder or a single `.yml/.yaml` file.
+- `iconomy` import accepts file lines in `player,balance` or `player:balance`.
+- Every import command reports created/updated/failed counts and logs detailed warnings to server logs.
 
 ## Server Config Options
 
 - `TransactionsPerMinute` (default `10`)
 Per-account outgoing transfer limit.
+
+- `DefaultATMWithdrawalLimit`
+Base per-transaction ATM withdrawal cap.
+
+- `DailyWithdrawalLimit`
+Per-account ATM withdrawal cap per Minecraft day.
+
+- `AutoSaveIntervalMinutes`
+Interval for scheduled banking data dirty-mark autosave.
+
+- `SavingsInterestIntervalTicks`
+Interval for scheduled savings interest payout.
 
 - `AllowBankCustomInterestRate`
 Enables custom bank interest control.
@@ -205,6 +242,12 @@ Minimum allowed custom rate.
 
 - `MaxCustomBankInterestRate`
 Maximum allowed custom rate.
+
+- `CurrencySymbol`
+Display symbol used in textual outputs.
+
+- `CurrencyName`
+Display currency name used in textual outputs.
 
 ## Chat Notifications
 
@@ -255,5 +298,5 @@ Possible causes:
 
 1. Place ATM machines in spawn/city/bank areas.
 2. Tell players to create accounts with `/account create ...`.
-3. Tell players to change default PIN (`test`) immediately.
+3. Tell players to set a 4-digit PIN on first ATM use.
 4. Adjust config and admin rates as needed.

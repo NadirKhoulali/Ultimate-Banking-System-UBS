@@ -62,6 +62,14 @@ public class UserTransaction {
 
     public boolean makeTransaction(MinecraftServer server) {
         CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return false;
+        }
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+
         AccountHolder sender = centralBank.SearchForAccountByAccountId(senderUUID);
         AccountHolder receiver = centralBank.SearchForAccountByAccountId(receiverUUID);
 
@@ -69,16 +77,34 @@ public class UserTransaction {
             return false;
         }
 
-        // Per-account rate limit (outgoing)
-        if (!sender.tryConsumeOutgoingTransaction()) {
-            ServerPlayer sp = server.getPlayerList().getPlayer(sender.getPlayerUUID());
-            if (sp != null) {
-                sp.sendSystemMessage(Component.literal("§cYou're sending transactions too fast. Please wait a moment."));
+        ServerPlayer senderPlayer = server.getPlayerList().getPlayer(sender.getPlayerUUID());
+
+        if (sender.isFrozen()) {
+            if (senderPlayer != null) {
+                String reason = sender.getFrozenReason();
+                senderPlayer.sendSystemMessage(Component.literal(
+                        "§cThis account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
+                ));
             }
             return false;
         }
 
-        Player player = server.getPlayerList().getPlayer(this.senderUUID);
+        if (receiver.isFrozen()) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cTransfer failed: the destination account is frozen."));
+            }
+            return false;
+        }
+
+        // Per-account rate limit (outgoing)
+        if (!sender.tryConsumeOutgoingTransaction()) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cYou're sending transactions too fast. Please wait a moment."));
+            }
+            return false;
+        }
+
+        Player player = senderPlayer;
 
         if (player != null && sender.getBalance().compareTo(amount) < 0) {
             player.sendSystemMessage(Component.literal("§cNot enough balance to perform this transaction!"));

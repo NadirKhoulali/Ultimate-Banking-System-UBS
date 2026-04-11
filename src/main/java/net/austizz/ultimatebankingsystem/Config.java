@@ -17,6 +17,38 @@ public class Config {
             .comment("The Amount of transactions possible per player per minute")
             .defineInRange("TransactionsPerMinute", 10, 1, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.IntValue DEFAULT_ATM_WITHDRAWAL_LIMIT = BUILDER
+            .comment("Default maximum amount (in whole dollars) a player can withdraw from an ATM per transaction.")
+            .defineInRange("DefaultATMWithdrawalLimit", 500, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue DAILY_WITHDRAWAL_LIMIT = BUILDER
+            .comment("Default maximum amount (in whole dollars) a player can withdraw per Minecraft day.")
+            .defineInRange("DailyWithdrawalLimit", 2000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue DAILY_WITHDRAWAL_LIMIT_CHECKING = BUILDER
+            .comment("Maximum ATM withdrawal amount per real-world day for Checking accounts.")
+            .defineInRange("DailyWithdrawalLimitChecking", 2000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue DAILY_WITHDRAWAL_LIMIT_SAVING = BUILDER
+            .comment("Maximum ATM withdrawal amount per real-world day for Saving accounts.")
+            .defineInRange("DailyWithdrawalLimitSaving", 1500, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue DAILY_WITHDRAWAL_LIMIT_MONEY_MARKET = BUILDER
+            .comment("Maximum ATM withdrawal amount per real-world day for Money Market accounts.")
+            .defineInRange("DailyWithdrawalLimitMoneyMarket", 3000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue DAILY_WITHDRAWAL_LIMIT_CERTIFICATE = BUILDER
+            .comment("Maximum ATM withdrawal amount per real-world day for Certificate accounts.")
+            .defineInRange("DailyWithdrawalLimitCertificate", 500, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue AUTOSAVE_INTERVAL_MINUTES = BUILDER
+            .comment("How often banking data is marked dirty for autosave (in real minutes).")
+            .defineInRange("AutoSaveIntervalMinutes", 5, 1, 120);
+
+    public static final ModConfigSpec.IntValue SAVINGS_INTEREST_INTERVAL_TICKS = BUILDER
+            .comment("How often savings interest payout runs (in server ticks). 24000 ticks = one Minecraft day.")
+            .defineInRange("SavingsInterestIntervalTicks", 24000, 20, Integer.MAX_VALUE);
+
     public static final ModConfigSpec.BooleanValue ALLOW_BANK_CUSTOM_INTEREST_RATE = BUILDER
             .comment("Allow player made banks to set their own interest rate")
             .define("AllowBankCustomInterestRate", true);
@@ -53,6 +85,14 @@ public class Config {
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER
             .comment("A list of items to log on common setup.")
             .defineListAllowEmpty("items", List.of("minecraft:iron_ingot"), () -> "", Config::validateItemName);
+
+    public static final ModConfigSpec.ConfigValue<String> CURRENCY_SYMBOL = BUILDER
+            .comment("Currency symbol used in textual output.")
+            .define("CurrencySymbol", "$");
+
+    public static final ModConfigSpec.ConfigValue<String> CURRENCY_NAME = BUILDER
+            .comment("Currency display name used in textual output.")
+            .define("CurrencyName", "Dollar");
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

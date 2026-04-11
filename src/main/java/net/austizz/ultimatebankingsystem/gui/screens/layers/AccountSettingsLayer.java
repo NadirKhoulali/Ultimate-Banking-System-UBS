@@ -10,6 +10,8 @@ import net.austizz.ultimatebankingsystem.network.ChangePinPayload;
 import net.austizz.ultimatebankingsystem.network.ChangePinResponsePayload;
 import net.austizz.ultimatebankingsystem.network.SetPrimaryPayload;
 import net.austizz.ultimatebankingsystem.network.SetPrimaryResponsePayload;
+import net.austizz.ultimatebankingsystem.network.SetTemporaryWithdrawalLimitPayload;
+import net.austizz.ultimatebankingsystem.network.SetTemporaryWithdrawalLimitResponsePayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,6 +23,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.ZoneId;
 
 public class AccountSettingsLayer extends AbstractScreenLayer {
     private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
@@ -29,13 +32,15 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
 
     private enum Tab {
         INFO,
-        SECURITY
+        SECURITY,
+        LIMITS
     }
 
     private Tab activeTab = Tab.INFO;
 
     private NineSliceTexturedButton infoTabButton;
     private NineSliceTexturedButton securityTabButton;
+    private NineSliceTexturedButton limitsTabButton;
     private NineSliceTexturedButton copyButton;
     private NineSliceTexturedButton primaryToggleButton;
 
@@ -46,12 +51,24 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     private NineSliceTexturedButton confirmPinYesButton;
     private NineSliceTexturedButton confirmPinCancelButton;
 
+    private EditBox temporaryLimitField;
+    private NineSliceTexturedButton applyLimitButton;
+    private String pendingTemporaryLimit = "";
+
     private String accountId = "Loading...";
     private String accountType = "Loading...";
     private String bankName = "Loading...";
     private String createdDate = "Loading...";
     private String balance = "Loading...";
     private boolean isPrimary;
+    private String defaultWithdrawalLimit = "0";
+    private String effectiveWithdrawalLimit = "0";
+    private String temporaryWithdrawalLimit = "";
+    private long temporaryLimitExpiresAtGameTime = -1L;
+    private String dailyWithdrawalLimit = "0";
+    private String dailyWithdrawnToday = "0";
+    private String dailyWithdrawalRemaining = "0";
+    private long dailyResetEpochMillis = -1L;
 
     private boolean showPinConfirmation;
     private String pendingCurrentPin = "";
@@ -79,10 +96,18 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             bankName = selected.bankName();
             balance = selected.balance();
             isPrimary = selected.isPrimary();
+            defaultWithdrawalLimit = selected.defaultWithdrawalLimit();
+            effectiveWithdrawalLimit = selected.effectiveWithdrawalLimit();
+            temporaryWithdrawalLimit = selected.temporaryWithdrawalLimit();
+            temporaryLimitExpiresAtGameTime = selected.temporaryLimitExpiresAtGameTime();
+            dailyWithdrawalLimit = selected.dailyWithdrawalLimit();
+            dailyWithdrawnToday = selected.dailyWithdrawnToday();
+            dailyWithdrawalRemaining = selected.dailyWithdrawalRemaining();
+            dailyResetEpochMillis = selected.dailyResetEpochMillis();
         }
 
         int tabY = panelTop + 58;
-        int tabWidth = (contentWidth - 8) / 2;
+        int tabWidth = (contentWidth - 16) / 3;
         infoTabButton = addWidget(new NineSliceTexturedButton(
                 contentLeft, tabY,
                 tabWidth, 22,
@@ -98,6 +123,14 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 4, 4, 4, 4,
                 Component.literal("Security"),
                 btn -> switchTab(Tab.SECURITY)
+        ));
+        limitsTabButton = addWidget(new NineSliceTexturedButton(
+                contentLeft + (tabWidth + 8) * 2, tabY,
+                tabWidth, 22,
+                ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
+                4, 4, 4, 4,
+                Component.literal("Limits"),
+                btn -> switchTab(Tab.LIMITS)
         ));
 
         int infoTop = panelTop + 88;
@@ -181,6 +214,22 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 btn -> cancelPinChangeConfirmation()
         ));
 
+        temporaryLimitField = new AtmEditBox(font, contentLeft, panelTop + 150, contentWidth, 20, Component.literal(""));
+        temporaryLimitField.setMaxLength(12);
+        temporaryLimitField.setHint(Component.literal("Custom limit (whole dollars)...").withStyle(ChatFormatting.WHITE));
+        styleEditBox(temporaryLimitField);
+        addWidget(temporaryLimitField);
+
+        applyLimitButton = addWidget(new NineSliceTexturedButton(
+                contentLeft,
+                panelTop + 188,
+                contentWidth, 20,
+                ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
+                4, 4, 4, 4,
+                Component.literal("Apply Temporary Limit").withStyle(ChatFormatting.WHITE),
+                btn -> applyTemporaryLimit()
+        ));
+
         addWidget(new NineSliceTexturedButton(
                 panelLeft + 14,
                 panelTop + panelHeight - 36,
@@ -217,11 +266,13 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     private void updateTabButtons() {
         infoTabButton.setMessage(Component.literal(activeTab == Tab.INFO ? "Info *" : "Info"));
         securityTabButton.setMessage(Component.literal(activeTab == Tab.SECURITY ? "Security *" : "Security"));
+        limitsTabButton.setMessage(Component.literal(activeTab == Tab.LIMITS ? "Limits *" : "Limits"));
     }
 
     private void updateVisibility() {
         boolean infoVisible = activeTab == Tab.INFO;
         boolean securityVisible = activeTab == Tab.SECURITY;
+        boolean limitsVisible = activeTab == Tab.LIMITS;
         boolean pinEditVisible = securityVisible && !showPinConfirmation;
 
         copyButton.visible = infoVisible;
@@ -233,6 +284,58 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         changePinButton.visible = pinEditVisible;
         confirmPinYesButton.visible = securityVisible && showPinConfirmation;
         confirmPinCancelButton.visible = securityVisible && showPinConfirmation;
+
+        temporaryLimitField.visible = limitsVisible;
+        applyLimitButton.visible = limitsVisible;
+    }
+
+    private void applyTemporaryLimit() {
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        if (selected == null) {
+            statusMessage = "No account selected.";
+            statusSuccess = false;
+            return;
+        }
+
+        String rawLimit = temporaryLimitField.getValue().trim();
+
+        if (rawLimit.isEmpty()) {
+            statusMessage = "Enter a custom limit amount.";
+            statusSuccess = false;
+            return;
+        }
+        if (!rawLimit.matches("\\d+")) {
+            statusMessage = "Custom limit must be a whole dollar amount.";
+            statusSuccess = false;
+            return;
+        }
+
+        pendingTemporaryLimit = rawLimit;
+        statusMessage = "Confirm with your PIN to apply the limit.";
+        statusSuccess = false;
+        bankScreen.pushLayer(new PinEntryLayer(
+                minecraft,
+                Component.literal("Confirm Temporary Limit"),
+                confirmedPin -> sendTemporaryLimitAfterPin(confirmedPin)
+        ));
+    }
+
+    private void sendTemporaryLimitAfterPin(String confirmedPin) {
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        if (selected == null) {
+            statusMessage = "No account selected.";
+            statusSuccess = false;
+            return;
+        }
+        if (pendingTemporaryLimit.isBlank()) {
+            statusMessage = "No temporary limit pending.";
+            statusSuccess = false;
+            return;
+        }
+
+        statusMessage = "Applying temporary limit...";
+        statusSuccess = false;
+        PacketDistributor.sendToServer(new SetTemporaryWithdrawalLimitPayload(selected.accountId(), pendingTemporaryLimit, confirmedPin));
     }
 
     private void copyAccountId() {
@@ -261,19 +364,24 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     }
 
     private void requestPinChangeConfirmation() {
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        boolean requiresCurrentPin = selected != null && selected.pinSet();
+
         String currentPin = currentPinField.getValue().trim();
         String newPin = newPinField.getValue().trim();
         String confirmPin = confirmPinField.getValue().trim();
 
-        if (currentPin.isEmpty()) {
-            statusMessage = "Enter your current PIN.";
-            statusSuccess = false;
-            return;
-        }
-        if (!currentPin.matches("\\d{4}")) {
-            statusMessage = "Current PIN must be exactly 4 digits.";
-            statusSuccess = false;
-            return;
+        if (requiresCurrentPin) {
+            if (currentPin.isEmpty()) {
+                statusMessage = "Enter your current PIN.";
+                statusSuccess = false;
+                return;
+            }
+            if (!currentPin.matches("\\d{4}")) {
+                statusMessage = "Current PIN must be exactly 4 digits.";
+                statusSuccess = false;
+                return;
+            }
         }
         if (newPin.isEmpty()) {
             statusMessage = "Enter a new PIN.";
@@ -296,7 +404,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             return;
         }
 
-        pendingCurrentPin = currentPin;
+        pendingCurrentPin = requiresCurrentPin ? currentPin : "";
         pendingNewPin = newPin;
         showPinConfirmation = true;
         statusMessage = "";
@@ -349,29 +457,32 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                     bankName,
                     balance,
                     isPrimary,
-                    selected.pinSet()
+                    selected.pinSet(),
+                    selected.defaultWithdrawalLimit(),
+                    selected.effectiveWithdrawalLimit(),
+                    selected.temporaryWithdrawalLimit(),
+                    selected.temporaryLimitExpiresAtGameTime(),
+                    selected.dailyWithdrawalLimit(),
+                    selected.dailyWithdrawnToday(),
+                    selected.dailyWithdrawalRemaining(),
+                    selected.dailyResetEpochMillis()
             ));
         }
     }
 
     public void updatePrimaryResult(SetPrimaryResponsePayload payload) {
         if (payload.success()) {
-            isPrimary = payload.newPrimaryState();
+            AccountSummary selected = ClientATMData.getSelectedAccount();
+            if (selected != null) {
+                ClientATMData.applyPrimaryState(selected.accountId(), payload.newPrimaryState());
+                AccountSummary refreshed = ClientATMData.getSelectedAccount();
+                isPrimary = refreshed != null ? refreshed.isPrimary() : payload.newPrimaryState();
+            } else {
+                isPrimary = payload.newPrimaryState();
+            }
             primaryToggleButton.setMessage(primaryLabel());
             statusMessage = "Primary state updated.";
             statusSuccess = true;
-
-            AccountSummary selected = ClientATMData.getSelectedAccount();
-            if (selected != null) {
-                ClientATMData.setSelectedAccount(new AccountSummary(
-                        selected.accountId(),
-                        selected.accountType(),
-                        selected.bankName(),
-                        selected.balance(),
-                        isPrimary,
-                        selected.pinSet()
-                ));
-            }
         } else {
             statusMessage = "Could not update primary state.";
             statusSuccess = false;
@@ -396,12 +507,92 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                         selected.bankName(),
                         selected.balance(),
                         selected.isPrimary(),
-                        true
+                        true,
+                        selected.defaultWithdrawalLimit(),
+                        selected.effectiveWithdrawalLimit(),
+                        selected.temporaryWithdrawalLimit(),
+                        selected.temporaryLimitExpiresAtGameTime(),
+                        selected.dailyWithdrawalLimit(),
+                        selected.dailyWithdrawnToday(),
+                        selected.dailyWithdrawalRemaining(),
+                        selected.dailyResetEpochMillis()
                 ));
             }
         } else {
             statusMessage = payload.errorMessage().isEmpty() ? "PIN change failed." : payload.errorMessage();
             statusSuccess = false;
+        }
+    }
+
+    public void updateWithdrawalLimitResult(SetTemporaryWithdrawalLimitResponsePayload payload) {
+        if (!payload.success()) {
+            statusMessage = payload.errorMessage().isEmpty() ? "Could not apply temporary limit." : payload.errorMessage();
+            statusSuccess = false;
+            return;
+        }
+
+        defaultWithdrawalLimit = payload.defaultLimit();
+        effectiveWithdrawalLimit = payload.effectiveLimit();
+        temporaryWithdrawalLimit = payload.temporaryLimit();
+        temporaryLimitExpiresAtGameTime = payload.temporaryLimitExpiresAtGameTime();
+        pendingTemporaryLimit = "";
+
+        temporaryLimitField.setValue(temporaryWithdrawalLimit);
+        statusMessage = "Temporary withdrawal limit applied for one Minecraft day.";
+        statusSuccess = true;
+
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        if (selected != null) {
+            ClientATMData.setSelectedAccount(new AccountSummary(
+                    selected.accountId(),
+                    selected.accountType(),
+                    selected.bankName(),
+                    selected.balance(),
+                    selected.isPrimary(),
+                    selected.pinSet(),
+                    defaultWithdrawalLimit,
+                    effectiveWithdrawalLimit,
+                    temporaryWithdrawalLimit,
+                    temporaryLimitExpiresAtGameTime,
+                    selected.dailyWithdrawalLimit(),
+                    selected.dailyWithdrawnToday(),
+                    selected.dailyWithdrawalRemaining(),
+                    selected.dailyResetEpochMillis()
+            ));
+        }
+    }
+
+    @Override
+    public void tick() {
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        if (selected == null) {
+            return;
+        }
+
+        boolean changed = !defaultWithdrawalLimit.equals(selected.defaultWithdrawalLimit())
+                || !effectiveWithdrawalLimit.equals(selected.effectiveWithdrawalLimit())
+                || !temporaryWithdrawalLimit.equals(selected.temporaryWithdrawalLimit())
+                || temporaryLimitExpiresAtGameTime != selected.temporaryLimitExpiresAtGameTime()
+                || !dailyWithdrawalLimit.equals(selected.dailyWithdrawalLimit())
+                || !dailyWithdrawnToday.equals(selected.dailyWithdrawnToday())
+                || !dailyWithdrawalRemaining.equals(selected.dailyWithdrawalRemaining())
+                || dailyResetEpochMillis != selected.dailyResetEpochMillis();
+
+        if (!changed) {
+            return;
+        }
+
+        defaultWithdrawalLimit = selected.defaultWithdrawalLimit();
+        effectiveWithdrawalLimit = selected.effectiveWithdrawalLimit();
+        temporaryWithdrawalLimit = selected.temporaryWithdrawalLimit();
+        temporaryLimitExpiresAtGameTime = selected.temporaryLimitExpiresAtGameTime();
+        dailyWithdrawalLimit = selected.dailyWithdrawalLimit();
+        dailyWithdrawnToday = selected.dailyWithdrawnToday();
+        dailyWithdrawalRemaining = selected.dailyWithdrawalRemaining();
+        dailyResetEpochMillis = selected.dailyResetEpochMillis();
+
+        if (activeTab == Tab.LIMITS && temporaryLimitField != null && temporaryLimitField.getValue().isBlank()) {
+            temporaryLimitField.setValue(temporaryWithdrawalLimit);
         }
     }
 
@@ -424,7 +615,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             drawFittedString(graphics, "Bank: " + bankName, contentLeft + 8, sectionTop + 48, contentWidth - 16, COLOR_VALUE);
             drawFittedString(graphics, "Created: " + createdDate, contentLeft + 8, sectionTop + 60, contentWidth - 16, COLOR_VALUE);
             graphics.drawString(font, "Primary Account", contentLeft + 2, panelTop + 168, COLOR_LABEL);
-        } else {
+        } else if (activeTab == Tab.SECURITY) {
             if (showPinConfirmation) {
                 drawWrappedCentered(graphics, "Are you sure you want to change your PIN?",
                         panelLeft + panelWidth / 2, panelTop + 124, contentWidth, 0xFFFFFF77, 2);
@@ -441,6 +632,16 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 graphics.drawString(font, "New PIN", contentLeft + 6, newLabelY, COLOR_LABEL);
                 graphics.drawString(font, "Confirm PIN", contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
+        } else {
+            graphics.drawString(font, "Default ATM limit: $" + defaultWithdrawalLimit, contentLeft + 6, sectionTop + 8, COLOR_LABEL);
+            graphics.drawString(font, "Active ATM limit: $" + effectiveWithdrawalLimit, contentLeft + 152, sectionTop + 8, COLOR_VALUE);
+            graphics.drawString(font, "Daily limit: $" + dailyWithdrawalLimit, contentLeft + 6, sectionTop + 22, COLOR_LABEL);
+            graphics.drawString(font, "Used today: $" + dailyWithdrawnToday, contentLeft + 152, sectionTop + 22, COLOR_VALUE);
+            graphics.drawString(font, "Remaining today: $" + dailyWithdrawalRemaining, contentLeft + 6, sectionTop + 36, COLOR_VALUE);
+            drawFittedString(graphics, "Resets: " + formatResetTime(dailyResetEpochMillis), contentLeft + 152, sectionTop + 36, contentWidth - 156, COLOR_MUTED);
+
+            graphics.drawString(font, "Custom limit", contentLeft + 6, panelTop + 136, COLOR_LABEL);
+            drawFittedString(graphics, "Apply will open PIN keypad confirmation.", contentLeft + 6, panelTop + 174, contentWidth - 12, COLOR_MUTED);
         }
 
         if (!statusMessage.isEmpty()) {
@@ -458,6 +659,19 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             return DATE_FORMATTER.format(LocalDateTime.parse(rawDate));
         } catch (DateTimeParseException ignored) {
             return rawDate.replace('T', ' ');
+        }
+    }
+
+    private static String formatResetTime(long epochMillis) {
+        if (epochMillis <= 0L) {
+            return "Unknown";
+        }
+        try {
+            return DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm")
+                    .withZone(ZoneId.systemDefault())
+                    .format(java.time.Instant.ofEpochMilli(epochMillis));
+        } catch (Exception ignored) {
+            return "Unknown";
         }
     }
 

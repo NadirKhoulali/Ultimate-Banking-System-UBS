@@ -54,7 +54,9 @@ public class BankScreen extends Screen {
             // Screen resize — re-init the top layer and re-register its widgets.
             ScreenLayer top = layerStack.peek();
             top.init(this.width, this.height);
-            registerLayerWidgets(top);
+            if (layerStack.peek() == top) {
+                registerLayerWidgets(top);
+            }
         }
     }
 
@@ -63,7 +65,9 @@ public class BankScreen extends Screen {
         layerStack.push(layer);
         layer.setBankScreen(this);
         layer.init(this.width, this.height);
-        registerLayerWidgets(layer);
+        if (layerStack.peek() == layer) {
+            registerLayerWidgets(layer);
+        }
     }
 
     public void setRootLayer(ScreenLayer layer) {
@@ -75,7 +79,9 @@ public class BankScreen extends Screen {
         layerStack.push(layer);
         layer.setBankScreen(this);
         layer.init(this.width, this.height);
-        registerLayerWidgets(layer);
+        if (layerStack.peek() == layer) {
+            registerLayerWidgets(layer);
+        }
     }
 
     public void popLayer() {
@@ -88,7 +94,9 @@ public class BankScreen extends Screen {
         this.clearWidgets();
         ScreenLayer top = layerStack.peek();
         top.init(this.width, this.height);
-        registerLayerWidgets(top);
+        if (layerStack.peek() == top) {
+            registerLayerWidgets(top);
+        }
     }
 
     private void registerLayerWidgets(ScreenLayer layer) {
@@ -125,6 +133,15 @@ public class BankScreen extends Screen {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        ScreenLayer top = layerStack.peek();
+        if (top != null && top.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         ScreenLayer top = layerStack.peek();
         if (top != null && top.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
@@ -136,6 +153,9 @@ public class BankScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (minecraft != null && minecraft.level != null) {
+            ClientATMData.refreshTemporaryWithdrawalLimitExpiry(minecraft.level.getGameTime());
+        }
         ScreenLayer top = layerStack.peek();
         if (top != null) {
             top.tick();

@@ -82,6 +82,10 @@ public class MainMenuLayer extends AbstractScreenLayer {
         addOpButton(rightColX, operationStartY + rowSpacing * 2, buttonWidth, buttonHeight, "Account Settings", hasSelection,
                 btn -> bankScreen.pushLayer(new AccountSettingsLayer(minecraft)));
 
+        int payRequestY = operationStartY + rowSpacing * 3;
+        addOpButton(contentLeft, payRequestY, contentWidth, 20, "Pay Requests", hasSelection,
+                btn -> bankScreen.pushLayer(new PayRequestsLayer(minecraft)));
+
         if (accounts.isEmpty()) {
             operationButtons.forEach(btn -> btn.active = false);
         }

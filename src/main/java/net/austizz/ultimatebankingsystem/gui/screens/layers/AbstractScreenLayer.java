@@ -63,6 +63,11 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return false;
+    }
+
+    @Override
     public List<? extends GuiEventListener> children() {
         return Collections.unmodifiableList(children);
     }

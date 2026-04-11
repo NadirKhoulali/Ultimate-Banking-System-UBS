@@ -23,7 +23,10 @@ import net.minecraft.server.level.ServerPlayer;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,6 +42,16 @@ public class AccountHolder {
     private final UUID BankId;
     private boolean isPrimaryAccount;
     private ConcurrentHashMap<UUID, UserTransaction> transactions;
+    private BigDecimal temporaryWithdrawalLimit;
+    private long temporaryWithdrawalLimitExpiresAtGameTime;
+    private boolean frozen;
+    private String frozenReason;
+    private long dailyWithdrawalWindowDay; // Epoch day in server local time
+    private BigDecimal dailyWithdrawnAmount;
+    private long dailyWithdrawalResetEpochMillis;
+
+    private static final long TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS = 24000L;
+    private static final ZoneId SERVER_ZONE = ZoneId.systemDefault();
 
 
     public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String pinCode, UUID BankId, UUID AccountUUID) {
@@ -51,6 +64,13 @@ public class AccountHolder {
         this.BankId = BankId;
         this.isPrimaryAccount = false;
         this.transactions = new ConcurrentHashMap<>();
+        this.temporaryWithdrawalLimit = null;
+        this.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+        this.frozen = false;
+        this.frozenReason = "";
+        this.dailyWithdrawalWindowDay = currentEpochDay();
+        this.dailyWithdrawnAmount = BigDecimal.ZERO;
+        this.dailyWithdrawalResetEpochMillis = computeNextMidnightEpochMillis();
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -74,32 +94,54 @@ public class AccountHolder {
     public BigDecimal getBalance() {
         return balance;
     }
-    // Adds to Players Balance
-    public boolean AddBalance(BigDecimal balance) {
-        if(balance.compareTo(BigDecimal.ZERO) <= 0) {
+
+    private boolean addBalanceInternal(BigDecimal amount, boolean ignoreFreeze) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
-        this.balance = this.balance.add(balance);
+        if (!ignoreFreeze && this.frozen) {
+            return false;
+        }
+        this.balance = this.balance.add(amount);
         BankManager.markDirty();
         return true;
+    }
+
+    private boolean removeBalanceInternal(BigDecimal amount, boolean ignoreFreeze) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        if (!ignoreFreeze && this.frozen) {
+            return false;
+        }
+        if (this.balance.compareTo(amount) < 0) {
+            return false;
+        }
+        this.balance = this.balance.subtract(amount);
+        UltimateBankingSystem.LOGGER.debug("[UBS] RemoveBalance: ${} from account {}, new balance: ${}", amount, this.accountUUID, this.balance);
+        BankManager.markDirty();
+        return true;
+    }
+
+    // Adds to Players Balance
+    public boolean AddBalance(BigDecimal balance) {
+        return addBalanceInternal(balance, false);
     }
     // Removes from Players Balance
     public boolean RemoveBalance(BigDecimal balance) {
+        return removeBalanceInternal(balance, false);
+    }
 
-        if(this.balance.compareTo(balance) < 0) {
-            return false;
-        }
-        if(balance.compareTo(BigDecimal.ZERO) <= 0 ) {
-            return false;
-        }
-        this.balance =  this.balance.subtract(balance);
-        UltimateBankingSystem.LOGGER.debug("[UBS] RemoveBalance: ${} from account {}, new balance: ${}", balance, this.accountUUID, this.balance);
-        BankManager.markDirty();
-        return true;
+    public boolean forceAddBalance(BigDecimal balance) {
+        return addBalanceInternal(balance, true);
+    }
 
+    public boolean forceRemoveBalance(BigDecimal balance) {
+        return removeBalanceInternal(balance, true);
     }
     public void addTransaction(UserTransaction transaction) {
         this.transactions.put(transaction.getTransactionUUID(), transaction);
+        BankManager.markDirty();
     }
 //    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
 //        if (this.balance.compareTo(amount) <= 0) {
@@ -166,6 +208,29 @@ public class AccountHolder {
         BankManager.markDirty();
     }
 
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public String getFrozenReason() {
+        return frozenReason == null ? "" : frozenReason;
+    }
+
+    public void freeze(String reason) {
+        this.frozen = true;
+        this.frozenReason = reason == null ? "" : reason.trim();
+        BankManager.markDirty();
+    }
+
+    public void unfreeze() {
+        if (!this.frozen && getFrozenReason().isEmpty()) {
+            return;
+        }
+        this.frozen = false;
+        this.frozenReason = "";
+        BankManager.markDirty();
+    }
+
     public boolean hasPin() {
         return isFourDigitPin(this.pinCode);
     }
@@ -184,6 +249,133 @@ public class AccountHolder {
         this.pinCode = newPin;
         BankManager.markDirty();
         return true;
+    }
+
+    public BigDecimal getConfiguredWithdrawalLimit() {
+        return BigDecimal.valueOf(Config.DEFAULT_ATM_WITHDRAWAL_LIMIT.get());
+    }
+
+    public BigDecimal getConfiguredDailyWithdrawalLimit() {
+        return switch (this.AccountType) {
+            case CheckingAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_CHECKING.get());
+            case SavingAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_SAVING.get());
+            case MoneyMarketAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_MONEY_MARKET.get());
+            case CertificateAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_CERTIFICATE.get());
+            default -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT.get());
+        };
+    }
+
+    public BigDecimal getEffectiveWithdrawalLimit(long currentGameTime) {
+        expireTemporaryWithdrawalLimitIfNeeded(currentGameTime);
+        return temporaryWithdrawalLimit != null ? temporaryWithdrawalLimit : getConfiguredWithdrawalLimit();
+    }
+
+    public BigDecimal getDailyWithdrawnAmount() {
+        syncDailyWithdrawalWindow();
+        return dailyWithdrawnAmount;
+    }
+
+    public BigDecimal getRemainingDailyWithdrawalLimit() {
+        BigDecimal remaining = getConfiguredDailyWithdrawalLimit().subtract(getDailyWithdrawnAmount());
+        return remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining;
+    }
+
+    public boolean canWithdrawToday(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        return amount.compareTo(getRemainingDailyWithdrawalLimit()) <= 0;
+    }
+
+    public void registerDailyWithdrawal(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        syncDailyWithdrawalWindow();
+        this.dailyWithdrawnAmount = this.dailyWithdrawnAmount.add(amount);
+        BankManager.markDirty();
+    }
+
+    public void rollbackDailyWithdrawal(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        syncDailyWithdrawalWindow();
+        this.dailyWithdrawnAmount = this.dailyWithdrawnAmount.subtract(amount);
+        if (this.dailyWithdrawnAmount.compareTo(BigDecimal.ZERO) < 0) {
+            this.dailyWithdrawnAmount = BigDecimal.ZERO;
+        }
+        BankManager.markDirty();
+    }
+
+    public long getDailyWithdrawalResetEpochMillis() {
+        syncDailyWithdrawalWindow();
+        return dailyWithdrawalResetEpochMillis;
+    }
+
+    public BigDecimal getTemporaryWithdrawalLimitIfActive(long currentGameTime) {
+        expireTemporaryWithdrawalLimitIfNeeded(currentGameTime);
+        return temporaryWithdrawalLimit;
+    }
+
+    public long getTemporaryWithdrawalLimitExpiresAtGameTime(long currentGameTime) {
+        expireTemporaryWithdrawalLimitIfNeeded(currentGameTime);
+        return temporaryWithdrawalLimit == null ? -1L : temporaryWithdrawalLimitExpiresAtGameTime;
+    }
+
+    public boolean setTemporaryWithdrawalLimit(BigDecimal newLimit, long currentGameTime) {
+        if (newLimit == null || newLimit.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        if (newLimit.stripTrailingZeros().scale() > 0) {
+            return false;
+        }
+
+        this.temporaryWithdrawalLimit = newLimit;
+        this.temporaryWithdrawalLimitExpiresAtGameTime = currentGameTime + TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS;
+        BankManager.markDirty();
+        return true;
+    }
+
+    public void clearTemporaryWithdrawalLimit() {
+        if (this.temporaryWithdrawalLimit == null) {
+            return;
+        }
+        this.temporaryWithdrawalLimit = null;
+        this.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+        BankManager.markDirty();
+    }
+
+    private void expireTemporaryWithdrawalLimitIfNeeded(long currentGameTime) {
+        if (temporaryWithdrawalLimit == null) {
+            return;
+        }
+        if (currentGameTime >= temporaryWithdrawalLimitExpiresAtGameTime) {
+            clearTemporaryWithdrawalLimit();
+        }
+    }
+
+    private void syncDailyWithdrawalWindow() {
+        long dayIndex = currentEpochDay();
+        long nextReset = computeNextMidnightEpochMillis();
+        if (dayIndex == this.dailyWithdrawalWindowDay
+                && this.dailyWithdrawalResetEpochMillis > System.currentTimeMillis()) {
+            return;
+        }
+
+        this.dailyWithdrawalWindowDay = dayIndex;
+        this.dailyWithdrawnAmount = BigDecimal.ZERO;
+        this.dailyWithdrawalResetEpochMillis = nextReset;
+        BankManager.markDirty();
+    }
+
+    private static long currentEpochDay() {
+        return LocalDate.now(SERVER_ZONE).toEpochDay();
+    }
+
+    private static long computeNextMidnightEpochMillis() {
+        ZonedDateTime nextMidnight = LocalDate.now(SERVER_ZONE).plusDays(1).atStartOfDay(SERVER_ZONE);
+        return nextMidnight.toInstant().toEpochMilli();
     }
 
     /**
@@ -207,6 +399,15 @@ public class AccountHolder {
         tag.putString("dateOfCreation", this.DateOfCreation.toString());
         tag.putString("pinCode", this.pinCode == null ? "" : this.pinCode);
         tag.putUUID("playerUUID", this.playerUUID);
+        tag.putBoolean("frozen", this.frozen);
+        tag.putString("frozenReason", getFrozenReason());
+        tag.putLong("dailyWithdrawalWindowDay", this.dailyWithdrawalWindowDay);
+        tag.putString("dailyWithdrawnAmount", this.dailyWithdrawnAmount.toPlainString());
+        tag.putLong("dailyWithdrawalResetEpochMillis", this.dailyWithdrawalResetEpochMillis);
+        if (this.temporaryWithdrawalLimit != null) {
+            tag.putString("temporaryWithdrawalLimit", this.temporaryWithdrawalLimit.toPlainString());
+            tag.putLong("temporaryWithdrawalLimitExpiresAtGameTime", this.temporaryWithdrawalLimitExpiresAtGameTime);
+        }
 
         // Transactions
         ListTag txList = new ListTag();
@@ -245,6 +446,28 @@ public class AccountHolder {
         AccountHolder account = new AccountHolder(playerUUID, balance, accountType, pinCode, BankId, accountUUID);
         account.DateOfCreation = LocalDateTime.parse(tag.getString("dateOfCreation"));
         account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount");
+        account.frozen = tag.getBoolean("frozen");
+        account.frozenReason = tag.contains("frozenReason") ? tag.getString("frozenReason") : "";
+        account.dailyWithdrawalWindowDay = tag.contains("dailyWithdrawalWindowDay") ? tag.getLong("dailyWithdrawalWindowDay") : currentEpochDay();
+        if (tag.contains("dailyWithdrawnAmount")) {
+            try {
+                account.dailyWithdrawnAmount = new BigDecimal(tag.getString("dailyWithdrawnAmount"));
+            } catch (NumberFormatException ignored) {
+                account.dailyWithdrawnAmount = BigDecimal.ZERO;
+            }
+        }
+        account.dailyWithdrawalResetEpochMillis = tag.contains("dailyWithdrawalResetEpochMillis")
+                ? tag.getLong("dailyWithdrawalResetEpochMillis")
+                : computeNextMidnightEpochMillis();
+        if (tag.contains("temporaryWithdrawalLimit")) {
+            try {
+                account.temporaryWithdrawalLimit = new BigDecimal(tag.getString("temporaryWithdrawalLimit"));
+                account.temporaryWithdrawalLimitExpiresAtGameTime = tag.getLong("temporaryWithdrawalLimitExpiresAtGameTime");
+            } catch (NumberFormatException ignored) {
+                account.temporaryWithdrawalLimit = null;
+                account.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+            }
+        }
 
         // Transactions
         account.transactions = new ConcurrentHashMap<>();

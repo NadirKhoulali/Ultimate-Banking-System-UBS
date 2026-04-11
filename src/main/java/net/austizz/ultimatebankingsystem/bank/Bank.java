@@ -157,7 +157,13 @@ public class Bank {
             }
 
             // Apply payout by recording a transaction: bank \-> account
-            new BankToUserTransaction(this.bankId, account.getAccountUUID(), payoutAmount, LocalDateTime.now(), "Savings Account Interest Payout").makeTransaction(ServerLifecycleHooks.getCurrentServer());
+            new BankToUserTransaction(
+                    this.bankId,
+                    account.getAccountUUID(),
+                    payoutAmount,
+                    LocalDateTime.now(),
+                    "INTEREST: Savings Account Interest Payout"
+            ).makeTransaction(ServerLifecycleHooks.getCurrentServer());
 
             // Optionally reduce reserve if reserve represents bank funds available for payouts
             // this.BankReserve = this.BankReserve.subtract(payoutAmount);

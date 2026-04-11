@@ -1,99 +1,134 @@
-<!-- UBS – Ultimate Banking System -->
+# Ultimate Banking System (UBS)
 
-<div align="center">
+UBS is a NeoForge `1.21.1` Minecraft mod that adds persistent banking accounts, ATM workflows, physical dollar bills, transfers, transaction history, PIN security, and admin banking controls.
 
-# 🏦 Ultimate Banking System — UBS
+## Current Features
 
-### *The Future of Minecraft Finance is Almost Here.*
+- Multi-account support per player (`Checking`, `Saving`, `Money Market`, `Certificate`)
+- ATM UI with:
+  - account chooser
+  - PIN authentication / PIN setup
+  - balance inquiry
+  - cash withdraw + cash deposit using real bill items
+  - transfer funds
+  - transaction history
+  - account settings
+- Physical USD bill items (`$1, $2, $5, $10, $20, $50, $100`)
+- Transaction logging per account
+- Transfer rate limiting (Bucket4j)
+- Admin money controls and account moderation
+- Data persistence via world `SavedData`
 
-[![Status](https://img.shields.io/badge/Status-Coming%20Soon-blueviolet?style=for-the-badge&logo=minecraft)](#)
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-green?style=for-the-badge&logo=minecraft)](#)
-[![NeoForge](https://img.shields.io/badge/NeoForge-21.1.220-orange?style=for-the-badge)](#)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-red?style=for-the-badge)](#)
+## New Admin/Backend Capabilities Added
 
-> **⚡ Revolutionizing in-game economics, one block at a time.**
+- Account freeze/unfreeze state on each account
+- Freeze enforcement in ATM deposit/withdraw/transfer and `/account transfer`
+- Per-account daily ATM withdrawal tracking and daily limit enforcement
+- Periodic autosave dirty-mark scheduling (`AutoSaveIntervalMinutes`)
+- Periodic savings-interest payout scheduling (`SavingsInterestIntervalTicks`)
+- Admin audit transaction tags for admin deposits/withdrawals (`ADMIN_DEPOSIT`, `ADMIN_WITHDRAW`)
+- Admin account tools:
+  - view player accounts
+  - freeze/unfreeze player accounts
+  - freeze/unfreeze specific account (legacy path)
+  - economy report
+  - multi-source import tools (`csv`, `essentialsx`, `cmi`, `iconomy`)
 
----
+## Commands
 
-</div>
+### Player
 
-## 🚀 What is UBS?
+- `/account create <AccountType> <Bank Name>`
+- `/account info`
+- `/account info list`
+- `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
+- `/account transaction <transactionUUID>`
+- `/account transaction list <accountUUID>`
 
-**Ultimate Banking System (UBS)** is a groundbreaking Minecraft mod that brings a **fully-featured, player-driven banking ecosystem** to your world.  
-Forget primitive chests of gold — UBS introduces a **modern financial layer** on top of Minecraft's survival and multiplayer experience, complete with accounts, transactions, interest, loans, and more.
+### Admin (`permission level 3`)
 
-Whether you're running a server economy or building a trading empire in single-player, UBS gives you the tools to **think bigger, bank smarter, and play harder**.
+- `/ubs centralbank`
+- `/ubs centralbank interest set <rate>`
+- `/ubs bank save`
+- `/ubs bank rename <new name>`
+- `/ubs money deposit <accountUUID> <amount>`
+- `/ubs money withdraw <accountUUID> <amount>`
 
----
+New admin set (also available as `/bank admin ...` alias):
 
-## ✨ Planned Features
+- `/ubs admin view <player>`
+- `/ubs admin freeze <player> [reason]`
+- `/ubs admin unfreeze <player>`
+- `/ubs admin freeze account <accountUUID> [reason]`
+- `/ubs admin unfreeze account <accountUUID>`
+- `/ubs admin report`
+- `/ubs admin import csv <path>`
+- `/ubs admin import essentialsx <path>`
+- `/ubs admin import cmi <path>`
+- `/ubs admin import iconomy <path>`
 
-> 🔒 *Details are locked in the vault — but here's a sneak peek at what's coming.*
+## CSV Import Format
 
-- 🏧 **ATMs & Bank Tellers** — Interact with custom in-world banking terminals
-- 💳 **Player Accounts** — Create personal savings and checking accounts
-- 📈 **Interest & Investment** — Grow your wealth passively over time
-- 🤝 **Player-to-Player Transfers** — Send funds instantly across the server
-- 🏦 **Bank Vaults** — Secure, upgradeable storage for high-value items and currency
-- 📋 **Transaction History** — Full audit logs of every deposit, withdrawal, and transfer
-- 🌐 **Multi-Server Economy Support** *(planned)* — Link economies across server networks
-- 🔐 **Role-Based Permissions** — Bankers, auditors, and clients — each with defined privileges
-- 💰 **Custom Currency System** — Mint your own coins and denominations
-- 📊 **Economy Dashboard** — Real-time server economy stats at a glance
+`/ubs admin import csv <path>` expects CSV rows with:
 
----
+`player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
 
-## 🗓️ Release Timeline
+Notes:
 
-| Milestone | Status |
-|---|---|
-| Core Architecture | 🔨 In Progress |
-| Account System | 🔜 Coming Soon |
-| Banking UI / Screens | 🔜 Coming Soon |
-| Economy Integration | 🔜 Coming Soon |
-| Public Alpha Release | ⏳ TBD |
-| Full v1.0 Launch | ⏳ TBD |
+- Header row is optional.
+- `pin` can be empty or exactly 4 digits.
+- `is_primary` is optional (`true`/`false`).
+- `account_type` accepts enum names or labels.
+- `history` is optional. Format: `timestamp|signedAmount|description;timestamp|signedAmount|description`
+- `timestamp` uses ISO format (`YYYY-MM-DDTHH:mm:ss`), `signedAmount` positive=incoming, negative=outgoing.
 
----
+Example:
 
-## 📦 Requirements
+```csv
+player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history
+8b0b6d69-2ac5-4fa0-86de-6f6b9d9e1e7e,Central Bank,CheckingAccount,1500,1234,true,2026-04-11T09:00:00|+1500|Initial migration
+Steve,Central Bank,SavingAccount,3000,,false,
+```
 
-- **Minecraft** `1.21.1`
-- **NeoForge** `21.1.220+`
-- **Java** `21+`
+## Plugin Migration Sources
 
----
+- `essentialsx`: pass a userdata folder or a single `.yml/.yaml` file. Reads `money`/`balance` and maps to UBS accounts.
+- `cmi`: pass a userdata folder or a single `.yml/.yaml` file. Reads `money`/`balance` and maps to UBS accounts.
+- `iconomy`: pass a text/CSV file with `player,balance` or `player:balance` per line.
 
-## 🔧 Building from Source
+Import commands print a summary in chat and also write summary + warnings to the server log.
+
+## Config Highlights (`common` config)
+
+- `TransactionsPerMinute`
+- `DefaultATMWithdrawalLimit`
+- `DailyWithdrawalLimit`
+- `AutoSaveIntervalMinutes`
+- `SavingsInterestIntervalTicks`
+- `AllowBankCustomInterestRate`
+- `ServerInterestRate`
+- `FederalFundsRate`
+- `MinCustomBankInterestRate`
+- `MaxCustomBankInterestRate`
+- `CurrencySymbol`
+- `CurrencyName`
+
+## Build
+
+Requirements:
+
+- Java `21+`
+- NeoForge toolchain
+
+Build:
 
 ```bash
-# Clone the repository
-git clone https://github.com/NadirKhoulali/Ultimate-Banking-System-UBS.git
-cd Ultimate-Banking-System-UBS
-
-# Refresh dependencies (if needed)
-./gradlew --refresh-dependencies
-
-# Build the mod
 ./gradlew build
 ```
 
-The compiled `.jar` will be located in `build/libs/`.
+On Windows shell environments, run via `gradlew.bat`.
 
----
+## Documentation
 
-## 🌟 Stay in the Loop
-
-This mod is currently in active development. Big things are coming.  
-**Watch this repository** to be the first to know when UBS drops.
-
-> *"The blocks you place today are the banks of tomorrow."*
-
----
-
-<div align="center">
-
-**© 2025 NadirKhoulali — All Rights Reserved**  
-*Ultimate Banking System is not affiliated with Mojang Studios or Microsoft.*
-
-</div>
+- Player guide: [`PLAYER_GUIDE.md`](PLAYER_GUIDE.md)
+- Wiki pages for GitHub wiki publishing: [`docs/wiki`](docs/wiki)

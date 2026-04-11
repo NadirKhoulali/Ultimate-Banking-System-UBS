@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.command;
 
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -11,8 +12,11 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
+import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.UuidArgument;
 import net.minecraft.network.chat.*;
 import net.minecraft.server.MinecraftServer;
@@ -25,6 +29,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSCommands {
 
-    private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money");
+    private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> §8- §7Request money from a player");
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
         return Component.literal("§6§lUltimate Banking System §7- ")
@@ -304,12 +310,40 @@ public class UBSCommands {
                                                                 return 1;
                                                             }
 
+                                                            if (!sender.getPlayerUUID().equals(context.getSource().getPlayer().getUUID())) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cYou do not own the sender account."));
+                                                                return 1;
+                                                            }
+
+                                                            if (sender.getAccountUUID().equals(receiver.getAccountUUID())) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cYou cannot transfer to the same account."));
+                                                                return 1;
+                                                            }
+
+                                                            if (sender.isFrozen()) {
+                                                                String reason = sender.getFrozenReason();
+                                                                context.getSource().sendSystemMessage(Component.literal(
+                                                                        "§cSender account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
+                                                                ));
+                                                                return 1;
+                                                            }
+
+                                                            if (receiver.isFrozen()) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cReceiver account is frozen."));
+                                                                return 1;
+                                                            }
+
                                                             String amountStr = StringArgumentType.getString(context, "amount");
                                                             BigDecimal amount;
                                                             try {
                                                                 amount = new BigDecimal(amountStr);
                                                             } catch (NumberFormatException e) {
                                                                 context.getSource().sendSystemMessage(Component.literal("§cThe amount '§e" + amountStr + "§c' is not a valid number."));
+                                                                return 1;
+                                                            }
+
+                                                            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                                                                context.getSource().sendSystemMessage(Component.literal("§cThe transfer amount must be greater than zero."));
                                                                 return 1;
                                                             }
                                                             
@@ -503,5 +537,387 @@ public class UBSCommands {
 
                 );
 
+        event.getDispatcher().register(buildPayRequestCommand());
+        event.getDispatcher().register(buildHiddenPayRequestCommand());
+
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildPayRequestCommand() {
+        return Commands.literal("payrequest")
+                .then(Commands.argument("player", EntityArgument.player())
+                        .then(Commands.argument("amount", StringArgumentType.greedyString())
+                                .executes(context -> handlePayRequestCreate(
+                                        context.getSource(),
+                                        EntityArgument.getPlayer(context, "player"),
+                                        StringArgumentType.getString(context, "amount")
+                                ))
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildHiddenPayRequestCommand() {
+        return Commands.literal("ubs_payrequest")
+                .then(Commands.literal("accept")
+                        .then(Commands.argument("requestId", UuidArgument.uuid())
+                                .executes(context -> handlePayRequestAccept(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "requestId"),
+                                        null
+                                ))
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .executes(context -> handlePayRequestAccept(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "requestId"),
+                                                UuidArgument.getUuid(context, "accountId")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("decline")
+                        .then(Commands.argument("requestId", UuidArgument.uuid())
+                                .executes(context -> handlePayRequestDecline(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "requestId")
+                                ))
+                        )
+                )
+                .then(Commands.literal("choose")
+                        .then(Commands.argument("requestId", UuidArgument.uuid())
+                                .executes(context -> handlePayRequestChoose(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "requestId")
+                                ))
+                        )
+                );
+    }
+
+    private static int handlePayRequestCreate(CommandSourceStack source, ServerPlayer payer, String amountRaw) {
+        ServerPlayer requester = source.getPlayer();
+        if (requester == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can send pay requests."));
+            return 1;
+        }
+
+        if (payer.getUUID().equals(requester.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou cannot send a pay request to yourself."));
+            return 1;
+        }
+
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            return 1;
+        }
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            return 1;
+        }
+
+        var request = PayRequestManager.createRequest(requester.getUUID(), payer.getUUID(), amount);
+        source.sendSystemMessage(Component.literal(
+                "§aPay request sent to §e" + payer.getName().getString() + " §afor §6$" + amount.toPlainString() + "§a."
+        ));
+        sendPayRequestPrompt(payer, requester, request);
+        return 1;
+    }
+
+    private static int handlePayRequestAccept(CommandSourceStack source, UUID requestId, UUID accountId) {
+        ServerPlayer payer = source.getPlayer();
+        if (payer == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can accept pay requests."));
+            return 1;
+        }
+
+        MinecraftServer server = source.getServer();
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
+        if (request == null) {
+            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            return 1;
+        }
+        if (!request.getPayerUUID().equals(payer.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            return 1;
+        }
+        if (request.getStatus() != PayRequestManager.Status.PENDING) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
+            return 1;
+        }
+        if (PayRequestManager.isExpired(request)) {
+            source.sendSystemMessage(Component.literal("§cThis pay request has expired."));
+            return 1;
+        }
+
+        AccountHolder senderAccount = accountId == null
+                ? findPrimaryAccount(centralBank, payer.getUUID())
+                : findAccountForPlayer(centralBank, payer.getUUID(), accountId);
+
+        if (senderAccount == null) {
+            source.sendSystemMessage(Component.literal("§cNo valid account selected. Choose an account first."));
+            sendPayRequestAccountChoices(payer, request, "Choose an account to pay with:");
+            return 1;
+        }
+
+        AccountHolder receiverAccount = findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
+        if (receiverAccount == null) {
+            source.sendSystemMessage(Component.literal("§cRequester has no valid receiving account (primary required)."));
+            ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+            if (requester != null) {
+                requester.sendSystemMessage(Component.literal("§cYour pay request could not be completed because you have no primary receiving account."));
+            }
+            return 1;
+        }
+
+        if (senderAccount.getAccountUUID().equals(receiverAccount.getAccountUUID())) {
+            source.sendSystemMessage(Component.literal("§cCannot pay the same account."));
+            return 1;
+        }
+
+        boolean transferSuccess = new UserTransaction(
+                senderAccount.getAccountUUID(),
+                receiverAccount.getAccountUUID(),
+                request.getAmount(),
+                LocalDateTime.now(),
+                "Pay Request"
+        ).makeTransaction(server);
+
+        if (!transferSuccess) {
+            source.sendSystemMessage(Component.literal("§cPayment failed. Check balance and account status."));
+            ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+            if (requester != null) {
+                requester.sendSystemMessage(Component.literal(
+                        "§e" + payer.getName().getString() + " tried to accept your pay request, but payment failed."
+                ));
+            }
+            return 1;
+        }
+
+        PayRequestManager.markAccepted(requestId);
+        source.sendSystemMessage(Component.literal(
+                "§aPaid §6$" + request.getAmount().toPlainString() + "§a to §e"
+                        + resolvePlayerName(server, request.getRequesterUUID())
+                        + "§a using account §7" + shortId(senderAccount.getAccountUUID())
+        ));
+
+        ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+        if (requester != null) {
+            requester.sendSystemMessage(Component.literal(
+                    "§a" + payer.getName().getString() + " accepted your pay request for §6$" + request.getAmount().toPlainString() + "§a."
+            ));
+        }
+
+        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(senderAccount, senderAccount.getBalance(), request.getAmount(), false));
+        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiverAccount, receiverAccount.getBalance(), request.getAmount(), true));
+        return 1;
+    }
+
+    private static int handlePayRequestDecline(CommandSourceStack source, UUID requestId) {
+        ServerPlayer payer = source.getPlayer();
+        if (payer == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can decline pay requests."));
+            return 1;
+        }
+
+        MinecraftServer server = source.getServer();
+        PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
+        if (request == null) {
+            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            return 1;
+        }
+        if (!request.getPayerUUID().equals(payer.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            return 1;
+        }
+        if (request.getStatus() != PayRequestManager.Status.PENDING) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
+            return 1;
+        }
+
+        PayRequestManager.markDeclined(requestId);
+        source.sendSystemMessage(Component.literal("§7You declined the pay request."));
+
+        ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
+        if (requester != null) {
+            requester.sendSystemMessage(Component.literal(
+                    "§c" + payer.getName().getString() + " declined your pay request for §6$" + request.getAmount().toPlainString() + "§c."
+            ));
+        }
+        return 1;
+    }
+
+    private static int handlePayRequestChoose(CommandSourceStack source, UUID requestId) {
+        ServerPlayer payer = source.getPlayer();
+        if (payer == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can choose account for pay requests."));
+            return 1;
+        }
+
+        PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
+        if (request == null) {
+            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            return 1;
+        }
+        if (!request.getPayerUUID().equals(payer.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            return 1;
+        }
+        if (request.getStatus() != PayRequestManager.Status.PENDING || PayRequestManager.isExpired(request)) {
+            source.sendSystemMessage(Component.literal("§cThis pay request is no longer pending."));
+            return 1;
+        }
+
+        sendPayRequestAccountChoices(payer, request, "Choose an account to pay with:");
+        return 1;
+    }
+
+    private static void sendPayRequestPrompt(ServerPlayer payer,
+                                             ServerPlayer requester,
+                                             PayRequestManager.PayRequest request) {
+        MinecraftServer server = payer.getServer();
+        if (server == null) {
+            return;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return;
+        }
+
+        AccountHolder primary = findPrimaryAccount(centralBank, payer.getUUID());
+        if (primary == null) {
+            payer.sendSystemMessage(Component.literal(
+                    "§6Pay Request: §e" + requester.getName().getString() + " §7requests §6$"
+                            + request.getAmount().toPlainString() + "§7."
+            ));
+            sendPayRequestAccountChoices(payer, request, "No primary account set. Choose account to accept:");
+            return;
+        }
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7From: §e" + requester.getName().getString() + "\n"));
+        body.append(Component.literal("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
+        body.append(Component.literal("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
+
+        String requestId = request.getRequestId().toString();
+        body.append(clickAction("[Accept]", ChatFormatting.GREEN, "/ubs_payrequest accept " + requestId, "Accept with primary account"));
+        body.append(Component.literal(" "));
+        body.append(clickAction("[Decline]", ChatFormatting.RED, "/ubs_payrequest decline " + requestId, "Decline this request"));
+        body.append(Component.literal(" "));
+        body.append(clickAction("[Choose Account]", ChatFormatting.AQUA, "/ubs_payrequest choose " + requestId, "Pay from a different account"));
+
+        payer.sendSystemMessage(
+                ubsMessage(ChatFormatting.GOLD, "§ePay Request", body)
+        );
+    }
+
+    private static void sendPayRequestAccountChoices(ServerPlayer payer,
+                                                     PayRequestManager.PayRequest request,
+                                                     String titleLine) {
+        MinecraftServer server = payer.getServer();
+        if (server == null) {
+            return;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return;
+        }
+
+        List<AccountHolder> payerAccounts = centralBank.SearchForAccount(payer.getUUID())
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(a -> a.getAccountUUID().toString()))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7" + titleLine + "\n"));
+        body.append(Component.literal("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
+
+        if (payerAccounts.isEmpty()) {
+            body.append(Component.literal("§cYou have no accounts available.\n"));
+        } else {
+            for (AccountHolder account : payerAccounts) {
+                String buttonLabel = "[" + account.getAccountType().label + " $" + account.getBalance().toPlainString() + "]";
+                String command = "/ubs_payrequest accept " + request.getRequestId() + " " + account.getAccountUUID();
+                body.append(clickAction(buttonLabel, ChatFormatting.AQUA, command, "Pay using " + accountLabel(account)));
+                body.append(Component.literal(" §7" + shortId(account.getAccountUUID()) + "\n"));
+            }
+        }
+
+        body.append(Component.literal("\n"));
+        body.append(clickAction("[Decline]", ChatFormatting.RED,
+                "/ubs_payrequest decline " + request.getRequestId(),
+                "Decline this request"));
+
+        payer.sendSystemMessage(ubsMessage(ChatFormatting.AQUA, "§bPay Request Account Choice", body));
+    }
+
+    private static MutableComponent clickAction(String label,
+                                                ChatFormatting color,
+                                                String runCommand,
+                                                String hoverText) {
+        return Component.literal(label).setStyle(
+                Style.EMPTY
+                        .withColor(color)
+                        .withBold(true)
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, runCommand))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hoverText)))
+        );
+    }
+
+    private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {
+        for (AccountHolder account : centralBank.SearchForAccount(playerId).values()) {
+            if (account.isPrimaryAccount()) {
+                return account;
+            }
+        }
+        return null;
+    }
+
+    private static AccountHolder findPreferredReceiverAccount(CentralBank centralBank, UUID requesterId) {
+        ConcurrentHashMap<UUID, AccountHolder> accounts = centralBank.SearchForAccount(requesterId);
+        if (accounts.isEmpty()) {
+            return null;
+        }
+        for (AccountHolder account : accounts.values()) {
+            if (account.isPrimaryAccount()) {
+                return account;
+            }
+        }
+        if (accounts.size() == 1) {
+            return accounts.values().iterator().next();
+        }
+        return null;
+    }
+
+    private static AccountHolder findAccountForPlayer(CentralBank centralBank, UUID playerId, UUID accountId) {
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !account.getPlayerUUID().equals(playerId)) {
+            return null;
+        }
+        return account;
+    }
+
+    private static String resolvePlayerName(MinecraftServer server, UUID uuid) {
+        ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+        if (player != null) {
+            return player.getName().getString();
+        }
+        return shortId(uuid);
+    }
+
+    private static String shortId(UUID uuid) {
+        String raw = uuid.toString();
+        return raw.substring(0, Math.min(8, raw.length()));
+    }
+
+    private static String accountLabel(AccountHolder account) {
+        return account.getAccountType().label + " (" + shortId(account.getAccountUUID()) + ")";
     }
 }
