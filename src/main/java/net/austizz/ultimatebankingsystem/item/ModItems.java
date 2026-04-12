@@ -19,6 +19,8 @@ public class ModItems {
     public static final DeferredItem<Item> TWENTY_DOLLAR_BILL = ITEMS.register("twenty_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> FIFTY_DOLLAR_BILL = ITEMS.register("fifty_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> HUNDRED_DOLLAR_BILL = ITEMS.register("hundred_dollar_bill", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> BANK_NOTE = ITEMS.register("bank_note", () -> new Item(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> CHEQUE = ITEMS.register("cheque", () -> new Item(new Item.Properties().stacksTo(1)));
 
     public static final List<DeferredItem<Item>> USD_BILLS = List.of(
             HUNDRED_DOLLAR_BILL,

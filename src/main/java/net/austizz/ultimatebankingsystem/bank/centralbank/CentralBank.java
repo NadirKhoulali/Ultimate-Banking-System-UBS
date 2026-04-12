@@ -18,12 +18,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, Bank> banks;
     private ConcurrentHashMap<UUID, ScheduledPayment> scheduledPayments;
+    private ConcurrentHashMap<String, Boolean> redeemedNoteSerials;
+    private ConcurrentHashMap<String, Boolean> redeemedChequeIds;
 
     public CentralBank() {
         super(new UUID(0,0), "Central Bank", new BigDecimal("0"), 1.2, new UUID(0,0));
         this.banks = new ConcurrentHashMap<>();
         this.banks.put(this.getBankId(), this);
         this.scheduledPayments = new ConcurrentHashMap<>();
+        this.redeemedNoteSerials = new ConcurrentHashMap<>();
+        this.redeemedChequeIds = new ConcurrentHashMap<>();
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
         return banks;
@@ -111,6 +115,42 @@ public class CentralBank extends Bank{
         return false;
     }
 
+    public boolean isNoteSerialRedeemed(String serial) {
+        if (serial == null || serial.isBlank()) {
+            return false;
+        }
+        return redeemedNoteSerials != null && redeemedNoteSerials.containsKey(serial);
+    }
+
+    public void markNoteSerialRedeemed(String serial) {
+        if (serial == null || serial.isBlank()) {
+            return;
+        }
+        if (redeemedNoteSerials == null) {
+            redeemedNoteSerials = new ConcurrentHashMap<>();
+        }
+        redeemedNoteSerials.put(serial, Boolean.TRUE);
+        BankManager.markDirty();
+    }
+
+    public boolean isChequeRedeemed(String chequeId) {
+        if (chequeId == null || chequeId.isBlank()) {
+            return false;
+        }
+        return redeemedChequeIds != null && redeemedChequeIds.containsKey(chequeId);
+    }
+
+    public void markChequeRedeemed(String chequeId) {
+        if (chequeId == null || chequeId.isBlank()) {
+            return;
+        }
+        if (redeemedChequeIds == null) {
+            redeemedChequeIds = new ConcurrentHashMap<>();
+        }
+        redeemedChequeIds.put(chequeId, Boolean.TRUE);
+        BankManager.markDirty();
+    }
+
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
@@ -134,6 +174,26 @@ public class CentralBank extends Bank{
             scheduledPaymentsTag.add(paymentTag);
         });
         tag.put("scheduled_payments", scheduledPaymentsTag);
+
+        ListTag noteSerials = new ListTag();
+        if (redeemedNoteSerials != null) {
+            redeemedNoteSerials.keySet().forEach(serial -> {
+                CompoundTag serialTag = new CompoundTag();
+                serialTag.putString("serial", serial);
+                noteSerials.add(serialTag);
+            });
+        }
+        tag.put("redeemed_note_serials", noteSerials);
+
+        ListTag redeemedCheques = new ListTag();
+        if (redeemedChequeIds != null) {
+            redeemedChequeIds.keySet().forEach(chequeId -> {
+                CompoundTag chequeTag = new CompoundTag();
+                chequeTag.putString("chequeId", chequeId);
+                redeemedCheques.add(chequeTag);
+            });
+        }
+        tag.put("redeemed_cheque_ids", redeemedCheques);
 
         return tag;
     }
@@ -173,6 +233,26 @@ public class CentralBank extends Bank{
             ScheduledPayment payment = ScheduledPayment.load(scheduledPaymentsTag.getCompound(i), registries);
             if (payment != null) {
                 centralBank.scheduledPayments.put(payment.getPaymentId(), payment);
+            }
+        }
+
+        centralBank.redeemedNoteSerials = new ConcurrentHashMap<>();
+        ListTag noteSerials = tag.getList("redeemed_note_serials", 10);
+        for (int i = 0; i < noteSerials.size(); i++) {
+            CompoundTag serialTag = noteSerials.getCompound(i);
+            String serial = serialTag.getString("serial");
+            if (!serial.isBlank()) {
+                centralBank.redeemedNoteSerials.put(serial, Boolean.TRUE);
+            }
+        }
+
+        centralBank.redeemedChequeIds = new ConcurrentHashMap<>();
+        ListTag redeemedCheques = tag.getList("redeemed_cheque_ids", 10);
+        for (int i = 0; i < redeemedCheques.size(); i++) {
+            CompoundTag chequeTag = redeemedCheques.getCompound(i);
+            String chequeId = chequeTag.getString("chequeId");
+            if (!chequeId.isBlank()) {
+                centralBank.redeemedChequeIds.put(chequeId, Boolean.TRUE);
             }
         }
         return centralBank;

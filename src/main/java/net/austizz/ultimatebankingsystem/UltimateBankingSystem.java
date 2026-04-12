@@ -5,9 +5,11 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
+import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -24,6 +26,7 @@ import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
@@ -53,6 +56,8 @@ public class UltimateBankingSystem {
             for (var bill : ModItems.USD_BILLS) {
                 event.accept(bill);
             }
+            event.accept(ModItems.BANK_NOTE);
+            event.accept(ModItems.CHEQUE);
         }
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(ModBlocks.ATM_MACHINE);
@@ -130,5 +135,9 @@ public class UltimateBankingSystem {
             return;
         }
         targetPlayer.sendSystemMessage(Component.literal(message));
+        PacketDistributor.sendToPlayer(targetPlayer, new HudStatePayload(
+                event.getAccount().getBalance().toPlainString(),
+                UBSCommands.isHudEnabled(targetPlayer.getUUID())
+        ));
     }
 }

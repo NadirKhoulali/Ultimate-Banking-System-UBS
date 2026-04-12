@@ -1,9 +1,11 @@
 package net.austizz.ultimatebankingsystem.command;
 
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
@@ -15,6 +17,8 @@ import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -24,10 +28,15 @@ import net.minecraft.network.chat.*;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.nbt.CompoundTag;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -44,6 +53,7 @@ public class UBSCommands {
 
     private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
     private static final ConcurrentHashMap<UUID, LoanService.LoanQuote> PENDING_LOAN_CONFIRMATIONS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, Boolean> HUD_ENABLED_OVERRIDES = new ConcurrentHashMap<>();
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
         return Component.literal("§6§lUltimate Banking System §7- ")
@@ -558,7 +568,12 @@ public class UBSCommands {
                                     + "§8/§fbank §7loan confirm §8- §7Confirm your last loan request\n"
                                     + "§8/§fbank §7loan status §8- §7Show active loan balances\n"
                                     + "§8/§fbank §7credit §8- §7Show your credit score\n"
-                                    + "§8/§fbank §7shop pay <amount> [shop] §8- §7Simulate a shop checkout using bank funds"
+                                    + "§8/§fbank §7shop pay <amount> [shop] §8- §7Simulate a shop checkout using bank funds\n"
+                                    + "§8/§fbank §7withdraw note <amount> §8- §7Withdraw a serialized physical bank note\n"
+                                    + "§8/§fbank §7deposit note §8- §7Deposit the held bank note\n"
+                                    + "§8/§fbank §7cheque write <player> <amount> §8- §7Write a cheque item\n"
+                                    + "§8/§fbank §7cheque deposit §8- §7Deposit the held cheque\n"
+                                    + "§8/§fbank §7hud toggle §8- §7Toggle on-screen balance HUD"
                     ));
                     return 1;
                 })
@@ -597,6 +612,42 @@ public class UBSCommands {
                                                 ))
                                         )
                                 )
+                        )
+                )
+                .then(Commands.literal("withdraw")
+                        .then(Commands.literal("note")
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleWithdrawNote(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("deposit")
+                        .then(Commands.literal("note")
+                                .executes(context -> handleDepositNote(context.getSource()))
+                        )
+                )
+                .then(Commands.literal("cheque")
+                        .then(Commands.literal("write")
+                                .then(Commands.argument("player", StringArgumentType.word())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handleWriteCheque(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "player"),
+                                                        StringArgumentType.getString(context, "amount")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("deposit")
+                                .executes(context -> handleDepositCheque(context.getSource()))
+                        )
+                )
+                .then(Commands.literal("hud")
+                        .then(Commands.literal("toggle")
+                                .executes(context -> handleHudToggle(context.getSource()))
                         )
                 )
                 .then(Commands.literal("joint")
@@ -1018,6 +1069,310 @@ public class UBSCommands {
         return 1;
     }
 
+    private static int handleWithdrawNote(CommandSourceStack source, String amountRaw) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cNo account available."));
+            return 1;
+        }
+
+        if (!account.RemoveBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cWithdraw note failed: insufficient funds."));
+            return 1;
+        }
+
+        String serial = UUID.randomUUID().toString();
+        ItemStack note = new ItemStack(ModItems.BANK_NOTE.get());
+        CompoundTag tag = new CompoundTag();
+        tag.putString("ubs_note_serial", serial);
+        tag.putString("ubs_note_amount", amount.toPlainString());
+        tag.putUUID("ubs_note_account", account.getAccountUUID());
+        applyCustomTag(note, tag);
+
+        if (!player.getInventory().add(note)) {
+            player.drop(note, false);
+        }
+        account.addTransaction(new UserTransaction(
+                account.getAccountUUID(),
+                UUID.nameUUIDFromBytes("ultimatebankingsystem:note-issuer".getBytes()),
+                amount,
+                LocalDateTime.now(),
+                "BANK_NOTE_ISSUED"
+        ));
+
+        source.sendSystemMessage(Component.literal(
+                "§aIssued bank note for §6$" + amount.toPlainString() + "§a. Serial: §f" + serial
+        ));
+        return 1;
+    }
+
+    private static int handleDepositNote(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        ItemStack held = player.getMainHandItem();
+        if (held.isEmpty() || held.getItem() != ModItems.BANK_NOTE.get()) {
+            source.sendSystemMessage(Component.literal("§cHold a bank note in your main hand."));
+            return 1;
+        }
+
+        CompoundTag tag = readCustomTag(held);
+        if (tag == null || !tag.contains("ubs_note_serial") || !tag.contains("ubs_note_amount")) {
+            source.sendSystemMessage(Component.literal("§cInvalid bank note data."));
+            return 1;
+        }
+
+        String serial = tag.getString("ubs_note_serial");
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(tag.getString("ubs_note_amount"));
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid bank note amount."));
+            return 1;
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            source.sendSystemMessage(Component.literal("§cInvalid bank note value."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        if (centralBank.isNoteSerialRedeemed(serial)) {
+            source.sendSystemMessage(Component.literal("§cThis bank note serial has already been redeemed."));
+            return 1;
+        }
+
+        AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cNo account available."));
+            return 1;
+        }
+
+        if (!account.AddBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cDeposit failed."));
+            return 1;
+        }
+        centralBank.markNoteSerialRedeemed(serial);
+        held.shrink(1);
+        account.addTransaction(new UserTransaction(
+                UUID.nameUUIDFromBytes("ultimatebankingsystem:note-redeem".getBytes()),
+                account.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "BANK_NOTE_REDEEMED"
+        ));
+        source.sendSystemMessage(Component.literal(
+                "§aDeposited bank note: §6$" + amount.toPlainString() + "§a."
+        ));
+        return 1;
+    }
+
+    private static int handleWriteCheque(CommandSourceStack source, String recipientNameRaw, String amountRaw) {
+        ServerPlayer writer = source.getPlayer();
+        if (writer == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        String recipientName = recipientNameRaw == null ? "" : recipientNameRaw.trim();
+        if (recipientName.isEmpty()) {
+            source.sendSystemMessage(Component.literal("§cInvalid recipient."));
+            return 1;
+        }
+
+        UUID recipientUuid = null;
+        ServerPlayer onlineRecipient = source.getServer().getPlayerList().getPlayerByName(recipientName);
+        if (onlineRecipient != null) {
+            recipientUuid = onlineRecipient.getUUID();
+            recipientName = onlineRecipient.getName().getString();
+        } else {
+            var cache = source.getServer().getProfileCache();
+            if (cache != null) {
+                java.util.Optional<GameProfile> profile = cache.get(recipientName);
+                if (profile.isPresent()) {
+                    recipientUuid = profile.get().getId();
+                    if (profile.get().getName() != null && !profile.get().getName().isBlank()) {
+                        recipientName = profile.get().getName();
+                    }
+                }
+            }
+        }
+
+        if (recipientUuid == null) {
+            source.sendSystemMessage(Component.literal("§cUnknown player profile: " + recipientNameRaw));
+            return 1;
+        }
+
+        if (writer.getUUID().equals(recipientUuid)) {
+            source.sendSystemMessage(Component.literal("§cYou cannot write a cheque to yourself."));
+            return 1;
+        }
+
+        BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder account = resolveDefaultLoanAccount(centralBank, writer.getUUID());
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cNo source account available."));
+            return 1;
+        }
+        if (!account.RemoveBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cInsufficient funds for cheque."));
+            return 1;
+        }
+
+        String chequeId = UUID.randomUUID().toString();
+        ItemStack cheque = new ItemStack(ModItems.CHEQUE.get());
+        CompoundTag tag = new CompoundTag();
+        tag.putString("ubs_cheque_id", chequeId);
+        tag.putString("ubs_cheque_amount", amount.toPlainString());
+        tag.putUUID("ubs_cheque_recipient", recipientUuid);
+        tag.putUUID("ubs_cheque_writer", writer.getUUID());
+        applyCustomTag(cheque, tag);
+
+        if (!writer.getInventory().add(cheque)) {
+            writer.drop(cheque, false);
+        }
+
+        account.addTransaction(new UserTransaction(
+                account.getAccountUUID(),
+                UUID.nameUUIDFromBytes("ultimatebankingsystem:cheque-write".getBytes()),
+                amount,
+                LocalDateTime.now(),
+                "CHEQUE_WRITE:" + recipientUuid
+        ));
+        source.sendSystemMessage(Component.literal(
+                "§aCheque written for §6$" + amount.toPlainString() + "§a to §e" + recipientName
+                        + "§a. ID: §f" + chequeId
+        ));
+        return 1;
+    }
+
+    private static int handleDepositCheque(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        ItemStack held = player.getMainHandItem();
+        if (held.isEmpty() || held.getItem() != ModItems.CHEQUE.get()) {
+            source.sendSystemMessage(Component.literal("§cHold a cheque in your main hand."));
+            return 1;
+        }
+        CompoundTag tag = readCustomTag(held);
+        if (tag == null || !tag.contains("ubs_cheque_id") || !tag.contains("ubs_cheque_amount") || !tag.contains("ubs_cheque_recipient")) {
+            source.sendSystemMessage(Component.literal("§cInvalid cheque data."));
+            return 1;
+        }
+
+        String chequeId = tag.getString("ubs_cheque_id");
+        UUID recipientId = tag.getUUID("ubs_cheque_recipient");
+        if (!player.getUUID().equals(recipientId)) {
+            source.sendSystemMessage(Component.literal("§cThis cheque is not payable to you."));
+            return 1;
+        }
+
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(tag.getString("ubs_cheque_amount"));
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid cheque amount."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        if (centralBank.isChequeRedeemed(chequeId)) {
+            source.sendSystemMessage(Component.literal("§cThis cheque has already been redeemed."));
+            return 1;
+        }
+
+        AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cNo destination account available."));
+            return 1;
+        }
+        if (!account.AddBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cFailed to redeem cheque."));
+            return 1;
+        }
+
+        centralBank.markChequeRedeemed(chequeId);
+        held.shrink(1);
+        account.addTransaction(new UserTransaction(
+                UUID.nameUUIDFromBytes("ultimatebankingsystem:cheque-redeem".getBytes()),
+                account.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "CHEQUE_REDEEMED:" + chequeId
+        ));
+        source.sendSystemMessage(Component.literal(
+                "§aCheque deposited: §6$" + amount.toPlainString() + "§a."
+        ));
+        return 1;
+    }
+
+    private static int handleHudToggle(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        boolean current = HUD_ENABLED_OVERRIDES.getOrDefault(player.getUUID(), Config.HUD_ENABLED_BY_DEFAULT.get());
+        boolean next = !current;
+        HUD_ENABLED_OVERRIDES.put(player.getUUID(), next);
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        String balance = "0";
+        if (centralBank != null) {
+            AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
+            if (account != null) {
+                balance = account.getBalance().toPlainString();
+            }
+        }
+
+        PacketDistributor.sendToPlayer(player, new HudStatePayload(balance, next));
+        source.sendSystemMessage(Component.literal(
+                "§aBalance HUD is now " + (next ? "§2enabled" : "§4disabled") + "§a."
+        ));
+        return 1;
+    }
+
     private static int handleJointCreate(CommandSourceStack source, ServerPlayer invitedPlayer, String bankName) {
         ServerPlayer creator = source.getPlayer();
         if (creator == null) {
@@ -1364,6 +1719,27 @@ public class UBSCommands {
             source.sendSystemMessage(Component.literal("§cAccount not found: " + accountId));
         }
         return account;
+    }
+
+    private static CompoundTag readCustomTag(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+        if (data == null) {
+            return null;
+        }
+        return data.copyTag();
+    }
+
+    private static void applyCustomTag(ItemStack stack, CompoundTag tag) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        if (tag == null) {
+            return;
+        }
+        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
     }
 
     private static BigDecimal parsePositiveWholeAmount(CommandSourceStack source, String amountRaw) {
@@ -1844,5 +2220,12 @@ public class UBSCommands {
 
     private static String accountLabel(AccountHolder account) {
         return account.getAccountType().label + " (" + shortId(account.getAccountUUID()) + ")";
+    }
+
+    public static boolean isHudEnabled(UUID playerId) {
+        if (playerId == null) {
+            return Config.HUD_ENABLED_BY_DEFAULT.get();
+        }
+        return HUD_ENABLED_OVERRIDES.getOrDefault(playerId, Config.HUD_ENABLED_BY_DEFAULT.get());
     }
 }

@@ -5,12 +5,15 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.AccountSettingsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.BalanceInquiryLayer;
+import net.austizz.ultimatebankingsystem.gui.screens.layers.CreatePayRequestLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.DepositLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.PayRequestsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.PinEntryLayer;
@@ -19,8 +22,9 @@ import net.austizz.ultimatebankingsystem.gui.screens.layers.TransferLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.WithdrawLayer;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -132,6 +136,16 @@ public final class ModPayloads {
         registrar.playToClient(PayRequestInboxResponsePayload.TYPE, PayRequestInboxResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestInboxResponse);
         registrar.playToServer(PayRequestActionPayload.TYPE, PayRequestActionPayload.STREAM_CODEC, ModPayloads::handlePayRequestAction);
         registrar.playToClient(PayRequestActionResponsePayload.TYPE, PayRequestActionResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestActionResponse);
+        registrar.playToServer(PayRequestCreatePayload.TYPE, PayRequestCreatePayload.STREAM_CODEC, ModPayloads::handlePayRequestCreate);
+        registrar.playToClient(PayRequestCreateResponsePayload.TYPE, PayRequestCreateResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestCreateResponse);
+        registrar.playToClient(HudStatePayload.TYPE, HudStatePayload.STREAM_CODEC, ModPayloads::handleHudState);
+    }
+
+    private static void handleHudState(HudStatePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            HudClientState.setBalanceText(payload.balance());
+            HudClientState.setEnabled(payload.enabled());
+        });
     }
 
     // ─── OpenATM ────────────────────────────────────────────────────────
@@ -175,6 +189,18 @@ public final class ModPayloads {
 
             UltimateBankingSystem.LOGGER.info("[UBS] Sending {} accounts to player {}", summaries.size(), player.getName().getString());
             PacketDistributor.sendToPlayer(player, new AccountListPayload(summaries));
+
+            String hudBalance = "0";
+            for (var summary : summaries) {
+                if (summary.isPrimary()) {
+                    hudBalance = summary.balance();
+                    break;
+                }
+            }
+            if ("0".equals(hudBalance) && !summaries.isEmpty()) {
+                hudBalance = summaries.get(0).balance();
+            }
+            PacketDistributor.sendToPlayer(player, new HudStatePayload(hudBalance, UBSCommands.isHudEnabled(player.getUUID())));
         });
     }
 
@@ -854,6 +880,96 @@ public final class ModPayloads {
         });
     }
 
+    private static void handlePayRequestCreate(PayRequestCreatePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            var requester = (ServerPlayer) context.player();
+            var server = requester.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            AccountHolder selected = centralBank.SearchForAccountByAccountId(payload.accountId());
+            if (selected == null || !selected.getPlayerUUID().equals(requester.getUUID())) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "Account mismatch."));
+                return;
+            }
+
+            String targetPlayerName = payload.targetPlayerName() == null ? "" : payload.targetPlayerName().trim();
+            if (targetPlayerName.isEmpty()) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "Enter a target player name."));
+                return;
+            }
+
+            ServerPlayer payer = server.getPlayerList().getPlayerByName(targetPlayerName);
+            if (payer == null) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "Player is not online."));
+                return;
+            }
+
+            if (payer.getUUID().equals(requester.getUUID())) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "You cannot request money from yourself."));
+                return;
+            }
+
+            BigDecimal amount;
+            try {
+                amount = new BigDecimal(payload.amount() == null ? "" : payload.amount().trim());
+            } catch (NumberFormatException ex) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "Invalid amount."));
+                return;
+            }
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(false, "Amount must be greater than zero."));
+                return;
+            }
+
+            String destinationRaw = payload.destinationAccountId() == null ? "" : payload.destinationAccountId().trim();
+            AccountHolder destination;
+            if (destinationRaw.isBlank()) {
+                destination = findPreferredReceiverAccount(centralBank, requester.getUUID());
+            } else {
+                try {
+                    destination = findAccountForPlayer(centralBank, requester.getUUID(), UUID.fromString(destinationRaw));
+                } catch (IllegalArgumentException ex) {
+                    destination = null;
+                }
+            }
+
+            if (destination == null) {
+                PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(
+                        false,
+                        "No valid destination account. Set primary or choose an account."
+                ));
+                return;
+            }
+
+            PayRequestManager.PayRequest request = PayRequestManager.createRequest(
+                    requester.getUUID(),
+                    payer.getUUID(),
+                    destination.getAccountUUID(),
+                    amount
+            );
+
+            sendPayRequestPromptChat(payer, requester, request, centralBank);
+
+            PacketDistributor.sendToPlayer(requester, new PayRequestCreateResponsePayload(
+                    true,
+                    "Pay request sent to " + payer.getName().getString() + ". Destination: " + accountLabel(destination)
+            ));
+        });
+    }
+
+    private static void handlePayRequestCreateResponse(PayRequestCreateResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().screen instanceof BankScreen bs
+                    && bs.getTopLayer() instanceof CreatePayRequestLayer layer) {
+                layer.updateResult(payload);
+            }
+        });
+    }
+
     private static void handlePayRequestInboxRequest(PayRequestInboxRequestPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             var player = (net.minecraft.server.level.ServerPlayer) context.player();
@@ -966,13 +1082,13 @@ public final class ModPayloads {
                 }
             }
 
-            AccountHolder receiver = findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
+            AccountHolder receiver = findReceiverAccountForRequest(centralBank, request);
             if (receiver == null) {
-                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Requester has no valid receiving account."));
+                PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Requester destination account is unavailable."));
                 ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
                 if (requester != null) {
                     requester.sendSystemMessage(Component.literal(
-                            "§cYour pay request could not be completed because no receiving account is set."
+                            "§cYour pay request could not be completed because your destination account is unavailable."
                     ));
                 }
                 return;
@@ -1110,6 +1226,120 @@ public final class ModPayloads {
             return accounts.values().iterator().next();
         }
         return null;
+    }
+
+    private static AccountHolder findReceiverAccountForRequest(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                               PayRequestManager.PayRequest request) {
+        UUID destinationAccountId = request.getReceiverAccountUUID();
+        if (destinationAccountId != null) {
+            AccountHolder destination = centralBank.SearchForAccountByAccountId(destinationAccountId);
+            if (destination != null && destination.getPlayerUUID().equals(request.getRequesterUUID())) {
+                return destination;
+            }
+            return null;
+        }
+        return findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
+    }
+
+    private static AccountHolder findAccountForPlayer(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                      UUID playerId,
+                                                      UUID accountId) {
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !account.getPlayerUUID().equals(playerId)) {
+            return null;
+        }
+        return account;
+    }
+
+    private static void sendPayRequestPromptChat(ServerPlayer payer,
+                                                 ServerPlayer requester,
+                                                 PayRequestManager.PayRequest request,
+                                                 net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank) {
+        AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
+        String destinationLabel = destination == null ? "Unavailable" : accountLabel(destination);
+
+        AccountHolder primary = findPrimaryAccount(centralBank, payer.getUUID());
+        if (primary == null) {
+            payer.sendSystemMessage(Component.literal(
+                    "§6Pay Request: §e" + requester.getName().getString() + " §7requests §6$"
+                            + request.getAmount().toPlainString() + "§7.\n"
+                            + "§7Destination: §f" + destinationLabel
+            ));
+            sendPayRequestAccountChoicesChat(payer, request, centralBank, "No primary account set. Choose account to accept:");
+            return;
+        }
+
+        String requestId = request.getRequestId().toString();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7From: §e" + requester.getName().getString() + "\n"));
+        body.append(Component.literal("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
+        body.append(Component.literal("§7Destination: §f" + destinationLabel + "\n"));
+        body.append(Component.literal("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
+        body.append(clickAction("[Accept]", ChatFormatting.GREEN, "/ubs_payrequest accept " + requestId, "Accept with primary account"));
+        body.append(Component.literal(" "));
+        body.append(clickAction("[Decline]", ChatFormatting.RED, "/ubs_payrequest decline " + requestId, "Decline this request"));
+        body.append(Component.literal(" "));
+        body.append(clickAction("[Choose Account]", ChatFormatting.AQUA, "/ubs_payrequest choose " + requestId, "Pay from a different account"));
+
+        payer.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§ePay Request", body));
+    }
+
+    private static void sendPayRequestAccountChoicesChat(ServerPlayer payer,
+                                                         PayRequestManager.PayRequest request,
+                                                         net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,
+                                                         String titleLine) {
+        List<AccountHolder> payerAccounts = centralBank.SearchForAccount(payer.getUUID())
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(a -> a.getAccountUUID().toString()))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7" + titleLine + "\n"));
+        body.append(Component.literal("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
+        AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
+        body.append(Component.literal("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
+
+        if (payerAccounts.isEmpty()) {
+            body.append(Component.literal("§cYou have no accounts available.\n"));
+        } else {
+            for (AccountHolder account : payerAccounts) {
+                String buttonLabel = "[" + account.getAccountType().label + " $" + account.getBalance().toPlainString() + "]";
+                String command = "/ubs_payrequest accept " + request.getRequestId() + " " + account.getAccountUUID();
+                body.append(clickAction(buttonLabel, ChatFormatting.AQUA, command, "Pay using " + accountLabel(account)));
+                body.append(Component.literal(" §7" + shortId(account.getAccountUUID()) + "\n"));
+            }
+        }
+
+        body.append(Component.literal("\n"));
+        body.append(clickAction("[Decline]", ChatFormatting.RED,
+                "/ubs_payrequest decline " + request.getRequestId(),
+                "Decline this request"));
+        payer.sendSystemMessage(ubsMessage(ChatFormatting.AQUA, "§bPay Request Account Choice", body));
+    }
+
+    private static MutableComponent clickAction(String label,
+                                                ChatFormatting color,
+                                                String runCommand,
+                                                String hoverText) {
+        return Component.literal(label).setStyle(
+                Style.EMPTY
+                        .withColor(color)
+                        .withBold(true)
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, runCommand))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hoverText)))
+        );
+    }
+
+    private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
+        return Component.literal("§6§lUltimate Banking System §7- ")
+                .append(Component.literal(title).withStyle(accentColor))
+                .append(Component.literal("\n§8────────────────────────\n"))
+                .append(body);
+    }
+
+    private static String accountLabel(AccountHolder account) {
+        return account.getAccountType().label + " (" + shortId(account.getAccountUUID()) + ")";
     }
 
     private static String resolvePrimaryAccountLabel(net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank,

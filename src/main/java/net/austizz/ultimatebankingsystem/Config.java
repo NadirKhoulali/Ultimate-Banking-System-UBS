@@ -142,6 +142,18 @@ public class Config {
             .comment("Currency display name used in textual output.")
             .define("CurrencyName", "Dollar");
 
+    public static final ModConfigSpec.BooleanValue HUD_ENABLED_BY_DEFAULT = BUILDER
+            .comment("Whether the balance HUD should be enabled by default for players.")
+            .define("HudEnabledByDefault", true);
+
+    public static final ModConfigSpec.ConfigValue<String> HUD_CORNER = BUILDER
+            .comment("HUD anchor corner: TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT.")
+            .define("HudCorner", "TOP_RIGHT");
+
+    public static final ModConfigSpec.IntValue HUD_TEXT_COLOR = BUILDER
+            .comment("HUD text color as packed RGB integer (example: 0x55FF55).")
+            .defineInRange("HudTextColor", 0x55FF55, 0x000000, 0xFFFFFF);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     private static boolean validateItemName(final Object obj) {
