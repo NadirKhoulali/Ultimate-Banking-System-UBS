@@ -10,7 +10,6 @@ import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
-import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -137,9 +136,7 @@ public class UltimateBankingSystem {
             return;
         }
         targetPlayer.sendSystemMessage(Component.literal(message));
-        PacketDistributor.sendToPlayer(targetPlayer, new HudStatePayload(
-                event.getAccount().getBalance().toPlainString(),
-                UBSCommands.isHudEnabled(targetPlayer.getUUID())
-        ));
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        PacketDistributor.sendToPlayer(targetPlayer, UBSCommands.buildHudStatePayload(centralBank, targetPlayer.getUUID()));
     }
 }

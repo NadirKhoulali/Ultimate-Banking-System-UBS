@@ -190,17 +190,7 @@ public final class ModPayloads {
             UltimateBankingSystem.LOGGER.info("[UBS] Sending {} accounts to player {}", summaries.size(), player.getName().getString());
             PacketDistributor.sendToPlayer(player, new AccountListPayload(summaries));
 
-            String hudBalance = "0";
-            for (var summary : summaries) {
-                if (summary.isPrimary()) {
-                    hudBalance = summary.balance();
-                    break;
-                }
-            }
-            if ("0".equals(hudBalance) && !summaries.isEmpty()) {
-                hudBalance = summaries.get(0).balance();
-            }
-            PacketDistributor.sendToPlayer(player, new HudStatePayload(hudBalance, UBSCommands.isHudEnabled(player.getUUID())));
+            PacketDistributor.sendToPlayer(player, UBSCommands.buildHudStatePayload(centralBank, player.getUUID()));
         });
     }
 

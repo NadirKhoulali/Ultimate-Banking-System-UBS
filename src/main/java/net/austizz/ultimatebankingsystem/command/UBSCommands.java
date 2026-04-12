@@ -4419,18 +4419,20 @@ public class UBSCommands {
         HUD_ENABLED_OVERRIDES.put(player.getUUID(), next);
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
-        String balance = "0";
-        if (centralBank != null) {
-            AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
-            if (account != null) {
-                balance = account.getBalance().toPlainString();
-            }
+        HudStatePayload hudState = buildHudStatePayload(centralBank, player.getUUID());
+        PacketDistributor.sendToPlayer(player, hudState);
+        if (!next) {
+            source.sendSystemMessage(Component.literal("§aBalance HUD is now §4disabled§a."));
+            return 1;
         }
 
-        PacketDistributor.sendToPlayer(player, new HudStatePayload(balance, next));
-        source.sendSystemMessage(Component.literal(
-                "§aBalance HUD is now " + (next ? "§2enabled" : "§4disabled") + "§a."
-        ));
+        if (hudState.enabled()) {
+            source.sendSystemMessage(Component.literal("§aBalance HUD is now §2enabled§a."));
+        } else {
+            source.sendSystemMessage(Component.literal(
+                    "§eBalance HUD is toggled on, but hidden because no primary account is set."
+            ));
+        }
         return 1;
     }
 
@@ -5705,5 +5707,16 @@ public class UBSCommands {
             return Config.HUD_ENABLED_BY_DEFAULT.get();
         }
         return HUD_ENABLED_OVERRIDES.getOrDefault(playerId, Config.HUD_ENABLED_BY_DEFAULT.get());
+    }
+
+    public static HudStatePayload buildHudStatePayload(CentralBank centralBank, UUID playerId) {
+        if (playerId == null) {
+            return new HudStatePayload("", false);
+        }
+        boolean toggled = isHudEnabled(playerId);
+        AccountHolder primary = centralBank == null ? null : findPrimaryAccount(centralBank, playerId);
+        boolean visible = toggled && primary != null;
+        String balance = primary == null ? "" : primary.getBalance().toPlainString();
+        return new HudStatePayload(balance, visible);
     }
 }
