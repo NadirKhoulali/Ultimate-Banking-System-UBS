@@ -107,7 +107,8 @@ public class Bank {
         return total.setScale(2, RoundingMode.HALF_EVEN);
     }
     public BigDecimal getMaxLendableAmount() {
-        if (ServerLifecycleHooks.getCurrentServer() != null) {
+        // During SavedData load, BankManager#getCentralBank can recurse into storage.
+        if (!BankManager.isDirtySuspended() && ServerLifecycleHooks.getCurrentServer() != null) {
             var cb = BankManager.getCentralBank(ServerLifecycleHooks.getCurrentServer());
             if (cb != null && this.bankId.equals(cb.getBankId())) {
                 return BigDecimal.valueOf(Double.MAX_VALUE);
@@ -139,7 +140,8 @@ public class Bank {
         adjusted = Math.min(Config.MAX_CUSTOM_BANK_INTEREST_RATE.get(), adjusted);
 
         var server = ServerLifecycleHooks.getCurrentServer();
-        if (server != null) {
+        // Guard SavedData load path: avoid fetching central bank while central bank is loading.
+        if (!BankManager.isDirtySuspended() && server != null) {
             var centralBank = BankManager.getCentralBank(server);
             if (centralBank != null && !this.bankId.equals(centralBank.getBankId())) {
                 var metadata = centralBank.getOrCreateBankMetadata(this.bankId);
