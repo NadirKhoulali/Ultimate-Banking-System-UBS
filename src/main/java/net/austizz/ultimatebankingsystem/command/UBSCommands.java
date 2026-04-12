@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSCommands {
 
-    private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> §8- §7Request money from a player");
+    private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
         return Component.literal("§6§lUltimate Banking System §7- ")
@@ -539,19 +539,107 @@ public class UBSCommands {
 
         event.getDispatcher().register(buildPayRequestCommand());
         event.getDispatcher().register(buildHiddenPayRequestCommand());
+        event.getDispatcher().register(buildBankCommand());
 
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildBankCommand() {
+        return Commands.literal("bank")
+                .executes(context -> {
+                    context.getSource().sendSystemMessage(Component.literal(
+                            "§6§lUltimate Banking System §7- §eBank Commands\n"
+                                    + "§8/§fbank §7balance §8- §7Show your primary account balance\n"
+                                    + "§8/§fbank §7list §8- §7List available banks"
+                    ));
+                    return 1;
+                })
+                .then(Commands.literal("balance")
+                        .executes(context -> handleBankBalance(context.getSource())))
+                .then(Commands.literal("list")
+                        .executes(context -> handleBankList(context.getSource())));
+    }
+
+    private static int handleBankBalance(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        ConcurrentHashMap<UUID, AccountHolder> accounts = centralBank.SearchForAccount(player.getUUID());
+        if (accounts.isEmpty()) {
+            source.sendSystemMessage(Component.literal("§cYou do not have any bank accounts yet."));
+            return 1;
+        }
+
+        AccountHolder selected = findPrimaryAccount(centralBank, player.getUUID());
+        if (selected == null) {
+            selected = accounts.values().iterator().next();
+        }
+
+        Bank bank = centralBank.getBank(selected.getBankId());
+        String bankName = bank == null ? "Unknown" : bank.getBankName();
+        source.sendSystemMessage(Component.literal(
+                "§6§lUltimate Banking System §7- §eBalance\n"
+                        + "§7Bank: §f" + bankName + "\n"
+                        + "§7Type: §f" + selected.getAccountType().label + "\n"
+                        + "§7Account ID: §f" + selected.getAccountUUID() + "\n"
+                        + "§7Balance: §a$" + selected.getBalance().toPlainString()
+        ));
+        return 1;
+    }
+
+    private static int handleBankList(CommandSourceStack source) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        List<Bank> banks = centralBank.getBanks().values().stream()
+                .sorted(Comparator.comparing(Bank::getBankName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Banks Registered: §b" + banks.size() + "\n"));
+        if (banks.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (Bank bank : banks) {
+                body.append(Component.literal(
+                        "§8- §e" + bank.getBankName() + " §7(" + bank.getBankId() + ")\n"
+                ));
+            }
+        }
+
+        source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eBank List", body));
+        return 1;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildPayRequestCommand() {
         return Commands.literal("payrequest")
                 .then(Commands.argument("player", EntityArgument.player())
-                        .then(Commands.argument("amount", StringArgumentType.greedyString())
+                        .then(Commands.argument("amount", StringArgumentType.word())
                                 .executes(context -> handlePayRequestCreate(
                                         context.getSource(),
                                         EntityArgument.getPlayer(context, "player"),
-                                        StringArgumentType.getString(context, "amount")
+                                        StringArgumentType.getString(context, "amount"),
+                                        null
                                 ))
-                        )
+                                .then(Commands.argument("destinationAccountId", UuidArgument.uuid())
+                                        .executes(context -> handlePayRequestCreate(
+                                                context.getSource(),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                StringArgumentType.getString(context, "amount"),
+                                                UuidArgument.getUuid(context, "destinationAccountId")
+                                        ))
+                        ))
                 );
     }
 
@@ -591,7 +679,10 @@ public class UBSCommands {
                 );
     }
 
-    private static int handlePayRequestCreate(CommandSourceStack source, ServerPlayer payer, String amountRaw) {
+    private static int handlePayRequestCreate(CommandSourceStack source,
+                                              ServerPlayer payer,
+                                              String amountRaw,
+                                              UUID destinationAccountId) {
         ServerPlayer requester = source.getPlayer();
         if (requester == null) {
             source.sendSystemMessage(Component.literal("§cOnly players can send pay requests."));
@@ -616,9 +707,37 @@ public class UBSCommands {
             return 1;
         }
 
-        var request = PayRequestManager.createRequest(requester.getUUID(), payer.getUUID(), amount);
+        MinecraftServer server = source.getServer();
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder destinationAccount = destinationAccountId == null
+                ? findPreferredReceiverAccount(centralBank, requester.getUUID())
+                : findAccountForPlayer(centralBank, requester.getUUID(), destinationAccountId);
+
+        if (destinationAccount == null) {
+            if (destinationAccountId == null) {
+                source.sendSystemMessage(Component.literal(
+                        "§cNo primary receiving account is set. Set one as primary or provide a destination account ID."
+                ));
+            } else {
+                source.sendSystemMessage(Component.literal("§cDestination account ID is invalid or not yours."));
+            }
+            return 1;
+        }
+
+        var request = PayRequestManager.createRequest(
+                requester.getUUID(),
+                payer.getUUID(),
+                destinationAccount.getAccountUUID(),
+                amount
+        );
         source.sendSystemMessage(Component.literal(
-                "§aPay request sent to §e" + payer.getName().getString() + " §afor §6$" + amount.toPlainString() + "§a."
+                "§aPay request sent to §e" + payer.getName().getString() + " §afor §6$" + amount.toPlainString()
+                        + "§a. Destination: §f" + accountLabel(destinationAccount)
         ));
         sendPayRequestPrompt(payer, requester, request);
         return 1;
@@ -666,12 +785,14 @@ public class UBSCommands {
             return 1;
         }
 
-        AccountHolder receiverAccount = findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
+        AccountHolder receiverAccount = findReceiverAccountForRequest(centralBank, request);
         if (receiverAccount == null) {
-            source.sendSystemMessage(Component.literal("§cRequester has no valid receiving account (primary required)."));
+            source.sendSystemMessage(Component.literal("§cRequester destination account is unavailable."));
             ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
             if (requester != null) {
-                requester.sendSystemMessage(Component.literal("§cYour pay request could not be completed because you have no primary receiving account."));
+                requester.sendSystemMessage(Component.literal(
+                        "§cYour pay request could not be completed because your destination account is unavailable."
+                ));
             }
             return 1;
         }
@@ -789,12 +910,17 @@ public class UBSCommands {
         if (centralBank == null) {
             return;
         }
+        AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
+        String destinationLabel = destination == null
+                ? "Unavailable"
+                : accountLabel(destination);
 
         AccountHolder primary = findPrimaryAccount(centralBank, payer.getUUID());
         if (primary == null) {
             payer.sendSystemMessage(Component.literal(
                     "§6Pay Request: §e" + requester.getName().getString() + " §7requests §6$"
-                            + request.getAmount().toPlainString() + "§7."
+                            + request.getAmount().toPlainString() + "§7.\n"
+                            + "§7Destination: §f" + destinationLabel
             ));
             sendPayRequestAccountChoices(payer, request, "No primary account set. Choose account to accept:");
             return;
@@ -803,6 +929,7 @@ public class UBSCommands {
         MutableComponent body = Component.empty();
         body.append(Component.literal("§7From: §e" + requester.getName().getString() + "\n"));
         body.append(Component.literal("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
+        body.append(Component.literal("§7Destination: §f" + destinationLabel + "\n"));
         body.append(Component.literal("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
 
         String requestId = request.getRequestId().toString();
@@ -838,6 +965,8 @@ public class UBSCommands {
         MutableComponent body = Component.empty();
         body.append(Component.literal("§7" + titleLine + "\n"));
         body.append(Component.literal("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
+        AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
+        body.append(Component.literal("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
 
         if (payerAccounts.isEmpty()) {
             body.append(Component.literal("§cYou have no accounts available.\n"));
@@ -894,6 +1023,19 @@ public class UBSCommands {
             return accounts.values().iterator().next();
         }
         return null;
+    }
+
+    private static AccountHolder findReceiverAccountForRequest(CentralBank centralBank,
+                                                               PayRequestManager.PayRequest request) {
+        UUID destinationAccountId = request.getReceiverAccountUUID();
+        if (destinationAccountId != null) {
+            AccountHolder destination = centralBank.SearchForAccountByAccountId(destinationAccountId);
+            if (destination != null && destination.getPlayerUUID().equals(request.getRequesterUUID())) {
+                return destination;
+            }
+            return null;
+        }
+        return findPreferredReceiverAccount(centralBank, request.getRequesterUUID());
     }
 
     private static AccountHolder findAccountForPlayer(CentralBank centralBank, UUID playerId, UUID accountId) {

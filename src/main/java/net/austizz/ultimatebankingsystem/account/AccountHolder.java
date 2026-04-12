@@ -252,12 +252,15 @@ public class AccountHolder {
     }
 
     public BigDecimal getConfiguredWithdrawalLimit() {
+        if (this.AccountType == AccountTypes.CheckingAccount) {
+            return BigDecimal.valueOf(Integer.MAX_VALUE);
+        }
         return BigDecimal.valueOf(Config.DEFAULT_ATM_WITHDRAWAL_LIMIT.get());
     }
 
     public BigDecimal getConfiguredDailyWithdrawalLimit() {
         return switch (this.AccountType) {
-            case CheckingAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_CHECKING.get());
+            case CheckingAccount -> BigDecimal.valueOf(Integer.MAX_VALUE);
             case SavingAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_SAVING.get());
             case MoneyMarketAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_MONEY_MARKET.get());
             case CertificateAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_CERTIFICATE.get());

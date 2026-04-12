@@ -9,6 +9,8 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -157,13 +159,29 @@ public class Bank {
             }
 
             // Apply payout by recording a transaction: bank \-> account
-            new BankToUserTransaction(
+            boolean paid = new BankToUserTransaction(
                     this.bankId,
                     account.getAccountUUID(),
                     payoutAmount,
                     LocalDateTime.now(),
                     "INTEREST: Savings Account Interest Payout"
             ).makeTransaction(ServerLifecycleHooks.getCurrentServer());
+
+            if (!paid) {
+                continue;
+            }
+
+            var server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                ServerPlayer holder = server.getPlayerList().getPlayer(account.getPlayerUUID());
+                if (holder != null) {
+                    holder.sendSystemMessage(Component.literal(
+                            "§aInterest paid: §6$" + payoutAmount.toPlainString()
+                                    + " §ato your savings account. New balance: §f$"
+                                    + account.getBalance().toPlainString()
+                    ));
+                }
+            }
 
             // Optionally reduce reserve if reserve represents bank funds available for payouts
             // this.BankReserve = this.BankReserve.subtract(payoutAmount);
