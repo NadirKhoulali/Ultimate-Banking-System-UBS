@@ -1,0 +1,13 @@
+package net.austizz.ultimatebankingsystem.gui.screens;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+
+@OnlyIn(Dist.CLIENT)
+public class OwnerPcScreenHelper {
+    public static void openOwnerPcScreen() {
+        Minecraft.getInstance().setScreen(new BankOwnerPcScreen(Component.literal("Bank Owner PC")));
+    }
+}

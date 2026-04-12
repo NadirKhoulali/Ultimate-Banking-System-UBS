@@ -178,7 +178,8 @@ public class BankScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        this.renderTransparentBackground(graphics);
+        // Intentionally no blur: fully opaque backdrop so world blur can never show through.
+        graphics.fill(0, 0, this.width, this.height, 0xFF101A2B);
 
         int left = getPanelLeft();
         int top = getPanelTop();
@@ -239,6 +240,31 @@ public class BankScreen extends Screen {
         if (topLayer != null) {
             topLayer.render(graphics, mouseX, mouseY, partialTicks);
         }
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // No-op to hard-disable vanilla menu blur/background behavior.
+    }
+
+    @Override
+    public void renderTransparentBackground(GuiGraphics graphics) {
+        // No-op to hard-disable transparent background blur paths.
+    }
+
+    @Override
+    public void renderBlurredBackground(float partialTick) {
+        // No-op to hard-disable blur paths.
+    }
+
+    @Override
+    public void renderMenuBackground(GuiGraphics graphics) {
+        // No-op to hard-disable menu background paths.
+    }
+
+    @Override
+    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
+        // No-op to hard-disable menu background paths.
     }
 
     private static int lerpColor(int from, int to, float t) {

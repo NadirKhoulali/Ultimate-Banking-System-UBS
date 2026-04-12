@@ -6,6 +6,7 @@ This wiki tracks the current UBS feature set and command surface.
 
 - [Player Guide](Player-Guide.md)
 - [ATM Flow](ATM-Flow.md)
+- [Bank Owner PC](Bank-Owner-PC.md)
 - [Admin Commands](Admin-Commands.md)
 - [Configuration](Configuration.md)
 - [Migration Guide](Migration-Guide.md)

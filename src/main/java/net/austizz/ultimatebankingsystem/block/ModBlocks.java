@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.block;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.custom.ATMBlock;
+import net.austizz.ultimatebankingsystem.block.custom.BankOwnerPcBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ColorButtonBlock;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.minecraft.world.item.BlockItem;
@@ -25,6 +26,12 @@ public class ModBlocks {
                     .sound(SoundType.METAL)
 
 
+            ));
+    public static final DeferredBlock<Block> BANK_OWNER_PC = registerBlock("bank_owner_pc",
+            () -> new BankOwnerPcBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(3.5f)
+                    .sound(SoundType.METAL)
             ));
     public static final DeferredBlock<Block> COLOR_BUTTON_BLOCK = registerBlock("color_button_block",
             () -> new ColorButtonBlock(BlockBehaviour.Properties.of()

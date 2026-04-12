@@ -11,7 +11,6 @@ import java.util.List;
 public class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(UltimateBankingSystem.MODID);
 
-    public static final DeferredItem<Item> CASH = ITEMS.register("cash", () -> new  Item (new Item.Properties()));
     public static final DeferredItem<Item> ONE_DOLLAR_BILL = ITEMS.register("one_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> TWO_DOLLAR_BILL = ITEMS.register("two_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> FIVE_DOLLAR_BILL = ITEMS.register("five_dollar_bill", () -> new Item(new Item.Properties()));

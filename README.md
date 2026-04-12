@@ -72,6 +72,7 @@ On Windows shell environments, run via `gradlew.bat`.
   - [`Home.md`](docs/wiki/Home.md)
   - [`Player-Guide.md`](docs/wiki/Player-Guide.md)
   - [`ATM-Flow.md`](docs/wiki/ATM-Flow.md)
+  - [`Bank-Owner-PC.md`](docs/wiki/Bank-Owner-PC.md)
   - [`Admin-Commands.md`](docs/wiki/Admin-Commands.md)
   - [`Configuration.md`](docs/wiki/Configuration.md)
   - [`Migration-Guide.md`](docs/wiki/Migration-Guide.md)

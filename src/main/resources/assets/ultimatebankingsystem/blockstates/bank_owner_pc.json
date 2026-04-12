@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "ultimatebankingsystem:block/bank_owner_computer" },
+    "facing=south": { "model": "ultimatebankingsystem:block/bank_owner_computer", "y": 180 },
+    "facing=east": { "model": "ultimatebankingsystem:block/bank_owner_computer", "y": 90 },
+    "facing=west": { "model": "ultimatebankingsystem:block/bank_owner_computer", "y": 270 }
+  }
+}

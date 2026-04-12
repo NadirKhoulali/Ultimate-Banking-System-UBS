@@ -1,15 +1,20 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
+import net.austizz.ultimatebankingsystem.gui.screens.BankOwnerPcScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.screens.ClientOwnerPcData;
+import net.austizz.ultimatebankingsystem.gui.screens.OwnerPcScreenHelper;
 import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.AccountSettingsLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.BalanceInquiryLayer;
@@ -100,6 +105,14 @@ public final class ModPayloads {
         // --- Register payloads below this line ---
         registrar.playToServer(OpenATMPayload.TYPE, OpenATMPayload.STREAM_CODEC, ModPayloads::handleOpenATM);
         registrar.playToClient(AccountListPayload.TYPE, AccountListPayload.STREAM_CODEC, ModPayloads::handleAccountList);
+        registrar.playToServer(OpenBankOwnerPcPayload.TYPE, OpenBankOwnerPcPayload.STREAM_CODEC, ModPayloads::handleOpenBankOwnerPc);
+        registrar.playToClient(OwnerPcBootstrapPayload.TYPE, OwnerPcBootstrapPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBootstrap);
+        registrar.playToServer(OwnerPcBankDataRequestPayload.TYPE, OwnerPcBankDataRequestPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankDataRequest);
+        registrar.playToClient(OwnerPcBankDataPayload.TYPE, OwnerPcBankDataPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankData);
+        registrar.playToServer(OwnerPcActionPayload.TYPE, OwnerPcActionPayload.STREAM_CODEC, ModPayloads::handleOwnerPcAction);
+        registrar.playToClient(OwnerPcActionResponsePayload.TYPE, OwnerPcActionResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcActionResponse);
+        registrar.playToServer(OwnerPcCreateBankPayload.TYPE, OwnerPcCreateBankPayload.STREAM_CODEC, ModPayloads::handleOwnerPcCreateBank);
+        registrar.playToClient(OwnerPcCreateBankResponsePayload.TYPE, OwnerPcCreateBankResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcCreateBankResponse);
         registrar.playToServer(PinAuthRequestPayload.TYPE, PinAuthRequestPayload.STREAM_CODEC, ModPayloads::handlePinAuthRequest);
         registrar.playToClient(PinAuthResponsePayload.TYPE, PinAuthResponsePayload.STREAM_CODEC, ModPayloads::handlePinAuthResponse);
 
@@ -207,6 +220,174 @@ public final class ModPayloads {
                 }
             }
             ATMScreenHelper.openATMScreen();
+        });
+    }
+
+    // ─── Owner PC ───────────────────────────────────────────────────────
+
+    private static void handleOpenBankOwnerPc(OpenBankOwnerPcPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            boolean includeCentralBankApp = player.hasPermissions(3);
+            List<OwnerPcBankAppSummary> apps = BankOwnerPcService.listAccessibleApps(
+                    server,
+                    centralBank,
+                    player.getUUID(),
+                    includeCentralBankApp
+            );
+            int ownedCount = BankOwnerPcService.countOwnedBanks(centralBank, player.getUUID());
+            int maxBanks = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
+
+            PacketDistributor.sendToPlayer(player, new OwnerPcBootstrapPayload(apps, ownedCount, maxBanks));
+        });
+    }
+
+    private static void handleOwnerPcBootstrap(OwnerPcBootstrapPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setApps(payload.apps(), payload.ownedCount(), payload.maxBanks());
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.refreshFromNetwork();
+            } else {
+                OwnerPcScreenHelper.openOwnerPcScreen();
+            }
+        });
+    }
+
+    private static void handleOwnerPcBankDataRequest(OwnerPcBankDataRequestPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                return;
+            }
+
+            boolean allowCentralBankAccess = payload.bankId().equals(centralBank.getBankId()) && player.hasPermissions(3);
+            OwnerPcBankDataPayload response = BankOwnerPcService.buildBankDataPayload(
+                    server,
+                    centralBank,
+                    player.getUUID(),
+                    payload.bankId(),
+                    allowCentralBankAccess
+            );
+            if (response != null) {
+                PacketDistributor.sendToPlayer(player, response);
+            }
+        });
+    }
+
+    private static void handleOwnerPcBankData(OwnerPcBankDataPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setCurrentBankData(payload);
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.refreshFromNetwork();
+            }
+        });
+    }
+
+    private static void handleOwnerPcAction(OwnerPcActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcActionResponsePayload(
+                        payload.bankId(), false, "Bank data is unavailable."
+                ));
+                return;
+            }
+
+            BankOwnerPcService.ActionResult result = BankOwnerPcService.executeAction(
+                    server,
+                    centralBank,
+                    player,
+                    payload.bankId(),
+                    payload.action(),
+                    payload.arg1(),
+                    payload.arg2(),
+                    payload.arg3(),
+                    payload.arg4()
+            );
+            PacketDistributor.sendToPlayer(player, new OwnerPcActionResponsePayload(
+                    payload.bankId(),
+                    result.success(),
+                    result.message()
+            ));
+
+            OwnerPcBankDataPayload dataPayload = BankOwnerPcService.buildBankDataPayload(
+                    server,
+                    centralBank,
+                    player.getUUID(),
+                    payload.bankId(),
+                    payload.bankId().equals(centralBank.getBankId()) && player.hasPermissions(3)
+            );
+            if (dataPayload != null) {
+                PacketDistributor.sendToPlayer(player, dataPayload);
+            }
+        });
+    }
+
+    private static void handleOwnerPcActionResponse(OwnerPcActionResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setActionOutput(payload.message());
+            String raw = payload.message() == null ? "" : payload.message();
+            String toastMessage = raw;
+            int firstNewline = raw.indexOf('\n');
+            if (firstNewline >= 0) {
+                toastMessage = payload.success()
+                        ? "Action complete. See output panel for details."
+                        : raw.substring(0, firstNewline).trim();
+            }
+            ClientOwnerPcData.setToast(payload.success(), toastMessage);
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.refreshFromNetwork();
+            }
+        });
+    }
+
+    private static void handleOwnerPcCreateBank(OwnerPcCreateBankPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcCreateBankResponsePayload(false, "Bank data is unavailable."));
+                return;
+            }
+
+            BankOwnerPcService.ActionResult result = BankOwnerPcService.createBank(
+                    server,
+                    centralBank,
+                    player,
+                    payload.bankName(),
+                    payload.ownershipModel()
+            );
+            PacketDistributor.sendToPlayer(player, new OwnerPcCreateBankResponsePayload(result.success(), result.message()));
+
+            List<OwnerPcBankAppSummary> apps = BankOwnerPcService.listAccessibleApps(
+                    server,
+                    centralBank,
+                    player.getUUID(),
+                    player.hasPermissions(3)
+            );
+            int ownedCount = BankOwnerPcService.countOwnedBanks(centralBank, player.getUUID());
+            int maxBanks = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
+            PacketDistributor.sendToPlayer(player, new OwnerPcBootstrapPayload(apps, ownedCount, maxBanks));
+        });
+    }
+
+    private static void handleOwnerPcCreateBankResponse(OwnerPcCreateBankResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setToast(payload.success(), payload.message());
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.refreshFromNetwork();
+            }
         });
     }
 

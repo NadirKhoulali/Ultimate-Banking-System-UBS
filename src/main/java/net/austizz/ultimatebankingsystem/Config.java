@@ -230,7 +230,7 @@ public class Config {
 
     public static final ModConfigSpec.IntValue PLAYER_BANKS_MAX_BANKS_PER_PLAYER = BUILDER
             .comment("Maximum number of player banks one player may own.")
-            .defineInRange("PlayerBanksMaxPerPlayer", 1, 1, 100);
+            .defineInRange("PlayerBanksMaxPerPlayer", 3, 1, 100);
 
     public static final ModConfigSpec.IntValue PLAYER_BANKS_NAME_MAX_LENGTH = BUILDER
             .comment("Maximum character length for player bank names.")
