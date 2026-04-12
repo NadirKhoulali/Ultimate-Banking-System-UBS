@@ -1,50 +1,79 @@
 # ATM Flow
 
-## Login Sequence
+## Access Sequence
 
-1. Open ATM.
-2. Select account:
-   - If primary account exists, it is preselected.
-   - Player can switch account at any time.
-3. PIN step:
-   - No PIN set: prompt to create + confirm.
-   - PIN set: prompt to enter PIN.
-4. On success, main ATM menu opens.
+1. Open ATM block.
+2. Account selection phase:
+   - if a primary account exists, it is preselected
+   - player can switch to another owned account
+3. PIN phase:
+   - no PIN set: player must create and confirm a 4-digit PIN
+   - PIN set: player must authenticate with the 4-digit PIN
+4. Main ATM menu opens after successful PIN auth.
 
-## Withdraw
+## Main ATM Actions
 
-- Amount must be a positive whole number.
-- Validation order:
-  - ownership check
-  - account freeze check
-  - per-transaction ATM limit check
-  - daily ATM limit check
-  - balance check
-  - bill-dispense feasibility check
-- On success:
-  - account balance decreases
-  - daily withdrawn counter increases
-  - bills are given
-  - transaction log entry is added
+- `Balance Inquiry`
+- `Withdraw Cash`
+- `Deposit Cash`
+- `Transfer Funds`
+- `Transaction History`
+- `Account Settings`
+- `Pay Requests`
 
-## Deposit
+## Withdraw Rules
 
-- Amount must be a positive whole number.
-- Validation order:
-  - ownership check
-  - account freeze check
-  - enough bills in inventory
-  - exact bill combination available
-- On success:
-  - bills are removed
-  - balance increases
-  - transaction log entry is added
+Validation path:
 
-## Transfer
+- account ownership
+- account freeze state
+- per-transaction ATM limit
+- daily ATM limit
+- balance availability
+- bill dispense feasibility
 
-- Sender must belong to requesting player.
-- Sender and recipient must be different accounts.
-- Frozen sender/recipient accounts are rejected.
-- On success:
-  - transaction is logged on both accounts
-  - recipient receives balance-changed chat event
+Success result:
+
+- balance decreases
+- daily withdrawn amount updates
+- bill items are dispensed
+- transaction entry is recorded
+
+## Deposit Rules
+
+Validation path:
+
+- account ownership
+- account freeze state
+- required bill denominations in inventory
+- exact amount representation by available bills
+
+Success result:
+
+- bills are removed
+- balance increases
+- transaction entry is recorded
+
+## Transfer Rules
+
+- sender must belong to requesting player
+- sender and receiver must be different accounts
+- frozen accounts are blocked
+- result logs transactions on both sides
+- recipient receives balance-changed notification
+
+## Pay Request UI
+
+`Pay Requests` includes:
+
+- inbox list
+- `Accept`, `Decline`, and `Choose Account` controls
+- `Create Pay Request` action
+
+Create flow:
+
+- choose online target player (search + scroll list)
+- enter amount
+- choose destination account (primary is default)
+- submit request
+

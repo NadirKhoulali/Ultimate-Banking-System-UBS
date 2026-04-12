@@ -2,55 +2,66 @@
 
 Admin level required: permission level `3`.
 
-## Core Admin Commands
+## Core Admin Root
 
-- `/ubs centralbank`
-- `/ubs centralbank interest set <rate>`
-- `/ubs bank save`
-- `/ubs bank rename <new name>`
-- `/ubs money deposit <accountUUID> <amount>`
-- `/ubs money withdraw <accountUUID> <amount>`
+- `/ubs admin ...`
+- `/bank admin ...`
+- `/centralbank ...`
 
-## Account Moderation
-
-Also available under `/bank admin ...` alias.
+## Account and Player Moderation
 
 - `/ubs admin view <player>`
 - `/ubs admin freeze <player> [reason]`
 - `/ubs admin unfreeze <player>`
-- `/ubs admin freeze account <accountUUID> [reason]`
-- `/ubs admin unfreeze account <accountUUID>`
-- `/ubs admin report`
+- `/ubs admin freeze account <accountId> [reason]`
+- `/ubs admin unfreeze account <accountId>`
 
-## Import Commands
+## Economy and Reporting
+
+- `/ubs admin report`
+- `/centralbank report`
+- `/centralbank report history`
+- `/centralbank ledger`
+- `/centralbank ledger suspense`
+
+## Bank Governance and Compliance
+
+- `/ubs admin applications`
+- `/ubs admin applications approve <applicationId>`
+- `/ubs admin applications deny <applicationId> [reason]`
+- `/ubs admin appeals`
+- `/ubs admin appeal <appealId> approve [reason]`
+- `/ubs admin appeal <appealId> deny [reason]`
+- `/ubs admin reserve <bankName>`
+- `/ubs admin compliance [bankName]`
+- `/ubs admin audit <bankName>`
+- `/ubs admin suspend <bankName> [reason]`
+- `/ubs admin unsuspend <bankName>`
+- `/ubs admin revoke <bankName> [reason]`
+- `/ubs admin unlock <bankName>`
+- `/ubs admin bankrun <bankName>`
+- `/ubs admin setcap <bankName> <amount>`
+- `/ubs admin rateexempt <bankName>`
+- `/ubs admin waivefee <player>`
+- `/ubs admin deferrenewal <bankName>`
+- `/ubs admin flags`
+
+## Central Bank Policy Controls
+
+- `/centralbank rate`
+- `/centralbank rate set <rate>`
+- `/centralbank opm inject <amount>`
+- `/centralbank opm withdraw <amount>`
+- `/centralbank opm history`
+- `/centralbank audit [bankName]`
+
+## Import/Migration
 
 - `/ubs admin import csv <path>`
 - `/ubs admin import essentialsx <path>`
 - `/ubs admin import cmi <path>`
 - `/ubs admin import iconomy <path>`
 
-CSV expected columns:
+## Audit Tags
 
-`player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
-
-Rules:
-
-- Header is optional.
-- `pin` empty or 4 digits.
-- Negative balances are rejected.
-- Existing matching accounts are updated; otherwise created.
-- `history` is optional and formatted as:
-`timestamp|signedAmount|description;timestamp|signedAmount|description`
-
-Plugin import notes:
-
-- `essentialsx` and `cmi` support importing from userdata YAML files.
-- `iconomy` supports `player,balance` or `player:balance` file formats.
-- All import commands print a summary and log warning details for failed rows/files.
-
-## Audit Logging
-
-Admin balance actions create transaction entries:
-
-- `ADMIN_DEPOSIT by <actor>`
-- `ADMIN_WITHDRAW by <actor>`
+Admin-driven balance changes are tagged in transaction history with admin-oriented descriptors, including manual deposit/withdraw actions.

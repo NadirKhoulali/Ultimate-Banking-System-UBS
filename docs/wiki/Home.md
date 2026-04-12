@@ -1,8 +1,8 @@
 # Ultimate Banking System Wiki
 
-This folder contains wiki-ready pages for the UBS GitHub wiki.
+This wiki tracks the current UBS feature set and command surface.
 
-## Pages
+## Start Here
 
 - [Player Guide](Player-Guide.md)
 - [ATM Flow](ATM-Flow.md)
@@ -10,17 +10,20 @@ This folder contains wiki-ready pages for the UBS GitHub wiki.
 - [Configuration](Configuration.md)
 - [Migration Guide](Migration-Guide.md)
 
-## Quick Summary
+## System Overview
 
-UBS adds:
+UBS provides:
 
-- multi-account banking
-- ATM interface with PIN auth
-- physical cash bills for ATM deposit/withdraw
-- transfer + transaction history
-- admin moderation/report/import tools
-- migration helpers for `CSV`, `EssentialsX`, `CMI`, and `iConomy`
+- account-based banking with PIN-protected ATM access
+- physical cash bills for ATM withdraw/deposit
+- transfer history, limits, and anti-abuse controls
+- pay request workflows in chat and ATM UI
+- player-owned banks with governance, staffing, products, and reserve controls
+- central-bank policy and settlement controls
+- admin moderation, audit, and import tools
 
-## Publish To GitHub Wiki
+## Notes
 
-If you maintain the wiki as a separate repo, copy these pages into the wiki repository and set `Home.md` as the landing page.
+- Daily withdrawal resets and many lifecycle systems are tick-driven.
+- Interest, renewals, audits, and taxes are server-side scheduled flows.
+- Keep config values aligned with your server economy scale before launch.

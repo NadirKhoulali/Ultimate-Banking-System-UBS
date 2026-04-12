@@ -1,117 +1,54 @@
 # Ultimate Banking System (UBS)
 
-UBS is a NeoForge `1.21.1` Minecraft mod that adds persistent banking accounts, ATM workflows, physical dollar bills, transfers, transaction history, PIN security, and admin banking controls.
+UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: ATM UI, physical cash bills, account security, player-owned banks, central-bank regulation, loans, and admin tooling.
 
-## Current Features
+## What UBS Includes
 
-- Multi-account support per player (`Checking`, `Saving`, `Money Market`, `Certificate`)
-- ATM UI with:
-  - account chooser
-  - PIN authentication / PIN setup
-  - balance inquiry
-  - cash withdraw + cash deposit using real bill items
-  - transfer funds
-  - transaction history
-  - account settings
-- Physical USD bill items (`$1, $2, $5, $10, $20, $50, $100`)
-- Transaction logging per account
-- Transfer rate limiting (Bucket4j)
-- Admin money controls and account moderation
-- Data persistence via world `SavedData`
+- Multi-account support per player: `Checking`, `Saving`, `Money Market`, `Certificate`
+- ATM workflow with account selection, PIN setup/login, and account switching
+- Physical USD bill items (`$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`) for real withdraw/deposit flow
+- Transfers, transaction history, and per-account controls
+- Pay request system:
+  - inbox + accept/decline/choose account
+  - ATM pay request creation UI with player picker + search + destination account picker
+  - command flow via `/payrequest ...`
+- Scheduled interest, daily withdrawal limits, and transaction rate limiting
+- Joint accounts, business accounts, cheques, and note withdrawal/deposit commands
+- Player-owned bank systems:
+  - bank application/approval and appeal flows
+  - ownership modes (roles/shares/cofounders)
+  - employee payroll, loan products, reserve dashboards, interbank lending market
+- Central Bank systems:
+  - Federal Funds Rate controls
+  - open market operations
+  - reserve audits/compliance + clearing ledger/suspense records
+  - annual license renewals and periodic bank tax handling
+- Safe deposit box storage and bank heist mechanics
+- Admin moderation and migration tooling (`csv`, `EssentialsX`, `CMI`, `iConomy`)
 
-## New Admin/Backend Capabilities Added
+## Core Commands
 
-- Account freeze/unfreeze state on each account
-- Freeze enforcement in ATM deposit/withdraw/transfer and `/account transfer`
-- Per-account daily ATM withdrawal tracking and daily limit enforcement
-- Periodic autosave dirty-mark scheduling (`AutoSaveIntervalMinutes`)
-- Periodic savings-interest payout scheduling (`SavingsInterestIntervalTicks`)
-- Admin audit transaction tags for admin deposits/withdrawals (`ADMIN_DEPOSIT`, `ADMIN_WITHDRAW`)
-- Admin account tools:
-  - view player accounts
-  - freeze/unfreeze player accounts
-  - freeze/unfreeze specific account (legacy path)
-  - economy report
-  - multi-source import tools (`csv`, `essentialsx`, `cmi`, `iconomy`)
-
-## Commands
-
-### Player
+Player-facing (examples):
 
 - `/account create <AccountType> <Bank Name>`
-- `/account info`
 - `/account info list`
 - `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
-- `/account transaction <transactionUUID>`
-- `/account transaction list <accountUUID>`
+- `/payrequest <player> <amount> [destinationAccountId]`
+- `/bank reserve`
+- `/bank dashboard`
+- `/bank safebox list|deposit|withdraw <slot>`
+- `/bank heist start <bankName>`
 
-### Admin (`permission level 3`)
-
-- `/ubs centralbank`
-- `/ubs centralbank interest set <rate>`
-- `/ubs bank save`
-- `/ubs bank rename <new name>`
-- `/ubs money deposit <accountUUID> <amount>`
-- `/ubs money withdraw <accountUUID> <amount>`
-
-New admin set (also available as `/bank admin ...` alias):
+Admin-facing (examples):
 
 - `/ubs admin view <player>`
 - `/ubs admin freeze <player> [reason]`
 - `/ubs admin unfreeze <player>`
-- `/ubs admin freeze account <accountUUID> [reason]`
-- `/ubs admin unfreeze account <accountUUID>`
-- `/ubs admin report`
-- `/ubs admin import csv <path>`
-- `/ubs admin import essentialsx <path>`
-- `/ubs admin import cmi <path>`
-- `/ubs admin import iconomy <path>`
-
-## CSV Import Format
-
-`/ubs admin import csv <path>` expects CSV rows with:
-
-`player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
-
-Notes:
-
-- Header row is optional.
-- `pin` can be empty or exactly 4 digits.
-- `is_primary` is optional (`true`/`false`).
-- `account_type` accepts enum names or labels.
-- `history` is optional. Format: `timestamp|signedAmount|description;timestamp|signedAmount|description`
-- `timestamp` uses ISO format (`YYYY-MM-DDTHH:mm:ss`), `signedAmount` positive=incoming, negative=outgoing.
-
-Example:
-
-```csv
-player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history
-8b0b6d69-2ac5-4fa0-86de-6f6b9d9e1e7e,Central Bank,CheckingAccount,1500,1234,true,2026-04-11T09:00:00|+1500|Initial migration
-Steve,Central Bank,SavingAccount,3000,,false,
-```
-
-## Plugin Migration Sources
-
-- `essentialsx`: pass a userdata folder or a single `.yml/.yaml` file. Reads `money`/`balance` and maps to UBS accounts.
-- `cmi`: pass a userdata folder or a single `.yml/.yaml` file. Reads `money`/`balance` and maps to UBS accounts.
-- `iconomy`: pass a text/CSV file with `player,balance` or `player:balance` per line.
-
-Import commands print a summary in chat and also write summary + warnings to the server log.
-
-## Config Highlights (`common` config)
-
-- `TransactionsPerMinute`
-- `DefaultATMWithdrawalLimit`
-- `DailyWithdrawalLimit`
-- `AutoSaveIntervalMinutes`
-- `SavingsInterestIntervalTicks`
-- `AllowBankCustomInterestRate`
-- `ServerInterestRate`
-- `FederalFundsRate`
-- `MinCustomBankInterestRate`
-- `MaxCustomBankInterestRate`
-- `CurrencySymbol`
-- `CurrencyName`
+- `/ubs admin applications`, `/ubs admin appeals`
+- `/centralbank rate`, `/centralbank rate set <rate>`
+- `/centralbank opm inject|withdraw <amount>`
+- `/centralbank audit [bankName]`
+- `/centralbank ledger [suspense]`
 
 ## Build
 
@@ -130,5 +67,11 @@ On Windows shell environments, run via `gradlew.bat`.
 
 ## Documentation
 
-- Player guide: [`PLAYER_GUIDE.md`](PLAYER_GUIDE.md)
-- Wiki pages for GitHub wiki publishing: [`docs/wiki`](docs/wiki)
+- Player quick guide: [`PLAYER_GUIDE.md`](PLAYER_GUIDE.md)
+- Wiki sources for GitHub wiki publishing: [`docs/wiki`](docs/wiki)
+  - [`Home.md`](docs/wiki/Home.md)
+  - [`Player-Guide.md`](docs/wiki/Player-Guide.md)
+  - [`ATM-Flow.md`](docs/wiki/ATM-Flow.md)
+  - [`Admin-Commands.md`](docs/wiki/Admin-Commands.md)
+  - [`Configuration.md`](docs/wiki/Configuration.md)
+  - [`Migration-Guide.md`](docs/wiki/Migration-Guide.md)
