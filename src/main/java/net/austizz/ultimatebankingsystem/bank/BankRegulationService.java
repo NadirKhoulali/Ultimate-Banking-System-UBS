@@ -188,40 +188,47 @@ public final class BankRegulationService {
     }
 
     private static void processAnnualLicenseRenewals(MinecraftServer server, CentralBank centralBank, long gameTime) {
-        long interval = Math.max(20L, Config.BANK_ANNUAL_LICENSE_INTERVAL_TICKS.get());
+        long intervalTicks = Math.max(20L, Config.BANK_ANNUAL_LICENSE_INTERVAL_TICKS.get());
+        long intervalMillis = ticksToMillis(intervalTicks);
         BigDecimal fee = BigDecimal.valueOf(Math.max(0, Config.BANK_ANNUAL_LICENSE_FEE.get()));
-        long warningLead = 7L * 24000L;
+        long warningLeadMillis = ticksToMillis(7L * 24000L);
+        long graceTicks = Math.max(20L, Config.BANK_RESERVE_GRACE_TICKS.get());
+        long nowMillis = System.currentTimeMillis();
 
         for (Bank bank : centralBank.getBanks().values()) {
             if (bank.getBankId().equals(centralBank.getBankId())) {
                 continue;
             }
             CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-            long nextDue = metadata.contains("nextLicenseFeeTick")
-                    ? metadata.getLong("nextLicenseFeeTick")
-                    : gameTime + interval;
-            if (!metadata.contains("nextLicenseFeeTick")) {
-                metadata.putLong("nextLicenseFeeTick", nextDue);
-                centralBank.putBankMetadata(bank.getBankId(), metadata);
-            }
+            long nextDueMillis = resolveOrInitMillisDeadline(
+                    metadata,
+                    "nextLicenseFeeAtMillis",
+                    "nextLicenseFeeTick",
+                    gameTime,
+                    nowMillis,
+                    intervalTicks
+            );
 
-            if (gameTime >= (nextDue - warningLead) && !metadata.getBoolean("licenseWarningSent")) {
+            if (nowMillis >= (nextDueMillis - warningLeadMillis) && !metadata.getBoolean("licenseWarningSent")) {
+                String dueIn = formatDurationMillis(Math.max(0L, nextDueMillis - nowMillis));
                 notifyOwner(server, bank, "§eAnnual license fee due soon for " + bank.getBankName()
-                        + ". Fee: $" + fee.toPlainString() + " at tick " + nextDue + ".");
+                        + ". Fee: $" + fee.toPlainString() + " due in " + dueIn + ".");
                 metadata.putBoolean("licenseWarningSent", true);
                 centralBank.putBankMetadata(bank.getBankId(), metadata);
             }
 
-            if (gameTime < nextDue) {
+            if (nowMillis < nextDueMillis) {
                 continue;
             }
 
             if (bank.getDeclaredReserve().compareTo(fee) >= 0) {
                 bank.setReserve(bank.getDeclaredReserve().subtract(fee));
                 centralBank.setReserve(centralBank.getDeclaredReserve().add(fee));
-                metadata.putLong("nextLicenseFeeTick", gameTime + interval);
+                metadata.putLong("nextLicenseFeeAtMillis", nowMillis + intervalMillis);
+                metadata.remove("nextLicenseFeeTick");
                 metadata.putBoolean("licenseWarningSent", false);
                 metadata.remove("licenseGraceEndTick");
+                metadata.remove("licenseGraceEndAtMillis");
                 metadata.remove("licenseGraceWarningSent");
                 metadata.remove("licenseSuspendedSent");
                 if ("WARNING".equalsIgnoreCase(metadata.getString("status"))) {
@@ -233,14 +240,18 @@ public final class BankRegulationService {
                 continue;
             }
 
-            long graceEnd = metadata.contains("licenseGraceEndTick")
-                    ? metadata.getLong("licenseGraceEndTick")
-                    : gameTime + Math.max(20L, Config.BANK_RESERVE_GRACE_TICKS.get());
-            metadata.putLong("licenseGraceEndTick", graceEnd);
+            long graceEndMillis = resolveOrInitMillisDeadline(
+                    metadata,
+                    "licenseGraceEndAtMillis",
+                    "licenseGraceEndTick",
+                    gameTime,
+                    nowMillis,
+                    graceTicks
+            );
             if (!"SUSPENDED".equalsIgnoreCase(metadata.getString("status"))) {
                 metadata.putString("status", "WARNING");
             }
-            if (gameTime >= graceEnd) {
+            if (nowMillis >= graceEndMillis) {
                 metadata.putString("status", "SUSPENDED");
                 metadata.putString("suspendReason", "Unpaid annual license renewal fee");
                 if (!metadata.getBoolean("licenseSuspendedSent")) {
@@ -249,7 +260,8 @@ public final class BankRegulationService {
                 }
             } else {
                 if (!metadata.getBoolean("licenseGraceWarningSent")) {
-                    notifyOwner(server, bank, "§eInsufficient reserve for annual license fee. Grace until tick " + graceEnd + ".");
+                    String remaining = formatDurationMillis(Math.max(0L, graceEndMillis - nowMillis));
+                    notifyOwner(server, bank, "§eInsufficient reserve for annual license fee. Grace remaining: " + remaining + ".");
                     metadata.putBoolean("licenseGraceWarningSent", true);
                 }
             }
@@ -404,7 +416,8 @@ public final class BankRegulationService {
         double federal = centralBank.getFederalFundsRate();
         double floor = federal * Config.SAVINGS_RATE_FLOOR_MULTIPLIER.get();
         double ceiling = federal * Config.SAVINGS_RATE_CEILING_MULTIPLIER.get();
-        long grace = 24000L;
+        long graceMillis = ticksToMillis(24000L);
+        long nowMillis = System.currentTimeMillis();
 
         for (Bank bank : centralBank.getBanks().values()) {
             if (bank.getBankId().equals(centralBank.getBankId())) {
@@ -413,6 +426,7 @@ public final class BankRegulationService {
             CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
             if (metadata.getBoolean("rateExempt")) {
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandStartMillis");
                 metadata.remove("rateOutOfBandWarningSent");
                 centralBank.putBankMetadata(bank.getBankId(), metadata);
                 continue;
@@ -422,29 +436,32 @@ public final class BankRegulationService {
             boolean outOfBand = rate < floor || rate > ceiling;
             if (!outOfBand) {
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandStartMillis");
                 metadata.remove("rateOutOfBandWarningSent");
                 centralBank.putBankMetadata(bank.getBankId(), metadata);
                 continue;
             }
 
-            long start;
-            if (metadata.contains("rateOutOfBandStartTick")) {
-                start = metadata.getLong("rateOutOfBandStartTick");
-            } else {
-                start = gameTime;
-                metadata.putLong("rateOutOfBandStartTick", start);
-                metadata.putBoolean("rateOutOfBandWarningSent", false);
-            }
-            if ((gameTime - start) >= grace) {
+            long startMillis = resolveOrInitMillisDeadline(
+                    metadata,
+                    "rateOutOfBandStartMillis",
+                    "rateOutOfBandStartTick",
+                    gameTime,
+                    nowMillis,
+                    0L
+            );
+            if ((nowMillis - startMillis) >= graceMillis) {
                 double clamped = Math.max(floor, Math.min(ceiling, rate));
                 bank.setInterestRate(clamped);
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandStartMillis");
                 metadata.remove("rateOutOfBandWarningSent");
                 notifyOwner(server, bank, "§eSavings rate was clamped to " + clamped
                         + "% to match federal rate band.");
             } else {
                 if (!metadata.getBoolean("rateOutOfBandWarningSent")) {
-                    notifyOwner(server, bank, "§eSavings rate is outside federal band. Adjust within one in-game day.");
+                    String adjustWithin = formatDurationMillis(Math.max(0L, graceMillis - (nowMillis - startMillis)));
+                    notifyOwner(server, bank, "§eSavings rate is outside federal band. Adjust within " + adjustWithin + ".");
                     metadata.putBoolean("rateOutOfBandWarningSent", true);
                 }
             }
@@ -579,6 +596,52 @@ public final class BankRegulationService {
         } catch (NumberFormatException ex) {
             return BigDecimal.ZERO;
         }
+    }
+
+    private static long ticksToMillis(long ticks) {
+        return Math.max(0L, ticks) * 50L;
+    }
+
+    private static long resolveOrInitMillisDeadline(CompoundTag metadata,
+                                                    String millisKey,
+                                                    String legacyTickKey,
+                                                    long gameTime,
+                                                    long nowMillis,
+                                                    long defaultDelayTicks) {
+        if (metadata.contains(millisKey)) {
+            return metadata.getLong(millisKey);
+        }
+
+        long resolvedMillis;
+        if (legacyTickKey != null && metadata.contains(legacyTickKey)) {
+            long legacyTickDeadline = metadata.getLong(legacyTickKey);
+            long ticksRemaining = Math.max(0L, legacyTickDeadline - gameTime);
+            resolvedMillis = nowMillis + ticksToMillis(ticksRemaining);
+            metadata.remove(legacyTickKey);
+        } else {
+            resolvedMillis = nowMillis + ticksToMillis(defaultDelayTicks);
+        }
+        metadata.putLong(millisKey, resolvedMillis);
+        return resolvedMillis;
+    }
+
+    private static String formatDurationMillis(long millis) {
+        long secondsTotal = Math.max(0L, millis / 1000L);
+        long days = secondsTotal / 86400L;
+        long hours = (secondsTotal % 86400L) / 3600L;
+        long minutes = (secondsTotal % 3600L) / 60L;
+        long seconds = secondsTotal % 60L;
+
+        if (days > 0L) {
+            return days + "d " + hours + "h";
+        }
+        if (hours > 0L) {
+            return hours + "h " + minutes + "m";
+        }
+        if (minutes > 0L) {
+            return minutes + "m " + seconds + "s";
+        }
+        return seconds + "s";
     }
 
     private static UUID readUuid(CompoundTag tag, String key) {
