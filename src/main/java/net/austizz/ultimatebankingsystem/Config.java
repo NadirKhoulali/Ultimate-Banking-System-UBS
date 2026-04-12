@@ -112,6 +112,198 @@ public class Config {
                     "Lower Rates: Encourage borrowing and spending, but can lower interest earned on savings accounts.")
             .defineInRange("FederalFundsRate", 3.5, 0.00, Double.MAX_VALUE);
 
+    public static final ModConfigSpec.DoubleValue MIN_FEDERAL_FUNDS_RATE = BUILDER
+            .comment("Minimum allowed Federal Funds Rate.")
+            .defineInRange("MinFederalFundsRate", 0.00, 0.00, Double.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue MAX_FEDERAL_FUNDS_RATE = BUILDER
+            .comment("Maximum allowed Federal Funds Rate.")
+            .defineInRange("MaxFederalFundsRate", 50.00, 0.01, Double.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue BANK_MIN_RESERVE_RATIO = BUILDER
+            .comment("Minimum reserve ratio target for player banks (0.10 = 10%).")
+            .defineInRange("BankMinReserveRatio", 0.10, 0.0, 1.0);
+
+    public static final ModConfigSpec.IntValue BANK_RESERVE_GRACE_TICKS = BUILDER
+            .comment("Grace period before automatic restriction/suspension when reserve checks fail.")
+            .defineInRange("BankReserveGraceTicks", 72000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue BANK_CHARTER_FEE = BUILDER
+            .comment("One-time non-refundable charter fee when creating a player bank.")
+            .defineInRange("BankCharterFee", 10000, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue BANK_ANNUAL_LICENSE_FEE = BUILDER
+            .comment("Recurring annual license fee charged to player banks.")
+            .defineInRange("BankAnnualLicenseFee", 2000, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue BANK_ANNUAL_LICENSE_INTERVAL_TICKS = BUILDER
+            .comment("Tick interval between annual license fee collections.")
+            .defineInRange("BankAnnualLicenseIntervalTicks", 24000 * 365, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue BANK_PROFIT_TAX_RATE = BUILDER
+            .comment("Tax rate applied to positive bank reserve growth during tax collection (0.05 = 5%).")
+            .defineInRange("BankProfitTaxRate", 0.05, 0.0, 1.0);
+
+    public static final ModConfigSpec.IntValue BANK_TAX_INTERVAL_TICKS = BUILDER
+            .comment("Tick interval for automatic bank tax collection.")
+            .defineInRange("BankTaxIntervalTicks", 24000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue OMO_HISTORY_LIMIT = BUILDER
+            .comment("Maximum retained open market operation history entries.")
+            .defineInRange("OpenMarketHistoryLimit", 20, 1, 5000);
+
+    public static final ModConfigSpec.IntValue CLEARING_LEDGER_LIMIT = BUILDER
+            .comment("Maximum retained central clearing ledger entries.")
+            .defineInRange("ClearingLedgerLimit", 50, 1, 20000);
+
+    public static final ModConfigSpec.DoubleValue SAVINGS_RATE_FLOOR_MULTIPLIER = BUILDER
+            .comment("Dynamic savings floor multiplier applied to Federal Funds Rate.")
+            .defineInRange("SavingsRateFloorMultiplier", 0.50, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue SAVINGS_RATE_CEILING_MULTIPLIER = BUILDER
+            .comment("Dynamic savings ceiling multiplier applied to Federal Funds Rate.")
+            .defineInRange("SavingsRateCeilingMultiplier", 3.00, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue MMA_RATE_MULTIPLIER = BUILDER
+            .comment("Money Market Account rate multiplier against Federal Funds Rate.")
+            .defineInRange("MoneyMarketRateMultiplier", 0.85, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue BANK_DAILY_LIQUIDITY_RATIO = BUILDER
+            .comment("Per-bank daily withdrawal cap ratio against current reserve.")
+            .defineInRange("BankDailyLiquidityRatio", 0.20, 0.0, 1.0);
+
+    public static final ModConfigSpec.IntValue WITHDRAWAL_QUEUE_EXPIRY_TICKS = BUILDER
+            .comment("Expiry for queued withdrawals when reserves are insufficient.")
+            .defineInRange("WithdrawalQueueExpiryTicks", 24000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue BANK_RUN_WINDOW_TICKS = BUILDER
+            .comment("Rolling window size for bank-run detection.")
+            .defineInRange("BankRunWindowTicks", 100, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue BANK_RUN_THRESHOLD_RATIO = BUILDER
+            .comment("Withdrawal ratio threshold to trigger bank-run lockdown.")
+            .defineInRange("BankRunThresholdRatio", 0.30, 0.0, 1.0);
+
+    public static final ModConfigSpec.IntValue BANK_RUN_LOCKDOWN_TICKS = BUILDER
+            .comment("Automatic lockdown duration after bank-run detection.")
+            .defineInRange("BankRunLockdownTicks", 300, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue HEIST_DURATION_TICKS = BUILDER
+            .comment("Bank heist duration in ticks.")
+            .defineInRange("HeistDurationTicks", 600, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue HEIST_MIN_PLAYERS = BUILDER
+            .comment("Minimum nearby players required to start a heist.")
+            .defineInRange("HeistMinPlayers", 2, 1, 64);
+
+    public static final ModConfigSpec.DoubleValue HEIST_SUCCESS_CHANCE = BUILDER
+            .comment("Heist success probability from 0.0 to 1.0.")
+            .defineInRange("HeistSuccessChance", 0.45, 0.0, 1.0);
+
+    public static final ModConfigSpec.DoubleValue HEIST_PAYOUT_RATIO = BUILDER
+            .comment("Percentage of target reserve paid out on successful heist.")
+            .defineInRange("HeistPayoutRatio", 0.10, 0.0, 1.0);
+
+    public static final ModConfigSpec.IntValue HEIST_COOLDOWN_TICKS = BUILDER
+            .comment("Cooldown (wanted state) applied after failed heist.")
+            .defineInRange("HeistCooldownTicks", 24000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.BooleanValue PLAYER_BANKS_ENABLED = BUILDER
+            .comment("Enable player-owned bank creation.")
+            .define("PlayerBanksEnabled", true);
+
+    public static final ModConfigSpec.BooleanValue PLAYER_BANKS_REQUIRE_ADMIN_APPROVAL = BUILDER
+            .comment("Require admin approval before player bank creation.")
+            .define("PlayerBanksRequireAdminApproval", false);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_MIN_BALANCE = BUILDER
+            .comment("Minimum balance required to apply for player-bank creation.")
+            .defineInRange("PlayerBanksMinBalance", 5000, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_MIN_PLAYTIME_HOURS = BUILDER
+            .comment("Minimum playtime in hours required for player-bank creation.")
+            .defineInRange("PlayerBanksMinPlaytimeHours", 0, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_CREATION_FEE = BUILDER
+            .comment("Creation fee deducted when a player bank is approved.")
+            .defineInRange("PlayerBanksCreationFee", 2500, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_MAX_BANKS_PER_PLAYER = BUILDER
+            .comment("Maximum number of player banks one player may own.")
+            .defineInRange("PlayerBanksMaxPerPlayer", 1, 1, 100);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_NAME_MAX_LENGTH = BUILDER
+            .comment("Maximum character length for player bank names.")
+            .defineInRange("PlayerBanksNameMaxLength", 32, 3, 128);
+
+    public static final ModConfigSpec.IntValue PLAYER_BANKS_CREATION_COOLDOWN_HOURS = BUILDER
+            .comment("Cooldown in hours between player bank creation attempts.")
+            .defineInRange("PlayerBanksCreationCooldownHours", 24, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue GLOBAL_MAX_SINGLE_TRANSACTION = BUILDER
+            .comment("Global maximum amount for a single transaction.")
+            .defineInRange("GlobalMaxSingleTransaction", 50000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue GLOBAL_MAX_DAILY_PLAYER_VOLUME = BUILDER
+            .comment("Global maximum outgoing transaction volume per player per day.")
+            .defineInRange("GlobalMaxDailyPlayerVolume", 200000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue GLOBAL_MAX_DAILY_BANK_VOLUME = BUILDER
+            .comment("Global maximum outgoing transaction volume per bank per day.")
+            .defineInRange("GlobalMaxDailyBankVolume", 1000000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SAFEBOX_SLOTS_CHECKING = BUILDER
+            .comment("Safe deposit slot count for checking accounts.")
+            .defineInRange("SafeBoxSlotsChecking", 9, 1, 54);
+
+    public static final ModConfigSpec.IntValue SAFEBOX_SLOTS_SAVING = BUILDER
+            .comment("Safe deposit slot count for saving accounts.")
+            .defineInRange("SafeBoxSlotsSaving", 18, 1, 54);
+
+    public static final ModConfigSpec.IntValue SAFEBOX_SLOTS_MONEY_MARKET = BUILDER
+            .comment("Safe deposit slot count for money market accounts.")
+            .defineInRange("SafeBoxSlotsMoneyMarket", 27, 1, 54);
+
+    public static final ModConfigSpec.IntValue SAFEBOX_SLOTS_CERTIFICATE = BUILDER
+            .comment("Safe deposit slot count for certificate accounts.")
+            .defineInRange("SafeBoxSlotsCertificate", 9, 1, 54);
+
+    public static final ModConfigSpec.IntValue CD_SHORT_TERM_TICKS = BUILDER
+            .comment("Certificate short-term maturity in ticks.")
+            .defineInRange("CDShortTermTicks", 72000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue CD_MEDIUM_TERM_TICKS = BUILDER
+            .comment("Certificate medium-term maturity in ticks.")
+            .defineInRange("CDMediumTermTicks", 144000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue CD_LONG_TERM_TICKS = BUILDER
+            .comment("Certificate long-term maturity in ticks.")
+            .defineInRange("CDLongTermTicks", 288000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue CD_SHORT_RATE = BUILDER
+            .comment("Certificate short-term APR.")
+            .defineInRange("CDShortRate", 3.0, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue CD_MEDIUM_RATE = BUILDER
+            .comment("Certificate medium-term APR.")
+            .defineInRange("CDMediumRate", 4.5, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue CD_LONG_RATE = BUILDER
+            .comment("Certificate long-term APR.")
+            .defineInRange("CDLongRate", 6.0, 0.0, 100.0);
+
+    public static final ModConfigSpec.DoubleValue CD_EARLY_PENALTY_FACTOR_SHORT = BUILDER
+            .comment("Early withdrawal penalty factor for short CD tier.")
+            .defineInRange("CDEarlyPenaltyFactorShort", 0.50, 0.0, 1.0);
+
+    public static final ModConfigSpec.DoubleValue CD_EARLY_PENALTY_FACTOR_MEDIUM = BUILDER
+            .comment("Early withdrawal penalty factor for medium CD tier.")
+            .defineInRange("CDEarlyPenaltyFactorMedium", 0.50, 0.0, 1.0);
+
+    public static final ModConfigSpec.DoubleValue CD_EARLY_PENALTY_FACTOR_LONG = BUILDER
+            .comment("Early withdrawal penalty factor for long CD tier.")
+            .defineInRange("CDEarlyPenaltyFactorLong", 0.50, 0.0, 1.0);
+
 
     public static final ModConfigSpec.DoubleValue MIN_CUSTOM_BANK_INTEREST_RATE = BUILDER
             .comment(

@@ -103,8 +103,22 @@ public final class LoanService {
             return null;
         }
 
+        Bank lenderBank = centralBank.getBank(quote.lenderBankId());
+        if (lenderBank != null && !lenderBank.getBankId().equals(centralBank.getBankId())) {
+            if (!lenderBank.canIssueLoan(quote.principal())) {
+                return null;
+            }
+            if (lenderBank.getDeclaredReserve().compareTo(quote.principal()) < 0) {
+                return null;
+            }
+            lenderBank.setReserve(lenderBank.getDeclaredReserve().subtract(quote.principal()));
+        }
+
         boolean added = account.AddBalance(quote.principal());
         if (!added) {
+            if (lenderBank != null && !lenderBank.getBankId().equals(centralBank.getBankId())) {
+                lenderBank.setReserve(lenderBank.getDeclaredReserve().add(quote.principal()));
+            }
             return null;
         }
 
@@ -218,6 +232,12 @@ public final class LoanService {
                         loan.setPaymentsMade(loan.getPaymentsMade() + 1);
                         loan.setNextDueGameTime(nextDue + loan.getPaymentIntervalTicks());
                         loan.setWarnedThisCycle(false);
+                        Bank lenderBank = centralBank.getBank(
+                                loan.getLenderBankId() == null ? account.getBankId() : loan.getLenderBankId()
+                        );
+                        if (lenderBank != null) {
+                            lenderBank.setReserve(lenderBank.getDeclaredReserve().add(due));
+                        }
                         account.adjustCreditScore(Config.CREDIT_SCORE_ON_TIME_BOOST.get());
                         account.addTransaction(new UserTransaction(
                                 account.getAccountUUID(),

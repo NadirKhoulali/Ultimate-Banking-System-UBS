@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem;
 
 import com.mojang.logging.LogUtils;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
@@ -97,6 +98,7 @@ public class UltimateBankingSystem {
 
         LoanService.processRepayments(server, gameTime);
         ScheduledPaymentService.process(server, gameTime);
+        BankRegulationService.process(server, gameTime);
 
         long autosaveIntervalTicks = Math.max(1, Config.AUTOSAVE_INTERVAL_MINUTES.get()) * 60L * 20L;
         if (gameTime % autosaveIntervalTicks == 0L && gameTime != lastAutosaveTick) {

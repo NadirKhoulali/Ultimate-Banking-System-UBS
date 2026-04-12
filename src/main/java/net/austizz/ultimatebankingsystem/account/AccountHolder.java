@@ -21,6 +21,9 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -29,6 +32,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -56,6 +60,13 @@ public class AccountHolder {
     private String accountAccessType;
     private String businessLabel;
     private ConcurrentHashMap<UUID, String> accessRoles;
+    private ConcurrentHashMap<Integer, CompoundTag> safeBoxSlots;
+    private String certificateTier;
+    private long certificateMaturityGameTime;
+    private boolean certificateLocked;
+    private boolean certificateMaturitySettled;
+    private double certificateRate;
+    private double lastVariableRate;
 
     private static final long TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS = 24000L;
     private static final ZoneId SERVER_ZONE = ZoneId.systemDefault();
@@ -85,6 +96,13 @@ public class AccountHolder {
         this.businessLabel = "";
         this.accessRoles = new ConcurrentHashMap<>();
         this.accessRoles.put(playerUUID, "OWNER");
+        this.safeBoxSlots = new ConcurrentHashMap<>();
+        this.certificateTier = "";
+        this.certificateMaturityGameTime = -1L;
+        this.certificateLocked = false;
+        this.certificateMaturitySettled = false;
+        this.certificateRate = 0.0;
+        this.lastVariableRate = -1.0;
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -126,6 +144,9 @@ public class AccountHolder {
             return false;
         }
         if (!ignoreFreeze && this.frozen) {
+            return false;
+        }
+        if (!ignoreFreeze && isLockedCertificateAtCurrentGameTime()) {
             return false;
         }
         if (this.balance.compareTo(amount) < 0) {
@@ -306,6 +327,130 @@ public class AccountHolder {
     public boolean canManage(UUID playerId) {
         String role = getRole(playerId);
         return role.equals("OWNER") || role.equals("MANAGE");
+    }
+
+    public int getSafeBoxSlotCount() {
+        return switch (this.AccountType) {
+            case CheckingAccount -> Config.SAFEBOX_SLOTS_CHECKING.get();
+            case SavingAccount -> Config.SAFEBOX_SLOTS_SAVING.get();
+            case MoneyMarketAccount -> Config.SAFEBOX_SLOTS_MONEY_MARKET.get();
+            case CertificateAccount -> Config.SAFEBOX_SLOTS_CERTIFICATE.get();
+        };
+    }
+
+    public ConcurrentHashMap<Integer, CompoundTag> getSafeBoxSlots() {
+        if (safeBoxSlots == null) {
+            safeBoxSlots = new ConcurrentHashMap<>();
+        }
+        return safeBoxSlots;
+    }
+
+    public boolean depositToSafeBox(ItemStack stack, HolderLookup.Provider registries) {
+        if (stack == null || stack.isEmpty() || registries == null) {
+            return false;
+        }
+        int maxSlots = Math.max(1, getSafeBoxSlotCount());
+        int freeSlot = -1;
+        for (int slot = 0; slot < maxSlots; slot++) {
+            if (!getSafeBoxSlots().containsKey(slot)) {
+                freeSlot = slot;
+                break;
+            }
+        }
+        if (freeSlot < 0) {
+            return false;
+        }
+
+        CompoundTag stackTag = new CompoundTag();
+        stack.save(registries, stackTag);
+        getSafeBoxSlots().put(freeSlot, stackTag);
+        BankManager.markDirty();
+        return true;
+    }
+
+    public ItemStack withdrawFromSafeBox(int slot, HolderLookup.Provider registries) {
+        if (slot < 0 || registries == null) {
+            return ItemStack.EMPTY;
+        }
+        CompoundTag stackTag = getSafeBoxSlots().remove(slot);
+        if (stackTag == null) {
+            return ItemStack.EMPTY;
+        }
+        Optional<ItemStack> parsed = ItemStack.parse(registries, stackTag);
+        if (parsed.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        BankManager.markDirty();
+        return parsed.get();
+    }
+
+    public void configureCertificate(String tier, long maturityGameTime, double rate) {
+        this.certificateTier = tier == null ? "" : tier.trim().toLowerCase();
+        this.certificateMaturityGameTime = maturityGameTime;
+        this.certificateRate = rate;
+        this.certificateLocked = !this.certificateTier.isBlank() && maturityGameTime > 0;
+        this.certificateMaturitySettled = false;
+        BankManager.markDirty();
+    }
+
+    public String getCertificateTier() {
+        return certificateTier == null ? "" : certificateTier;
+    }
+
+    public long getCertificateMaturityGameTime() {
+        return certificateMaturityGameTime;
+    }
+
+    public boolean isCertificateLocked(long gameTime) {
+        if (!certificateLocked) {
+            return false;
+        }
+        if (certificateMaturityGameTime <= 0) {
+            return false;
+        }
+        if (gameTime >= certificateMaturityGameTime) {
+            certificateLocked = false;
+            BankManager.markDirty();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isLockedCertificateAtCurrentGameTime() {
+        if (this.AccountType != AccountTypes.CertificateAccount) {
+            return false;
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return this.certificateLocked;
+        }
+        var overworld = server.getLevel(Level.OVERWORLD);
+        if (overworld == null) {
+            return this.certificateLocked;
+        }
+        return isCertificateLocked(overworld.getGameTime());
+    }
+
+    public double getCertificateRate() {
+        return certificateRate;
+    }
+
+    public boolean isCertificateMaturitySettled() {
+        return certificateMaturitySettled;
+    }
+
+    public void setCertificateMaturitySettled(boolean certificateMaturitySettled) {
+        this.certificateMaturitySettled = certificateMaturitySettled;
+        BankManager.markDirty();
+    }
+
+    public double getLastVariableRate() {
+        return lastVariableRate;
+    }
+
+    public void setLastVariableRate(double lastVariableRate) {
+        this.lastVariableRate = lastVariableRate;
+        BankManager.markDirty();
     }
 
     public String getFrozenReason() {
@@ -549,6 +694,12 @@ public class AccountHolder {
         tag.putBoolean("defaulted", this.defaulted);
         tag.putString("accountAccessType", getAccountAccessType());
         tag.putString("businessLabel", getBusinessLabel());
+        tag.putString("certificateTier", getCertificateTier());
+        tag.putLong("certificateMaturityGameTime", this.certificateMaturityGameTime);
+        tag.putBoolean("certificateLocked", this.certificateLocked);
+        tag.putBoolean("certificateMaturitySettled", this.certificateMaturitySettled);
+        tag.putDouble("certificateRate", this.certificateRate);
+        tag.putDouble("lastVariableRate", this.lastVariableRate);
         tag.putLong("dailyWithdrawalWindowDay", this.dailyWithdrawalWindowDay);
         tag.putString("dailyWithdrawnAmount", this.dailyWithdrawnAmount.toPlainString());
         tag.putLong("dailyWithdrawalResetEpochMillis", this.dailyWithdrawalResetEpochMillis);
@@ -591,6 +742,18 @@ public class AccountHolder {
         }
         tag.put("accessRoles", roleList);
 
+        ListTag safeBoxList = new ListTag();
+        for (Map.Entry<Integer, CompoundTag> entry : getSafeBoxSlots().entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            CompoundTag slotTag = new CompoundTag();
+            slotTag.putInt("slot", entry.getKey());
+            slotTag.put("stack", entry.getValue().copy());
+            safeBoxList.add(slotTag);
+        }
+        tag.put("safeBoxSlots", safeBoxList);
+
         // voeg andere velden toe...
         return tag;
     }
@@ -620,6 +783,12 @@ public class AccountHolder {
         account.defaulted = tag.getBoolean("defaulted");
         account.accountAccessType = tag.contains("accountAccessType") ? tag.getString("accountAccessType") : "PERSONAL";
         account.businessLabel = tag.contains("businessLabel") ? tag.getString("businessLabel") : "";
+        account.certificateTier = tag.contains("certificateTier") ? tag.getString("certificateTier") : "";
+        account.certificateMaturityGameTime = tag.contains("certificateMaturityGameTime") ? tag.getLong("certificateMaturityGameTime") : -1L;
+        account.certificateLocked = tag.getBoolean("certificateLocked");
+        account.certificateMaturitySettled = tag.getBoolean("certificateMaturitySettled");
+        account.certificateRate = tag.contains("certificateRate") ? tag.getDouble("certificateRate") : 0.0;
+        account.lastVariableRate = tag.contains("lastVariableRate") ? tag.getDouble("lastVariableRate") : -1.0;
         account.dailyWithdrawalWindowDay = tag.contains("dailyWithdrawalWindowDay") ? tag.getLong("dailyWithdrawalWindowDay") : currentEpochDay();
         if (tag.contains("dailyWithdrawnAmount")) {
             try {
@@ -683,6 +852,22 @@ public class AccountHolder {
             }
         }
         account.accessRoles.putIfAbsent(account.playerUUID, "OWNER");
+
+        account.safeBoxSlots = new ConcurrentHashMap<>();
+        if (tag.contains("safeBoxSlots", Tag.TAG_LIST)) {
+            ListTag safeBoxList = tag.getList("safeBoxSlots", Tag.TAG_COMPOUND);
+            for (int i = 0; i < safeBoxList.size(); i++) {
+                CompoundTag slotTag = safeBoxList.getCompound(i);
+                if (!slotTag.contains("stack", Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+                int slot = slotTag.getInt("slot");
+                if (slot < 0) {
+                    continue;
+                }
+                account.safeBoxSlots.put(slot, slotTag.getCompound("stack"));
+            }
+        }
 
         return account;
     }

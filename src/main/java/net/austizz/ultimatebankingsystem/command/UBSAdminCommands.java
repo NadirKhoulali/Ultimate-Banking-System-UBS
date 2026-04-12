@@ -3,6 +3,7 @@ package net.austizz.ultimatebankingsystem.command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.authlib.GameProfile;
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -13,6 +14,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -32,6 +34,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -47,6 +50,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSAdminCommands {
@@ -56,6 +60,7 @@ public class UBSAdminCommands {
     );
     private static final DateTimeFormatter ADMIN_TX_TIME_FMT = DateTimeFormatter.ofPattern("MM/dd HH:mm");
     private static final DateTimeFormatter IMPORT_TX_TIME_FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static final ConcurrentHashMap<UUID, Long> CHARTER_FEE_WAIVERS = new ConcurrentHashMap<>();
 
     private static final class ImportStats {
         int created;
@@ -80,10 +85,18 @@ public class UBSAdminCommands {
         return true;
     }
 
+    public static boolean consumeCharterFeeWaiver(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        return CHARTER_FEE_WAIVERS.remove(playerId) != null;
+    }
+
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(buildUbsRoot());
         event.getDispatcher().register(Commands.literal("bank").then(buildAdminLiteral()));
+        event.getDispatcher().register(buildCentralBankRoot());
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildUbsRoot() {
@@ -139,6 +152,66 @@ public class UBSAdminCommands {
                         )
                 )
                 .then(buildAdminLiteral());
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildCentralBankRoot() {
+        return Commands.literal("centralbank")
+                .executes(context -> centralBankRateShow(context.getSource()))
+                .then(Commands.literal("rate")
+                        .executes(context -> centralBankRateShow(context.getSource()))
+                        .then(Commands.literal("set")
+                                .then(Commands.argument("rate", StringArgumentType.word())
+                                        .executes(context -> centralBankRateSet(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "rate")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("opm")
+                        .then(Commands.literal("inject")
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> centralBankOpenMarketOperation(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount"),
+                                                true
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("withdraw")
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> centralBankOpenMarketOperation(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount"),
+                                                false
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("history")
+                                .executes(context -> centralBankOpenMarketHistory(context.getSource()))
+                        )
+                )
+                .then(Commands.literal("audit")
+                        .executes(context -> centralBankAudit(context.getSource(), ""))
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> centralBankAudit(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("report")
+                        .executes(context -> centralBankReport(context.getSource(), false))
+                        .then(Commands.literal("history")
+                                .executes(context -> centralBankReport(context.getSource(), true))
+                        )
+                )
+                .then(Commands.literal("ledger")
+                        .executes(context -> centralBankLedger(context.getSource(), false))
+                        .then(Commands.literal("suspense")
+                                .executes(context -> centralBankLedger(context.getSource(), true))
+                        )
+                );
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildAdminLiteral() {
@@ -294,6 +367,199 @@ public class UBSAdminCommands {
                                         ))
                                 )
                         )
+                )
+                .then(Commands.literal("applications")
+                        .executes(context -> adminListBankApplications(context.getSource()))
+                        .then(Commands.literal("approve")
+                                .then(Commands.argument("applicationId", UuidArgument.uuid())
+                                        .executes(context -> adminApproveBankApplication(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "applicationId")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("deny")
+                                .then(Commands.argument("applicationId", UuidArgument.uuid())
+                                        .executes(context -> adminDenyBankApplication(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "applicationId"),
+                                                ""
+                                        ))
+                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                .executes(context -> adminDenyBankApplication(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "applicationId"),
+                                                        StringArgumentType.getString(context, "reason")
+                                                ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("appeals")
+                        .executes(context -> adminListAppeals(context.getSource()))
+                )
+                .then(Commands.literal("appeal")
+                        .then(Commands.argument("appealId", UuidArgument.uuid())
+                                .then(Commands.literal("approve")
+                                        .executes(context -> adminReviewAppeal(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "appealId"),
+                                                true,
+                                                ""
+                                        ))
+                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                .executes(context -> adminReviewAppeal(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "appealId"),
+                                                        true,
+                                                        StringArgumentType.getString(context, "reason")
+                                                ))
+                                        )
+                                )
+                                .then(Commands.literal("deny")
+                                        .executes(context -> adminReviewAppeal(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "appealId"),
+                                                false,
+                                                ""
+                                        ))
+                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                .executes(context -> adminReviewAppeal(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "appealId"),
+                                                        false,
+                                                        StringArgumentType.getString(context, "reason")
+                                                ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("reserve")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankReserve(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("compliance")
+                        .executes(context -> adminBankCompliance(context.getSource(), ""))
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankCompliance(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("audit")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankAudit(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("suspend")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankSuspend(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName"),
+                                        ""
+                                ))
+                                .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                        .executes(context -> adminBankSuspend(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "bankName"),
+                                                StringArgumentType.getString(context, "reason")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("unsuspend")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankUnsuspend(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("unlock")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankUnlock(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("bankrun")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankRunStatus(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("revoke")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminBankRevoke(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName"),
+                                        ""
+                                ))
+                                .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                        .executes(context -> adminBankRevoke(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "bankName"),
+                                                StringArgumentType.getString(context, "reason")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("rateexempt")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminToggleRateExempt(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("setcap")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> adminSetDailyCapOverride(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "bankName"),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("waivefee")
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> adminWaiveCharterFee(
+                                        context.getSource(),
+                                        EntityArgument.getPlayer(context, "player")
+                                ))
+                        )
+                )
+                .then(Commands.literal("deferrenwal")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminDeferLicenseRenewal(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("deferrenewal")
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                .executes(context -> adminDeferLicenseRenewal(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bankName")
+                                ))
+                        )
+                )
+                .then(Commands.literal("flags")
+                        .executes(context -> adminListFlags(context.getSource()))
                 );
     }
 
@@ -385,6 +651,936 @@ public class UBSAdminCommands {
         source.sendSystemMessage(Component.literal(
                 "§aCentral Bank interest rate updated: §e" + before + " §7-> §e" + after
         ));
+        return 1;
+    }
+
+    private static int centralBankRateShow(CommandSourceStack source) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        double rate = centralBank.getFederalFundsRate();
+        double floor = rate * Config.SAVINGS_RATE_FLOOR_MULTIPLIER.get();
+        double ceiling = rate * Config.SAVINGS_RATE_CEILING_MULTIPLIER.get();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Federal Funds Rate: §e" + rate + "%\n"));
+        body.append(Component.literal("§7Implied Savings Floor: §f" + floor + "%\n"));
+        body.append(Component.literal("§7Implied Savings Ceiling: §f" + ceiling + "%\n"));
+        body.append(Component.literal("§7Allowed FFR Range: §f" + Config.MIN_FEDERAL_FUNDS_RATE.get()
+                + "% §7to §f" + Config.MAX_FEDERAL_FUNDS_RATE.get() + "%"));
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eCentral Bank Rate", body));
+        return 1;
+    }
+
+    private static int centralBankRateSet(CommandSourceStack source, String rateRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        double requested;
+        try {
+            requested = Double.parseDouble(rateRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid rate: " + rateRaw));
+            return 1;
+        }
+
+        double previous = centralBank.getFederalFundsRate();
+        if (!centralBank.setFederalFundsRate(requested)) {
+            source.sendSystemMessage(Component.literal(
+                    "§cRate out of bounds. Allowed range: "
+                            + Config.MIN_FEDERAL_FUNDS_RATE.get()
+                            + "% to " + Config.MAX_FEDERAL_FUNDS_RATE.get() + "%"
+            ));
+            return 1;
+        }
+
+        double next = centralBank.getFederalFundsRate();
+        source.sendSystemMessage(Component.literal(
+                "§aFederal Funds Rate updated: §e" + previous + "% §7-> §e" + next + "%"
+        ));
+        source.getServer().getPlayerList().broadcastSystemMessage(
+                Component.literal("§6[UBS] Federal Funds Rate updated to §e" + next + "%§6 by " + source.getTextName()),
+                false
+        );
+        return 1;
+    }
+
+    private static int centralBankOpenMarketOperation(CommandSourceStack source, String amountRaw, boolean inject) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        BigDecimal amount = parsePositiveAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+        BigDecimal before = centralBank.getDeclaredReserve();
+        BigDecimal after = inject ? before.add(amount) : before.subtract(amount);
+        if (after.compareTo(BigDecimal.ZERO) < 0) {
+            source.sendSystemMessage(Component.literal("§cOperation rejected: Central Bank reserve cannot go negative."));
+            return 1;
+        }
+
+        centralBank.setReserve(after);
+        UUID opId = UUID.randomUUID();
+        CompoundTag op = new CompoundTag();
+        op.putUUID("id", opId);
+        op.putLong("timestampMillis", System.currentTimeMillis());
+        op.putString("type", inject ? "OMO_INJECT" : "OMO_WITHDRAW");
+        op.putString("amount", amount.toPlainString());
+        op.putString("actor", source.getTextName());
+        op.putString("reserveBefore", before.toPlainString());
+        op.putString("reserveAfter", after.toPlainString());
+        centralBank.getOpenMarketOperations().put(opId, op);
+        trimTagMap(centralBank.getOpenMarketOperations(), Math.max(1, Config.OMO_HISTORY_LIMIT.get()));
+        BankManager.markDirty();
+
+        source.sendSystemMessage(Component.literal(
+                "§aOpen market operation executed: §f" + op.getString("type")
+                        + " §6$" + amount.toPlainString()
+                        + " §7(CB reserve " + before.toPlainString() + " -> " + after.toPlainString() + ")"
+        ));
+        return 1;
+    }
+
+    private static int centralBankOpenMarketHistory(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        List<CompoundTag> entries = centralBank.getOpenMarketOperations().values().stream()
+                .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
+                .toList();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Open Market Operations: §b" + entries.size() + "\n\n"));
+        if (entries.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (int i = Math.max(0, entries.size() - Config.OMO_HISTORY_LIMIT.get()); i < entries.size(); i++) {
+                CompoundTag tag = entries.get(i);
+                body.append(Component.literal(
+                        "§8- §f" + tag.getString("type")
+                                + " §6$" + readDecimalTag(tag, "amount").toPlainString()
+                                + " §7by §f" + tag.getString("actor")
+                                + " §7at §f" + tag.getLong("timestampMillis") + "\n"
+                ));
+            }
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bOpen Market History", body));
+        return 1;
+    }
+
+    private static int centralBankAudit(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        List<Bank> banks;
+        String bankName = bankNameRaw == null ? "" : bankNameRaw.trim();
+        if (bankName.isBlank()) {
+            banks = centralBank.getBanks().values().stream()
+                    .filter(bank -> !bank.getBankId().equals(centralBank.getBankId()))
+                    .sorted(Comparator.comparing(Bank::getBankName, String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+        } else {
+            Bank bank = resolveBankByName(centralBank, bankName);
+            if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+                source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+                return 1;
+            }
+            banks = List.of(bank);
+        }
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Audited Banks: §b" + banks.size() + "\n\n"));
+        for (Bank bank : banks) {
+            CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+            BigDecimal deposits = bank.getTotalDeposits();
+            BigDecimal reserve = bank.getDeclaredReserve();
+            BigDecimal ratio = deposits.compareTo(BigDecimal.ZERO) > 0
+                    ? reserve.divide(deposits, 4, RoundingMode.HALF_EVEN).multiply(BigDecimal.valueOf(100))
+                    : BigDecimal.valueOf(100);
+            long breachStart = metadata.contains("reserveBreachStartTick") ? metadata.getLong("reserveBreachStartTick") : -1L;
+            body.append(Component.literal(
+                    "§8- §e" + bank.getBankName()
+                            + " §7status §f" + getBankStatus(centralBank, bank)
+                            + " §7reserve ratio §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"
+                            + "  §7reserve §a$" + reserve.toPlainString()
+                            + " §7deposits §6$" + deposits.toPlainString()
+                            + " §7breachTick §f" + breachStart + "\n"
+            ));
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.YELLOW, "§eReserve Audit", body));
+        return 1;
+    }
+
+    private static int centralBankReport(CommandSourceStack source, boolean history) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        long now = System.currentTimeMillis();
+        BigDecimal totalCirculation = BigDecimal.ZERO;
+        BigDecimal totalReserves = centralBank.getDeclaredReserve();
+        BigDecimal totalOutstandingLoans = BigDecimal.ZERO;
+        BigDecimal reserveRatioTotal = BigDecimal.ZERO;
+        int reserveRatioCount = 0;
+        int warningOrRestricted = 0;
+        int activeBanks = 0;
+
+        for (Bank bank : centralBank.getBanks().values()) {
+            if (!bank.getBankId().equals(centralBank.getBankId())) {
+                activeBanks++;
+            }
+            for (AccountHolder account : bank.getBankAccounts().values()) {
+                totalCirculation = totalCirculation.add(account.getBalance());
+                for (var loan : account.getActiveLoans().values()) {
+                    if (loan != null && !loan.isDefaulted()) {
+                        totalOutstandingLoans = totalOutstandingLoans.add(loan.getRemainingBalance());
+                    }
+                }
+            }
+            if (bank.getBankId().equals(centralBank.getBankId())) {
+                continue;
+            }
+            BigDecimal deposits = bank.getTotalDeposits();
+            BigDecimal reserve = bank.getDeclaredReserve();
+            BigDecimal ratio = deposits.compareTo(BigDecimal.ZERO) > 0
+                    ? reserve.divide(deposits, 6, RoundingMode.HALF_EVEN)
+                    : BigDecimal.ONE;
+            reserveRatioTotal = reserveRatioTotal.add(ratio);
+            reserveRatioCount++;
+            String status = getBankStatus(centralBank, bank);
+            if ("WARNING".equals(status) || "RESTRICTED".equals(status) || "SUSPENDED".equals(status)) {
+                warningOrRestricted++;
+            }
+            totalReserves = totalReserves.add(reserve);
+        }
+
+        BigDecimal avgReserveRatio = reserveRatioCount == 0
+                ? BigDecimal.ZERO
+                : reserveRatioTotal.divide(BigDecimal.valueOf(reserveRatioCount), 6, RoundingMode.HALF_EVEN)
+                .multiply(BigDecimal.valueOf(100));
+
+        BigDecimal netOmo = BigDecimal.ZERO;
+        for (CompoundTag op : centralBank.getOpenMarketOperations().values()) {
+            BigDecimal value = readDecimalTag(op, "amount");
+            if ("OMO_INJECT".equalsIgnoreCase(op.getString("type"))) {
+                netOmo = netOmo.add(value);
+            } else if ("OMO_WITHDRAW".equalsIgnoreCase(op.getString("type"))) {
+                netOmo = netOmo.subtract(value);
+            }
+        }
+
+        long cutoff = now - (24L * 60L * 60L * 1000L);
+        long settlements24h = centralBank.getSettlementLedger().values().stream()
+                .filter(tag -> tag.getLong("timestampMillis") >= cutoff)
+                .count();
+
+        CompoundTag snapshot = new CompoundTag();
+        snapshot.putLong("timestampMillis", now);
+        snapshot.putString("totalCirculation", totalCirculation.toPlainString());
+        snapshot.putString("totalReserves", totalReserves.toPlainString());
+        snapshot.putInt("activeBanks", activeBanks);
+        snapshot.putString("avgReserveRatio", avgReserveRatio.toPlainString());
+        snapshot.putInt("warningOrRestricted", warningOrRestricted);
+        snapshot.putString("totalOutstandingLoans", totalOutstandingLoans.toPlainString());
+        snapshot.putDouble("federalFundsRate", centralBank.getFederalFundsRate());
+        snapshot.putString("netOmo", netOmo.toPlainString());
+        snapshot.putLong("settlements24h", settlements24h);
+        centralBank.getReportSnapshots().put(UUID.randomUUID(), snapshot);
+        trimTagMap(centralBank.getReportSnapshots(), 200);
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Total Circulation: §a$" + totalCirculation.toPlainString() + "\n"));
+        body.append(Component.literal("§7Total Central+Bank Reserves: §a$" + totalReserves.toPlainString() + "\n"));
+        body.append(Component.literal("§7Active Player Banks: §b" + activeBanks + "\n"));
+        body.append(Component.literal("§7Avg Reserve Ratio: §e" + avgReserveRatio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
+        body.append(Component.literal("§7Banks WARNING/RESTRICTED/SUSPENDED: §c" + warningOrRestricted + "\n"));
+        body.append(Component.literal("§7Outstanding Loans: §6$" + totalOutstandingLoans.toPlainString() + "\n"));
+        body.append(Component.literal("§7Federal Funds Rate: §e" + centralBank.getFederalFundsRate() + "%\n"));
+        body.append(Component.literal("§7Net OMO Since Start: §f$" + netOmo.toPlainString() + "\n"));
+        body.append(Component.literal("§7Inter-bank Settlements (24h): §f" + settlements24h + "\n"));
+
+        if (history) {
+            body.append(Component.literal("\n§7Recent Snapshots:\n"));
+            List<CompoundTag> snapshots = centralBank.getReportSnapshots().values().stream()
+                    .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
+                    .toList();
+            int start = Math.max(0, snapshots.size() - 10);
+            for (int i = start; i < snapshots.size(); i++) {
+                CompoundTag snap = snapshots.get(i);
+                body.append(Component.literal(
+                        "§8- §f" + snap.getLong("timestampMillis")
+                                + " §7circulation §a$" + readDecimalTag(snap, "totalCirculation").toPlainString()
+                                + " §7rate §e" + snap.getDouble("federalFundsRate") + "%\n"
+                ));
+            }
+        }
+
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eCentral Bank Report", body));
+        return 1;
+    }
+
+    private static int centralBankLedger(CommandSourceStack source, boolean suspense) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        var map = suspense ? centralBank.getSettlementSuspense() : centralBank.getSettlementLedger();
+        List<CompoundTag> entries = map.values().stream()
+                .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Entries: §b" + entries.size() + "\n\n"));
+        int limit = Math.max(1, Config.CLEARING_LEDGER_LIMIT.get());
+        int start = Math.max(0, entries.size() - limit);
+        for (int i = start; i < entries.size(); i++) {
+            CompoundTag tag = entries.get(i);
+            body.append(Component.literal(
+                    "§8- §f" + shortId(readUuidTag(tag, "id"))
+                            + " §7from §f" + shortId(readUuidTag(tag, "fromBankId"))
+                            + " §7to §f" + shortId(readUuidTag(tag, "toBankId"))
+                            + " §7amount §6$" + readDecimalTag(tag, "amount").toPlainString()
+                            + " §7reason §f" + tag.getString("reason")
+                            + "\n"
+            ));
+        }
+
+        source.sendSystemMessage(ubsPanel(
+                suspense ? ChatFormatting.RED : ChatFormatting.AQUA,
+                suspense ? "§cSettlement Suspense" : "§bSettlement Ledger",
+                body
+        ));
+        return 1;
+    }
+
+    private static int adminListBankApplications(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        List<CompoundTag> apps = centralBank.getBankApplications().values().stream()
+                .sorted(Comparator.comparingLong(tag -> tag.getLong("createdMillis")))
+                .toList();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Applications: §b" + apps.size() + "\n\n"));
+        if (apps.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (CompoundTag app : apps) {
+                UUID id = readUuidTag(app, "id");
+                UUID applicant = readUuidTag(app, "applicant");
+                body.append(Component.literal(
+                        "§8- §f" + id + "\n"
+                                + "  §7Applicant: §f" + resolvePlayerName(source.getServer(), applicant) + "\n"
+                                + "  §7Bank: §e" + app.getString("bankName") + "\n"
+                                + "  §7Model: §f" + app.getString("ownershipModel") + "\n"
+                                + "  §7Status: §f" + app.getString("status") + "\n"
+                ));
+            }
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.YELLOW, "§eBank Applications", body));
+        return 1;
+    }
+
+    private static int adminApproveBankApplication(CommandSourceStack source, UUID applicationId) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        CompoundTag app = centralBank.getBankApplications().get(applicationId);
+        if (app == null) {
+            source.sendSystemMessage(Component.literal("§cApplication not found: " + applicationId));
+            return 1;
+        }
+        if (!"PENDING".equalsIgnoreCase(app.getString("status"))) {
+            source.sendSystemMessage(Component.literal("§cApplication is not pending."));
+            return 1;
+        }
+
+        UUID applicantId = readUuidTag(app, "applicant");
+        if (applicantId == null) {
+            source.sendSystemMessage(Component.literal("§cApplication has no applicant."));
+            return 1;
+        }
+        String bankName = app.getString("bankName");
+        if (resolveBankByName(centralBank, bankName) != null) {
+            source.sendSystemMessage(Component.literal("§cA bank with this name already exists."));
+            return 1;
+        }
+
+        AccountHolder funding = null;
+        UUID fundingId = readUuidTag(app, "fundingAccountId");
+        if (fundingId != null) {
+            funding = centralBank.SearchForAccountByAccountId(fundingId);
+        }
+        if (funding == null) {
+            funding = findPrimaryAccount(centralBank, applicantId);
+        }
+        if (funding == null) {
+            source.sendSystemMessage(Component.literal("§cApplicant has no funding account available."));
+            return 1;
+        }
+
+        BigDecimal creationFee = readDecimalTag(app, "creationFee");
+        BigDecimal charterFee = readDecimalTag(app, "charterFee");
+        BigDecimal totalFee = creationFee.add(charterFee);
+        if (funding.getBalance().compareTo(totalFee) < 0) {
+            source.sendSystemMessage(Component.literal("§cApplicant cannot afford required fees $" + totalFee.toPlainString()));
+            return 1;
+        }
+
+        if (!funding.RemoveBalance(totalFee)) {
+            source.sendSystemMessage(Component.literal("§cFailed to deduct applicant fees."));
+            return 1;
+        }
+        centralBank.setReserve(centralBank.getDeclaredReserve().add(totalFee));
+
+        Bank created = new Bank(
+                UUID.randomUUID(),
+                bankName,
+                BigDecimal.ZERO,
+                Config.DEFAULT_SERVER_INTEREST_RATE.get(),
+                applicantId
+        );
+        centralBank.addBank(created);
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(created.getBankId());
+        metadata.putString("status", "ACTIVE");
+        metadata.putString("ownershipModel", app.getString("ownershipModel"));
+        metadata.putString("motto", "");
+        metadata.putString("color", "#55AAFF");
+        metadata.putLong("createdMillis", System.currentTimeMillis());
+        metadata.putUUID("founder", applicantId);
+        metadata.putString("employees", "");
+        metadata.putString("loanProducts", "");
+        String ownershipModel = app.getString("ownershipModel");
+        if ("ROLE_BASED".equalsIgnoreCase(ownershipModel)) {
+            metadata.putString("roles", applicantId + "=FOUNDER");
+        } else if ("PERCENTAGE_SHARES".equalsIgnoreCase(ownershipModel)) {
+            metadata.putString("shares", applicantId + "=100.00");
+        } else if ("FIXED_COFOUNDERS".equalsIgnoreCase(ownershipModel)) {
+            metadata.putString("cofounders", applicantId.toString());
+        }
+        centralBank.putBankMetadata(created.getBankId(), metadata);
+
+        AccountHolder ownerAccount = new AccountHolder(
+                applicantId,
+                BigDecimal.ZERO,
+                AccountTypes.CheckingAccount,
+                "",
+                created.getBankId(),
+                null
+        );
+        created.AddAccount(ownerAccount);
+        if (findPrimaryAccount(centralBank, applicantId) == null) {
+            ownerAccount.setPrimaryAccount(true);
+        }
+
+        app.putString("status", "APPROVED");
+        app.putLong("reviewedMillis", System.currentTimeMillis());
+        app.putString("reviewedBy", source.getTextName());
+        centralBank.getBankApplications().put(applicationId, app);
+        BankManager.markDirty();
+
+        source.sendSystemMessage(Component.literal(
+                "§aApproved application " + applicationId + " and created bank §e" + bankName
+        ));
+        ServerPlayer applicantOnline = source.getServer().getPlayerList().getPlayer(applicantId);
+        if (applicantOnline != null) {
+            applicantOnline.sendSystemMessage(Component.literal(
+                    "§aYour bank application was approved. Bank created: §e" + bankName
+            ));
+        }
+        return 1;
+    }
+
+    private static int adminDenyBankApplication(CommandSourceStack source, UUID applicationId, String reason) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        CompoundTag app = centralBank.getBankApplications().get(applicationId);
+        if (app == null) {
+            source.sendSystemMessage(Component.literal("§cApplication not found: " + applicationId));
+            return 1;
+        }
+
+        app.putString("status", "DENIED");
+        app.putString("denialReason", reason == null ? "" : reason.trim());
+        app.putLong("reviewedMillis", System.currentTimeMillis());
+        app.putString("reviewedBy", source.getTextName());
+        centralBank.getBankApplications().put(applicationId, app);
+        BankManager.markDirty();
+
+        UUID applicantId = readUuidTag(app, "applicant");
+        ServerPlayer applicantOnline = applicantId == null ? null : source.getServer().getPlayerList().getPlayer(applicantId);
+        if (applicantOnline != null) {
+            applicantOnline.sendSystemMessage(Component.literal(
+                    "§cYour bank application was denied."
+                            + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason)
+                            + " §7You can appeal with /bank appeal <message>."
+            ));
+        }
+        source.sendSystemMessage(Component.literal("§eApplication denied: " + applicationId));
+        return 1;
+    }
+
+    private static int adminListAppeals(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        List<CompoundTag> appeals = centralBank.getBankAppeals().values().stream()
+                .sorted(Comparator.comparingLong(tag -> tag.getLong("createdMillis")))
+                .toList();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Appeals: §b" + appeals.size() + "\n\n"));
+        for (CompoundTag appeal : appeals) {
+            UUID id = readUuidTag(appeal, "id");
+            UUID playerId = readUuidTag(appeal, "playerId");
+            body.append(Component.literal(
+                    "§8- §f" + id + "\n"
+                            + "  §7Player: §f" + resolvePlayerName(source.getServer(), playerId) + "\n"
+                            + "  §7Status: §f" + appeal.getString("status") + "\n"
+                            + "  §7Message: §f" + appeal.getString("message") + "\n"
+            ));
+        }
+        if (appeals.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.LIGHT_PURPLE, "§dAppeals Inbox", body));
+        return 1;
+    }
+
+    private static int adminReviewAppeal(CommandSourceStack source, UUID appealId, boolean approve, String reason) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        CompoundTag appeal = centralBank.getBankAppeals().get(appealId);
+        if (appeal == null) {
+            source.sendSystemMessage(Component.literal("§cAppeal not found: " + appealId));
+            return 1;
+        }
+
+        appeal.putString("status", approve ? "APPROVED" : "DENIED");
+        appeal.putString("reviewReason", reason == null ? "" : reason.trim());
+        appeal.putLong("reviewedMillis", System.currentTimeMillis());
+        appeal.putString("reviewedBy", source.getTextName());
+        centralBank.getBankAppeals().put(appealId, appeal);
+        BankManager.markDirty();
+
+        UUID playerId = readUuidTag(appeal, "playerId");
+        ServerPlayer player = playerId == null ? null : source.getServer().getPlayerList().getPlayer(playerId);
+        if (player != null) {
+            player.sendSystemMessage(Component.literal(
+                    (approve ? "§aYour bank appeal was approved." : "§cYour bank appeal was denied.")
+                            + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason)
+            ));
+        }
+        source.sendSystemMessage(Component.literal("§aAppeal " + appealId + " reviewed: " + (approve ? "APPROVED" : "DENIED")));
+        return 1;
+    }
+
+    private static int adminBankReserve(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        BigDecimal deposits = bank.getTotalDeposits();
+        BigDecimal reserve = bank.getDeclaredReserve();
+        BigDecimal minReserve = deposits.multiply(BigDecimal.valueOf(Config.BANK_MIN_RESERVE_RATIO.get()))
+                .setScale(2, RoundingMode.HALF_EVEN);
+        BigDecimal ratio = deposits.compareTo(BigDecimal.ZERO) > 0
+                ? reserve.divide(deposits, 4, RoundingMode.HALF_EVEN).multiply(BigDecimal.valueOf(100))
+                : BigDecimal.valueOf(100);
+        source.sendSystemMessage(Component.literal(
+                "§7Bank: §e" + bank.getBankName()
+                        + "\n§7Status: §f" + getBankStatus(centralBank, bank)
+                        + "\n§7Reserve: §a$" + reserve.toPlainString()
+                        + "\n§7Deposits: §6$" + deposits.toPlainString()
+                        + "\n§7Reserve Ratio: §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%"
+                        + "\n§7Minimum Reserve: §f$" + minReserve.toPlainString()
+                        + "\n§7Daily Cap Override: §f" + (metadata.getString("dailyCapOverride").isBlank()
+                        ? "(none)"
+                        : metadata.getString("dailyCapOverride"))
+        ));
+        return 1;
+    }
+
+    private static int adminBankCompliance(CommandSourceStack source, String bankNameRaw) {
+        return centralBankAudit(source, bankNameRaw);
+    }
+
+    private static int adminBankAudit(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(Component.literal("§7Status: §f" + getBankStatus(centralBank, bank) + "\n"));
+        body.append(Component.literal("§7Owner: §f" + resolvePlayerName(source.getServer(), bank.getBankOwnerId()) + "\n"));
+        body.append(Component.literal("§7Metadata:\n"));
+        for (String key : metadata.getAllKeys()) {
+            body.append(Component.literal("§8- §7" + key + ": §f" + metadata.get(key) + "\n"));
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bBank Audit", body));
+        return 1;
+    }
+
+    private static int adminBankSuspend(CommandSourceStack source, String bankNameRaw, String reason) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("status", "SUSPENDED");
+        metadata.putString("suspendReason", reason == null ? "" : reason.trim());
+        metadata.putLong("suspendedAtMillis", System.currentTimeMillis());
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal("§eSuspended bank: " + bank.getBankName()));
+        notifyBankOwner(source.getServer(), bank, "§cYour bank has been suspended."
+                + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason));
+        return 1;
+    }
+
+    private static int adminBankUnsuspend(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("status", "ACTIVE");
+        metadata.remove("suspendReason");
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal("§aUnsuspended bank: " + bank.getBankName()));
+        notifyBankOwner(source.getServer(), bank, "§aYour bank suspension has been lifted.");
+        return 1;
+    }
+
+    private static int adminBankUnlock(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("status", "ACTIVE");
+        metadata.remove("lockdownUntilTick");
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal("§aLifted bank-run lockdown for " + bank.getBankName()));
+        notifyBankOwner(source.getServer(), bank, "§aYour bank lockdown was lifted by an admin.");
+        return 1;
+    }
+
+    private static int adminBankRunStatus(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        source.sendSystemMessage(Component.literal(
+                "§7Bank: §e" + bank.getBankName()
+                        + "\n§7Status: §f" + getBankStatus(centralBank, bank)
+                        + "\n§7Window start tick: §f" + metadata.getLong("bankRunWindowStartTick")
+                        + "\n§7Window withdrawn: §f$" + readDecimalTag(metadata, "bankRunWindowWithdrawn").toPlainString()
+                        + "\n§7Lockdown until: §f" + (metadata.contains("lockdownUntilTick") ? metadata.getLong("lockdownUntilTick") : -1)
+        ));
+        return 1;
+    }
+
+    private static int adminBankRevoke(CommandSourceStack source, String bankNameRaw, String reason) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found or protected: " + bankNameRaw));
+            return 1;
+        }
+
+        CentralBank central = centralBank;
+        int movedAccounts = 0;
+        BigDecimal movedAmount = BigDecimal.ZERO;
+        List<AccountHolder> closingAccounts = new ArrayList<>(bank.getBankAccounts().values());
+        for (AccountHolder account : closingAccounts) {
+            if (account == null) {
+                continue;
+            }
+            BigDecimal balance = account.getBalance();
+            if (balance.compareTo(BigDecimal.ZERO) > 0) {
+                AccountHolder destination = findOrCreateCentralCheckingAccount(central, account.getPlayerUUID());
+                if (destination != null && account.forceRemoveBalance(balance) && destination.forceAddBalance(balance)) {
+                    movedAmount = movedAmount.add(balance);
+                    movedAccounts++;
+                }
+            }
+            bank.RemoveAccount(account);
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("status", "REVOKED");
+        metadata.putString("revokeReason", reason == null ? "" : reason.trim());
+        metadata.putLong("revokedAtMillis", System.currentTimeMillis());
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        centralBank.removeBank(bank);
+
+        source.sendSystemMessage(Component.literal(
+                "§cRevoked bank " + bank.getBankName()
+                        + ". Recovered $" + movedAmount.toPlainString()
+                        + " across " + movedAccounts + " account(s)."
+        ));
+        notifyBankOwner(source.getServer(), bank, "§cYour bank was revoked."
+                + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason));
+        return 1;
+    }
+
+    private static int adminToggleRateExempt(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        boolean next = !metadata.getBoolean("rateExempt");
+        metadata.putBoolean("rateExempt", next);
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal(
+                "§aRate-band exemption for " + bank.getBankName() + " is now " + (next ? "ENABLED" : "DISABLED")
+        ));
+        return 1;
+    }
+
+    private static int adminSetDailyCapOverride(CommandSourceStack source, String bankNameRaw, String amountRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid amount: " + amountRaw));
+            return 1;
+        }
+        if (amount.compareTo(BigDecimal.ZERO) < 0) {
+            source.sendSystemMessage(Component.literal("§cOverride amount must be >= 0."));
+            return 1;
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("dailyCapOverride", amount.toPlainString());
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal(
+                "§aDaily cap override for " + bank.getBankName() + " set to $" + amount.toPlainString()
+        ));
+        return 1;
+    }
+
+    private static int adminWaiveCharterFee(CommandSourceStack source, ServerPlayer player) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CHARTER_FEE_WAIVERS.put(player.getUUID(), System.currentTimeMillis());
+        source.sendSystemMessage(Component.literal(
+                "§aOne-time charter fee waiver granted to §e" + player.getName().getString()
+        ));
+        player.sendSystemMessage(Component.literal("§aYour next bank creation will waive the charter fee."));
+        return 1;
+    }
+
+    private static int adminDeferLicenseRenewal(CommandSourceStack source, String bankNameRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        Bank bank = resolveBankByName(centralBank, bankNameRaw);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            return 1;
+        }
+        long deferBy = Math.max(20, Config.BANK_ANNUAL_LICENSE_INTERVAL_TICKS.get());
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        long currentDue = metadata.contains("nextLicenseFeeTick")
+                ? metadata.getLong("nextLicenseFeeTick")
+                : currentOverworldGameTime(source.getServer()) + deferBy;
+        long nextDue = currentDue + deferBy;
+        metadata.putLong("nextLicenseFeeTick", nextDue);
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        source.sendSystemMessage(Component.literal(
+                "§aDeferred annual license renewal for " + bank.getBankName()
+                        + " to tick " + nextDue
+        ));
+        return 1;
+    }
+
+    private static int adminListFlags(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            return 1;
+        }
+        List<CompoundTag> flags = centralBank.getSettlementSuspense().values().stream()
+                .filter(tag -> tag.getString("reason").toUpperCase(Locale.ROOT).contains("FLAG"))
+                .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
+                .toList();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Flagged events: §b" + flags.size() + "\n\n"));
+        if (flags.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (CompoundTag flag : flags) {
+                body.append(Component.literal(
+                        "§8- §f" + shortId(readUuidTag(flag, "id"))
+                                + " §7" + flag.getString("reason")
+                                + " §7amount §6$" + readDecimalTag(flag, "amount").toPlainString()
+                                + "\n"
+                ));
+            }
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.RED, "§cFraud / Flag Queue", body));
         return 1;
     }
 
@@ -1496,6 +2692,118 @@ public class UBSAdminCommands {
         return null;
     }
 
+    private static Bank resolveBankByName(CentralBank centralBank, String bankNameRaw) {
+        if (centralBank == null || bankNameRaw == null) {
+            return null;
+        }
+        String requested = bankNameRaw.trim();
+        if (requested.isBlank()) {
+            return null;
+        }
+        return centralBank.getBanks().values().stream()
+                .filter(bank -> bank.getBankName() != null)
+                .filter(bank -> bank.getBankName().trim().equalsIgnoreCase(requested))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static String getBankStatus(CentralBank centralBank, Bank bank) {
+        if (centralBank == null || bank == null) {
+            return "UNKNOWN";
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        String status = metadata.getString("status");
+        if (status == null || status.isBlank()) {
+            return "ACTIVE";
+        }
+        return status.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static void trimTagMap(Map<UUID, CompoundTag> map, int maxSize) {
+        if (map == null || map.size() <= maxSize || maxSize < 1) {
+            return;
+        }
+        List<Map.Entry<UUID, CompoundTag>> ordered = map.entrySet().stream()
+                .sorted(Comparator.comparingLong(entry -> entry.getValue().getLong("timestampMillis")))
+                .toList();
+        int removeCount = map.size() - maxSize;
+        for (int i = 0; i < removeCount && i < ordered.size(); i++) {
+            map.remove(ordered.get(i).getKey());
+        }
+    }
+
+    private static BigDecimal readDecimalTag(CompoundTag tag, String key) {
+        if (tag == null || key == null || key.isBlank() || !tag.contains(key)) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return new BigDecimal(tag.getString(key));
+        } catch (NumberFormatException ex) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private static UUID readUuidTag(CompoundTag tag, String key) {
+        if (tag == null || key == null || key.isBlank() || !tag.hasUUID(key)) {
+            return null;
+        }
+        return tag.getUUID(key);
+    }
+
+    private static String shortId(UUID id) {
+        if (id == null) {
+            return "unknown";
+        }
+        String raw = id.toString();
+        return raw.substring(0, Math.min(8, raw.length()));
+    }
+
+    private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return null;
+        }
+        for (AccountHolder account : centralBank.SearchForAccount(playerId).values()) {
+            if (account.isPrimaryAccount()) {
+                return account;
+            }
+        }
+        return null;
+    }
+
+    private static AccountHolder findOrCreateCentralCheckingAccount(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return null;
+        }
+        for (AccountHolder account : centralBank.getBankAccounts().values()) {
+            if (playerId.equals(account.getPlayerUUID())
+                    && account.getAccountType() == AccountTypes.CheckingAccount) {
+                return account;
+            }
+        }
+        AccountHolder created = new AccountHolder(
+                playerId,
+                BigDecimal.ZERO,
+                AccountTypes.CheckingAccount,
+                "",
+                centralBank.getBankId(),
+                null
+        );
+        if (!centralBank.AddAccount(created)) {
+            return null;
+        }
+        return created;
+    }
+
+    private static void notifyBankOwner(net.minecraft.server.MinecraftServer server, Bank bank, String message) {
+        if (server == null || bank == null) {
+            return;
+        }
+        ServerPlayer owner = server.getPlayerList().getPlayer(bank.getBankOwnerId());
+        if (owner != null) {
+            owner.sendSystemMessage(Component.literal(message));
+        }
+    }
+
     private static BigDecimal parsePositiveAmount(CommandSourceStack source, String amountRaw) {
         BigDecimal amount;
         try {
@@ -1553,7 +2861,7 @@ public class UBSAdminCommands {
     }
 
     private static Bank resolveOrCreateBank(CentralBank centralBank, String bankName, UUID owner) {
-        Bank existing = centralBank.getBankByName(bankName);
+        Bank existing = resolveBankByName(centralBank, bankName);
         if (existing != null) {
             return existing;
         }

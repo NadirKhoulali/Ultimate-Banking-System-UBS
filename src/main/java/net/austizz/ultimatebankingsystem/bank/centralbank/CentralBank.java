@@ -1,6 +1,8 @@
 package net.austizz.ultimatebankingsystem.bank.centralbank;
 
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.account.transaction.BankToBankTransaction;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
@@ -20,6 +22,16 @@ public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, ScheduledPayment> scheduledPayments;
     private ConcurrentHashMap<String, Boolean> redeemedNoteSerials;
     private ConcurrentHashMap<String, Boolean> redeemedChequeIds;
+    private double federalFundsRate;
+    private ConcurrentHashMap<UUID, CompoundTag> bankMetadata;
+    private ConcurrentHashMap<UUID, CompoundTag> bankApplications;
+    private ConcurrentHashMap<UUID, CompoundTag> bankAppeals;
+    private ConcurrentHashMap<UUID, CompoundTag> openMarketOperations;
+    private ConcurrentHashMap<UUID, CompoundTag> settlementLedger;
+    private ConcurrentHashMap<UUID, CompoundTag> settlementSuspense;
+    private ConcurrentHashMap<UUID, CompoundTag> interbankOffers;
+    private ConcurrentHashMap<UUID, CompoundTag> interbankLoans;
+    private ConcurrentHashMap<UUID, CompoundTag> reportSnapshots;
 
     public CentralBank() {
         super(new UUID(0,0), "Central Bank", new BigDecimal("0"), 1.2, new UUID(0,0));
@@ -28,6 +40,16 @@ public class CentralBank extends Bank{
         this.scheduledPayments = new ConcurrentHashMap<>();
         this.redeemedNoteSerials = new ConcurrentHashMap<>();
         this.redeemedChequeIds = new ConcurrentHashMap<>();
+        this.federalFundsRate = Config.DEFAULT_FEDERAL_FUNDS_RATE.get();
+        this.bankMetadata = new ConcurrentHashMap<>();
+        this.bankApplications = new ConcurrentHashMap<>();
+        this.bankAppeals = new ConcurrentHashMap<>();
+        this.openMarketOperations = new ConcurrentHashMap<>();
+        this.settlementLedger = new ConcurrentHashMap<>();
+        this.settlementSuspense = new ConcurrentHashMap<>();
+        this.interbankOffers = new ConcurrentHashMap<>();
+        this.interbankLoans = new ConcurrentHashMap<>();
+        this.reportSnapshots = new ConcurrentHashMap<>();
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
         return banks;
@@ -42,6 +64,9 @@ public class CentralBank extends Bank{
             return false;
         }
         this.banks.remove(bank.getBankId());
+        if (this.bankMetadata != null) {
+            this.bankMetadata.remove(bank.getBankId());
+        }
         BankManager.markDirty();
         return true;
     }
@@ -88,6 +113,72 @@ public class CentralBank extends Bank{
         return null;
     }
 
+    public synchronized boolean settle(BankToBankTransaction transaction) {
+        if (transaction == null || transaction.getAmount() == null
+                || transaction.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+
+        Bank senderBank = getBank(transaction.getSenderBankUUID());
+        Bank receiverBank = getBank(transaction.getReceiverBankUUID());
+        if (senderBank == null || receiverBank == null) {
+            recordSettlementSuspense(transaction, "Missing sender or receiver bank");
+            return false;
+        }
+        if (senderBank.getDeclaredReserve().compareTo(transaction.getAmount()) < 0) {
+            recordSettlementSuspense(transaction, "Insufficient sender reserve");
+            return false;
+        }
+
+        senderBank.setReserve(senderBank.getDeclaredReserve().subtract(transaction.getAmount()));
+        receiverBank.setReserve(receiverBank.getDeclaredReserve().add(transaction.getAmount()));
+        recordSettlementLedger(transaction, "SETTLED");
+        BankManager.markDirty();
+        return true;
+    }
+
+    private void recordSettlementLedger(BankToBankTransaction transaction, String reason) {
+        UUID entryId = transaction.getTransactionUUID() == null ? UUID.randomUUID() : transaction.getTransactionUUID();
+        CompoundTag tag = new CompoundTag();
+        tag.putUUID("id", entryId);
+        tag.putUUID("fromBankId", transaction.getSenderBankUUID());
+        tag.putUUID("toBankId", transaction.getReceiverBankUUID());
+        tag.putString("amount", transaction.getAmount().toPlainString());
+        tag.putLong("timestampMillis", System.currentTimeMillis());
+        tag.putString("reason", reason == null ? "" : reason);
+        tag.putBoolean("success", true);
+        getSettlementLedger().put(entryId, tag);
+        trimTagMap(getSettlementLedger(), Math.max(1, Config.CLEARING_LEDGER_LIMIT.get()));
+    }
+
+    private void recordSettlementSuspense(BankToBankTransaction transaction, String reason) {
+        UUID entryId = transaction.getTransactionUUID() == null ? UUID.randomUUID() : transaction.getTransactionUUID();
+        CompoundTag tag = new CompoundTag();
+        tag.putUUID("id", entryId);
+        tag.putUUID("fromBankId", transaction.getSenderBankUUID());
+        tag.putUUID("toBankId", transaction.getReceiverBankUUID());
+        tag.putString("amount", transaction.getAmount().toPlainString());
+        tag.putLong("timestampMillis", System.currentTimeMillis());
+        tag.putString("reason", reason == null ? "" : reason);
+        tag.putBoolean("success", false);
+        getSettlementSuspense().put(entryId, tag);
+        trimTagMap(getSettlementSuspense(), Math.max(1, Config.CLEARING_LEDGER_LIMIT.get()));
+        BankManager.markDirty();
+    }
+
+    private static void trimTagMap(ConcurrentHashMap<UUID, CompoundTag> map, int maxSize) {
+        if (map == null || map.size() <= maxSize || maxSize < 1) {
+            return;
+        }
+        var ordered = map.entrySet().stream()
+                .sorted(java.util.Comparator.comparingLong(entry -> entry.getValue().getLong("timestampMillis")))
+                .toList();
+        int removeCount = map.size() - maxSize;
+        for (int i = 0; i < removeCount && i < ordered.size(); i++) {
+            map.remove(ordered.get(i).getKey());
+        }
+    }
+
     public ConcurrentHashMap<UUID, ScheduledPayment> getScheduledPayments() {
         if (this.scheduledPayments == null) {
             this.scheduledPayments = new ConcurrentHashMap<>();
@@ -113,6 +204,112 @@ public class CentralBank extends Bank{
             return true;
         }
         return false;
+    }
+
+    public double getFederalFundsRate() {
+        return federalFundsRate;
+    }
+
+    public boolean setFederalFundsRate(double rate) {
+        if (Double.isNaN(rate) || Double.isInfinite(rate)) {
+            return false;
+        }
+        if (rate < Config.MIN_FEDERAL_FUNDS_RATE.get() || rate > Config.MAX_FEDERAL_FUNDS_RATE.get()) {
+            return false;
+        }
+        this.federalFundsRate = rate;
+        BankManager.markDirty();
+        return true;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getBankMetadata() {
+        if (this.bankMetadata == null) {
+            this.bankMetadata = new ConcurrentHashMap<>();
+        }
+        return this.bankMetadata;
+    }
+
+    public CompoundTag getOrCreateBankMetadata(UUID bankId) {
+        if (bankId == null) {
+            return new CompoundTag();
+        }
+        return getBankMetadata().computeIfAbsent(bankId, id -> {
+            CompoundTag meta = new CompoundTag();
+            meta.putString("status", "ACTIVE");
+            meta.putString("ownershipModel", "SOLE");
+            meta.putString("motto", "");
+            meta.putString("color", "#55AAFF");
+            meta.putBoolean("rateExempt", false);
+            meta.putLong("nextLicenseFeeTick", 0L);
+            meta.putString("dailyWithdrawn", "0");
+            meta.putLong("dailyWindowDay", 0L);
+            meta.putString("reserveMinRatio", String.valueOf(Config.BANK_MIN_RESERVE_RATIO.get()));
+            return meta;
+        });
+    }
+
+    public void putBankMetadata(UUID bankId, CompoundTag metadata) {
+        if (bankId == null || metadata == null) {
+            return;
+        }
+        getBankMetadata().put(bankId, metadata);
+        BankManager.markDirty();
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getBankApplications() {
+        if (bankApplications == null) {
+            bankApplications = new ConcurrentHashMap<>();
+        }
+        return bankApplications;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getBankAppeals() {
+        if (bankAppeals == null) {
+            bankAppeals = new ConcurrentHashMap<>();
+        }
+        return bankAppeals;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getOpenMarketOperations() {
+        if (openMarketOperations == null) {
+            openMarketOperations = new ConcurrentHashMap<>();
+        }
+        return openMarketOperations;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getSettlementLedger() {
+        if (settlementLedger == null) {
+            settlementLedger = new ConcurrentHashMap<>();
+        }
+        return settlementLedger;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getSettlementSuspense() {
+        if (settlementSuspense == null) {
+            settlementSuspense = new ConcurrentHashMap<>();
+        }
+        return settlementSuspense;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getInterbankOffers() {
+        if (interbankOffers == null) {
+            interbankOffers = new ConcurrentHashMap<>();
+        }
+        return interbankOffers;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getInterbankLoans() {
+        if (interbankLoans == null) {
+            interbankLoans = new ConcurrentHashMap<>();
+        }
+        return interbankLoans;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getReportSnapshots() {
+        if (reportSnapshots == null) {
+            reportSnapshots = new ConcurrentHashMap<>();
+        }
+        return reportSnapshots;
     }
 
     public boolean isNoteSerialRedeemed(String serial) {
@@ -195,6 +392,17 @@ public class CentralBank extends Bank{
         }
         tag.put("redeemed_cheque_ids", redeemedCheques);
 
+        tag.putDouble("federal_funds_rate", this.federalFundsRate);
+        tag.put("bank_metadata", saveTagMap(getBankMetadata()));
+        tag.put("bank_applications", saveTagMap(getBankApplications()));
+        tag.put("bank_appeals", saveTagMap(getBankAppeals()));
+        tag.put("open_market_operations", saveTagMap(getOpenMarketOperations()));
+        tag.put("settlement_ledger", saveTagMap(getSettlementLedger()));
+        tag.put("settlement_suspense", saveTagMap(getSettlementSuspense()));
+        tag.put("interbank_offers", saveTagMap(getInterbankOffers()));
+        tag.put("interbank_loans", saveTagMap(getInterbankLoans()));
+        tag.put("report_snapshots", saveTagMap(getReportSnapshots()));
+
         return tag;
     }
 
@@ -255,7 +463,49 @@ public class CentralBank extends Bank{
                 centralBank.redeemedChequeIds.put(chequeId, Boolean.TRUE);
             }
         }
+
+        centralBank.federalFundsRate = tag.contains("federal_funds_rate")
+                ? tag.getDouble("federal_funds_rate")
+                : Config.DEFAULT_FEDERAL_FUNDS_RATE.get();
+        centralBank.bankMetadata = loadTagMap(tag.getList("bank_metadata", 10));
+        centralBank.bankApplications = loadTagMap(tag.getList("bank_applications", 10));
+        centralBank.bankAppeals = loadTagMap(tag.getList("bank_appeals", 10));
+        centralBank.openMarketOperations = loadTagMap(tag.getList("open_market_operations", 10));
+        centralBank.settlementLedger = loadTagMap(tag.getList("settlement_ledger", 10));
+        centralBank.settlementSuspense = loadTagMap(tag.getList("settlement_suspense", 10));
+        centralBank.interbankOffers = loadTagMap(tag.getList("interbank_offers", 10));
+        centralBank.interbankLoans = loadTagMap(tag.getList("interbank_loans", 10));
+        centralBank.reportSnapshots = loadTagMap(tag.getList("report_snapshots", 10));
         return centralBank;
+    }
+
+    private static ListTag saveTagMap(ConcurrentHashMap<UUID, CompoundTag> map) {
+        ListTag list = new ListTag();
+        if (map == null) {
+            return list;
+        }
+        map.forEach((id, value) -> {
+            if (id == null || value == null) {
+                return;
+            }
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("id", id);
+            entry.put("data", value.copy());
+            list.add(entry);
+        });
+        return list;
+    }
+
+    private static ConcurrentHashMap<UUID, CompoundTag> loadTagMap(ListTag list) {
+        ConcurrentHashMap<UUID, CompoundTag> map = new ConcurrentHashMap<>();
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            if (!entry.hasUUID("id") || !entry.contains("data", 10)) {
+                continue;
+            }
+            map.put(entry.getUUID("id"), entry.getCompound("data"));
+        }
+        return map;
     }
 
 

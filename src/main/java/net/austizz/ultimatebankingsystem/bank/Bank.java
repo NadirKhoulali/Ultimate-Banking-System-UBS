@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.BankToUserTransaction;
+import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
@@ -12,6 +13,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -51,15 +53,78 @@ public class Bank {
     public ConcurrentHashMap<UUID, AccountHolder> getBankAccounts() {
         return BankAccounts;
     }
-    public AccountHolder getBankAccount(UUID accountId) {
-        return BankAccounts.get(accountId);
+    public UUID getBankOwnerId() {
+        return BankOwner;
     }
-    public BigDecimal getBankReserve() {
+    public void setBankOwnerId(UUID bankOwnerId) {
+        if (bankOwnerId == null) {
+            return;
+        }
+        this.BankOwner = bankOwnerId;
+        BankManager.markDirty();
+    }
+    public BigDecimal getTotalDeposits() {
         BigDecimal total = BigDecimal.ZERO;
         for (AccountHolder accountHolder : this.BankAccounts.values()) {
             total = total.add(accountHolder.getBalance());
         }
         return total;
+    }
+    public BigDecimal getDeclaredReserve() {
+        return BankReserve;
+    }
+    public AccountHolder getBankAccount(UUID accountId) {
+        return BankAccounts.get(accountId);
+    }
+    public BigDecimal getBankReserve() {
+        return this.BankReserve;
+    }
+    public BigDecimal getMinimumRequiredReserve() {
+        return getTotalDeposits()
+                .multiply(BigDecimal.valueOf(Config.BANK_MIN_RESERVE_RATIO.get()))
+                .setScale(2, RoundingMode.HALF_EVEN);
+    }
+    public BigDecimal getReserveRatio() {
+        BigDecimal deposits = getTotalDeposits();
+        if (deposits.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE;
+        }
+        return this.BankReserve.divide(deposits, 6, RoundingMode.HALF_EVEN);
+    }
+    public BigDecimal getOutstandingLoanBalance() {
+        BigDecimal total = BigDecimal.ZERO;
+        for (AccountHolder account : this.BankAccounts.values()) {
+            if (account == null) {
+                continue;
+            }
+            for (var loan : account.getActiveLoans().values()) {
+                if (loan == null || loan.isDefaulted()) {
+                    continue;
+                }
+                total = total.add(loan.getRemainingBalance());
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_EVEN);
+    }
+    public BigDecimal getMaxLendableAmount() {
+        if (ServerLifecycleHooks.getCurrentServer() != null) {
+            var cb = BankManager.getCentralBank(ServerLifecycleHooks.getCurrentServer());
+            if (cb != null && this.bankId.equals(cb.getBankId())) {
+                return BigDecimal.valueOf(Double.MAX_VALUE);
+            }
+        }
+        BigDecimal reserveRatio = BigDecimal.valueOf(Config.BANK_MIN_RESERVE_RATIO.get());
+        BigDecimal lendableFactor = BigDecimal.ONE.subtract(reserveRatio);
+        if (lendableFactor.compareTo(BigDecimal.ZERO) < 0) {
+            lendableFactor = BigDecimal.ZERO;
+        }
+        return getTotalDeposits().multiply(lendableFactor).setScale(2, RoundingMode.HALF_EVEN);
+    }
+    public boolean canIssueLoan(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        return getOutstandingLoanBalance().add(amount).compareTo(getMaxLendableAmount()) <= 0;
     }
     public double getInterestRate() {
         return InterestRate;
@@ -69,11 +134,29 @@ public class Bank {
         BankManager.markDirty();
     }
     public void setInterestRate(double InterestRate) {
+        double adjusted = InterestRate;
+        adjusted = Math.max(Config.MIN_CUSTOM_BANK_INTEREST_RATE.get(), adjusted);
+        adjusted = Math.min(Config.MAX_CUSTOM_BANK_INTEREST_RATE.get(), adjusted);
 
-        if (InterestRate < Config.MIN_CUSTOM_BANK_INTEREST_RATE.get() || InterestRate > Config.MAX_CUSTOM_BANK_INTEREST_RATE.get()) {
-            return;
+        var server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank != null && !this.bankId.equals(centralBank.getBankId())) {
+                var metadata = centralBank.getOrCreateBankMetadata(this.bankId);
+                if (!metadata.getBoolean("rateExempt")) {
+                    double floor = centralBank.getFederalFundsRate() * Config.SAVINGS_RATE_FLOOR_MULTIPLIER.get();
+                    double ceiling = centralBank.getFederalFundsRate() * Config.SAVINGS_RATE_CEILING_MULTIPLIER.get();
+                    if (ceiling < floor) {
+                        double tmp = floor;
+                        floor = ceiling;
+                        ceiling = tmp;
+                    }
+                    adjusted = Math.max(floor, Math.min(ceiling, adjusted));
+                }
+            }
         }
-        this.InterestRate = InterestRate;
+
+        this.InterestRate = adjusted;
         BankManager.markDirty();
     }
     public void setBankName(String BankName) {
@@ -129,64 +212,147 @@ public class Bank {
 //    }
 
     public void payInterestAllSavingAccounts() {
+        var server = ServerLifecycleHooks.getCurrentServer();
+        var centralBank = server == null ? null : BankManager.getCentralBank(server);
+        long gameTime = 0L;
+        if (server != null && server.getLevel(Level.OVERWORLD) != null) {
+            gameTime = server.getLevel(Level.OVERWORLD).getGameTime();
+        }
+
         for (AccountHolder account : this.BankAccounts.values()) {
             if (account == null) {
                 continue;
             }
-            if (account.getAccountType() != AccountTypes.SavingAccount) {
+            if (account.getAccountType() == AccountTypes.CertificateAccount) {
+                processCertificateMaturity(account, gameTime, server);
                 continue;
             }
 
-            // --- Interest calculation (monthly payout derived from annual percentage rate) ---
-            // Convert the configured interest rate (double) to BigDecimal for precise math.
-            BigDecimal interestRate = BigDecimal.valueOf(this.InterestRate);
+            if (account.getAccountType() != AccountTypes.SavingAccount
+                    && account.getAccountType() != AccountTypes.MoneyMarketAccount) {
+                continue;
+            }
 
-            // Calculate the annual interest amount:
-            // balance * rate / 100
-            // Use high precision (scale 10) for intermediate steps to reduce rounding error.
-            BigDecimal annualInterest = account.getBalance()
-                    .multiply(interestRate)
-                    .divide(HUNDRED, 10, RoundingMode.HALF_UP);
+            double annualRate = resolveEffectiveAnnualRate(account, centralBank);
+            if (annualRate <= 0.0) {
+                continue;
+            }
 
-            // Convert annual interest to monthly payout:
-            // annualInterest / 12
-            // Round to 2 decimals for payout (typical currency representation).
-            BigDecimal payoutAmount = annualInterest
-                    .divide(new BigDecimal("12"), 2, RoundingMode.HALF_EVEN);
+            int periodsPerYear = account.getAccountType() == AccountTypes.MoneyMarketAccount ? 365 : 12;
+            BigDecimal periodicRate = BigDecimal.valueOf(annualRate)
+                    .divide(HUNDRED, 10, RoundingMode.HALF_EVEN)
+                    .divide(BigDecimal.valueOf(periodsPerYear), 10, RoundingMode.HALF_EVEN);
+
+            BigDecimal payoutAmount = account.getBalance()
+                    .multiply(periodicRate)
+                    .setScale(2, RoundingMode.HALF_EVEN);
 
             if (payoutAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
 
-            // Apply payout by recording a transaction: bank \-> account
-            boolean paid = new BankToUserTransaction(
+            if (!account.AddBalance(payoutAmount)) {
+                continue;
+            }
+
+            account.addTransaction(new UserTransaction(
                     this.bankId,
                     account.getAccountUUID(),
                     payoutAmount,
                     LocalDateTime.now(),
-                    "INTEREST: Savings Account Interest Payout"
-            ).makeTransaction(ServerLifecycleHooks.getCurrentServer());
+                    account.getAccountType() == AccountTypes.MoneyMarketAccount
+                            ? "INTEREST: Money Market Compound Payout"
+                            : "INTEREST: Savings Compound Payout"
+            ));
 
-            if (!paid) {
-                continue;
+            if (account.getAccountType() == AccountTypes.MoneyMarketAccount) {
+                double previousRate = account.getLastVariableRate();
+                if (Math.abs(previousRate - annualRate) > 0.0001D && previousRate >= 0.0D) {
+                    ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
+                    if (holder != null) {
+                        holder.sendSystemMessage(Component.literal(
+                                "§eMoney Market rate changed: §f" + previousRate + "% §7-> §f" + annualRate + "%"
+                        ));
+                    }
+                }
+                account.setLastVariableRate(annualRate);
             }
 
-            var server = ServerLifecycleHooks.getCurrentServer();
             if (server != null) {
                 ServerPlayer holder = server.getPlayerList().getPlayer(account.getPlayerUUID());
                 if (holder != null) {
                     holder.sendSystemMessage(Component.literal(
                             "§aInterest paid: §6$" + payoutAmount.toPlainString()
-                                    + " §ato your savings account. New balance: §f$"
+                                    + " §a(" + annualRate + "% APR) New balance: §f$"
                                     + account.getBalance().toPlainString()
                     ));
                 }
             }
 
-            // Optionally reduce reserve if reserve represents bank funds available for payouts
-            // this.BankReserve = this.BankReserve.subtract(payoutAmount);
-
             BankManager.markDirty();
+        }
+    }
+
+    private double resolveEffectiveAnnualRate(AccountHolder account, net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank centralBank) {
+        if (account.getAccountType() == AccountTypes.MoneyMarketAccount && centralBank != null) {
+            double multiplier = Config.MMA_RATE_MULTIPLIER.get();
+            multiplier = Math.max(Config.MIN_CUSTOM_BANK_INTEREST_RATE.get(),
+                    Math.min(Config.MAX_CUSTOM_BANK_INTEREST_RATE.get(), multiplier));
+            return centralBank.getFederalFundsRate() * multiplier;
+        }
+        return this.InterestRate;
+    }
+
+    private void processCertificateMaturity(AccountHolder account, long gameTime, net.minecraft.server.MinecraftServer server) {
+        if (account.getCertificateTier().isBlank()) {
+            return;
+        }
+
+        boolean locked = account.isCertificateLocked(gameTime);
+        if (locked || account.isCertificateMaturitySettled()) {
+            return;
+        }
+        if (account.getCertificateMaturityGameTime() <= 0L || gameTime < account.getCertificateMaturityGameTime()) {
+            return;
+        }
+
+        BigDecimal principal = account.getBalance();
+        if (principal.compareTo(BigDecimal.ZERO) <= 0) {
+            account.setCertificateMaturitySettled(true);
+            return;
+        }
+
+        long termTicks = switch (account.getCertificateTier()) {
+            case "short" -> Config.CD_SHORT_TERM_TICKS.get();
+            case "medium" -> Config.CD_MEDIUM_TERM_TICKS.get();
+            case "long" -> Config.CD_LONG_TERM_TICKS.get();
+            default -> 24000L;
+        };
+        BigDecimal years = BigDecimal.valueOf(termTicks)
+                .divide(BigDecimal.valueOf(24000D * 365D), 10, RoundingMode.HALF_EVEN);
+        BigDecimal interest = principal
+                .multiply(BigDecimal.valueOf(account.getCertificateRate())
+                        .divide(HUNDRED, 10, RoundingMode.HALF_EVEN))
+                .multiply(years)
+                .setScale(2, RoundingMode.HALF_EVEN);
+        if (interest.compareTo(BigDecimal.ZERO) > 0) {
+            account.forceAddBalance(interest);
+            account.addTransaction(new UserTransaction(
+                    this.bankId,
+                    account.getAccountUUID(),
+                    interest,
+                    LocalDateTime.now(),
+                    "CD_MATURITY_PAYOUT:" + account.getCertificateTier()
+            ));
+        }
+
+        account.setCertificateMaturitySettled(true);
+        ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
+        if (holder != null) {
+            holder.sendSystemMessage(Component.literal(
+                    "§aYour CD matured. Interest credited: §6$" + interest.toPlainString()
+                            + " §a(new balance: §f$" + account.getBalance().toPlainString() + "§a)."
+            ));
         }
     }
 

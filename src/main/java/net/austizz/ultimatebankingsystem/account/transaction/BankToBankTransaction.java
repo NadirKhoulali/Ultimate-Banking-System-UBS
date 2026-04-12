@@ -1,6 +1,5 @@
 package net.austizz.ultimatebankingsystem.account.transaction;
 
-import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
@@ -36,23 +35,7 @@ public class BankToBankTransaction extends UserTransaction {
         }
 
         CentralBank centralBank = BankManager.getCentralBank(server);
-        Bank senderBank = centralBank.getBank(getSenderBankUUID());
-        Bank receiverBank = centralBank.getBank(getReceiverBankUUID());
-
-        if (senderBank == null || receiverBank == null) {
-            return false;
-        }
-
-        BigDecimal senderReserve = senderBank.getBankReserve();
-        if (senderReserve.compareTo(getAmount()) < 0) {
-            return false;
-        }
-
-        senderBank.setReserve(senderReserve.subtract(getAmount()));
-        receiverBank.setReserve(receiverBank.getBankReserve().add(getAmount()));
-
-        BankManager.markDirty();
-        return true;
+        return centralBank != null && centralBank.settle(this);
     }
 
     @Override

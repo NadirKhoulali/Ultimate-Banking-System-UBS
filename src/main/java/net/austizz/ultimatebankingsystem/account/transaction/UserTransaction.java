@@ -1,6 +1,8 @@
 package net.austizz.ultimatebankingsystem.account.transaction;
 
+import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.minecraft.core.HolderLookup;
@@ -11,6 +13,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -77,6 +81,11 @@ public class UserTransaction {
             return false;
         }
 
+        if (amount.compareTo(BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()))) > 0) {
+            flagSuspicious(centralBank, sender, receiver, amount, "FLAG_MAX_SINGLE_TRANSACTION");
+            return false;
+        }
+
         ServerPlayer senderPlayer = server.getPlayerList().getPlayer(sender.getPlayerUUID());
 
         if (sender.isFrozen()) {
@@ -94,6 +103,68 @@ public class UserTransaction {
                 senderPlayer.sendSystemMessage(Component.literal("§cTransfer failed: the destination account is frozen."));
             }
             return false;
+        }
+
+        Bank senderBank = centralBank.getBank(sender.getBankId());
+        Bank receiverBank = centralBank.getBank(receiver.getBankId());
+        if (senderBank == null || receiverBank == null) {
+            return false;
+        }
+        CompoundTag senderMetadata = centralBank.getOrCreateBankMetadata(senderBank.getBankId());
+        BigDecimal bankSingleLimit = senderMetadata.contains("limitSingle")
+                ? readDecimal(senderMetadata, "limitSingle")
+                : BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get());
+        if (amount.compareTo(bankSingleLimit) > 0) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cTransfer exceeds this bank's single transaction limit."));
+            }
+            flagSuspicious(centralBank, sender, receiver, amount, "FLAG_BANK_SINGLE_LIMIT");
+            return false;
+        }
+        String senderStatus = getBankStatus(centralBank, senderBank);
+        String receiverStatus = getBankStatus(centralBank, receiverBank);
+        if (blocksTransactions(senderStatus) || blocksTransactions(receiverStatus)) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cTransfer blocked because one of the banks is not operational."));
+            }
+            flagSuspicious(centralBank, sender, receiver, amount, "FLAG_BANK_STATUS_BLOCK");
+            return false;
+        }
+
+        BigDecimal senderDailyVolume = computeSenderDailyOutgoing(sender);
+        BigDecimal bankDailyPlayerLimit = senderMetadata.contains("limitDailyPlayer")
+                ? readDecimal(senderMetadata, "limitDailyPlayer")
+                : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get());
+        if (senderDailyVolume.add(amount).compareTo(bankDailyPlayerLimit) > 0) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cDaily player outgoing transaction volume limit reached."));
+            }
+            flagSuspicious(centralBank, sender, receiver, amount, "FLAG_DAILY_PLAYER_VOLUME");
+            return false;
+        }
+
+        BigDecimal bankDailyVolume = computeBankDailyOutgoing(senderBank);
+        BigDecimal bankDailyLimit = senderMetadata.contains("limitDailyBank")
+                ? readDecimal(senderMetadata, "limitDailyBank")
+                : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
+        if (bankDailyVolume.add(amount).compareTo(bankDailyLimit) > 0) {
+            if (senderPlayer != null) {
+                senderPlayer.sendSystemMessage(Component.literal("§cDaily bank outgoing volume limit reached."));
+            }
+            flagSuspicious(centralBank, sender, receiver, amount, "FLAG_DAILY_BANK_VOLUME");
+            return false;
+        }
+
+        boolean crossBank = !sender.getBankId().equals(receiver.getBankId());
+        if (crossBank) {
+            BigDecimal reserveAfter = senderBank.getDeclaredReserve().subtract(amount);
+            if (reserveAfter.compareTo(senderBank.getMinimumRequiredReserve()) < 0) {
+                if (senderPlayer != null) {
+                    senderPlayer.sendSystemMessage(Component.literal("§cTransfer blocked: sender bank reserve requirement would be breached."));
+                }
+                flagSuspicious(centralBank, sender, receiver, amount, "FLAG_RESERVE_REQUIREMENT_BREACH");
+                return false;
+            }
         }
 
         // Per-account rate limit (outgoing)
@@ -124,8 +195,128 @@ public class UserTransaction {
         sender.addTransaction(this);
         receiver.addTransaction(this);
 
+        if (crossBank) {
+            senderBank.setReserve(senderBank.getDeclaredReserve().subtract(amount));
+            receiverBank.setReserve(receiverBank.getDeclaredReserve().add(amount));
+            recordSettlement(centralBank, senderBank, receiverBank, amount, "CROSS_BANK_TX");
+        }
+
         BankManager.markDirty();
         return true;
+    }
+
+    private static String getBankStatus(CentralBank centralBank, Bank bank) {
+        if (centralBank == null || bank == null) {
+            return "UNKNOWN";
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        String status = metadata.getString("status");
+        if (status == null || status.isBlank()) {
+            return "ACTIVE";
+        }
+        return status.trim().toUpperCase();
+    }
+
+    private static boolean blocksTransactions(String status) {
+        return "SUSPENDED".equals(status) || "REVOKED".equals(status) || "LOCKDOWN".equals(status);
+    }
+
+    private static BigDecimal computeSenderDailyOutgoing(AccountHolder sender) {
+        if (sender == null) {
+            return BigDecimal.ZERO;
+        }
+        LocalDate today = LocalDate.now();
+        BigDecimal total = BigDecimal.ZERO;
+        for (UserTransaction tx : sender.getTransactions().values()) {
+            if (tx == null) {
+                continue;
+            }
+            if (!sender.getAccountUUID().equals(tx.getSenderUUID())) {
+                continue;
+            }
+            if (tx.getTimestamp().toLocalDate().isEqual(today)) {
+                total = total.add(tx.getAmount());
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    private static BigDecimal computeBankDailyOutgoing(Bank bank) {
+        if (bank == null) {
+            return BigDecimal.ZERO;
+        }
+        LocalDate today = LocalDate.now();
+        BigDecimal total = BigDecimal.ZERO;
+        for (AccountHolder account : bank.getBankAccounts().values()) {
+            if (account == null) {
+                continue;
+            }
+            for (UserTransaction tx : account.getTransactions().values()) {
+                if (tx == null) {
+                    continue;
+                }
+                if (!account.getAccountUUID().equals(tx.getSenderUUID())) {
+                    continue;
+                }
+                if (tx.getTimestamp().toLocalDate().isEqual(today)) {
+                    total = total.add(tx.getAmount());
+                }
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    private static void flagSuspicious(CentralBank centralBank,
+                                       AccountHolder sender,
+                                       AccountHolder receiver,
+                                       BigDecimal amount,
+                                       String reason) {
+        if (centralBank == null) {
+            return;
+        }
+        CompoundTag entry = new CompoundTag();
+        UUID id = UUID.randomUUID();
+        entry.putUUID("id", id);
+        entry.putLong("timestampMillis", System.currentTimeMillis());
+        entry.putUUID("fromBankId", sender.getBankId());
+        entry.putUUID("toBankId", receiver.getBankId());
+        entry.putString("amount", amount.toPlainString());
+        entry.putString("reason", reason);
+        entry.putBoolean("success", false);
+        centralBank.getSettlementSuspense().put(id, entry);
+        BankManager.markDirty();
+    }
+
+    private static void recordSettlement(CentralBank centralBank,
+                                         Bank fromBank,
+                                         Bank toBank,
+                                         BigDecimal amount,
+                                         String reason) {
+        if (centralBank == null || fromBank == null || toBank == null) {
+            return;
+        }
+        CompoundTag entry = new CompoundTag();
+        UUID id = UUID.randomUUID();
+        entry.putUUID("id", id);
+        entry.putLong("timestampMillis", System.currentTimeMillis());
+        entry.putUUID("fromBankId", fromBank.getBankId());
+        entry.putUUID("toBankId", toBank.getBankId());
+        entry.putString("amount", amount.toPlainString());
+        entry.putString("reason", reason);
+        entry.putBoolean("success", true);
+        centralBank.getSettlementLedger().put(id, entry);
+        BankManager.markDirty();
+    }
+
+    private static BigDecimal readDecimal(CompoundTag tag, String key) {
+        if (tag == null || key == null || key.isBlank() || !tag.contains(key)) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return new BigDecimal(tag.getString(key));
+        } catch (NumberFormatException ex) {
+            return BigDecimal.ZERO;
+        }
     }
 
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
