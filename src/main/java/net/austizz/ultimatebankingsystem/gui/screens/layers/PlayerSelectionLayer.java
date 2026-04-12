@@ -1,48 +1,49 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
-import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
-import net.austizz.ultimatebankingsystem.network.AccountSummary;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class AccountSelectionLayer extends AbstractScreenLayer {
-
+public class PlayerSelectionLayer extends AbstractScreenLayer {
     private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
-
     private static final int VISIBLE_ROWS = 5;
     private static final int ROW_HEIGHT = 27;
     private static final int ROW_SPACING = 2;
+    private static final int PLAYER_HEAD_SIZE = 16;
+    private static final int PLAYER_HEAD_RIGHT_PADDING = 6;
 
-    private final List<AccountSummary> accounts = new ArrayList<>();
+    private record PlayerEntry(String name, PlayerInfo info) {}
+
+    private final List<PlayerEntry> allPlayers = new ArrayList<>();
+    private final List<PlayerEntry> filteredPlayers = new ArrayList<>();
     private final List<NineSliceTexturedButton> rowButtons = new ArrayList<>();
-    private final Consumer<AccountSummary> onAccountSelected;
-    private final boolean applyAsSelectedAccount;
+    private final Consumer<String> onPlayerSelected;
+    private final String initialSelectedName;
 
+    private EditBox searchField;
     private int scrollIndex;
+    private String selectedName;
 
-    public AccountSelectionLayer(Minecraft minecraft) {
-        this(minecraft, null, true);
-    }
-
-    public AccountSelectionLayer(Minecraft minecraft, Consumer<AccountSummary> onAccountSelected) {
-        this(minecraft, onAccountSelected, true);
-    }
-
-    public AccountSelectionLayer(Minecraft minecraft,
-                                 Consumer<AccountSummary> onAccountSelected,
-                                 boolean applyAsSelectedAccount) {
+    public PlayerSelectionLayer(Minecraft minecraft,
+                                String initialSelectedName,
+                                Consumer<String> onPlayerSelected) {
         super(minecraft);
-        this.onAccountSelected = onAccountSelected;
-        this.applyAsSelectedAccount = applyAsSelectedAccount;
+        this.initialSelectedName = initialSelectedName == null ? "" : initialSelectedName;
+        this.onPlayerSelected = onPlayerSelected;
+        this.selectedName = this.initialSelectedName;
     }
 
     @Override
@@ -53,13 +54,19 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
         int panelHeight = bankScreen.getPanelHeight();
         int listLeft = getListLeft();
         int listWidth = getListRight() - getListLeft();
-        int rowY = getListTop() + 2;
 
-        accounts.clear();
-        accounts.addAll(ClientATMData.getAccounts());
-        scrollIndex = clamp(scrollIndex, 0, getMaxScrollIndex());
+        searchField = new AtmEditBox(font, listLeft + 4, panelTop + 58, listWidth - 8, 20, Component.literal(""));
+        searchField.setMaxLength(32);
+        searchField.setHint(Component.literal("Search player...").withStyle(ChatFormatting.WHITE));
+        searchField.setResponder(value -> applyFilter(value));
+        styleEditBox(searchField);
+        addWidget(searchField);
+
+        gatherPlayers();
+        applyFilter("");
+
         rowButtons.clear();
-
+        int rowY = getListTop() + 2;
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             final int slot = i;
             NineSliceTexturedButton rowButton = addWidget(new NineSliceTexturedButton(
@@ -68,7 +75,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                     ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                     4, 4, 4, 4,
                     Component.literal(""),
-                    btn -> selectAccountAtSlot(slot)
+                    btn -> selectPlayerAtSlot(slot)
             ));
             rowButtons.add(rowButton);
             rowY += ROW_HEIGHT + ROW_SPACING;
@@ -84,31 +91,53 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                 btn -> bankScreen.popLayer()
         ));
 
-        addWidget(new NineSliceTexturedButton(
-                panelLeft + panelWidth - 62,
-                panelTop + panelHeight - 36,
-                54, 22,
-                ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
-                4, 4, 4, 4,
-                Component.literal("Use").withStyle(ChatFormatting.WHITE),
-                btn -> bankScreen.popLayer()
-        ));
-
         refreshRows();
     }
 
-    private void selectAccountAtSlot(int slot) {
-        int index = scrollIndex + slot;
-        if (index < 0 || index >= accounts.size()) {
+    private void gatherPlayers() {
+        allPlayers.clear();
+        if (minecraft.getConnection() == null) {
             return;
         }
 
-        AccountSummary selected = accounts.get(index);
-        if (applyAsSelectedAccount) {
-            ClientATMData.setSelectedAccount(selected);
+        String selfName = minecraft.player == null ? "" : minecraft.player.getGameProfile().getName();
+        for (PlayerInfo info : minecraft.getConnection().getOnlinePlayers()) {
+            if (info.getProfile() == null) {
+                continue;
+            }
+            String name = info.getProfile().getName();
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            if (!selfName.isBlank() && name.equalsIgnoreCase(selfName)) {
+                continue;
+            }
+            allPlayers.add(new PlayerEntry(name, info));
         }
-        if (onAccountSelected != null) {
-            onAccountSelected.accept(selected);
+        allPlayers.sort(Comparator.comparing(entry -> entry.name().toLowerCase()));
+    }
+
+    private void applyFilter(String rawQuery) {
+        String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase();
+        filteredPlayers.clear();
+        for (PlayerEntry entry : allPlayers) {
+            if (query.isEmpty() || entry.name().toLowerCase().contains(query)) {
+                filteredPlayers.add(entry);
+            }
+        }
+        scrollIndex = clamp(scrollIndex, 0, getMaxScrollIndex());
+        refreshRows();
+    }
+
+    private void selectPlayerAtSlot(int slot) {
+        int index = scrollIndex + slot;
+        if (index < 0 || index >= filteredPlayers.size()) {
+            return;
+        }
+
+        selectedName = filteredPlayers.get(index).name();
+        if (onPlayerSelected != null) {
+            onPlayerSelected.accept(selectedName);
         }
         bankScreen.popLayer();
     }
@@ -117,7 +146,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
         for (int i = 0; i < rowButtons.size(); i++) {
             NineSliceTexturedButton button = rowButtons.get(i);
             int index = scrollIndex + i;
-            if (index >= 0 && index < accounts.size()) {
+            if (index >= 0 && index < filteredPlayers.size()) {
                 button.setMessage(Component.literal(""));
                 button.active = true;
                 button.visible = true;
@@ -131,7 +160,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (accounts.size() <= VISIBLE_ROWS) {
+        if (filteredPlayers.size() <= VISIBLE_ROWS) {
             return false;
         }
         if (!isInsideList(mouseX, mouseY) || scrollY == 0.0D) {
@@ -159,46 +188,46 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
         graphics.drawCenteredString(
                 font,
-                Component.literal("Select Account").withStyle(ChatFormatting.AQUA),
+                Component.literal("Select Player").withStyle(ChatFormatting.AQUA),
                 panelLeft + panelWidth / 2,
                 panelTop + 31,
                 0xFFFFFFFF
         );
 
         drawCenteredFittedString(graphics,
-                "Choose an account (mouse wheel to scroll)",
+                "Search and choose player (mouse wheel to scroll)",
                 panelLeft + panelWidth / 2,
-                panelTop + 44,
+                panelTop + 40,
                 panelWidth - 20,
                 COLOR_MUTED);
 
+        graphics.drawString(font, "Search", listLeft + 6, panelTop + 50, COLOR_LABEL);
         drawSectionBox(graphics, listLeft, listTop, listRight, listBottom);
 
-        if (accounts.isEmpty()) {
+        if (filteredPlayers.isEmpty()) {
             graphics.drawCenteredString(
                     font,
-                    Component.literal("No accounts available.").withStyle(ChatFormatting.GRAY),
+                    Component.literal("No players found.").withStyle(ChatFormatting.GRAY),
                     panelLeft + panelWidth / 2,
                     listTop + (listBottom - listTop) / 2 - 4,
                     COLOR_MUTED
             );
         } else {
             int from = scrollIndex + 1;
-            int to = Math.min(scrollIndex + VISIBLE_ROWS, accounts.size());
+            int to = Math.min(scrollIndex + VISIBLE_ROWS, filteredPlayers.size());
             graphics.drawCenteredString(
                     font,
-                    Component.literal("Showing " + from + "-" + to + " of " + accounts.size())
+                    Component.literal("Showing " + from + "-" + to + " of " + filteredPlayers.size())
                             .withStyle(ChatFormatting.DARK_AQUA),
                     panelLeft + panelWidth / 2,
                     listBottom + 7,
                     0xFF55FFFF
             );
-            renderAccountBlocks(graphics);
+            renderPlayerBlocks(graphics);
         }
     }
 
-    private void renderAccountBlocks(GuiGraphics graphics) {
-        AccountSummary selected = ClientATMData.getSelectedAccount();
+    private void renderPlayerBlocks(GuiGraphics graphics) {
         long now = System.currentTimeMillis();
 
         for (int i = 0; i < rowButtons.size(); i++) {
@@ -207,13 +236,13 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                 continue;
             }
 
-            int accountIndex = scrollIndex + i;
-            if (accountIndex < 0 || accountIndex >= accounts.size()) {
+            int playerIndex = scrollIndex + i;
+            if (playerIndex < 0 || playerIndex >= filteredPlayers.size()) {
                 continue;
             }
 
-            AccountSummary account = accounts.get(accountIndex);
-            boolean isSelected = selected != null && selected.accountId().equals(account.accountId());
+            PlayerEntry player = filteredPlayers.get(playerIndex);
+            boolean isSelected = selectedName != null && selectedName.equalsIgnoreCase(player.name());
             boolean isHovered = button.isHoveredOrFocused();
 
             int x1 = button.getX() + 1;
@@ -228,19 +257,16 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             graphics.fill(x1, y1, x1 + 1, y2, borderColor);
             graphics.fill(x2 - 1, y1, x2, y2, borderColor);
 
+            int headX = x2 - PLAYER_HEAD_SIZE - PLAYER_HEAD_RIGHT_PADDING;
+            int headY = y1 + Math.max(0, (y2 - y1 - PLAYER_HEAD_SIZE) / 2);
             int textX = x1 + 6;
-            int textWidth = Math.max(20, (x2 - x1) - 12);
-            int titleColor = isSelected ? 0xFFFFFF99 : 0xFFFFFFFF;
-            int bankColor = isSelected ? 0xFFAAE6FF : 0xFF8AC7E8;
-            int textBlockHeight = (font.lineHeight * 2) + 1;
-            int blockHeight = Math.max(1, y2 - y1);
-            int line1Y = y1 + Math.max(1, (blockHeight - textBlockHeight) / 2);
-            int line2Y = line1Y + font.lineHeight + 1;
+            int textWidth = Math.max(16, headX - textX - 8);
+            int textY = y1 + Math.max(0, (y2 - y1 - font.lineHeight) / 2);
 
-            String title = fitToWidth(account.accountType(), textWidth);
-            String bank = fitToWidth(account.bankName(), textWidth);
-            graphics.drawString(font, title, textX, line1Y, titleColor);
-            graphics.drawString(font, bank, textX, line2Y, bankColor);
+            graphics.drawString(font, fitToWidth(player.name(), textWidth), textX, textY,
+                    isSelected ? 0xFFFFFF99 : 0xFFFFFFFF);
+
+            PlayerFaceRenderer.draw(graphics, player.info().getSkin(), headX, headY, PLAYER_HEAD_SIZE);
         }
     }
 
@@ -267,7 +293,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
     }
 
     private int getListTop() {
-        return bankScreen.getPanelTop() + 56;
+        return bankScreen.getPanelTop() + 84;
     }
 
     private int getListRight() {
@@ -279,7 +305,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
     }
 
     private int getMaxScrollIndex() {
-        return Math.max(0, accounts.size() - VISIBLE_ROWS);
+        return Math.max(0, filteredPlayers.size() - VISIBLE_ROWS);
     }
 
     private boolean isInsideList(double mouseX, double mouseY) {

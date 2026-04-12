@@ -20,14 +20,21 @@ public final class PayRequestManager {
         private final UUID requestId;
         private final UUID requesterUUID;
         private final UUID payerUUID;
+        private final UUID receiverAccountUUID;
         private final BigDecimal amount;
         private final long createdAtMillis;
         private volatile Status status;
 
-        private PayRequest(UUID requestId, UUID requesterUUID, UUID payerUUID, BigDecimal amount, long createdAtMillis) {
+        private PayRequest(UUID requestId,
+                           UUID requesterUUID,
+                           UUID payerUUID,
+                           UUID receiverAccountUUID,
+                           BigDecimal amount,
+                           long createdAtMillis) {
             this.requestId = requestId;
             this.requesterUUID = requesterUUID;
             this.payerUUID = payerUUID;
+            this.receiverAccountUUID = receiverAccountUUID;
             this.amount = amount;
             this.createdAtMillis = createdAtMillis;
             this.status = Status.PENDING;
@@ -43,6 +50,10 @@ public final class PayRequestManager {
 
         public UUID getPayerUUID() {
             return payerUUID;
+        }
+
+        public UUID getReceiverAccountUUID() {
+            return receiverAccountUUID;
         }
 
         public BigDecimal getAmount() {
@@ -64,10 +75,20 @@ public final class PayRequestManager {
     private PayRequestManager() {
     }
 
-    public static PayRequest createRequest(UUID requesterUUID, UUID payerUUID, BigDecimal amount) {
+    public static PayRequest createRequest(UUID requesterUUID,
+                                           UUID payerUUID,
+                                           UUID receiverAccountUUID,
+                                           BigDecimal amount) {
         pruneExpired();
         UUID requestId = UUID.randomUUID();
-        PayRequest request = new PayRequest(requestId, requesterUUID, payerUUID, amount, System.currentTimeMillis());
+        PayRequest request = new PayRequest(
+                requestId,
+                requesterUUID,
+                payerUUID,
+                receiverAccountUUID,
+                amount,
+                System.currentTimeMillis()
+        );
         REQUESTS.put(requestId, request);
         return request;
     }

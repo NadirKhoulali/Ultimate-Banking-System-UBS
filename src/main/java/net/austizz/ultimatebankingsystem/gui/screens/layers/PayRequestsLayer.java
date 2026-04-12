@@ -33,6 +33,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
     private NineSliceTexturedButton acceptButton;
     private NineSliceTexturedButton declineButton;
     private NineSliceTexturedButton chooseButton;
+    private NineSliceTexturedButton createRequestButton;
 
     public PayRequestsLayer(Minecraft minecraft) {
         super(minecraft);
@@ -47,9 +48,22 @@ public class PayRequestsLayer extends AbstractScreenLayer {
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
 
-        int actionsTop = panelTop + panelHeight - 62;
+        int actionsTop = getActionsTop();
+        int createButtonY = getCreateButtonY();
         int gap = 6;
         int actionWidth = (contentWidth - (gap * 2)) / 3;
+
+        int createWidth = Math.min(176, contentWidth);
+        int createX = panelLeft + (panelWidth - createWidth) / 2;
+        createRequestButton = addWidget(new NineSliceTexturedButton(
+                createX,
+                createButtonY,
+                createWidth, 20,
+                ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
+                4, 4, 4, 4,
+                Component.literal("Create Pay Request").withStyle(ChatFormatting.WHITE),
+                btn -> bankScreen.pushLayer(new CreatePayRequestLayer(minecraft))
+        ));
 
         acceptButton = addWidget(new NineSliceTexturedButton(
                 contentLeft,
@@ -173,7 +187,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 return;
             }
             sendAction("accept_account", selectedAccount.accountId().toString());
-        }));
+        }, false));
     }
 
     private void sendAction(String action, String senderAccountId) {
@@ -279,7 +293,15 @@ public class PayRequestsLayer extends AbstractScreenLayer {
     }
 
     private int getListBottom() {
-        return bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 94;
+        return getCreateButtonY() - 8;
+    }
+
+    private int getActionsTop() {
+        return bankScreen.getPanelTop() + bankScreen.getPanelHeight() - 62;
+    }
+
+    private int getCreateButtonY() {
+        return getActionsTop() - 26;
     }
 
     private int getListHeight() {
