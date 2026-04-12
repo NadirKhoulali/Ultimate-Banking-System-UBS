@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
+import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
@@ -556,7 +557,8 @@ public class UBSCommands {
                                     + "§8/§fbank §7loan request <amount> §8- §7Preview a loan\n"
                                     + "§8/§fbank §7loan confirm §8- §7Confirm your last loan request\n"
                                     + "§8/§fbank §7loan status §8- §7Show active loan balances\n"
-                                    + "§8/§fbank §7credit §8- §7Show your credit score"
+                                    + "§8/§fbank §7credit §8- §7Show your credit score\n"
+                                    + "§8/§fbank §7shop pay <amount> [shop] §8- §7Simulate a shop checkout using bank funds"
                     ));
                     return 1;
                 })
@@ -578,7 +580,139 @@ public class UBSCommands {
                         .then(Commands.literal("confirm")
                                 .executes(context -> handleLoanConfirm(context.getSource())))
                         .then(Commands.literal("status")
-                                .executes(context -> handleLoanStatus(context.getSource()))));
+                                .executes(context -> handleLoanStatus(context.getSource()))))
+                .then(Commands.literal("shop")
+                        .then(Commands.literal("pay")
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleShopPay(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount"),
+                                                "Generic Shop"
+                                        ))
+                                        .then(Commands.argument("shop", StringArgumentType.greedyString())
+                                                .executes(context -> handleShopPay(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "amount"),
+                                                        StringArgumentType.getString(context, "shop")
+                                                ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("joint")
+                        .then(Commands.literal("create")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                                .executes(context -> handleJointCreate(
+                                                        context.getSource(),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "bankName")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("info")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .executes(context -> handleSharedAccountInfo(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("deposit")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handleSharedAccountDeposit(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "accountId"),
+                                                        StringArgumentType.getString(context, "amount")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("withdraw")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handleSharedAccountWithdraw(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "accountId"),
+                                                        StringArgumentType.getString(context, "amount")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("transfer")
+                                .then(Commands.argument("fromAccountId", UuidArgument.uuid())
+                                        .then(Commands.argument("toAccountId", UuidArgument.uuid())
+                                                .then(Commands.argument("amount", StringArgumentType.word())
+                                                        .executes(context -> handleSharedAccountTransfer(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "fromAccountId"),
+                                                                UuidArgument.getUuid(context, "toAccountId"),
+                                                                StringArgumentType.getString(context, "amount")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("close")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .executes(context -> handleSharedAccountClose(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("business")
+                        .then(Commands.literal("create")
+                                .then(Commands.argument("label", StringArgumentType.word())
+                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                                .executes(context -> handleBusinessCreate(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "label"),
+                                                        StringArgumentType.getString(context, "bankName")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("grant")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .executes(context -> handleBusinessGrant(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "accountId"),
+                                                                EntityArgument.getPlayer(context, "player"),
+                                                                StringArgumentType.getString(context, "role")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("revoke")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(context -> handleBusinessRevoke(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "accountId"),
+                                                        EntityArgument.getPlayer(context, "player")
+                                                ))
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("transferowner")
+                                .then(Commands.argument("accountId", UuidArgument.uuid())
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(context -> handleBusinessTransferOwner(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "accountId"),
+                                                        EntityArgument.getPlayer(context, "player")
+                                                ))
+                                        )
+                                )
+                        )
+                );
     }
 
     private static int handleBankBalance(CommandSourceStack source) {
@@ -826,6 +960,441 @@ public class UBSCommands {
             return null;
         }
         return all.values().iterator().next();
+    }
+
+    private static int handleShopPay(CommandSourceStack source, String amountRaw, String shopName) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            return 1;
+        }
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.stripTrailingZeros().scale() > 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be a positive whole number."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (selected == null) {
+            source.sendSystemMessage(Component.literal("§cNo account available."));
+            return 1;
+        }
+
+        long amountLong;
+        try {
+            amountLong = amount.longValueExact();
+        } catch (ArithmeticException ex) {
+            source.sendSystemMessage(Component.literal("§cAmount is too large."));
+            return 1;
+        }
+
+        var result = UltimateBankingApiProvider.get().shopPurchase(
+                selected.getAccountUUID(),
+                amountLong,
+                shopName
+        );
+        if (!result.success()) {
+            source.sendSystemMessage(Component.literal("§cPurchase failed: " + result.reason()));
+            return 1;
+        }
+
+        source.sendSystemMessage(Component.literal(
+                "§aPaid $" + amount.toPlainString() + " at " + shopName + ". New balance: $" + result.balanceAfter().toPlainString()
+        ));
+        return 1;
+    }
+
+    private static int handleJointCreate(CommandSourceStack source, ServerPlayer invitedPlayer, String bankName) {
+        ServerPlayer creator = source.getPlayer();
+        if (creator == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can create joint accounts."));
+            return 1;
+        }
+        if (invitedPlayer.getUUID().equals(creator.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou cannot create a joint account with yourself."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        Bank bank = centralBank.getBankByName(bankName);
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankName));
+            return 1;
+        }
+
+        AccountHolder account = new AccountHolder(
+                creator.getUUID(),
+                BigDecimal.ZERO,
+                AccountTypes.CheckingAccount,
+                "",
+                bank.getBankId(),
+                null
+        );
+        account.setAccountAccessType("JOINT");
+        account.grantAccessRole(creator.getUUID(), "OWNER");
+        account.grantAccessRole(invitedPlayer.getUUID(), "OWNER");
+        if (!bank.AddAccount(account)) {
+            source.sendSystemMessage(Component.literal("§cUnable to create joint account (duplicate account type for owner in this bank)."));
+            return 1;
+        }
+        source.sendSystemMessage(Component.literal(
+                "§aJoint account created: §f" + account.getAccountUUID() + " §7at §e" + bank.getBankName()
+        ));
+        invitedPlayer.sendSystemMessage(Component.literal(
+                "§aYou were added as co-owner of joint account §f" + account.getAccountUUID()
+        ));
+        return 1;
+    }
+
+    private static int handleBusinessCreate(CommandSourceStack source, String label, String bankName) {
+        ServerPlayer creator = source.getPlayer();
+        if (creator == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can create business accounts."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        Bank bank = centralBank.getBankByName(bankName);
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("§cBank not found: " + bankName));
+            return 1;
+        }
+
+        AccountHolder account = new AccountHolder(
+                creator.getUUID(),
+                BigDecimal.ZERO,
+                AccountTypes.CheckingAccount,
+                "",
+                bank.getBankId(),
+                null
+        );
+        account.setAccountAccessType("BUSINESS");
+        account.setBusinessLabel(label);
+        account.grantAccessRole(creator.getUUID(), "OWNER");
+        if (!bank.AddAccount(account)) {
+            source.sendSystemMessage(Component.literal("§cUnable to create business account (duplicate account type for owner in this bank)."));
+            return 1;
+        }
+        source.sendSystemMessage(Component.literal(
+                "§aBusiness account created for §e" + label + "§a. Account: §f" + account.getAccountUUID()
+        ));
+        return 1;
+    }
+
+    private static int handleBusinessGrant(CommandSourceStack source, UUID accountId, ServerPlayer target, String role) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can grant access."));
+            return 1;
+        }
+
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!"BUSINESS".equals(account.getAccountAccessType())) {
+            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            return 1;
+        }
+        if (!account.canManage(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have manage permission for this account."));
+            return 1;
+        }
+        String normalizedRole = role == null ? "" : role.trim().toUpperCase();
+        if (!List.of("VIEW", "DEPOSIT", "WITHDRAW", "MANAGE", "OWNER").contains(normalizedRole)) {
+            source.sendSystemMessage(Component.literal("§cInvalid role. Use VIEW, DEPOSIT, WITHDRAW, MANAGE, or OWNER."));
+            return 1;
+        }
+        account.grantAccessRole(target.getUUID(), normalizedRole);
+        source.sendSystemMessage(Component.literal(
+                "§aGranted role §e" + normalizedRole + " §ato §f" + target.getName().getString()
+        ));
+        target.sendSystemMessage(Component.literal(
+                "§aYou were granted role §e" + normalizedRole + " §aon business account §f" + account.getAccountUUID()
+        ));
+        return 1;
+    }
+
+    private static int handleBusinessRevoke(CommandSourceStack source, UUID accountId, ServerPlayer target) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can revoke access."));
+            return 1;
+        }
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!"BUSINESS".equals(account.getAccountAccessType())) {
+            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            return 1;
+        }
+        if (!account.canManage(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have manage permission for this account."));
+            return 1;
+        }
+        account.revokeAccessRole(target.getUUID());
+        source.sendSystemMessage(Component.literal("§aRevoked account access for §f" + target.getName().getString()));
+        target.sendSystemMessage(Component.literal("§eYour access to business account §f" + account.getAccountUUID() + " §ewas revoked."));
+        return 1;
+    }
+
+    private static int handleBusinessTransferOwner(CommandSourceStack source, UUID accountId, ServerPlayer target) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can transfer ownership."));
+            return 1;
+        }
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!"BUSINESS".equals(account.getAccountAccessType())) {
+            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            return 1;
+        }
+        if (!"OWNER".equals(account.getRole(actor.getUUID()))) {
+            source.sendSystemMessage(Component.literal("§cOnly current owner can transfer ownership."));
+            return 1;
+        }
+        account.grantAccessRole(actor.getUUID(), "MANAGE");
+        account.grantAccessRole(target.getUUID(), "OWNER");
+        source.sendSystemMessage(Component.literal("§aOwnership transferred to §f" + target.getName().getString()));
+        target.sendSystemMessage(Component.literal("§aYou are now owner of business account §f" + account.getAccountUUID()));
+        return 1;
+    }
+
+    private static int handleSharedAccountInfo(CommandSourceStack source, UUID accountId) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!account.canView(player.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have access to this account."));
+            return 1;
+        }
+
+        String owners = account.getAccessRoles().entrySet().stream()
+                .filter(e -> "OWNER".equals(e.getValue()))
+                .map(e -> shortId(e.getKey()))
+                .sorted()
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("none");
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Account ID: §f" + account.getAccountUUID() + "\n"));
+        body.append(Component.literal("§7Mode: §f" + account.getAccountAccessType() + "\n"));
+        if ("BUSINESS".equals(account.getAccountAccessType())) {
+            body.append(Component.literal("§7Business: §f" + account.getBusinessLabel() + "\n"));
+        }
+        body.append(Component.literal("§7Balance: §a$" + account.getBalance().toPlainString() + "\n"));
+        body.append(Component.literal("§7Owners: §f" + owners + "\n"));
+        body.append(Component.literal("§7Your role: §e" + account.getRole(player.getUUID())));
+
+        source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eShared Account", body));
+        return 1;
+    }
+
+    private static int handleSharedAccountDeposit(CommandSourceStack source, UUID accountId, String amountRaw) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!account.canDeposit(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have deposit access for this account."));
+            return 1;
+        }
+        BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+        if (!account.AddBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cDeposit failed."));
+            return 1;
+        }
+        account.addTransaction(new UserTransaction(
+                actor.getUUID(),
+                account.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "SHARED_DEPOSIT:" + actor.getName().getString()
+        ));
+        notifyAllAccountMembers(source, account, "§aDeposit on shared account " + shortId(account.getAccountUUID()) + ": $" + amount.toPlainString());
+        return 1;
+    }
+
+    private static int handleSharedAccountWithdraw(CommandSourceStack source, UUID accountId, String amountRaw) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+        AccountHolder account = resolveAccount(source, accountId);
+        if (account == null) {
+            return 1;
+        }
+        if (!account.canWithdraw(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have withdraw access for this account."));
+            return 1;
+        }
+        BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+        if (!account.RemoveBalance(amount)) {
+            source.sendSystemMessage(Component.literal("§cWithdraw failed (insufficient funds or frozen)."));
+            return 1;
+        }
+        account.addTransaction(new UserTransaction(
+                account.getAccountUUID(),
+                actor.getUUID(),
+                amount,
+                LocalDateTime.now(),
+                "SHARED_WITHDRAW:" + actor.getName().getString()
+        ));
+        notifyAllAccountMembers(source, account, "§eWithdraw on shared account " + shortId(account.getAccountUUID()) + ": $" + amount.toPlainString());
+        return 1;
+    }
+
+    private static int handleSharedAccountTransfer(CommandSourceStack source, UUID fromAccountId, UUID toAccountId, String amountRaw) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+        AccountHolder from = resolveAccount(source, fromAccountId);
+        AccountHolder to = resolveAccount(source, toAccountId);
+        if (from == null || to == null) {
+            return 1;
+        }
+        if (!from.canWithdraw(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have withdraw access on the source account."));
+            return 1;
+        }
+        BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
+        if (amount == null) {
+            return 1;
+        }
+        boolean success = new UserTransaction(
+                from.getAccountUUID(),
+                to.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "SHARED_TRANSFER:" + actor.getName().getString()
+        ).makeTransaction(source.getServer());
+        if (!success) {
+            source.sendSystemMessage(Component.literal("§cTransfer failed."));
+            return 1;
+        }
+        notifyAllAccountMembers(source, from, "§bTransfer from shared account " + shortId(from.getAccountUUID()) + ": $" + amount.toPlainString());
+        return 1;
+    }
+
+    private static int handleSharedAccountClose(CommandSourceStack source, UUID accountId) {
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cAccount not found."));
+            return 1;
+        }
+        if (!account.canManage(actor.getUUID())) {
+            source.sendSystemMessage(Component.literal("§cYou do not have close permission for this account."));
+            return 1;
+        }
+        Bank bank = centralBank.getBank(account.getBankId());
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("§cBank not found for this account."));
+            return 1;
+        }
+        notifyAllAccountMembers(source, account, "§cShared account " + shortId(account.getAccountUUID()) + " was closed by " + actor.getName().getString());
+        bank.RemoveAccount(account);
+        source.sendSystemMessage(Component.literal("§aClosed shared account §f" + accountId));
+        return 1;
+    }
+
+    private static AccountHolder resolveAccount(CommandSourceStack source, UUID accountId) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return null;
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null) {
+            source.sendSystemMessage(Component.literal("§cAccount not found: " + accountId));
+        }
+        return account;
+    }
+
+    private static BigDecimal parsePositiveWholeAmount(CommandSourceStack source, String amountRaw) {
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            return null;
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            return null;
+        }
+        if (amount.stripTrailingZeros().scale() > 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be a whole number."));
+            return null;
+        }
+        return amount;
+    }
+
+    private static void notifyAllAccountMembers(CommandSourceStack source, AccountHolder account, String message) {
+        if (source.getServer() == null) {
+            return;
+        }
+        for (UUID memberId : account.getAccessRoles().keySet()) {
+            ServerPlayer member = source.getServer().getPlayerList().getPlayer(memberId);
+            if (member != null) {
+                member.sendSystemMessage(Component.literal(message));
+            }
+        }
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildPayRequestCommand() {

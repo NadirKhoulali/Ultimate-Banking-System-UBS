@@ -12,6 +12,7 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
+import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -226,6 +227,36 @@ public class UBSAdminCommands {
                                                         EntityArgument.getPlayer(context, "player"),
                                                         StringArgumentType.getString(context, "reason")
                                                 ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("schedule")
+                        .then(Commands.literal("list")
+                                .executes(context -> adminListSchedules(context.getSource()))
+                        )
+                        .then(Commands.literal("remove")
+                                .then(Commands.argument("paymentId", UuidArgument.uuid())
+                                        .executes(context -> adminRemoveSchedule(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "paymentId")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("sourceAccountId", UuidArgument.uuid())
+                                        .then(Commands.argument("targetAccountId", UuidArgument.uuid())
+                                                .then(Commands.argument("amount", StringArgumentType.word())
+                                                        .then(Commands.argument("frequencyTicks", StringArgumentType.word())
+                                                                .executes(context -> adminAddSchedule(
+                                                                        context.getSource(),
+                                                                        UuidArgument.getUuid(context, "sourceAccountId"),
+                                                                        UuidArgument.getUuid(context, "targetAccountId"),
+                                                                        StringArgumentType.getString(context, "amount"),
+                                                                        StringArgumentType.getString(context, "frequencyTicks")
+                                                                ))
+                                                        )
+                                                )
                                         )
                                 )
                         )
@@ -792,6 +823,132 @@ public class UBSAdminCommands {
         borrower.sendSystemMessage(Component.literal(
                 "§cYour loan request was denied." + (cleanReason.isEmpty() ? "" : " Reason: " + cleanReason)
         ));
+        return 1;
+    }
+
+    private static int adminAddSchedule(CommandSourceStack source,
+                                        UUID sourceAccountId,
+                                        UUID targetAccountId,
+                                        String amountRaw,
+                                        String frequencyRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder sourceAccount = centralBank.SearchForAccountByAccountId(sourceAccountId);
+        AccountHolder targetAccount = centralBank.SearchForAccountByAccountId(targetAccountId);
+        if (sourceAccount == null || targetAccount == null) {
+            source.sendSystemMessage(Component.literal("§cSource or target account was not found."));
+            return 1;
+        }
+
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            return 1;
+        }
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            return 1;
+        }
+
+        long frequencyTicks;
+        try {
+            frequencyTicks = Long.parseLong(frequencyRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid frequency ticks."));
+            return 1;
+        }
+
+        if (frequencyTicks < 20L) {
+            source.sendSystemMessage(Component.literal("§cFrequency must be at least 20 ticks."));
+            return 1;
+        }
+
+        long firstRun = currentOverworldGameTime(source.getServer()) + frequencyTicks;
+        ScheduledPayment payment = new ScheduledPayment(
+                UUID.randomUUID(),
+                sourceAccountId,
+                targetAccountId,
+                amount,
+                frequencyTicks,
+                firstRun,
+                source.getTextName(),
+                true
+        );
+        centralBank.addScheduledPayment(payment);
+
+        source.sendSystemMessage(Component.literal(
+                "§aScheduled payment created: §f" + payment.getPaymentId()
+                        + " §7amount §6$" + amount.toPlainString()
+                        + " §7every §f" + frequencyTicks + " ticks"
+        ));
+        return 1;
+    }
+
+    private static int adminListSchedules(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            return 1;
+        }
+
+        var payments = centralBank.getScheduledPayments().values().stream()
+                .sorted(Comparator.comparing(ScheduledPayment::getPaymentId))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Scheduled Payments: §b" + payments.size() + "\n\n"));
+        if (payments.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (ScheduledPayment payment : payments) {
+                body.append(Component.literal(
+                        "§8- §f" + payment.getPaymentId() + "\n"
+                                + "  §7from: §f" + payment.getSourceAccountId() + "\n"
+                                + "  §7to: §f" + payment.getTargetAccountId() + "\n"
+                                + "  §7amount: §6$" + payment.getAmount().toPlainString()
+                                + " §7freq: §f" + payment.getFrequencyTicks()
+                                + " §7next: §f" + payment.getNextExecutionGameTime() + "\n"
+                ));
+            }
+        }
+
+        source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bScheduled Payments", body));
+        return 1;
+    }
+
+    private static int adminRemoveSchedule(CommandSourceStack source, UUID paymentId) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            return 1;
+        }
+
+        boolean removed = centralBank.removeScheduledPayment(paymentId);
+        if (!removed) {
+            source.sendSystemMessage(Component.literal("§cScheduled payment not found."));
+            return 1;
+        }
+
+        source.sendSystemMessage(Component.literal("§aRemoved scheduled payment §f" + paymentId + "§a."));
         return 1;
     }
 

@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -16,11 +17,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, Bank> banks;
+    private ConcurrentHashMap<UUID, ScheduledPayment> scheduledPayments;
 
     public CentralBank() {
         super(new UUID(0,0), "Central Bank", new BigDecimal("0"), 1.2, new UUID(0,0));
         this.banks = new ConcurrentHashMap<>();
         this.banks.put(this.getBankId(), this);
+        this.scheduledPayments = new ConcurrentHashMap<>();
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
         return banks;
@@ -81,6 +84,33 @@ public class CentralBank extends Bank{
         return null;
     }
 
+    public ConcurrentHashMap<UUID, ScheduledPayment> getScheduledPayments() {
+        if (this.scheduledPayments == null) {
+            this.scheduledPayments = new ConcurrentHashMap<>();
+        }
+        return scheduledPayments;
+    }
+
+    public void addScheduledPayment(ScheduledPayment payment) {
+        if (payment == null) {
+            return;
+        }
+        getScheduledPayments().put(payment.getPaymentId(), payment);
+        BankManager.markDirty();
+    }
+
+    public boolean removeScheduledPayment(UUID paymentId) {
+        if (paymentId == null) {
+            return false;
+        }
+        ScheduledPayment removed = getScheduledPayments().remove(paymentId);
+        if (removed != null) {
+            BankManager.markDirty();
+            return true;
+        }
+        return false;
+    }
+
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
@@ -96,6 +126,14 @@ public class CentralBank extends Bank{
             }
         });
         tag.put("sub_banks", banksList);
+
+        ListTag scheduledPaymentsTag = new ListTag();
+        getScheduledPayments().values().forEach(payment -> {
+            CompoundTag paymentTag = new CompoundTag();
+            payment.save(paymentTag, registries);
+            scheduledPaymentsTag.add(paymentTag);
+        });
+        tag.put("scheduled_payments", scheduledPaymentsTag);
 
         return tag;
     }
@@ -127,6 +165,15 @@ public class CentralBank extends Bank{
         for (int i = 0; i < banksList.size(); i++) {
             Bank loadedBank = Bank.load(banksList.getCompound(i), registries);
             centralBank.addBank(loadedBank);
+        }
+
+        centralBank.scheduledPayments = new ConcurrentHashMap<>();
+        ListTag scheduledPaymentsTag = tag.getList("scheduled_payments", 10);
+        for (int i = 0; i < scheduledPaymentsTag.size(); i++) {
+            ScheduledPayment payment = ScheduledPayment.load(scheduledPaymentsTag.getCompound(i), registries);
+            if (payment != null) {
+                centralBank.scheduledPayments.put(payment.getPaymentId(), payment);
+            }
         }
         return centralBank;
     }

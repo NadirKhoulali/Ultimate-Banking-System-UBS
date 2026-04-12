@@ -8,6 +8,7 @@ import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
+import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.level.Level;
@@ -90,6 +91,7 @@ public class UltimateBankingSystem {
         long gameTime = overworld.getGameTime();
 
         LoanService.processRepayments(server, gameTime);
+        ScheduledPaymentService.process(server, gameTime);
 
         long autosaveIntervalTicks = Math.max(1, Config.AUTOSAVE_INTERVAL_MINUTES.get()) * 60L * 20L;
         if (gameTime % autosaveIntervalTicks == 0L && gameTime != lastAutosaveTick) {

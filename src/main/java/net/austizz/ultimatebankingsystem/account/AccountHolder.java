@@ -53,6 +53,9 @@ public class AccountHolder {
     private int creditScore;
     private boolean defaulted;
     private ConcurrentHashMap<UUID, AccountLoan> activeLoans;
+    private String accountAccessType;
+    private String businessLabel;
+    private ConcurrentHashMap<UUID, String> accessRoles;
 
     private static final long TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS = 24000L;
     private static final ZoneId SERVER_ZONE = ZoneId.systemDefault();
@@ -78,6 +81,10 @@ public class AccountHolder {
         this.creditScore = Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
         this.defaulted = false;
         this.activeLoans = new ConcurrentHashMap<>();
+        this.accountAccessType = "PERSONAL";
+        this.businessLabel = "";
+        this.accessRoles = new ConcurrentHashMap<>();
+        this.accessRoles.put(playerUUID, "OWNER");
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -217,6 +224,88 @@ public class AccountHolder {
 
     public boolean isFrozen() {
         return frozen;
+    }
+
+    public String getAccountAccessType() {
+        return accountAccessType == null ? "PERSONAL" : accountAccessType;
+    }
+
+    public void setAccountAccessType(String accountAccessType) {
+        if (accountAccessType == null || accountAccessType.isBlank()) {
+            this.accountAccessType = "PERSONAL";
+        } else {
+            this.accountAccessType = accountAccessType.trim().toUpperCase();
+        }
+        BankManager.markDirty();
+    }
+
+    public String getBusinessLabel() {
+        return businessLabel == null ? "" : businessLabel;
+    }
+
+    public void setBusinessLabel(String businessLabel) {
+        this.businessLabel = businessLabel == null ? "" : businessLabel.trim();
+        BankManager.markDirty();
+    }
+
+    public ConcurrentHashMap<UUID, String> getAccessRoles() {
+        if (accessRoles == null) {
+            accessRoles = new ConcurrentHashMap<>();
+            accessRoles.put(this.playerUUID, "OWNER");
+        }
+        return accessRoles;
+    }
+
+    public void grantAccessRole(UUID playerId, String role) {
+        if (playerId == null) {
+            return;
+        }
+        String normalizedRole = role == null || role.isBlank()
+                ? "VIEW"
+                : role.trim().toUpperCase();
+        getAccessRoles().put(playerId, normalizedRole);
+        BankManager.markDirty();
+    }
+
+    public void revokeAccessRole(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        if (playerId.equals(this.playerUUID)) {
+            return;
+        }
+        getAccessRoles().remove(playerId);
+        BankManager.markDirty();
+    }
+
+    public String getRole(UUID playerId) {
+        if (playerId == null) {
+            return "";
+        }
+        if (this.playerUUID.equals(playerId) && !getAccessRoles().containsKey(playerId)) {
+            return "OWNER";
+        }
+        return getAccessRoles().getOrDefault(playerId, "");
+    }
+
+    public boolean canView(UUID playerId) {
+        String role = getRole(playerId);
+        return !role.isEmpty();
+    }
+
+    public boolean canDeposit(UUID playerId) {
+        String role = getRole(playerId);
+        return role.equals("OWNER") || role.equals("MANAGE") || role.equals("DEPOSIT") || role.equals("WITHDRAW");
+    }
+
+    public boolean canWithdraw(UUID playerId) {
+        String role = getRole(playerId);
+        return role.equals("OWNER") || role.equals("MANAGE") || role.equals("WITHDRAW");
+    }
+
+    public boolean canManage(UUID playerId) {
+        String role = getRole(playerId);
+        return role.equals("OWNER") || role.equals("MANAGE");
     }
 
     public String getFrozenReason() {
@@ -458,6 +547,8 @@ public class AccountHolder {
         tag.putString("frozenReason", getFrozenReason());
         tag.putInt("creditScore", this.creditScore);
         tag.putBoolean("defaulted", this.defaulted);
+        tag.putString("accountAccessType", getAccountAccessType());
+        tag.putString("businessLabel", getBusinessLabel());
         tag.putLong("dailyWithdrawalWindowDay", this.dailyWithdrawalWindowDay);
         tag.putString("dailyWithdrawnAmount", this.dailyWithdrawnAmount.toPlainString());
         tag.putLong("dailyWithdrawalResetEpochMillis", this.dailyWithdrawalResetEpochMillis);
@@ -491,6 +582,15 @@ public class AccountHolder {
         }
         tag.put("activeLoans", loanList);
 
+        ListTag roleList = new ListTag();
+        for (Map.Entry<UUID, String> roleEntry : getAccessRoles().entrySet()) {
+            CompoundTag roleTag = new CompoundTag();
+            roleTag.putUUID("playerId", roleEntry.getKey());
+            roleTag.putString("role", roleEntry.getValue() == null ? "" : roleEntry.getValue());
+            roleList.add(roleTag);
+        }
+        tag.put("accessRoles", roleList);
+
         // voeg andere velden toe...
         return tag;
     }
@@ -518,6 +618,8 @@ public class AccountHolder {
         account.frozenReason = tag.contains("frozenReason") ? tag.getString("frozenReason") : "";
         account.creditScore = tag.contains("creditScore") ? Math.max(0, tag.getInt("creditScore")) : Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
         account.defaulted = tag.getBoolean("defaulted");
+        account.accountAccessType = tag.contains("accountAccessType") ? tag.getString("accountAccessType") : "PERSONAL";
+        account.businessLabel = tag.contains("businessLabel") ? tag.getString("businessLabel") : "";
         account.dailyWithdrawalWindowDay = tag.contains("dailyWithdrawalWindowDay") ? tag.getLong("dailyWithdrawalWindowDay") : currentEpochDay();
         if (tag.contains("dailyWithdrawnAmount")) {
             try {
@@ -564,6 +666,23 @@ public class AccountHolder {
                 account.activeLoans.put(loan.getLoanId(), loan);
             }
         }
+
+        account.accessRoles = new ConcurrentHashMap<>();
+        if (tag.contains("accessRoles", Tag.TAG_LIST)) {
+            ListTag roleList = tag.getList("accessRoles", Tag.TAG_COMPOUND);
+            for (int i = 0; i < roleList.size(); i++) {
+                CompoundTag roleTag = roleList.getCompound(i);
+                if (!roleTag.hasUUID("playerId")) {
+                    continue;
+                }
+                String role = roleTag.getString("role");
+                if (role == null || role.isBlank()) {
+                    continue;
+                }
+                account.accessRoles.put(roleTag.getUUID("playerId"), role.toUpperCase());
+            }
+        }
+        account.accessRoles.putIfAbsent(account.playerUUID, "OWNER");
 
         return account;
     }
