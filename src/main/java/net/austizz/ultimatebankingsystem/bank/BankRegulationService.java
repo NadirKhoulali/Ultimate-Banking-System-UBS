@@ -222,6 +222,8 @@ public final class BankRegulationService {
                 metadata.putLong("nextLicenseFeeTick", gameTime + interval);
                 metadata.putBoolean("licenseWarningSent", false);
                 metadata.remove("licenseGraceEndTick");
+                metadata.remove("licenseGraceWarningSent");
+                metadata.remove("licenseSuspendedSent");
                 if ("WARNING".equalsIgnoreCase(metadata.getString("status"))) {
                     metadata.putString("status", "ACTIVE");
                 }
@@ -241,9 +243,15 @@ public final class BankRegulationService {
             if (gameTime >= graceEnd) {
                 metadata.putString("status", "SUSPENDED");
                 metadata.putString("suspendReason", "Unpaid annual license renewal fee");
-                notifyOwner(server, bank, "§cYour bank was suspended for unpaid annual license fee.");
+                if (!metadata.getBoolean("licenseSuspendedSent")) {
+                    notifyOwner(server, bank, "§cYour bank was suspended for unpaid annual license fee.");
+                    metadata.putBoolean("licenseSuspendedSent", true);
+                }
             } else {
-                notifyOwner(server, bank, "§eInsufficient reserve for annual license fee. Grace until tick " + graceEnd + ".");
+                if (!metadata.getBoolean("licenseGraceWarningSent")) {
+                    notifyOwner(server, bank, "§eInsufficient reserve for annual license fee. Grace until tick " + graceEnd + ".");
+                    metadata.putBoolean("licenseGraceWarningSent", true);
+                }
             }
             centralBank.putBankMetadata(bank.getBankId(), metadata);
         }
@@ -405,6 +413,7 @@ public final class BankRegulationService {
             CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
             if (metadata.getBoolean("rateExempt")) {
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandWarningSent");
                 centralBank.putBankMetadata(bank.getBankId(), metadata);
                 continue;
             }
@@ -413,22 +422,31 @@ public final class BankRegulationService {
             boolean outOfBand = rate < floor || rate > ceiling;
             if (!outOfBand) {
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandWarningSent");
                 centralBank.putBankMetadata(bank.getBankId(), metadata);
                 continue;
             }
 
-            long start = metadata.contains("rateOutOfBandStartTick")
-                    ? metadata.getLong("rateOutOfBandStartTick")
-                    : gameTime;
-            metadata.putLong("rateOutOfBandStartTick", start);
+            long start;
+            if (metadata.contains("rateOutOfBandStartTick")) {
+                start = metadata.getLong("rateOutOfBandStartTick");
+            } else {
+                start = gameTime;
+                metadata.putLong("rateOutOfBandStartTick", start);
+                metadata.putBoolean("rateOutOfBandWarningSent", false);
+            }
             if ((gameTime - start) >= grace) {
                 double clamped = Math.max(floor, Math.min(ceiling, rate));
                 bank.setInterestRate(clamped);
                 metadata.remove("rateOutOfBandStartTick");
+                metadata.remove("rateOutOfBandWarningSent");
                 notifyOwner(server, bank, "§eSavings rate was clamped to " + clamped
                         + "% to match federal rate band.");
             } else {
-                notifyOwner(server, bank, "§eSavings rate is outside federal band. Adjust within one in-game day.");
+                if (!metadata.getBoolean("rateOutOfBandWarningSent")) {
+                    notifyOwner(server, bank, "§eSavings rate is outside federal band. Adjust within one in-game day.");
+                    metadata.putBoolean("rateOutOfBandWarningSent", true);
+                }
             }
             centralBank.putBankMetadata(bank.getBankId(), metadata);
         }
