@@ -3,6 +3,7 @@ package net.austizz.ultimatebankingsystem.account;
 import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.account.loan.AccountLoan;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -49,6 +50,9 @@ public class AccountHolder {
     private long dailyWithdrawalWindowDay; // Epoch day in server local time
     private BigDecimal dailyWithdrawnAmount;
     private long dailyWithdrawalResetEpochMillis;
+    private int creditScore;
+    private boolean defaulted;
+    private ConcurrentHashMap<UUID, AccountLoan> activeLoans;
 
     private static final long TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS = 24000L;
     private static final ZoneId SERVER_ZONE = ZoneId.systemDefault();
@@ -71,6 +75,9 @@ public class AccountHolder {
         this.dailyWithdrawalWindowDay = currentEpochDay();
         this.dailyWithdrawnAmount = BigDecimal.ZERO;
         this.dailyWithdrawalResetEpochMillis = computeNextMidnightEpochMillis();
+        this.creditScore = Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
+        this.defaulted = false;
+        this.activeLoans = new ConcurrentHashMap<>();
     }
     // Request all Types of Identification
     public UUID getAccountUUID() {
@@ -316,6 +323,51 @@ public class AccountHolder {
         return dailyWithdrawalResetEpochMillis;
     }
 
+    public int getCreditScore() {
+        return creditScore;
+    }
+
+    public void setCreditScore(int creditScore) {
+        this.creditScore = Math.max(0, creditScore);
+        BankManager.markDirty();
+    }
+
+    public void adjustCreditScore(int delta) {
+        setCreditScore(this.creditScore + delta);
+    }
+
+    public boolean isDefaulted() {
+        return defaulted;
+    }
+
+    public void setDefaulted(boolean defaulted) {
+        this.defaulted = defaulted;
+        BankManager.markDirty();
+    }
+
+    public ConcurrentHashMap<UUID, AccountLoan> getActiveLoans() {
+        if (activeLoans == null) {
+            activeLoans = new ConcurrentHashMap<>();
+        }
+        return activeLoans;
+    }
+
+    public void addLoan(AccountLoan loan) {
+        if (loan == null) {
+            return;
+        }
+        getActiveLoans().put(loan.getLoanId(), loan);
+        BankManager.markDirty();
+    }
+
+    public void removeLoan(UUID loanId) {
+        if (loanId == null) {
+            return;
+        }
+        getActiveLoans().remove(loanId);
+        BankManager.markDirty();
+    }
+
     public BigDecimal getTemporaryWithdrawalLimitIfActive(long currentGameTime) {
         expireTemporaryWithdrawalLimitIfNeeded(currentGameTime);
         return temporaryWithdrawalLimit;
@@ -404,6 +456,8 @@ public class AccountHolder {
         tag.putUUID("playerUUID", this.playerUUID);
         tag.putBoolean("frozen", this.frozen);
         tag.putString("frozenReason", getFrozenReason());
+        tag.putInt("creditScore", this.creditScore);
+        tag.putBoolean("defaulted", this.defaulted);
         tag.putLong("dailyWithdrawalWindowDay", this.dailyWithdrawalWindowDay);
         tag.putString("dailyWithdrawnAmount", this.dailyWithdrawnAmount.toPlainString());
         tag.putLong("dailyWithdrawalResetEpochMillis", this.dailyWithdrawalResetEpochMillis);
@@ -425,6 +479,17 @@ public class AccountHolder {
             txList.add(txTag);
         }
         tag.put("transactions", txList);
+
+        ListTag loanList = new ListTag();
+        for (AccountLoan loan : getActiveLoans().values()) {
+            if (loan == null) {
+                continue;
+            }
+            CompoundTag loanTag = new CompoundTag();
+            loan.save(loanTag, registries);
+            loanList.add(loanTag);
+        }
+        tag.put("activeLoans", loanList);
 
         // voeg andere velden toe...
         return tag;
@@ -451,6 +516,8 @@ public class AccountHolder {
         account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount");
         account.frozen = tag.getBoolean("frozen");
         account.frozenReason = tag.contains("frozenReason") ? tag.getString("frozenReason") : "";
+        account.creditScore = tag.contains("creditScore") ? Math.max(0, tag.getInt("creditScore")) : Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
+        account.defaulted = tag.getBoolean("defaulted");
         account.dailyWithdrawalWindowDay = tag.contains("dailyWithdrawalWindowDay") ? tag.getLong("dailyWithdrawalWindowDay") : currentEpochDay();
         if (tag.contains("dailyWithdrawnAmount")) {
             try {
@@ -483,6 +550,18 @@ public class AccountHolder {
 
                 UUID key = txTag.hasUUID("mapKey") ? txTag.getUUID("mapKey") : tx.getTransactionUUID();
                 account.transactions.put(key, tx);
+            }
+        }
+
+        account.activeLoans = new ConcurrentHashMap<>();
+        if (tag.contains("activeLoans", Tag.TAG_LIST)) {
+            ListTag loanList = tag.getList("activeLoans", Tag.TAG_COMPOUND);
+            for (int i = 0; i < loanList.size(); i++) {
+                AccountLoan loan = AccountLoan.load(loanList.getCompound(i), registries);
+                if (loan == null) {
+                    continue;
+                }
+                account.activeLoans.put(loan.getLoanId(), loan);
             }
         }
 

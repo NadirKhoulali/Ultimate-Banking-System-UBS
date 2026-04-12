@@ -49,6 +49,54 @@ public class Config {
             .comment("How often savings interest payout runs (in server ticks). 24000 ticks = one Minecraft day.")
             .defineInRange("SavingsInterestIntervalTicks", 24000, 20, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.IntValue LOAN_AUTO_APPROVE_THRESHOLD = BUILDER
+            .comment("Maximum principal amount that can be auto-approved for a player loan.")
+            .defineInRange("LoanAutoApproveThreshold", 5000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue LOAN_AUTO_APPROVE_MIN_CREDIT = BUILDER
+            .comment("Minimum credit score required for auto-approval.")
+            .defineInRange("LoanAutoApproveMinCredit", 550, 0, 2000);
+
+    public static final ModConfigSpec.DoubleValue LOAN_BASE_INTEREST_RATE = BUILDER
+            .comment("Base annual loan interest rate used before credit-score adjustment.")
+            .defineInRange("LoanBaseInterestRate", 8.0, 0.01, 1000.0);
+
+    public static final ModConfigSpec.DoubleValue LOAN_MIN_INTEREST_RATE = BUILDER
+            .comment("Minimum annual loan interest rate after credit-score adjustment.")
+            .defineInRange("LoanMinInterestRate", 2.0, 0.01, 1000.0);
+
+    public static final ModConfigSpec.DoubleValue LOAN_MAX_INTEREST_RATE = BUILDER
+            .comment("Maximum annual loan interest rate after credit-score adjustment.")
+            .defineInRange("LoanMaxInterestRate", 25.0, 0.01, 1000.0);
+
+    public static final ModConfigSpec.IntValue LOAN_TERM_PAYMENTS = BUILDER
+            .comment("Default number of scheduled repayments per loan.")
+            .defineInRange("LoanTermPayments", 7, 1, 512);
+
+    public static final ModConfigSpec.IntValue LOAN_PAYMENT_INTERVAL_TICKS = BUILDER
+            .comment("Ticks between loan repayments (24000 = one Minecraft day).")
+            .defineInRange("LoanPaymentIntervalTicks", 24000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue LOAN_WARNING_BEFORE_DUE_TICKS = BUILDER
+            .comment("How many ticks before due date a borrower receives a warning.")
+            .defineInRange("LoanWarningBeforeDueTicks", 24000, 20, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue CREDIT_SCORE_DEFAULT = BUILDER
+            .comment("Default credit score assigned to newly created accounts.")
+            .defineInRange("CreditScoreDefault", 500, 0, 2000);
+
+    public static final ModConfigSpec.IntValue CREDIT_SCORE_ON_TIME_BOOST = BUILDER
+            .comment("Credit score increase applied after each on-time repayment.")
+            .defineInRange("CreditScoreOnTimeBoost", 5, 0, 200);
+
+    public static final ModConfigSpec.IntValue CREDIT_SCORE_MISSED_PENALTY = BUILDER
+            .comment("Credit score decrease applied when a repayment is missed.")
+            .defineInRange("CreditScoreMissedPenalty", 20, 0, 2000);
+
+    public static final ModConfigSpec.IntValue CREDIT_SCORE_DEFAULT_PENALTY = BUILDER
+            .comment("Additional credit score decrease applied when a loan defaults.")
+            .defineInRange("CreditScoreDefaultPenalty", 40, 0, 2000);
+
     public static final ModConfigSpec.BooleanValue ALLOW_BANK_CUSTOM_INTEREST_RATE = BUILDER
             .comment("Allow player made banks to set their own interest rate")
             .define("AllowBankCustomInterestRate", true);

@@ -11,6 +11,7 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
+import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -199,6 +200,35 @@ public class UBSAdminCommands {
                 )
                 .then(Commands.literal("report")
                         .executes(context -> adminEconomyReport(context.getSource()))
+                )
+                .then(Commands.literal("loan")
+                        .then(Commands.literal("pending")
+                                .executes(context -> adminListPendingLoanApprovals(context.getSource()))
+                        )
+                        .then(Commands.literal("approve")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> adminApproveLoan(
+                                                context.getSource(),
+                                                EntityArgument.getPlayer(context, "player")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("deny")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> adminDenyLoan(
+                                                context.getSource(),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                ""
+                                        ))
+                                        .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                                .executes(context -> adminDenyLoan(
+                                                        context.getSource(),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "reason")
+                                                ))
+                                        )
+                                )
+                        )
                 )
                 .then(Commands.literal("import")
                         .then(Commands.literal("csv")
@@ -690,6 +720,78 @@ public class UBSAdminCommands {
         body.append(Component.literal("\n§8Generated at world time: §7" + currentOverworldGameTime(server)));
 
         source.sendSystemMessage(ubsPanel(ChatFormatting.YELLOW, "§eEconomy Report", body));
+        return 1;
+    }
+
+    private static int adminListPendingLoanApprovals(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        List<LoanService.LoanQuote> pending = LoanService.listPendingApprovals();
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Pending Loan Approvals: §b" + pending.size() + "\n\n"));
+        if (pending.isEmpty()) {
+            body.append(Component.literal("§8- none"));
+        } else {
+            for (LoanService.LoanQuote quote : pending) {
+                body.append(Component.literal(
+                        "§8- §f" + quote.borrowerPlayerId()
+                                + " §7amount §6$" + quote.principal().toPlainString()
+                                + " §7APR §e" + quote.annualInterestRate() + "%\n"
+                ));
+            }
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eLoan Approval Queue", body));
+        return 1;
+    }
+
+    private static int adminApproveLoan(CommandSourceStack source, ServerPlayer borrower) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        LoanService.LoanQuote pending = LoanService.getPendingApproval(borrower.getUUID());
+        if (pending == null) {
+            source.sendSystemMessage(Component.literal("§cNo pending loan request for that player."));
+            return 1;
+        }
+
+        var issued = LoanService.approvePending(source.getServer(), borrower.getUUID());
+        if (issued == null) {
+            source.sendSystemMessage(Component.literal("§cLoan approval failed while issuing funds."));
+            borrower.sendSystemMessage(Component.literal("§cYour loan request could not be issued after approval."));
+            return 1;
+        }
+
+        source.sendSystemMessage(Component.literal(
+                "§aLoan approved for §e" + borrower.getName().getString()
+                        + "§a: $" + pending.principal().toPlainString()
+        ));
+        borrower.sendSystemMessage(Component.literal(
+                "§aYour loan request was approved. Funds have been deposited to your account."
+        ));
+        return 1;
+    }
+
+    private static int adminDenyLoan(CommandSourceStack source, ServerPlayer borrower, String reason) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        boolean removed = LoanService.denyPending(borrower.getUUID());
+        if (!removed) {
+            source.sendSystemMessage(Component.literal("§cNo pending loan request for that player."));
+            return 1;
+        }
+
+        source.sendSystemMessage(Component.literal(
+                "§eDenied pending loan for §f" + borrower.getName().getString() + "§e."
+        ));
+        String cleanReason = reason == null ? "" : reason.trim();
+        borrower.sendSystemMessage(Component.literal(
+                "§cYour loan request was denied." + (cleanReason.isEmpty() ? "" : " Reason: " + cleanReason)
+        ));
         return 1;
     }
 

@@ -12,6 +12,7 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
+import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -21,6 +22,7 @@ import net.minecraft.commands.arguments.UuidArgument;
 import net.minecraft.network.chat.*;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
@@ -40,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class UBSCommands {
 
     private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
+    private static final ConcurrentHashMap<UUID, LoanService.LoanQuote> PENDING_LOAN_CONFIRMATIONS = new ConcurrentHashMap<>();
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
         return Component.literal("§6§lUltimate Banking System §7- ")
@@ -549,14 +552,33 @@ public class UBSCommands {
                     context.getSource().sendSystemMessage(Component.literal(
                             "§6§lUltimate Banking System §7- §eBank Commands\n"
                                     + "§8/§fbank §7balance §8- §7Show your primary account balance\n"
-                                    + "§8/§fbank §7list §8- §7List available banks"
+                                    + "§8/§fbank §7list §8- §7List available banks\n"
+                                    + "§8/§fbank §7loan request <amount> §8- §7Preview a loan\n"
+                                    + "§8/§fbank §7loan confirm §8- §7Confirm your last loan request\n"
+                                    + "§8/§fbank §7loan status §8- §7Show active loan balances\n"
+                                    + "§8/§fbank §7credit §8- §7Show your credit score"
                     ));
                     return 1;
                 })
                 .then(Commands.literal("balance")
                         .executes(context -> handleBankBalance(context.getSource())))
                 .then(Commands.literal("list")
-                        .executes(context -> handleBankList(context.getSource())));
+                        .executes(context -> handleBankList(context.getSource())))
+                .then(Commands.literal("credit")
+                        .executes(context -> handleBankCredit(context.getSource())))
+                .then(Commands.literal("loan")
+                        .then(Commands.literal("request")
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleLoanRequest(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("confirm")
+                                .executes(context -> handleLoanConfirm(context.getSource())))
+                        .then(Commands.literal("status")
+                                .executes(context -> handleLoanStatus(context.getSource()))));
     }
 
     private static int handleBankBalance(CommandSourceStack source) {
@@ -620,6 +642,190 @@ public class UBSCommands {
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eBank List", body));
         return 1;
+    }
+
+    private static int handleBankCredit(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (selected == null) {
+            source.sendSystemMessage(Component.literal("§cNo account found. Create an account first."));
+            return 1;
+        }
+
+        source.sendSystemMessage(ubsMessage(
+                ChatFormatting.AQUA,
+                "§bCredit Score",
+                Component.literal("§7Account: §f" + shortId(selected.getAccountUUID()) + "\n")
+                        .append(Component.literal("§7Score: §e" + selected.getCreditScore()))
+        ));
+        return 1;
+    }
+
+    private static int handleLoanRequest(CommandSourceStack source, String amountRaw) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can request loans."));
+            return 1;
+        }
+
+        BigDecimal principal;
+        try {
+            principal = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            source.sendSystemMessage(Component.literal("§cInvalid loan amount."));
+            return 1;
+        }
+
+        if (principal.compareTo(BigDecimal.ZERO) <= 0) {
+            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (selected == null) {
+            source.sendSystemMessage(Component.literal("§cNo account found. Create an account first."));
+            return 1;
+        }
+
+        long gameTime = currentOverworldGameTime(source.getServer());
+        LoanService.LoanQuote quote = LoanService.createQuote(selected, principal, gameTime);
+        PENDING_LOAN_CONFIRMATIONS.put(player.getUUID(), quote);
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Account: §f" + selected.getAccountUUID() + "\n"));
+        body.append(Component.literal("§7Principal: §6$" + quote.principal().toPlainString() + "\n"));
+        body.append(Component.literal("§7Interest Rate (APR): §e" + quote.annualInterestRate() + "%\n"));
+        body.append(Component.literal("§7Total Repayable: §6$" + quote.totalRepayable().toPlainString() + "\n"));
+        body.append(Component.literal("§7Payments: §f" + quote.totalPayments() + " x $" + quote.periodicPayment().toPlainString() + "\n"));
+        body.append(Component.literal("§7First Due (game ticks): §f" + quote.firstDueGameTime() + "\n"));
+        if (quote.requiresAdminApproval()) {
+            body.append(Component.literal("§eThis loan requires admin approval after confirmation.\n"));
+            body.append(Component.literal("§7Reason: §f" + quote.approvalReason() + "\n"));
+        } else {
+            body.append(Component.literal("§aEligible for auto-approval after confirmation.\n"));
+        }
+        body.append(Component.literal("\n§7Run §f/bank loan confirm §7to continue."));
+
+        source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eLoan Terms Preview", body));
+        return 1;
+    }
+
+    private static int handleLoanConfirm(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can confirm loans."));
+            return 1;
+        }
+
+        LoanService.LoanQuote quote = PENDING_LOAN_CONFIRMATIONS.remove(player.getUUID());
+        if (quote == null) {
+            source.sendSystemMessage(Component.literal("§cNo pending loan request. Use /bank loan request <amount> first."));
+            return 1;
+        }
+
+        if (quote.requiresAdminApproval()) {
+            LoanService.queueAdminApproval(quote);
+            source.sendSystemMessage(Component.literal(
+                    "§eLoan submitted for admin approval. You will be notified when it is reviewed."
+            ));
+            for (ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                if (online.hasPermissions(3)) {
+                    online.sendSystemMessage(Component.literal(
+                            "§6[UBS] Loan approval needed: " + player.getName().getString()
+                                    + " requested $" + quote.principal().toPlainString()
+                    ));
+                }
+            }
+            return 1;
+        }
+
+        var issued = LoanService.issueLoan(source.getServer(), quote);
+        if (issued == null) {
+            source.sendSystemMessage(Component.literal("§cLoan issuance failed. Please try again later."));
+            return 1;
+        }
+
+        source.sendSystemMessage(Component.literal(
+                "§aLoan approved and issued: §6$" + quote.principal().toPlainString()
+                        + "§a. Repayment: §f" + quote.totalPayments()
+                        + " x $" + quote.periodicPayment().toPlainString()
+        ));
+        return 1;
+    }
+
+    private static int handleLoanStatus(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can view loan status."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
+        if (selected == null) {
+            source.sendSystemMessage(Component.literal("§cNo account found."));
+            return 1;
+        }
+
+        var loans = selected.getActiveLoans().values().stream()
+                .sorted(Comparator.comparing(l -> l.getLoanId().toString()))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(Component.literal("§7Account: §f" + selected.getAccountUUID() + "\n"));
+        body.append(Component.literal("§7Credit Score: §e" + selected.getCreditScore() + "\n"));
+        body.append(Component.literal("§7Defaulted: " + (selected.isDefaulted() ? "§cYES" : "§aNO") + "\n"));
+        body.append(Component.literal("§7Active Loans: §b" + loans.size() + "\n\n"));
+        if (loans.isEmpty()) {
+            body.append(Component.literal("§8No active loans."));
+        } else {
+            for (var loan : loans) {
+                body.append(Component.literal(
+                        "§8- §f" + shortId(loan.getLoanId())
+                                + " §7remaining §6$" + loan.getRemainingBalance().toPlainString()
+                                + " §7next due tick §f" + loan.getNextDueGameTime()
+                                + " §7payment §f$" + loan.getPeriodicPayment().toPlainString()
+                                + "\n"
+                ));
+            }
+        }
+
+        source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eLoan Status", body));
+        return 1;
+    }
+
+    private static AccountHolder resolveDefaultLoanAccount(CentralBank centralBank, UUID playerId) {
+        AccountHolder primary = findPrimaryAccount(centralBank, playerId);
+        if (primary != null) {
+            return primary;
+        }
+        ConcurrentHashMap<UUID, AccountHolder> all = centralBank.SearchForAccount(playerId);
+        if (all.isEmpty()) {
+            return null;
+        }
+        return all.values().iterator().next();
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildPayRequestCommand() {
@@ -1052,6 +1258,14 @@ public class UBSCommands {
             return player.getName().getString();
         }
         return shortId(uuid);
+    }
+
+    private static long currentOverworldGameTime(MinecraftServer server) {
+        if (server == null) {
+            return 0L;
+        }
+        var level = server.getLevel(Level.OVERWORLD);
+        return level == null ? 0L : level.getGameTime();
     }
 
     private static String shortId(UUID uuid) {
