@@ -1,8 +1,15 @@
 package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.client.HudClientState;
+import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -12,6 +19,9 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+
+import java.util.List;
 
 // This class will not load on dedicated servers. Accessing client side code from here is safe.
 @Mod(value = UltimateBankingSystem.MODID, dist = Dist.CLIENT)
@@ -78,5 +88,86 @@ public class UltimateBankingSystemClient {
         }
 
         graphics.drawString(mc.font, text, x, y, color, true);
+    }
+
+    @SubscribeEvent
+    static void onItemTooltip(ItemTooltipEvent event) {
+        ItemStack stack = event.getItemStack();
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        if (stack.getItem() != ModItems.BANK_NOTE.get() && stack.getItem() != ModItems.CHEQUE.get()) {
+            return;
+        }
+
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData == null) {
+            return;
+        }
+        CompoundTag tag = customData.copyTag();
+        if (tag == null || tag.isEmpty()) {
+            return;
+        }
+
+        List<Component> tooltip = event.getToolTip();
+        tooltip.add(Component.empty());
+        if (stack.getItem() == ModItems.CHEQUE.get()) {
+            addChequeTooltip(tooltip, tag);
+        } else {
+            addBankNoteTooltip(tooltip, tag);
+        }
+    }
+
+    private static void addChequeTooltip(List<Component> tooltip, CompoundTag tag) {
+        String id = tag.contains("ubs_cheque_id") ? tag.getString("ubs_cheque_id") : "Unknown";
+        String amount = tag.contains("ubs_cheque_amount") ? tag.getString("ubs_cheque_amount") : "Unknown";
+        String recipient = tag.contains("ubs_cheque_recipient_name")
+                ? tag.getString("ubs_cheque_recipient_name")
+                : (tag.contains("ubs_cheque_recipient") ? tag.getUUID("ubs_cheque_recipient").toString() : "Unknown");
+        String writer = tag.contains("ubs_cheque_writer_name")
+                ? tag.getString("ubs_cheque_writer_name")
+                : (tag.contains("ubs_cheque_writer") ? tag.getUUID("ubs_cheque_writer").toString() : "Unknown");
+        String sourceBank = tag.contains("ubs_cheque_source_bank") ? tag.getString("ubs_cheque_source_bank") : "Unknown";
+        String sourceAccount = tag.contains("ubs_cheque_source_account")
+                ? tag.getString("ubs_cheque_source_account")
+                : "Unknown";
+
+        tooltip.add(Component.literal("Cheque Details").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
+        tooltip.add(Component.literal("ID: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(id).withStyle(ChatFormatting.AQUA)));
+        tooltip.add(Component.literal("Pay To: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(recipient).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(Component.literal("From: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(writer).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(Component.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal("$" + amount).withStyle(ChatFormatting.GREEN)));
+    }
+
+    private static void addBankNoteTooltip(List<Component> tooltip, CompoundTag tag) {
+        String serial = tag.contains("ubs_note_serial") ? tag.getString("ubs_note_serial") : "Unknown";
+        String amount = tag.contains("ubs_note_amount") ? tag.getString("ubs_note_amount") : "Unknown";
+        String issuer = tag.contains("ubs_note_issuer_name")
+                ? tag.getString("ubs_note_issuer_name")
+                : (tag.contains("ubs_note_issuer_uuid") ? tag.getUUID("ubs_note_issuer_uuid").toString() : "Unknown");
+        String sourceBank = tag.contains("ubs_note_source_bank") ? tag.getString("ubs_note_source_bank") : "Unknown";
+        String sourceAccount = tag.contains("ubs_note_source_account")
+                ? tag.getString("ubs_note_source_account")
+                : (tag.contains("ubs_note_account") ? tag.getUUID("ubs_note_account").toString() : "Unknown");
+
+        tooltip.add(Component.literal("Bank Note Details").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+        tooltip.add(Component.literal("ID: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(serial).withStyle(ChatFormatting.AQUA)));
+        tooltip.add(Component.literal("Issued By: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(issuer).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(Component.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal("$" + amount).withStyle(ChatFormatting.GREEN)));
     }
 }

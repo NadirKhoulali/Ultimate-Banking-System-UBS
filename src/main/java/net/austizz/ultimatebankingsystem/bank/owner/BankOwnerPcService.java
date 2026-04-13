@@ -8,6 +8,8 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
+import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
+import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
@@ -18,6 +20,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.math.BigDecimal;
@@ -636,6 +639,8 @@ public final class BankOwnerPcService {
             case "COFOUNDER_ADD" -> handleCofounderAdd(server, centralBank, bank, owner, arg1);
             case "HIRE" -> handleHire(server, centralBank, bank, owner, arg1, arg2, arg3);
             case "FIRE" -> handleFire(server, centralBank, bank, owner, arg1);
+            case "TELLER_ISSUE" -> handleTellerIssue(server, bank, player, owner);
+            case "TELLER_COUNT" -> handleTellerCount(server, bank, owner);
             case "BORROW" -> handleBorrow(server, centralBank, bank, owner, arg1);
             case "LEND_OFFER" -> handleLendOffer(server, centralBank, bank, owner, arg1, arg2, arg3);
             case "LEND_ACCEPT" -> handleLendAccept(server, centralBank, bank, owner, arg1);
@@ -1158,6 +1163,51 @@ public final class BankOwnerPcService {
         }
 
         return new ActionResult(true, "Fired " + resolvePlayerName(server, targetId) + ".");
+    }
+
+    private static ActionResult handleTellerIssue(MinecraftServer server,
+                                                  Bank bank,
+                                                  ServerPlayer actor,
+                                                  boolean owner) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can issue teller eggs.");
+        }
+        if (server == null || bank == null || actor == null) {
+            return new ActionResult(false, "Bank teller service is unavailable.");
+        }
+
+        int activeCount = BankTellerEntity.countActiveTellersForBank(server, bank.getBankId());
+        if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
+            return new ActionResult(false,
+                    bank.getBankName() + " already has the max "
+                            + BankTellerEntity.MAX_TELLERS_PER_BANK + " active tellers.");
+        }
+
+        ItemStack egg = new ItemStack(ModItems.BANK_TELLER_SPAWN_EGG.get());
+        BankTellerEntity.applyBankBindingToEgg(egg, bank.getBankId(), bank.getBankName());
+        if (!actor.getInventory().add(egg)) {
+            actor.drop(egg, false);
+        }
+
+        return new ActionResult(true,
+                "Issued teller egg for " + bank.getBankName()
+                        + ". Active tellers: " + activeCount + "/" + BankTellerEntity.MAX_TELLERS_PER_BANK + ".");
+    }
+
+    private static ActionResult handleTellerCount(MinecraftServer server,
+                                                  Bank bank,
+                                                  boolean owner) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can view teller count.");
+        }
+        if (server == null || bank == null) {
+            return new ActionResult(false, "Bank teller service is unavailable.");
+        }
+
+        int activeCount = BankTellerEntity.countActiveTellersForBank(server, bank.getBankId());
+        return new ActionResult(true,
+                "Active tellers for " + bank.getBankName() + ": "
+                        + activeCount + "/" + BankTellerEntity.MAX_TELLERS_PER_BANK + ".");
     }
 
     private static ActionResult handleBorrow(MinecraftServer server,

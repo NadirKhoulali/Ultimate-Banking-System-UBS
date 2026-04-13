@@ -1785,6 +1785,10 @@ public class BankOwnerPcScreen extends Screen {
                     addSectionActionButton(innerX, y + 42, btnW, "Hire", "HIRE", "@staff.player", "@staff.role", "@staff.salary", "", ownerView);
                     addSectionActionButton(innerX + btnW + gap, y + 42, btnW, "Fire", "FIRE", "@staff.player", "", "", "", ownerView);
                     addSectionActionButton(innerX + (btnW + gap) * 2, y + 42, btnW, "Employee List", "SHOW_EMPLOYEES", "", "", "", "", true);
+
+                    int tellerBtnW = (innerWidth - gap) / 2;
+                    addSectionActionButton(innerX, y + 74, tellerBtnW, "Issue Teller Egg", "TELLER_ISSUE", "", "", "", "", ownerView);
+                    addSectionActionButton(innerX + tellerBtnW + gap, y + 74, tellerBtnW, "Teller Count", "TELLER_COUNT", "", "", "", "", ownerView);
                 } else {
                     int curY = y + 8;
                     addSectionFormInput("staff.player", innerX, curY, innerWidth, "Player (name or UUID)");
@@ -1799,12 +1803,19 @@ public class BankOwnerPcScreen extends Screen {
                         addSectionActionButton(innerX, curY, innerWidth, "Fire", "FIRE", "@staff.player", "", "", "", ownerView);
                         curY += 32;
                         addSectionActionButton(innerX, curY, innerWidth, "Employee List", "SHOW_EMPLOYEES", "", "", "", "", true);
+                        curY += 32;
+                        addSectionActionButton(innerX, curY, innerWidth, "Issue Teller Egg", "TELLER_ISSUE", "", "", "", "", ownerView);
+                        curY += 32;
+                        addSectionActionButton(innerX, curY, innerWidth, "Teller Count", "TELLER_COUNT", "", "", "", "", ownerView);
                     } else {
                         int btnW = (innerWidth - gap) / 2;
                         addSectionActionButton(innerX, curY, btnW, "Hire", "HIRE", "@staff.player", "@staff.role", "@staff.salary", "", ownerView);
                         addSectionActionButton(innerX + btnW + gap, curY, btnW, "Fire", "FIRE", "@staff.player", "", "", "", ownerView);
                         curY += 32;
                         addSectionActionButton(innerX, curY, innerWidth, "Employee List", "SHOW_EMPLOYEES", "", "", "", "", true);
+                        curY += 32;
+                        addSectionActionButton(innerX, curY, btnW, "Issue Teller Egg", "TELLER_ISSUE", "", "", "", "", ownerView);
+                        addSectionActionButton(innerX + btnW + gap, curY, btnW, "Teller Count", "TELLER_COUNT", "", "", "", "", ownerView);
                     }
                 }
             }

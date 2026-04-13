@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "ultimatebankingsystem:item/bank_teller_spawn_egg"
+  }
+}
+

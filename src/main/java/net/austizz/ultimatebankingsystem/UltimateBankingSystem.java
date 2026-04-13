@@ -7,9 +7,11 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
+import net.austizz.ultimatebankingsystem.entity.ModEntities;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
+import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -43,6 +45,7 @@ public class UltimateBankingSystem {
         NeoForge.EVENT_BUS.register(this);
         ModItems.register(modEventBus);
         ModBlocks.register(modEventBus);
+        ModEntities.register(modEventBus);
         modEventBus.addListener(this::addCreative);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
@@ -57,11 +60,15 @@ public class UltimateBankingSystem {
             }
             event.accept(ModItems.BANK_NOTE);
             event.accept(ModItems.CHEQUE);
+            event.accept(ModItems.BANK_TELLER_SPAWN_EGG);
         }
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(ModBlocks.ATM_MACHINE);
             event.accept(ModBlocks.BANK_OWNER_PC);
             event.accept(ModBlocks.COLOR_BUTTON_BLOCK);
+        }
+        if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
+            event.accept(ModItems.BANK_TELLER_SPAWN_EGG);
         }
     }
 
@@ -98,6 +105,7 @@ public class UltimateBankingSystem {
         LoanService.processRepayments(server, gameTime);
         ScheduledPaymentService.process(server, gameTime);
         BankRegulationService.process(server, gameTime);
+        BankTellerInteractionManager.tick(server);
 
         long autosaveIntervalTicks = Math.max(1, Config.AUTOSAVE_INTERVAL_MINUTES.get()) * 60L * 20L;
         if (gameTime % autosaveIntervalTicks == 0L && gameTime != lastAutosaveTick) {

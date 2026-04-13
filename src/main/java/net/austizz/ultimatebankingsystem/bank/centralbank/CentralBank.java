@@ -18,6 +18,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class CentralBank extends Bank{
+    private static final int TELLER_VARIANT_MALE = 0;
+    private static final int TELLER_VARIANT_FEMALE = 1;
+
     private ConcurrentHashMap<UUID, Bank> banks;
     private ConcurrentHashMap<UUID, ScheduledPayment> scheduledPayments;
     private ConcurrentHashMap<String, Boolean> redeemedNoteSerials;
@@ -32,6 +35,7 @@ public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, CompoundTag> interbankOffers;
     private ConcurrentHashMap<UUID, CompoundTag> interbankLoans;
     private ConcurrentHashMap<UUID, CompoundTag> reportSnapshots;
+    private int nextBankTellerVariant;
 
     public CentralBank() {
         super(new UUID(0,0), "Central Bank", new BigDecimal("0"), 1.2, new UUID(0,0));
@@ -50,6 +54,7 @@ public class CentralBank extends Bank{
         this.interbankOffers = new ConcurrentHashMap<>();
         this.interbankLoans = new ConcurrentHashMap<>();
         this.reportSnapshots = new ConcurrentHashMap<>();
+        this.nextBankTellerVariant = TELLER_VARIANT_MALE;
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
         return banks;
@@ -348,6 +353,17 @@ public class CentralBank extends Bank{
         BankManager.markDirty();
     }
 
+    public synchronized int claimNextBankTellerVariant() {
+        int variant = this.nextBankTellerVariant == TELLER_VARIANT_FEMALE
+                ? TELLER_VARIANT_FEMALE
+                : TELLER_VARIANT_MALE;
+        this.nextBankTellerVariant = variant == TELLER_VARIANT_MALE
+                ? TELLER_VARIANT_FEMALE
+                : TELLER_VARIANT_MALE;
+        BankManager.markDirty();
+        return variant;
+    }
+
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
@@ -402,6 +418,7 @@ public class CentralBank extends Bank{
         tag.put("interbank_offers", saveTagMap(getInterbankOffers()));
         tag.put("interbank_loans", saveTagMap(getInterbankLoans()));
         tag.put("report_snapshots", saveTagMap(getReportSnapshots()));
+        tag.putInt("next_bank_teller_variant", this.nextBankTellerVariant);
 
         return tag;
     }
@@ -476,6 +493,9 @@ public class CentralBank extends Bank{
         centralBank.interbankOffers = loadTagMap(tag.getList("interbank_offers", 10));
         centralBank.interbankLoans = loadTagMap(tag.getList("interbank_loans", 10));
         centralBank.reportSnapshots = loadTagMap(tag.getList("report_snapshots", 10));
+        centralBank.nextBankTellerVariant = tag.contains("next_bank_teller_variant")
+                ? tag.getInt("next_bank_teller_variant")
+                : TELLER_VARIANT_MALE;
         return centralBank;
     }
 

@@ -14,10 +14,12 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
+import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -566,7 +568,38 @@ public class UBSCommands {
         event.getDispatcher().register(buildPayRequestCommand());
         event.getDispatcher().register(buildHiddenPayRequestCommand());
         event.getDispatcher().register(buildBankCommand());
+        event.getDispatcher().register(buildBankTellerCommand());
 
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildBankTellerCommand() {
+        return Commands.literal("bankteller")
+                .then(Commands.literal("choose")
+                        .then(Commands.argument("mode", StringArgumentType.word())
+                                .executes(context -> BankTellerInteractionManager.handleChoose(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "mode")
+                                ))
+                        )
+                )
+                .then(Commands.literal("page")
+                        .then(Commands.argument("direction", StringArgumentType.word())
+                                .executes(context -> BankTellerInteractionManager.handlePage(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "direction")
+                                ))
+                        )
+                )
+                .then(Commands.literal("account")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .executes(context -> BankTellerInteractionManager.handleAccountPick(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                )
+                .then(Commands.literal("cancel")
+                        .executes(context -> BankTellerInteractionManager.handleCancel(context.getSource())));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildBankCommand() {
@@ -585,6 +618,8 @@ public class UBSCommands {
                                     + "§8/§fbank §7deposit note §8- §7Deposit the held bank note\n"
                                     + "§8/§fbank §7cheque write <player> <amount> §8- §7Write a cheque item\n"
                                     + "§8/§fbank §7cheque deposit §8- §7Deposit the held cheque\n"
+                                    + "§8/§fbank §7teller get §8- §7Issue a bank-bound teller spawn egg\n"
+                                    + "§8/§fbank §7teller count §8- §7Show active teller count for your bank\n"
                                     + "§8/§fbank §7hud toggle §8- §7Toggle on-screen balance HUD"
                     ));
                     return 1;
@@ -700,6 +735,12 @@ public class UBSCommands {
                                         StringArgumentType.getString(context, "value")
                                 ))
                         )
+                )
+                .then(Commands.literal("teller")
+                        .then(Commands.literal("get")
+                                .executes(context -> handleBankTellerGet(context.getSource())))
+                        .then(Commands.literal("count")
+                                .executes(context -> handleBankTellerCount(context.getSource())))
                 )
                 .then(Commands.literal("info")
                         .then(Commands.argument("bankName", StringArgumentType.word())
@@ -1873,6 +1914,76 @@ public class UBSCommands {
 
         source.sendSystemMessage(Component.literal(
                 "§aUpdated color branding for §e" + bank.getBankName() + "§a to §f" + color
+        ));
+        return 1;
+    }
+
+    private static int handleBankTellerGet(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can request bank tellers."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("§cOnly bank owners can request teller eggs."));
+            return 1;
+        }
+
+        int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
+        if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
+            source.sendSystemMessage(Component.literal(
+                    "§c" + bank.getBankName() + " already has the max "
+                            + BankTellerEntity.MAX_TELLERS_PER_BANK + " active tellers."
+            ));
+            return 1;
+        }
+
+        ItemStack egg = new ItemStack(ModItems.BANK_TELLER_SPAWN_EGG.get());
+        BankTellerEntity.applyBankBindingToEgg(egg, bank.getBankId(), bank.getBankName());
+
+        if (!player.getInventory().add(egg)) {
+            player.drop(egg, false);
+        }
+
+        source.sendSystemMessage(Component.literal(
+                "§aIssued teller egg for §e" + bank.getBankName()
+                        + "§a. Active tellers: §f" + activeCount
+                        + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
+        ));
+        return 1;
+    }
+
+    private static int handleBankTellerCount(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("§cOnly players can view teller count."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            return 1;
+        }
+
+        Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("§cOnly bank owners can view teller count."));
+            return 1;
+        }
+
+        int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
+        source.sendSystemMessage(Component.literal(
+                "§7Active tellers for §e" + bank.getBankName() + "§7: §b"
+                        + activeCount + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
         ));
         return 1;
     }
@@ -4164,7 +4275,15 @@ public class UBSCommands {
         tag.putString("ubs_note_serial", serial);
         tag.putString("ubs_note_amount", amount.toPlainString());
         tag.putUUID("ubs_note_account", account.getAccountUUID());
+        tag.putUUID("ubs_note_issuer_uuid", player.getUUID());
+        tag.putString("ubs_note_issuer_name", player.getName().getString());
+        tag.putString("ubs_note_source_account", account.getAccountUUID().toString());
+        Bank sourceBank = centralBank.getBank(account.getBankId());
+        if (sourceBank != null && sourceBank.getBankName() != null && !sourceBank.getBankName().isBlank()) {
+            tag.putString("ubs_note_source_bank", sourceBank.getBankName());
+        }
         applyCustomTag(note, tag);
+        note.set(DataComponents.CUSTOM_NAME, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         if (!player.getInventory().add(note)) {
             player.drop(note, false);
@@ -4319,7 +4438,15 @@ public class UBSCommands {
         tag.putString("ubs_cheque_amount", amount.toPlainString());
         tag.putUUID("ubs_cheque_recipient", recipientUuid);
         tag.putUUID("ubs_cheque_writer", writer.getUUID());
+        tag.putString("ubs_cheque_recipient_name", recipientName);
+        tag.putString("ubs_cheque_writer_name", writer.getName().getString());
+        tag.putString("ubs_cheque_source_account", account.getAccountUUID().toString());
+        Bank chequeSourceBank = centralBank.getBank(account.getBankId());
+        if (chequeSourceBank != null && chequeSourceBank.getBankName() != null && !chequeSourceBank.getBankName().isBlank()) {
+            tag.putString("ubs_cheque_source_bank", chequeSourceBank.getBankName());
+        }
         applyCustomTag(cheque, tag);
+        cheque.set(DataComponents.CUSTOM_NAME, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         if (!writer.getInventory().add(cheque)) {
             writer.drop(cheque, false);
