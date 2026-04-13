@@ -1,4 +1,4 @@
-package net.austizz.ultimatebankingsystem.network;
+        package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.minecraft.network.RegistryFriendlyByteBuf;

@@ -644,7 +644,7 @@ public class UBSCommands {
                         )
                 )
                 .then(Commands.literal("close")
-                        .then(Commands.argument("bankName", StringArgumentType.word())
+                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
                                 .executes(context -> handleCloseBankAccount(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "bankName")

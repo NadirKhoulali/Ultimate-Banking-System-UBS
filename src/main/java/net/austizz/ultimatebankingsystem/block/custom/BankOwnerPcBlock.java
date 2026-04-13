@@ -44,7 +44,12 @@ public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
                                               InteractionHand hand,
                                               BlockHitResult hitResult) {
         if (level.isClientSide()) {
-            PacketDistributor.sendToServer(new OpenBankOwnerPcPayload());
+            PacketDistributor.sendToServer(new OpenBankOwnerPcPayload(
+                    level.dimension().location().toString(),
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ()
+            ));
         }
         return ItemInteractionResult.SUCCESS;
     }

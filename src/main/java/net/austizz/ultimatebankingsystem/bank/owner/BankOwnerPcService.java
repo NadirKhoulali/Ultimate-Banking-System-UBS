@@ -10,7 +10,11 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
@@ -18,22 +22,73 @@ import net.minecraft.world.level.Level;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class BankOwnerPcService {
 
-    public record ActionResult(boolean success, String message) {}
+    public static final class ActionResult {
+        private final String action;
+        private final boolean success;
+        private final String message;
+
+        public ActionResult(boolean success, String message) {
+            this("", success, message);
+        }
+
+        public ActionResult(String action, boolean success, String message) {
+            this.action = action == null ? "" : action;
+            this.success = success;
+            this.message = message == null ? "" : message;
+        }
+
+        public String action() {
+            return action;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        public String message() {
+            return message;
+        }
+    }
+
+    private record DesktopContext(String dimensionId, int x, int y, int z) {
+        private String storageKey() {
+            return normalizeDim(dimensionId) + "|" + x + "|" + y + "|" + z;
+        }
+
+        private String label() {
+            return normalizeDim(dimensionId) + " (" + x + ", " + y + ", " + z + ")";
+        }
+    }
 
     private static final ConcurrentHashMap<UUID, Long> LAST_BANK_CREATE_ATTEMPT_MILLIS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, DesktopContext> ACTIVE_DESKTOP_CONTEXT = new ConcurrentHashMap<>();
+    private static final String DESKTOP_STORAGE_TAG = "ownerPcDesktopStorage";
+    private static final int NBT_COMPOUND = 10;
+    private static final int NBT_STRING = 8;
+    private static final int DESKTOP_STORAGE_MAX_BYTES = 48 * 1024;
+    private static final int DESKTOP_STORAGE_MAX_FILES = 64;
+    private static final int DESKTOP_FILE_MAX_CHARS = 20_000;
+    private static final int DESKTOP_FILE_NAME_MAX_CHARS = 48;
+    private static final String DESKTOP_PIN_HASH_TAG = "desktopPinHash";
+    private static final String DESKTOP_PIN_SALT_TAG = "desktopPinSalt";
+    private static final String DESKTOP_RECOVERY_HASH_TAG = "desktopRecoveryHash";
 
     private BankOwnerPcService() {}
 
@@ -112,6 +167,245 @@ public final class BankOwnerPcService {
             }
         }
         return count;
+    }
+
+    public static void rememberDesktopContext(UUID playerId, String dimensionId, int x, int y, int z) {
+        if (playerId == null || dimensionId == null || dimensionId.isBlank()) {
+            return;
+        }
+        ACTIVE_DESKTOP_CONTEXT.put(playerId, new DesktopContext(dimensionId.trim(), x, y, z));
+    }
+
+    public static OwnerPcDesktopDataPayload buildDesktopData(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return new OwnerPcDesktopDataPayload("Unknown PC", DESKTOP_STORAGE_MAX_BYTES, 0, false, List.of(), List.of());
+        }
+        DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(playerId);
+        if (context == null) {
+            return new OwnerPcDesktopDataPayload("Unknown PC", DESKTOP_STORAGE_MAX_BYTES, 0, false, List.of(), List.of());
+        }
+        CompoundTag userTag = getDesktopUserTag(centralBank, context, playerId, false);
+        List<OwnerPcFileEntry> files = readDesktopFiles(userTag);
+        Set<String> hiddenApps = readHiddenApps(userTag);
+        int used = computeStorageBytes(files);
+        boolean pinSet = isDesktopPinConfigured(userTag);
+        return new OwnerPcDesktopDataPayload(
+                context.label(),
+                DESKTOP_STORAGE_MAX_BYTES,
+                used,
+                pinSet,
+                files,
+                hiddenApps.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList()
+        );
+    }
+
+    public static ActionResult executeDesktopAction(CentralBank centralBank,
+                                                    UUID playerId,
+                                                    String action,
+                                                    String arg1,
+                                                    String arg2) {
+        if (centralBank == null || playerId == null) {
+            return fail("DESKTOP", "Desktop storage is unavailable.");
+        }
+        DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(playerId);
+        if (context == null) {
+            return fail("DESKTOP", "Open a bank owner PC block first.");
+        }
+
+        String normalizedAction = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        if ("REFRESH".equals(normalizedAction)) {
+            return ok("REFRESH", "Desktop refreshed.");
+        }
+
+        CompoundTag userTag = getDesktopUserTag(centralBank, context, playerId, true);
+        List<OwnerPcFileEntry> files = readDesktopFiles(userTag);
+        Set<String> hiddenApps = readHiddenApps(userTag);
+        long now = System.currentTimeMillis();
+
+        return switch (normalizedAction) {
+            case "FILE_SAVE", "FILE_SAVE_TEXT", "FILE_SAVE_CANVAS" -> {
+                String rawName = arg1 == null ? "" : arg1;
+                String name = normalizeDesktopFileName(rawName);
+                if (name.isBlank()) {
+                    yield fail(normalizedAction, "Enter a valid file name first.");
+                }
+
+                String content = arg2 == null ? "" : arg2;
+                if (content.length() > DESKTOP_FILE_MAX_CHARS) {
+                    yield fail(normalizedAction, "File is too large for this PC.");
+                }
+                String kind = "FILE_SAVE_CANVAS".equals(normalizedAction) ? "CANVAS" : "TEXT";
+
+                int existingIndex = findFileIndexByName(files, name);
+                if (existingIndex < 0 && files.size() >= DESKTOP_STORAGE_MAX_FILES) {
+                    yield fail(normalizedAction, "File limit reached on this PC.");
+                }
+
+                OwnerPcFileEntry newEntry = new OwnerPcFileEntry(kind, name, content, now);
+                List<OwnerPcFileEntry> next = new ArrayList<>(files);
+                if (existingIndex >= 0) {
+                    next.set(existingIndex, newEntry);
+                } else {
+                    next.add(newEntry);
+                }
+                next.sort(Comparator
+                        .comparingLong(OwnerPcFileEntry::updatedAtMillis).reversed()
+                        .thenComparing(OwnerPcFileEntry::name, String.CASE_INSENSITIVE_ORDER));
+
+                int usedBytes = computeStorageBytes(next);
+                if (usedBytes > DESKTOP_STORAGE_MAX_BYTES) {
+                    yield fail(normalizedAction, "Not enough PC storage. Delete a file first.");
+                }
+
+                writeDesktopFiles(userTag, next);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                String typeLabel = "CANVAS".equalsIgnoreCase(newEntry.kind()) ? "canvas" : "text";
+                yield ok(normalizedAction, "Saved " + typeLabel + " file: " + name + " (" + usedBytes + "/" + DESKTOP_STORAGE_MAX_BYTES + " bytes).");
+            }
+            case "FILE_RENAME" -> {
+                String currentName = normalizeDesktopFileName(arg1 == null ? "" : arg1);
+                if (currentName.isBlank()) {
+                    yield fail(normalizedAction, "Select a file to rename.");
+                }
+
+                int currentIndex = findFileIndexByName(files, currentName);
+                if (currentIndex < 0) {
+                    yield fail(normalizedAction, "File not found: " + currentName + ".");
+                }
+
+                String newName = normalizeDesktopFileName(arg2 == null ? "" : arg2);
+                if (newName.isBlank()) {
+                    yield fail(normalizedAction, "Enter a valid file name first.");
+                }
+
+                OwnerPcFileEntry currentEntry = files.get(currentIndex);
+                if (currentEntry == null || currentEntry.name() == null || currentEntry.name().isBlank()) {
+                    yield fail(normalizedAction, "File is unavailable.");
+                }
+
+                int collisionIndex = findFileIndexByName(files, newName);
+                if (collisionIndex >= 0 && collisionIndex != currentIndex) {
+                    yield fail(normalizedAction, "A file with that name already exists.");
+                }
+
+                OwnerPcFileEntry renamed = new OwnerPcFileEntry(
+                        currentEntry.kind(),
+                        newName,
+                        currentEntry.content(),
+                        now
+                );
+                List<OwnerPcFileEntry> next = new ArrayList<>(files);
+                next.set(currentIndex, renamed);
+                next.sort(Comparator
+                        .comparingLong(OwnerPcFileEntry::updatedAtMillis).reversed()
+                        .thenComparing(OwnerPcFileEntry::name, String.CASE_INSENSITIVE_ORDER));
+
+                int usedBytes = computeStorageBytes(next);
+                if (usedBytes > DESKTOP_STORAGE_MAX_BYTES) {
+                    yield fail(normalizedAction, "Not enough PC storage. Use a shorter file name.");
+                }
+
+                writeDesktopFiles(userTag, next);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                yield ok(normalizedAction, "Renamed file to: " + newName + ".");
+            }
+            case "FILE_DELETE" -> {
+                String name = normalizeDesktopFileName(arg1 == null ? "" : arg1);
+                if (name.isBlank()) {
+                    yield fail(normalizedAction, "Select a file to delete.");
+                }
+                int existingIndex = findFileIndexByName(files, name);
+                if (existingIndex < 0) {
+                    yield fail(normalizedAction, "File not found: " + name + ".");
+                }
+                List<OwnerPcFileEntry> next = new ArrayList<>(files);
+                OwnerPcFileEntry removed = next.remove(existingIndex);
+                writeDesktopFiles(userTag, next);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                yield ok(normalizedAction, "Deleted file: " + removed.name() + ".");
+            }
+            case "APP_VISIBILITY" -> {
+                String appId = normalizeHiddenAppId(arg1);
+                if (appId.isBlank()) {
+                    yield fail(normalizedAction, "Invalid app id.");
+                }
+                boolean hide = parseHideFlag(arg2);
+                if (hide && "utility:system_monitor".equals(appId)) {
+                    yield fail(normalizedAction, "System Monitor cannot be hidden.");
+                }
+                if (hide) {
+                    hiddenApps.add(appId);
+                } else {
+                    hiddenApps.remove(appId);
+                }
+                writeDesktopFiles(userTag, files);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                yield ok(normalizedAction, (hide ? "Hidden " : "Unhidden ") + appId + ".");
+            }
+            case "AUTH_SET_PIN" -> {
+                String password = arg1 == null ? "" : arg1.trim();
+                String recoveryPhrase = normalizeRecoveryPhrase(arg2);
+                if (isDesktopPinConfigured(userTag)) {
+                    yield fail(normalizedAction, "Password already exists. Use Forgot Password to reset.");
+                }
+                if (!isValidDesktopPassword(password)) {
+                    yield fail(normalizedAction, "Password must be 4-64 characters.");
+                }
+                if (recoveryPhrase.isBlank() || recoveryPhrase.length() < 4) {
+                    yield fail(normalizedAction, "Recovery phrase must be at least 4 characters.");
+                }
+                String salt = newDesktopSalt();
+                userTag.putString(DESKTOP_PIN_SALT_TAG, salt);
+                userTag.putString(DESKTOP_PIN_HASH_TAG, hashDesktopSecret(password, salt));
+                userTag.putString(DESKTOP_RECOVERY_HASH_TAG, hashDesktopSecret(recoveryPhrase, salt));
+                writeDesktopFiles(userTag, files);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                yield ok(normalizedAction, "PC password has been set.");
+            }
+            case "AUTH_VERIFY_PIN" -> {
+                String password = arg1 == null ? "" : arg1.trim();
+                if (!isDesktopPinConfigured(userTag)) {
+                    yield fail(normalizedAction, "This PC has no password yet. Set one first.");
+                }
+                if (!isValidDesktopPassword(password)) {
+                    yield fail(normalizedAction, "Password must be 4-64 characters.");
+                }
+                String salt = userTag.getString(DESKTOP_PIN_SALT_TAG);
+                String expectedHash = userTag.getString(DESKTOP_PIN_HASH_TAG);
+                String actualHash = hashDesktopSecret(password, salt);
+                if (expectedHash == null || expectedHash.isBlank() || !expectedHash.equals(actualHash)) {
+                    yield fail(normalizedAction, "Incorrect password.");
+                }
+                yield ok(normalizedAction, "Password verified.");
+            }
+            case "AUTH_RECOVER_RESET" -> {
+                String recoveryPhrase = normalizeRecoveryPhrase(arg1);
+                String newPassword = arg2 == null ? "" : arg2.trim();
+                if (!isDesktopPinConfigured(userTag)) {
+                    yield fail(normalizedAction, "This PC has no password yet. Set one first.");
+                }
+                if (!isValidDesktopPassword(newPassword)) {
+                    yield fail(normalizedAction, "New password must be 4-64 characters.");
+                }
+                String salt = userTag.getString(DESKTOP_PIN_SALT_TAG);
+                String expectedRecoveryHash = userTag.getString(DESKTOP_RECOVERY_HASH_TAG);
+                String actualRecoveryHash = hashDesktopSecret(recoveryPhrase, salt);
+                if (expectedRecoveryHash == null || expectedRecoveryHash.isBlank() || !expectedRecoveryHash.equals(actualRecoveryHash)) {
+                    yield fail(normalizedAction, "Recovery phrase does not match.");
+                }
+                userTag.putString(DESKTOP_PIN_HASH_TAG, hashDesktopSecret(newPassword, salt));
+                writeDesktopFiles(userTag, files);
+                writeHiddenApps(userTag, hiddenApps);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
+                yield ok(normalizedAction, "Password has been reset.");
+            }
+            default -> fail(normalizedAction, "Unknown desktop action: " + normalizedAction);
+        };
     }
 
     public static boolean canAccessBank(CentralBank centralBank, UUID playerId, UUID bankId) {
@@ -1500,6 +1794,277 @@ public final class BankOwnerPcService {
         } catch (NumberFormatException ex) {
             return BigDecimal.ZERO;
         }
+    }
+
+    private static CompoundTag getDesktopUserTag(CentralBank centralBank,
+                                                 DesktopContext context,
+                                                 UUID playerId,
+                                                 boolean create) {
+        if (centralBank == null || context == null || playerId == null) {
+            return new CompoundTag();
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag storageRoot = centralMeta.contains(DESKTOP_STORAGE_TAG, NBT_COMPOUND)
+                ? centralMeta.getCompound(DESKTOP_STORAGE_TAG)
+                : new CompoundTag();
+        CompoundTag pcTag = storageRoot.contains(context.storageKey(), NBT_COMPOUND)
+                ? storageRoot.getCompound(context.storageKey())
+                : new CompoundTag();
+        CompoundTag usersTag = pcTag.contains("users", NBT_COMPOUND)
+                ? pcTag.getCompound("users")
+                : new CompoundTag();
+        String userKey = playerId.toString();
+        if (usersTag.contains(userKey, NBT_COMPOUND)) {
+            return usersTag.getCompound(userKey);
+        }
+        return create ? new CompoundTag() : new CompoundTag();
+    }
+
+    private static void commitDesktopUserTag(CentralBank centralBank,
+                                             DesktopContext context,
+                                             UUID playerId,
+                                             CompoundTag userTag) {
+        if (centralBank == null || context == null || playerId == null || userTag == null) {
+            return;
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag storageRoot = centralMeta.contains(DESKTOP_STORAGE_TAG, NBT_COMPOUND)
+                ? centralMeta.getCompound(DESKTOP_STORAGE_TAG)
+                : new CompoundTag();
+        CompoundTag pcTag = storageRoot.contains(context.storageKey(), NBT_COMPOUND)
+                ? storageRoot.getCompound(context.storageKey())
+                : new CompoundTag();
+        CompoundTag usersTag = pcTag.contains("users", NBT_COMPOUND)
+                ? pcTag.getCompound("users")
+                : new CompoundTag();
+
+        usersTag.put(playerId.toString(), userTag);
+        pcTag.put("users", usersTag);
+        storageRoot.put(context.storageKey(), pcTag);
+        centralMeta.put(DESKTOP_STORAGE_TAG, storageRoot);
+        centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+    }
+
+    private static List<OwnerPcFileEntry> readDesktopFiles(CompoundTag userTag) {
+        if (userTag == null || !userTag.contains("files", 9)) {
+            return new ArrayList<>();
+        }
+        ListTag list = userTag.getList("files", NBT_COMPOUND);
+        List<OwnerPcFileEntry> files = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag fileTag = list.getCompound(i);
+            String name = normalizeDesktopFileName(fileTag.getString("name"));
+            String content = fileTag.getString("content");
+            long updated = fileTag.contains("updatedAtMillis") ? fileTag.getLong("updatedAtMillis") : 0L;
+            String kind = normalizeFileKind(fileTag.contains("kind") ? fileTag.getString("kind") : "TEXT");
+            if (!name.isBlank()) {
+                files.add(new OwnerPcFileEntry(kind, name, content == null ? "" : content, updated));
+            }
+        }
+        files.sort(Comparator
+                .comparingLong(OwnerPcFileEntry::updatedAtMillis).reversed()
+                .thenComparing(OwnerPcFileEntry::name, String.CASE_INSENSITIVE_ORDER));
+        return files;
+    }
+
+    private static void writeDesktopFiles(CompoundTag userTag, List<OwnerPcFileEntry> files) {
+        ListTag list = new ListTag();
+        if (files != null) {
+            for (OwnerPcFileEntry file : files) {
+                if (file == null || file.name() == null || file.name().isBlank()) {
+                    continue;
+                }
+                CompoundTag fileTag = new CompoundTag();
+                fileTag.putString("kind", normalizeFileKind(file.kind()));
+                fileTag.putString("name", normalizeDesktopFileName(file.name()));
+                fileTag.putString("content", file.content() == null ? "" : file.content());
+                fileTag.putLong("updatedAtMillis", file.updatedAtMillis());
+                list.add(fileTag);
+            }
+        }
+        userTag.put("files", list);
+    }
+
+    private static Set<String> readHiddenApps(CompoundTag userTag) {
+        Set<String> hidden = new LinkedHashSet<>();
+        if (userTag == null || !userTag.contains("hiddenApps", 9)) {
+            return hidden;
+        }
+        ListTag list = userTag.getList("hiddenApps", NBT_STRING);
+        for (int i = 0; i < list.size(); i++) {
+            String id = normalizeHiddenAppId(list.getString(i));
+            if (!id.isBlank()) {
+                hidden.add(id);
+            }
+        }
+        return hidden;
+    }
+
+    private static void writeHiddenApps(CompoundTag userTag, Set<String> hiddenApps) {
+        ListTag list = new ListTag();
+        if (hiddenApps != null) {
+            hiddenApps.stream()
+                    .map(BankOwnerPcService::normalizeHiddenAppId)
+                    .filter(id -> !id.isBlank())
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(id -> list.add(StringTag.valueOf(id)));
+        }
+        userTag.put("hiddenApps", list);
+    }
+
+    private static int computeStorageBytes(List<OwnerPcFileEntry> files) {
+        if (files == null || files.isEmpty()) {
+            return 0;
+        }
+        long used = 0L;
+        for (OwnerPcFileEntry file : files) {
+            if (file == null) {
+                continue;
+            }
+            used += utf8Bytes(file.kind());
+            used += utf8Bytes(file.name());
+            used += utf8Bytes(file.content());
+        }
+        if (used <= 0L) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE, used);
+    }
+
+    private static int findFileIndexByName(List<OwnerPcFileEntry> files, String name) {
+        if (files == null || files.isEmpty() || name == null || name.isBlank()) {
+            return -1;
+        }
+        for (int i = 0; i < files.size(); i++) {
+            OwnerPcFileEntry entry = files.get(i);
+            if (entry != null && entry.name() != null && entry.name().equalsIgnoreCase(name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int utf8Bytes(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        return value.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private static String normalizeDesktopFileName(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        StringBuilder filtered = new StringBuilder();
+        String trimmed = raw.trim();
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == '\n' || c == '\r' || c == '\t') {
+                filtered.append(' ');
+            } else if (!Character.isISOControl(c)) {
+                filtered.append(c);
+            }
+        }
+        String normalized = filtered.toString().trim().replaceAll("\\s+", " ");
+        if (normalized.length() > DESKTOP_FILE_NAME_MAX_CHARS) {
+            normalized = normalized.substring(0, DESKTOP_FILE_NAME_MAX_CHARS).trim();
+        }
+        return normalized;
+    }
+
+    private static String normalizeHiddenAppId(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        if (normalized.length() > 128) {
+            normalized = normalized.substring(0, 128);
+        }
+        return normalized;
+    }
+
+    private static boolean parseHideFlag(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("1")
+                || normalized.equals("true")
+                || normalized.equals("yes")
+                || normalized.equals("hide")
+                || normalized.equals("on");
+    }
+
+    private static ActionResult ok(String action, String message) {
+        return new ActionResult(action, true, message);
+    }
+
+    private static ActionResult fail(String action, String message) {
+        return new ActionResult(action, false, message);
+    }
+
+    private static boolean isDesktopPinConfigured(CompoundTag userTag) {
+        if (userTag == null) {
+            return false;
+        }
+        String pinHash = userTag.getString(DESKTOP_PIN_HASH_TAG);
+        String pinSalt = userTag.getString(DESKTOP_PIN_SALT_TAG);
+        return pinHash != null && !pinHash.isBlank()
+                && pinSalt != null && !pinSalt.isBlank();
+    }
+
+    private static boolean isValidDesktopPassword(String password) {
+        if (password == null) {
+            return false;
+        }
+        String normalized = password.trim();
+        return normalized.length() >= 4 && normalized.length() <= 64;
+    }
+
+    private static String normalizeRecoveryPhrase(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static String newDesktopSalt() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static String hashDesktopSecret(String secret, String salt) {
+        String normalizedSecret = secret == null ? "" : secret.trim();
+        String normalizedSalt = salt == null ? "" : salt.trim();
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((normalizedSalt + ":" + normalizedSecret).getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                out.append(Character.forDigit((b >> 4) & 0xF, 16));
+                out.append(Character.forDigit(b & 0xF, 16));
+            }
+            return out.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            return normalizedSalt + ":" + normalizedSecret;
+        }
+    }
+
+    private static String normalizeFileKind(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "TEXT";
+        }
+        String upper = raw.trim().toUpperCase(Locale.ROOT);
+        return switch (upper) {
+            case "CANVAS" -> "CANVAS";
+            default -> "TEXT";
+        };
+    }
+
+    private static String normalizeDim(String dimensionId) {
+        if (dimensionId == null || dimensionId.isBlank()) {
+            return "unknown";
+        }
+        return dimensionId.trim();
     }
 
     private static String formatList(String title, List<String> lines) {

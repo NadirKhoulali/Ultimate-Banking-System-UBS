@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
@@ -29,8 +30,13 @@ import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.*;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -107,6 +113,9 @@ public final class ModPayloads {
         registrar.playToClient(AccountListPayload.TYPE, AccountListPayload.STREAM_CODEC, ModPayloads::handleAccountList);
         registrar.playToServer(OpenBankOwnerPcPayload.TYPE, OpenBankOwnerPcPayload.STREAM_CODEC, ModPayloads::handleOpenBankOwnerPc);
         registrar.playToClient(OwnerPcBootstrapPayload.TYPE, OwnerPcBootstrapPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBootstrap);
+        registrar.playToClient(OwnerPcDesktopDataPayload.TYPE, OwnerPcDesktopDataPayload.STREAM_CODEC, ModPayloads::handleOwnerPcDesktopData);
+        registrar.playToServer(OwnerPcDesktopActionPayload.TYPE, OwnerPcDesktopActionPayload.STREAM_CODEC, ModPayloads::handleOwnerPcDesktopAction);
+        registrar.playToClient(OwnerPcDesktopActionResponsePayload.TYPE, OwnerPcDesktopActionResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcDesktopActionResponse);
         registrar.playToServer(OwnerPcBankDataRequestPayload.TYPE, OwnerPcBankDataRequestPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankDataRequest);
         registrar.playToClient(OwnerPcBankDataPayload.TYPE, OwnerPcBankDataPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankData);
         registrar.playToServer(OwnerPcActionPayload.TYPE, OwnerPcActionPayload.STREAM_CODEC, ModPayloads::handleOwnerPcAction);
@@ -234,6 +243,34 @@ public final class ModPayloads {
                 return;
             }
 
+            boolean hasContextPayload = payload.dimensionId() != null
+                    && !payload.dimensionId().isBlank();
+            if (hasContextPayload) {
+                ResourceLocation dimLoc = ResourceLocation.tryParse(payload.dimensionId().trim());
+                if (dimLoc != null) {
+                    ResourceKey<Level> levelKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+                    ServerLevel clickedLevel = server.getLevel(levelKey);
+                    if (clickedLevel != null) {
+                        BlockPos clickedPos = new BlockPos(payload.x(), payload.y(), payload.z());
+                        double distSq = player.level() == clickedLevel
+                                ? player.position().distanceToSqr(
+                                clickedPos.getX() + 0.5,
+                                clickedPos.getY() + 0.5,
+                                clickedPos.getZ() + 0.5)
+                                : Double.MAX_VALUE;
+                        if (distSq <= 100.0D && clickedLevel.getBlockState(clickedPos).is(ModBlocks.BANK_OWNER_PC.get())) {
+                            BankOwnerPcService.rememberDesktopContext(
+                                    player.getUUID(),
+                                    payload.dimensionId().trim(),
+                                    payload.x(),
+                                    payload.y(),
+                                    payload.z()
+                            );
+                        }
+                    }
+                }
+            }
+
             boolean includeCentralBankApp = player.hasPermissions(3);
             List<OwnerPcBankAppSummary> apps = BankOwnerPcService.listAccessibleApps(
                     server,
@@ -245,6 +282,7 @@ public final class ModPayloads {
             int maxBanks = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
 
             PacketDistributor.sendToPlayer(player, new OwnerPcBootstrapPayload(apps, ownedCount, maxBanks));
+            PacketDistributor.sendToPlayer(player, BankOwnerPcService.buildDesktopData(centralBank, player.getUUID()));
         });
     }
 
@@ -255,6 +293,55 @@ public final class ModPayloads {
                 ownerScreen.refreshFromNetwork();
             } else {
                 OwnerPcScreenHelper.openOwnerPcScreen();
+            }
+        });
+    }
+
+    private static void handleOwnerPcDesktopData(OwnerPcDesktopDataPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setDesktopData(payload);
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.refreshFromNetwork();
+            }
+        });
+    }
+
+    private static void handleOwnerPcDesktopAction(OwnerPcDesktopActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank == null) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcDesktopActionResponsePayload(
+                        payload.action(),
+                        false,
+                        "Desktop storage is unavailable."
+                ));
+                return;
+            }
+
+            BankOwnerPcService.ActionResult result = BankOwnerPcService.executeDesktopAction(
+                    centralBank,
+                    player.getUUID(),
+                    payload.action(),
+                    payload.arg1(),
+                    payload.arg2()
+            );
+            PacketDistributor.sendToPlayer(player, new OwnerPcDesktopActionResponsePayload(
+                    result.action(),
+                    result.success(),
+                    result.message()
+            ));
+            PacketDistributor.sendToPlayer(player, BankOwnerPcService.buildDesktopData(centralBank, player.getUUID()));
+        });
+    }
+
+    private static void handleOwnerPcDesktopActionResponse(OwnerPcDesktopActionResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ClientOwnerPcData.setToast(payload.success(), payload.message());
+            if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+                ownerScreen.handleDesktopActionResponse(payload);
+                ownerScreen.refreshFromNetwork();
             }
         });
     }

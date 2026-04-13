@@ -8,6 +8,9 @@ import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataRequestPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcCreateBankPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionResponsePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -16,7 +19,10 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +56,16 @@ public class BankOwnerPcScreen extends Screen {
         }
     }
 
+    private record ExplorerAppEntry(String appId, String label, boolean hidden, boolean lockHide) {}
+
+    private record AppVisibilityCard(int x, int y, int width, int height, ExplorerAppEntry app) {
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + height);
+        }
+    }
+
+    private record NotepadLayout(List<String> lines, List<Integer> starts) {}
+
     private record RectHitbox(int x, int y, int width, int height) {
         boolean contains(double mouseX, double mouseY) {
             return mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + height);
@@ -58,10 +74,34 @@ public class BankOwnerPcScreen extends Screen {
 
     private record MarketParseResult(boolean isMarketPayload, List<MarketOfferData> offers) {}
 
+    private static final class BankWindowState {
+        private final UUID bankId;
+        private Section activeSection = Section.OVERVIEW;
+        private int outputScroll;
+        private int sectionScroll;
+        private int navScroll;
+        private boolean overviewDetailOpen;
+        private String overviewDetailAction = "SHOW_INFO";
+        private AccountCardData selectedAccountCard;
+        private boolean accountProfileOpen;
+        private boolean lendingMarketOpen;
+        private MarketSort marketSort = MarketSort.AMOUNT;
+        private boolean marketSortDescending = true;
+        private final List<MarketOfferData> marketOfferCache = new ArrayList<>();
+        private MarketOfferData pendingMarketAccept;
+        private boolean refreshMarketAfterNextResponse;
+        private final Map<String, String> formValues = new HashMap<>();
+
+        private BankWindowState(UUID bankId) {
+            this.bankId = bankId;
+        }
+    }
+
     private enum WindowMode {
         DESKTOP,
         BANK_APP,
-        CREATE_BANK
+        CREATE_BANK,
+        UTILITY_APP
     }
 
     private enum Section {
@@ -82,15 +122,40 @@ public class BankOwnerPcScreen extends Screen {
         ID
     }
 
+    private enum UtilityApp {
+        CALCULATOR,
+        NOTEPAD,
+        FILE_EXPLORER,
+        PAINT,
+        SYSTEM_MONITOR
+    }
+
+    private enum AuthStage {
+        LOADING,
+        LOGIN,
+        SETUP,
+        RECOVER
+    }
+
     private static final int PAD = 8;
     private static final int TOPBAR_HEIGHT = 26;
     private static final int TASKBAR_HEIGHT = 26;
     private static final int LINE_HEIGHT = 11;
+    private static final int OUTPUT_PANEL_INSET = 6;
+    private static final int OUTPUT_PIXEL_SCROLL_STEP = 14;
+    private static final int NOTEPAD_MAX_CHARS = 16000;
     private static final List<String> OWNERSHIP_MODELS = List.of(
             "SOLE",
             "ROLE_BASED",
             "PERCENTAGE_SHARES",
             "FIXED_COFOUNDERS"
+    );
+    private static final List<UtilityApp> DESKTOP_UTILITY_APPS = List.of(
+            UtilityApp.CALCULATOR,
+            UtilityApp.NOTEPAD,
+            UtilityApp.FILE_EXPLORER,
+            UtilityApp.PAINT,
+            UtilityApp.SYSTEM_MONITOR
     );
 
     private WindowMode activeWindow = WindowMode.DESKTOP;
@@ -99,6 +164,10 @@ public class BankOwnerPcScreen extends Screen {
     private boolean bankWindowOpen;
     private boolean createWindowOpen;
     private UUID activeBankId;
+    private final Map<UUID, BankWindowState> bankWindows = new HashMap<>();
+    private final List<UUID> bankWindowOrder = new ArrayList<>();
+    private final List<UtilityApp> utilityWindowOrder = new ArrayList<>();
+    private UtilityApp activeUtilityApp;
 
     private String selectedOwnershipModel = OWNERSHIP_MODELS.getFirst();
 
@@ -141,13 +210,102 @@ public class BankOwnerPcScreen extends Screen {
     private float virtualScaleX = 1.0F;
     private float virtualScaleY = 1.0F;
 
+    private int utilityFrameLeft;
+    private int utilityFrameTop;
+    private int utilityFrameRight;
+    private int utilityFrameBottom;
+    private int utilityContentX;
+    private int utilityContentY;
+    private int utilityContentW;
+    private int utilityContentH;
+    private int notepadAreaX;
+    private int notepadAreaY;
+    private int notepadAreaW;
+    private int notepadAreaH;
+    private int paintCanvasX;
+    private int paintCanvasY;
+    private int paintCanvasW = 48;
+    private int paintCanvasH = 32;
+    private int paintCellSize = 8;
+    private boolean paintDrawing;
+    private int paintDrawColor = 0xFF111111;
+
+    private String calculatorExpression = "";
+    private String calculatorDisplay = "0";
+    private String calculatorStatus = "Ready";
+
+    private final StringBuilder notepadText = new StringBuilder();
+    private boolean notepadFocused;
+    private int notepadScroll;
+    private int notepadCursorIndex;
+    private boolean suppressNextNotepadSpaceChar;
+    private boolean notepadSaveModalOpen;
+    private boolean paintSaveModalOpen;
+    private boolean systemHideAppsMenuOpen;
+    private int systemMonitorScroll;
+    private int systemMonitorMaxScroll;
+    private int systemMonitorViewportX;
+    private int systemMonitorViewportY;
+    private int systemMonitorViewportW;
+    private int systemMonitorViewportH;
+    private int systemHideAppsScroll;
+    private int systemHideAppsMaxScroll;
+    private int systemHideAppsX;
+    private int systemHideAppsY;
+    private int systemHideAppsW;
+    private int systemHideAppsH;
+    private final List<AppVisibilityCard> visibleSystemAppCards = new ArrayList<>();
+    private boolean unsavedClosePromptOpen;
+    private UtilityApp unsavedCloseTarget;
+    private UtilityApp pendingCloseAfterSaveTarget;
+    private String notepadSavedSnapshot = "";
+    private int paintSavedSnapshotHash;
+    private int explorerFilesScroll;
+    private int explorerFilesMaxScroll;
+    private int explorerFileListX;
+    private int explorerFileListY;
+    private int explorerFileListW;
+    private int explorerFileListH;
+    private String selectedExplorerFileName = "";
+    private int paintControlsScroll;
+    private int paintControlsMaxScroll;
+    private int paintControlsX;
+    private int paintControlsY;
+    private int paintControlsW;
+    private int paintControlsH;
+    private int taskbarScroll;
+    private int taskbarMaxScroll;
+    private int taskbarViewportX;
+    private int taskbarViewportY;
+    private int taskbarViewportW;
+    private int taskbarViewportH;
+    private RectHitbox taskbarClockHitbox;
+    private RectHitbox taskbarMenuHitbox;
+    private RectHitbox taskbarLogoutHitbox;
+    private RectHitbox taskbarTurnOffHitbox;
+    private boolean desktopAuthenticated;
+    private boolean authInitialized;
+    private AuthStage authStage = AuthStage.LOADING;
+    private boolean taskbarMenuOpen;
+
+    private final int[] paintPixels = new int[48 * 32];
+    private int paintSelectedColor = 0xFF111111;
+    private int paintBrushSize = 1;
+    private final int[] paintPalette = {
+            0xFF111111, 0xFF2A5F9E, 0xFF3E8E41, 0xFFC26A2D,
+            0xFFB23333, 0xFF7B57B8, 0xFFD4B03D, 0xFFFFFFFF
+    };
+
     public BankOwnerPcScreen(Component title) {
         super(title);
+        Arrays.fill(this.paintPixels, 0xFFFFFFFF);
+        this.paintSavedSnapshotHash = Arrays.hashCode(this.paintPixels);
     }
 
     @Override
     protected void init() {
         configureVirtualScale();
+        initializeAuthStateIfNeeded();
         rebuildWidgets();
     }
 
@@ -157,8 +315,13 @@ public class BankOwnerPcScreen extends Screen {
         this.activeFormInputs.clear();
         this.visibleAccountCards.clear();
         this.visibleMarketActions.clear();
+        this.visibleSystemAppCards.clear();
         this.marketConfirmAcceptHitbox = null;
         this.marketConfirmCancelHitbox = null;
+        this.taskbarClockHitbox = null;
+        this.taskbarMenuHitbox = null;
+        this.taskbarLogoutHitbox = null;
+        this.taskbarTurnOffHitbox = null;
 
         int closeW = 28;
         addPcButton(
@@ -170,15 +333,212 @@ public class BankOwnerPcScreen extends Screen {
                 btn -> this.onClose()
         );
 
+        if (!desktopAuthenticated) {
+            initAuthWidgets();
+            initTaskbarWidgets();
+            return;
+        }
+
         if (activeWindow == WindowMode.DESKTOP) {
             initDesktopWidgets();
         } else if (activeWindow == WindowMode.BANK_APP) {
             initBankWindowWidgets();
         } else if (activeWindow == WindowMode.CREATE_BANK) {
             initCreateBankWidgets();
+        } else if (activeWindow == WindowMode.UTILITY_APP) {
+            initUtilityWindowWidgets();
+        }
+        initTaskbarWidgets();
+    }
+
+    private void initializeAuthStateIfNeeded() {
+        if (authInitialized) {
+            return;
+        }
+        authInitialized = true;
+        desktopAuthenticated = ClientOwnerPcData.isDesktopSessionUnlocked();
+        if (!ClientOwnerPcData.hasDesktopDataLoaded()) {
+            authStage = AuthStage.LOADING;
+            return;
+        }
+        if (desktopAuthenticated) {
+            authStage = ClientOwnerPcData.isDesktopPinSet() ? AuthStage.LOGIN : AuthStage.SETUP;
+            return;
+        }
+        authStage = ClientOwnerPcData.isDesktopPinSet() ? AuthStage.LOGIN : AuthStage.SETUP;
+    }
+
+    private void syncAuthStateFromDesktopData() {
+        if (ClientOwnerPcData.isDesktopSessionUnlocked()) {
+            desktopAuthenticated = true;
+            return;
+        }
+        if (desktopAuthenticated) {
+            return;
+        }
+        if (!ClientOwnerPcData.hasDesktopDataLoaded()) {
+            authStage = AuthStage.LOADING;
+            return;
+        }
+        boolean pinSet = ClientOwnerPcData.isDesktopPinSet();
+        if (!pinSet) {
+            authStage = AuthStage.SETUP;
+        } else if (authStage == AuthStage.LOADING || authStage == AuthStage.SETUP) {
+            authStage = AuthStage.LOGIN;
+        }
+    }
+
+    private void initAuthWidgets() {
+        syncAuthStateFromDesktopData();
+        int contentTop = PAD + TOPBAR_HEIGHT + 6;
+        int contentBottom = this.height - PAD - TASKBAR_HEIGHT - 6;
+        int contentHeight = Math.max(160, contentBottom - contentTop);
+        int panelW = Math.min(460, Math.max(300, this.width - 84));
+
+        int neededH = switch (authStage) {
+            case LOADING -> 148;
+            case LOGIN -> 214;
+            case SETUP, RECOVER -> 286;
+        };
+        int panelH = Math.min(Math.max(neededH, 140), Math.max(140, contentHeight - 8));
+        boolean compact = panelH < neededH;
+        int panelX = (this.width - panelW) / 2;
+        int panelY = contentTop + Math.max(0, (contentHeight - panelH) / 2);
+
+        int fieldW = Math.min(320, panelW - 36);
+        int fieldX = panelX + (panelW - fieldW) / 2;
+        int controlsNeeded = switch (authStage) {
+            case LOADING -> 52;
+            case LOGIN -> 108;
+            case SETUP, RECOVER -> 172;
+        };
+        int iconY = panelY + (compact ? 10 : 18);
+        int avatarSize = compact ? 40 : 52;
+        int labelY = iconY + avatarSize + 8;
+        int titleY = labelY + 16;
+        int subtitleY = titleY + 14;
+        int safeTop = subtitleY + 16;
+        int y = Math.max(safeTop, panelY + panelH - controlsNeeded - 4);
+        int inputStep = compact ? 24 : 28;
+        int recoveryStep = compact ? 26 : 32;
+        int buttonStep = compact ? 26 : 30;
+
+        if (authStage == AuthStage.LOADING) {
+            addPcButton(
+                    fieldX,
+                    panelY + panelH - 46,
+                    fieldW,
+                    24,
+                    "Refresh Security",
+                    btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload())
+            ).setLabelOffset(6, 1);
+            return;
         }
 
-        initTaskbarWidgets();
+        DesktopEditBox passwordInput = addFormInput(
+                "auth.password",
+                fieldX,
+                y,
+                fieldW,
+                authStage == AuthStage.LOGIN ? "Password" : "New password"
+        );
+        passwordInput.setMaxLength(64);
+        passwordInput.setTextColor(0xFFFFFFFF);
+        y += inputStep;
+
+        if (authStage == AuthStage.SETUP || authStage == AuthStage.RECOVER) {
+            DesktopEditBox repeatInput = addFormInput(
+                    "auth.password_repeat",
+                    fieldX,
+                    y,
+                    fieldW,
+                    "Repeat password"
+            );
+            repeatInput.setMaxLength(64);
+            repeatInput.setTextColor(0xFFFFFFFF);
+            y += inputStep;
+
+            DesktopEditBox recoveryInput = addFormInput(
+                    "auth.recovery",
+                    fieldX,
+                    y,
+                    fieldW,
+                    authStage == AuthStage.SETUP ? "Recovery phrase" : "Recovery phrase (required)"
+            );
+            recoveryInput.setMaxLength(64);
+            recoveryInput.setTextColor(0xFFFFFFFF);
+            y += recoveryStep;
+        } else {
+            y += compact ? 2 : 4;
+        }
+
+        if (authStage == AuthStage.LOGIN) {
+            int splitW = (fieldW - 8) / 2;
+            addPcButton(fieldX, y, splitW, 24, "Unlock", btn -> submitAuth()).setLabelOffset(6, 1);
+            addPcButton(fieldX + splitW + 8, y, splitW, 24, "Forgot Password", btn -> {
+                authStage = AuthStage.RECOVER;
+                formValues.put("auth.password", "");
+                formValues.put("auth.password_repeat", "");
+                formValues.put("auth.recovery", "");
+                rebuildWidgets();
+            }).setLabelOffset(6, 1);
+            y += buttonStep;
+            if (!compact) {
+                addPcButton(fieldX, y, fieldW, 22, "Refresh Security", btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload()))
+                        .setLabelOffset(6, 1);
+            }
+        } else if (authStage == AuthStage.SETUP) {
+            addPcButton(fieldX, y, fieldW, 24, "Set Password", btn -> submitAuth()).setLabelOffset(6, 1);
+        } else {
+            int splitW = (fieldW - 8) / 2;
+            addPcButton(fieldX, y, splitW, 24, "Reset Password", btn -> submitAuth()).setLabelOffset(6, 1);
+            addPcButton(fieldX + splitW + 8, y, splitW, 24, "Back to Login", btn -> {
+                authStage = ClientOwnerPcData.isDesktopPinSet() ? AuthStage.LOGIN : AuthStage.SETUP;
+                formValues.put("auth.password", "");
+                formValues.put("auth.password_repeat", "");
+                rebuildWidgets();
+            }).setLabelOffset(6, 1);
+        }
+    }
+
+    private void submitAuth() {
+        if (authStage == AuthStage.LOADING) {
+            return;
+        }
+        String password = formValues.getOrDefault("auth.password", "").trim();
+        if (authStage == AuthStage.LOGIN) {
+            if (password.length() < 4) {
+                ClientOwnerPcData.setToast(false, "Password must be at least 4 characters.");
+                return;
+            }
+            sendDesktopAction("AUTH_VERIFY_PIN", password, "");
+            return;
+        }
+
+        String repeat = formValues.getOrDefault("auth.password_repeat", "").trim();
+        String recoveryPhrase = formValues.getOrDefault("auth.recovery", "").trim();
+        if (password.length() < 4) {
+            ClientOwnerPcData.setToast(false, "Password must be at least 4 characters.");
+            return;
+        }
+        if (repeat.length() < 4) {
+            ClientOwnerPcData.setToast(false, "Repeat password is too short.");
+            return;
+        }
+        if (!password.equals(repeat)) {
+            ClientOwnerPcData.setToast(false, "Password values do not match.");
+            return;
+        }
+        if (recoveryPhrase.length() < 4) {
+            ClientOwnerPcData.setToast(false, "Recovery phrase must be at least 4 characters.");
+            return;
+        }
+
+        if (authStage == AuthStage.SETUP) {
+            sendDesktopAction("AUTH_SET_PIN", password, recoveryPhrase);
+        } else {
+            sendDesktopAction("AUTH_RECOVER_RESET", recoveryPhrase, password);
+        }
     }
 
     private void initDesktopWidgets() {
@@ -193,6 +553,9 @@ public class BankOwnerPcScreen extends Screen {
 
         int idx = 0;
         for (OwnerPcBankAppSummary app : apps) {
+            if (ClientOwnerPcData.isAppHidden(bankAppId(app.bankId()))) {
+                continue;
+            }
             int col = idx % columns;
             int row = idx / columns;
             int x = contentLeft + (col * (buttonWidth + 12));
@@ -210,27 +573,26 @@ public class BankOwnerPcScreen extends Screen {
                     buttonWidth,
                     buttonHeight,
                     fitToWidth(label, buttonWidth - 10),
-                    btn -> {
-                        activeBankId = app.bankId();
-                        ClientOwnerPcData.setSelectedBankId(activeBankId);
-                        ClientOwnerPcData.clearActionOutput();
-                        outputScroll = 0;
-                        sectionScroll = 0;
-                        navScroll = 0;
-                        bankWindowOpen = true;
-                        activeWindow = WindowMode.BANK_APP;
-                        activeSection = Section.OVERVIEW;
-                        overviewDetailOpen = false;
-                        overviewDetailAction = "SHOW_INFO";
-                        selectedAccountCard = null;
-                        accountProfileOpen = false;
-                        lendingMarketOpen = false;
-                        pendingMarketAccept = null;
-                        marketOfferCache.clear();
-                        refreshMarketAfterNextResponse = false;
-                        requestBankData(activeBankId);
-                        rebuildWidgets();
-                    }
+                    btn -> openOrActivateBankWindow(app.bankId())
+            );
+            idx++;
+        }
+
+        for (UtilityApp utilityApp : DESKTOP_UTILITY_APPS) {
+            if (utilityApp != UtilityApp.SYSTEM_MONITOR && ClientOwnerPcData.isAppHidden(utilityAppId(utilityApp))) {
+                continue;
+            }
+            int col = idx % columns;
+            int row = idx / columns;
+            int x = contentLeft + (col * (buttonWidth + 12));
+            int y = contentTop + (row * (buttonHeight + 10));
+            addPcButton(
+                    x,
+                    y,
+                    buttonWidth,
+                    buttonHeight,
+                    fitToWidth(utilityDesktopLabel(utilityApp), buttonWidth - 10),
+                    btn -> openUtilityAppWindow(utilityApp)
             );
             idx++;
         }
@@ -322,22 +684,38 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         int toolbarY = top + 4;
+        int toolbarButtonWidth = 82;
+        int toolbarGap = 8;
+        int refreshX = right - 8 - toolbarButtonWidth;
+        int minimizeX = refreshX - toolbarGap - toolbarButtonWidth;
+        int closeX = minimizeX - toolbarGap - toolbarButtonWidth;
+
         addPcButton(
-                right - 178,
+                closeX,
                 toolbarY,
-                82,
+                toolbarButtonWidth,
+                20,
+                "Close App",
+                btn -> closeBankAppWindow()
+        ).setLabelOffset(4, 1);
+
+        addPcButton(
+                minimizeX,
+                toolbarY,
+                toolbarButtonWidth,
                 20,
                 "Minimize",
                 btn -> {
+                    saveActiveBankWindowState();
                     activeWindow = WindowMode.DESKTOP;
                     rebuildWidgets();
                 }
         ).setLabelOffset(4, 1);
 
         addPcButton(
-                right - 90,
+                refreshX,
                 toolbarY,
-                82,
+                toolbarButtonWidth,
                 20,
                 "Refresh",
                 btn -> requestBankData(activeBankId)
@@ -362,11 +740,24 @@ public class BankOwnerPcScreen extends Screen {
     private void initCreateBankWidgets() {
         int width = Math.min(700, this.width - (PAD * 2) - 80);
         int left = (this.width - width) / 2;
-        int top = PAD + TOPBAR_HEIGHT + 44;
+        int frameTop = PAD + TOPBAR_HEIGHT + 20;
+        int frameBottom = this.height - PAD - TASKBAR_HEIGHT - 20;
+
+        // Keep clear spacing below ownership labels and keep controls inside the frame.
+        int top = frameTop + 34;
 
         DesktopEditBox name = addFormInput("create.name", left, top, width, "Bank name");
 
-        int optionY = top + 42;
+        addPcButton(
+                left + width - 92,
+                frameTop + 4,
+                84,
+                20,
+                "Close App",
+                btn -> closeCreateBankWindow()
+        ).setLabelOffset(4, 1);
+
+        int optionY = top + 58;
         int optionW = (width - 8) / 2;
         int optionH = 24;
 
@@ -392,87 +783,740 @@ public class BankOwnerPcScreen extends Screen {
             option.active = !selected;
         }
 
-        addPcButton(
-                left,
-                top + 106,
-                220,
-                26,
-                "Create Bank",
-                btn -> PacketDistributor.sendToServer(new OwnerPcCreateBankPayload(
-                        textOrBlank(name),
-                        selectedOwnershipModel
-                ))
-        );
+        int actionY = Math.min(top + 122, frameBottom - 34);
 
-        addPcButton(
-                left + 230,
-                top + 106,
-                140,
-                26,
-                "Back",
+        if (width >= 680) {
+            addPcButton(
+                    left,
+                    actionY,
+                    220,
+                    26,
+                    "Create Bank",
+                    btn -> PacketDistributor.sendToServer(new OwnerPcCreateBankPayload(
+                            textOrBlank(name),
+                            selectedOwnershipModel
+                    ))
+            );
+
+            addPcButton(
+                    left + 230,
+                    actionY,
+                    140,
+                    26,
+                    "Back",
+                    btn -> {
+                        activeWindow = WindowMode.DESKTOP;
+                        rebuildWidgets();
+                    }
+            );
+
+            addPcButton(
+                    left + 378,
+                    actionY,
+                    170,
+                    26,
+                    "Refresh Apps",
+                    btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload())
+            );
+        } else if (width >= 440) {
+            int splitW = (width - 8) / 2;
+            addPcButton(
+                    left,
+                    actionY,
+                    splitW,
+                    26,
+                    "Create Bank",
+                    btn -> PacketDistributor.sendToServer(new OwnerPcCreateBankPayload(
+                            textOrBlank(name),
+                            selectedOwnershipModel
+                    ))
+            );
+            addPcButton(
+                    left + splitW + 8,
+                    actionY,
+                    splitW,
+                    26,
+                    "Back",
+                    btn -> {
+                        activeWindow = WindowMode.DESKTOP;
+                        rebuildWidgets();
+                    }
+            );
+            addPcButton(
+                    left,
+                    actionY + 32,
+                    width,
+                    26,
+                    "Refresh Apps",
+                    btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload())
+            );
+        } else {
+            addPcButton(
+                    left,
+                    actionY,
+                    width,
+                    26,
+                    "Create Bank",
+                    btn -> PacketDistributor.sendToServer(new OwnerPcCreateBankPayload(
+                            textOrBlank(name),
+                            selectedOwnershipModel
+                    ))
+            );
+            addPcButton(
+                    left,
+                    actionY + 32,
+                    width,
+                    26,
+                    "Back",
+                    btn -> {
+                        activeWindow = WindowMode.DESKTOP;
+                        rebuildWidgets();
+                    }
+            );
+            addPcButton(
+                    left,
+                    actionY + 64,
+                    width,
+                    26,
+                    "Refresh Apps",
+                    btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload())
+            );
+        }
+
+        createWindowOpen = true;
+    }
+
+    private void initUtilityWindowWidgets() {
+        if (activeUtilityApp == null) {
+            activeUtilityApp = UtilityApp.CALCULATOR;
+        }
+
+        int left = PAD + 12;
+        int top = PAD + TOPBAR_HEIGHT + 10;
+        int right = this.width - PAD - 12;
+        int bottom = this.height - PAD - TASKBAR_HEIGHT - 8;
+
+        utilityFrameLeft = left;
+        utilityFrameTop = top;
+        utilityFrameRight = right;
+        utilityFrameBottom = bottom;
+        utilityContentX = left + 12;
+        utilityContentY = top + 38;
+        utilityContentW = Math.max(180, right - left - 24);
+        utilityContentH = Math.max(120, bottom - utilityContentY - 10);
+
+        int toolbarY = top + 4;
+        int toolbarButtonWidth = 90;
+        int toolbarGap = 8;
+        int minimizeX = right - 8 - toolbarButtonWidth;
+        int closeX = minimizeX - toolbarGap - toolbarButtonWidth;
+
+        DesktopButton closeButton = addPcButton(
+                closeX,
+                toolbarY,
+                toolbarButtonWidth,
+                20,
+                "Close App",
+                btn -> closeActiveUtilityApp()
+        ).setLabelOffset(4, 1);
+
+        DesktopButton minimizeButton = addPcButton(
+                minimizeX,
+                toolbarY,
+                toolbarButtonWidth,
+                20,
+                "Minimize",
                 btn -> {
                     activeWindow = WindowMode.DESKTOP;
                     rebuildWidgets();
                 }
+        ).setLabelOffset(4, 1);
+
+        boolean modalBlocking = unsavedClosePromptOpen || notepadSaveModalOpen || paintSaveModalOpen;
+        closeButton.active = !modalBlocking;
+        minimizeButton.active = !modalBlocking;
+
+        if (!unsavedClosePromptOpen) {
+            switch (activeUtilityApp) {
+                case CALCULATOR -> initCalculatorWidgets();
+                case NOTEPAD -> initNotepadWidgets();
+                case FILE_EXPLORER -> initFileExplorerWidgets();
+                case PAINT -> initPaintWidgets();
+                case SYSTEM_MONITOR -> initSystemMonitorWidgets();
+            }
+        }
+
+        if (unsavedClosePromptOpen) {
+            initUnsavedClosePromptWidgets();
+        }
+    }
+
+    private void initCalculatorWidgets() {
+        int gap = 6;
+        int gridW = Math.min(360, utilityContentW - 16);
+        int gridX = utilityContentX + Math.max(0, (utilityContentW - gridW) / 2);
+        int gridY = utilityContentY + 46;
+        int buttonW = (gridW - (gap * 3)) / 4;
+        int buttonH = 22;
+        String[][] rows = {
+                {"C", "(", ")", "/"},
+                {"7", "8", "9", "*"},
+                {"4", "5", "6", "-"},
+                {"1", "2", "3", "+"},
+                {"0", ".", "BK", "="}
+        };
+
+        for (int r = 0; r < rows.length; r++) {
+            for (int c = 0; c < rows[r].length; c++) {
+                String token = rows[r][c];
+                addPcButton(
+                        gridX + (c * (buttonW + gap)),
+                        gridY + (r * (buttonH + gap)),
+                        buttonW,
+                        buttonH,
+                        token.equals("BK") ? "Back" : token,
+                        btn -> onCalculatorButton(token)
+                ).setLabelOffset(4, 1);
+            }
+        }
+    }
+
+    private void initNotepadWidgets() {
+        int controlsY = utilityContentY + 4;
+        int gap = 6;
+        int availableW = Math.max(120, utilityContentW - 8);
+        int columns = availableW >= 540 ? 5 : availableW >= 400 ? 3 : 2;
+        int btnW = Math.max(70, (availableW - (gap * (columns - 1))) / columns);
+        int btnH = 22;
+
+        String[] labels = {"Copy All", "Paste", "Timestamp", "Save", "Clear"};
+        if (!notepadSaveModalOpen) {
+            for (int i = 0; i < labels.length; i++) {
+                int row = i / columns;
+                int col = i % columns;
+                int x = utilityContentX + 4 + (col * (btnW + gap));
+                int y = controlsY + (row * (btnH + gap));
+                final int actionIdx = i;
+                addPcButton(x, y, btnW, btnH, labels[i], btn -> {
+                    switch (actionIdx) {
+                        case 0 -> copyNotepadToClipboard();
+                        case 1 -> pasteIntoNotepad();
+                        case 2 -> appendNotepadTimestamp();
+                        case 3 -> onNotepadSavePressed();
+                        default -> clearNotepad();
+                    }
+                }).setLabelOffset(4, 1);
+            }
+        }
+
+        notepadAreaX = utilityContentX + 4;
+        int controlRows = (labels.length + columns - 1) / columns;
+        notepadAreaY = controlsY + (controlRows * (btnH + gap));
+        notepadAreaW = Math.max(120, utilityContentW - 8);
+        notepadAreaH = Math.max(64, (utilityContentY + utilityContentH) - notepadAreaY - 4);
+
+        if (notepadSaveModalOpen) {
+            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalH = 108;
+            int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+            int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+            int fieldW = modalW - 20;
+            int fieldX = modalX + 10;
+            int fieldY = modalY + 44;
+            DesktopEditBox saveInput = addFormInput("notepad.saveas", fieldX, fieldY, fieldW, "File name");
+            saveInput.setFocused(true);
+            this.setFocused(saveInput);
+
+            int btnY = modalY + modalH - 30;
+            int actionW = (modalW - 30) / 2;
+            addPcButton(modalX + 10, btnY, actionW, 20, "Save File", btn -> confirmNotepadSaveAs()).setLabelOffset(4, 1);
+            addPcButton(modalX + 20 + actionW, btnY, actionW, 20, "Cancel", btn -> {
+                notepadSaveModalOpen = false;
+                if (pendingCloseAfterSaveTarget == UtilityApp.NOTEPAD) {
+                    pendingCloseAfterSaveTarget = null;
+                }
+                rebuildWidgets();
+            }).setLabelOffset(4, 1);
+        }
+    }
+
+    private void initFileExplorerWidgets() {
+        int panelX = utilityContentX + 4;
+        int panelY = utilityContentY + 4;
+        int panelW = Math.max(140, utilityContentW - 8);
+        int gap = 6;
+
+        DesktopEditBox fileNameInput = addFormInput(
+                "explorer.filename",
+                panelX,
+                panelY,
+                panelW,
+                "File name"
         );
+
+        int row1Y = panelY + 26;
+        int btnW = Math.max(24, (panelW - (gap * 2)) / 3);
+        addPcButton(panelX, row1Y, btnW, 22, "Save File", btn -> saveExplorerFile(fileNameInput)).setLabelOffset(4, 1);
+        addPcButton(panelX + btnW + gap, row1Y, btnW, 22, "Delete File", btn -> deleteExplorerFile()).setLabelOffset(4, 1);
+        addPcButton(panelX + ((btnW + gap) * 2), row1Y, btnW, 22, "Refresh", btn -> sendDesktopAction("REFRESH", "", "")).setLabelOffset(4, 1);
+
+        explorerFileListX = panelX;
+        explorerFileListY = row1Y + 44;
+        explorerFileListW = panelW;
+        explorerFileListH = Math.max(64, (utilityContentY + utilityContentH) - explorerFileListY - 4);
+
+        List<OwnerPcFileEntry> files = ClientOwnerPcData.getDesktopFiles();
+        int rowH = 22;
+        int rowGap = 4;
+        int visibleRows = Math.max(1, explorerFileListH / (rowH + rowGap));
+        explorerFilesMaxScroll = Math.max(0, files.size() - visibleRows);
+        explorerFilesScroll = Math.max(0, Math.min(explorerFilesScroll, explorerFilesMaxScroll));
+
+        int rowY = explorerFileListY + 2;
+        for (int i = 0; i < visibleRows; i++) {
+            int index = explorerFilesScroll + i;
+            if (index >= files.size()) {
+                break;
+            }
+            OwnerPcFileEntry file = files.get(index);
+            String fileName = file.name() == null ? "" : file.name();
+            int approxBytes = utf8Bytes(fileName) + utf8Bytes(file.content());
+            int cardX = explorerFileListX + 4;
+            int cardW = Math.max(120, explorerFileListW - 8);
+            int cardInnerGap = 4;
+            int openBtnW = Math.min(108, Math.max(86, cardW / 4));
+            int openBtnH = rowH - 2;
+            int openBtnX = cardX + cardW - cardInnerGap - openBtnW;
+            int openBtnY = rowY + 1;
+            int selectW = Math.max(80, openBtnX - cardX - cardInnerGap);
+            boolean selected = selectedExplorerFileName != null && selectedExplorerFileName.equalsIgnoreCase(fileName);
+
+            DesktopButton row = addPcButton(
+                    cardX,
+                    rowY,
+                    selectW,
+                    rowH,
+                    fitToWidth(explorerCardLabel(file, approxBytes, selected), Math.max(80, selectW - 10)),
+                    btn -> {
+                        selectedExplorerFileName = fileName;
+                        formValues.put("explorer.filename", fileName);
+                        rebuildWidgets();
+                    }
+            );
+            row.active = true;
+            row.setLabelOffset(4, 1);
+
+            DesktopButton open = addPcButton(
+                    openBtnX,
+                    openBtnY,
+                    openBtnW,
+                    openBtnH,
+                    fitToWidth(explorerOpenLabel(file), Math.max(56, openBtnW - 10)),
+                    btn -> {
+                        selectedExplorerFileName = fileName;
+                        formValues.put("explorer.filename", fileName);
+                        openExplorerFile(file);
+                    }
+            );
+            open.active = true;
+            open.setLabelOffset(4, 1);
+            rowY += rowH + rowGap;
+        }
+    }
+
+    private void initPaintWidgets() {
+        int sideW = Math.min(166, Math.max(132, utilityContentW / 4));
+        int sideX = utilityContentX + utilityContentW - sideW;
+        int y = utilityContentY + 4;
+        int labelW = sideW - 8;
+        int gap = 4;
+        int rowStep = 26;
+        int paletteRows = (paintPalette.length + 1) / 2;
+        int controlsContentHeight = (rowStep * 5) + 30 + (paletteRows * rowStep);
+
+        paintControlsX = sideX + 4;
+        paintControlsY = utilityContentY + 4;
+        paintControlsW = labelW;
+        paintControlsH = Math.max(40, utilityContentH - 8);
+        paintControlsMaxScroll = Math.max(0, controlsContentHeight - paintControlsH);
+        paintControlsScroll = Math.max(0, Math.min(paintControlsScroll, paintControlsMaxScroll));
+
+        if (!paintSaveModalOpen) {
+            addPaintControlButton(sideX + 4, 0, labelW, 22, "Save Canvas", btn -> onPaintSavePressed()).setLabelOffset(4, 1);
+            addPaintControlButton(sideX + 4, rowStep, labelW, 22, "Brush -", btn -> paintBrushSize = Math.max(1, paintBrushSize - 1)).setLabelOffset(4, 1);
+            addPaintControlButton(sideX + 4, rowStep * 2, labelW, 22, "Brush +", btn -> paintBrushSize = Math.min(8, paintBrushSize + 1)).setLabelOffset(4, 1);
+            addPaintControlButton(sideX + 4, rowStep * 3, labelW, 22, "Eraser", btn -> paintSelectedColor = 0xFFFFFFFF).setLabelOffset(4, 1);
+            addPaintControlButton(sideX + 4, rowStep * 4, labelW, 22, "Clear Canvas", btn -> Arrays.fill(paintPixels, 0xFFFFFFFF)).setLabelOffset(4, 1);
+
+            int paletteStartY = (rowStep * 5) + 30;
+            for (int i = 0; i < paintPalette.length; i++) {
+                int col = i % 2;
+                int row = i / 2;
+                int swW = (labelW - gap) / 2;
+                int swX = sideX + 4 + (col * (swW + gap));
+                int swContentY = paletteStartY + (row * rowStep);
+                final int color = paintPalette[i];
+                addPaintControlButton(swX, swContentY, swW, 22, paintColorLabel(color), color, btn -> paintSelectedColor = color).setLabelOffset(4, 1);
+            }
+        }
+
+        if (paintSaveModalOpen) {
+            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalH = 108;
+            int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+            int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+            DesktopEditBox saveInput = addFormInput("paint.saveas", modalX + 10, modalY + 44, modalW - 20, "File name");
+            saveInput.setFocused(true);
+            this.setFocused(saveInput);
+            int btnY = modalY + modalH - 30;
+            int actionW = (modalW - 30) / 2;
+            addPcButton(modalX + 10, btnY, actionW, 20, "Save Canvas", btn -> confirmPaintSaveAs()).setLabelOffset(4, 1);
+            addPcButton(modalX + 20 + actionW, btnY, actionW, 20, "Cancel", btn -> {
+                paintSaveModalOpen = false;
+                if (pendingCloseAfterSaveTarget == UtilityApp.PAINT) {
+                    pendingCloseAfterSaveTarget = null;
+                }
+                rebuildWidgets();
+            }).setLabelOffset(4, 1);
+        }
+    }
+
+    private void initSystemMonitorWidgets() {
+        int topY = utilityContentY + 6;
+        if (!systemHideAppsMenuOpen) {
+            addPcButton(
+                    utilityContentX + 8,
+                    topY,
+                    160,
+                    22,
+                    "Copy System Info",
+                    btn -> copySystemInfoToClipboard()
+            ).setLabelOffset(4, 1);
+            addPcButton(
+                    utilityContentX + 176,
+                    topY,
+                    132,
+                    22,
+                    "Hide Apps",
+                    btn -> {
+                        systemHideAppsMenuOpen = true;
+                        systemHideAppsScroll = 0;
+                        rebuildWidgets();
+                    }
+            ).setLabelOffset(4, 1);
+            int viewportX = utilityContentX + 4;
+            int viewportY = topY + 28;
+            int viewportW = Math.max(120, utilityContentW - 8);
+            int viewportH = Math.max(1, utilityContentH - (viewportY - utilityContentY) - 4);
+            systemMonitorViewportX = viewportX;
+            systemMonitorViewportY = viewportY;
+            systemMonitorViewportW = viewportW;
+            systemMonitorViewportH = viewportH;
+
+            int metricsCols = viewportW >= 560 ? 2 : 1;
+            int metricsRows = (9 + metricsCols - 1) / metricsCols;
+            int metricsBlockHeight = (metricsRows * 46) + (Math.max(0, metricsRows - 1) * 8);
+            int contentHeight = metricsBlockHeight + 4;
+            systemMonitorMaxScroll = Math.max(0, contentHeight - viewportH);
+            systemMonitorScroll = Math.max(0, Math.min(systemMonitorScroll, systemMonitorMaxScroll));
+            return;
+        }
+
+        systemMonitorScroll = 0;
+        systemMonitorMaxScroll = 0;
+        systemMonitorViewportX = 0;
+        systemMonitorViewportY = 0;
+        systemMonitorViewportW = 0;
+        systemMonitorViewportH = 0;
 
         addPcButton(
-                left + 378,
-                top + 106,
-                170,
-                26,
-                "Refresh Apps",
-                btn -> PacketDistributor.sendToServer(new OpenBankOwnerPcPayload())
-        );
+                utilityContentX + 8,
+                topY,
+                96,
+                22,
+                "Back",
+                btn -> {
+                    systemHideAppsMenuOpen = false;
+                    systemHideAppsScroll = 0;
+                    rebuildWidgets();
+                }
+        ).setLabelOffset(4, 1);
 
-        createWindowOpen = true;
+        int panelX = utilityContentX + 8;
+        int panelY = topY + 28;
+        int panelW = Math.max(120, utilityContentW - 16);
+        int panelH = Math.max(80, utilityContentH - 36);
+        systemHideAppsX = panelX;
+        systemHideAppsY = panelY;
+        systemHideAppsW = panelW;
+        systemHideAppsH = panelH;
+
+        List<ExplorerAppEntry> apps = buildExplorerAppEntries();
+        int cols = panelW >= 520 ? 2 : 1;
+        int cardW = cols == 1 ? panelW - 8 : (panelW - 8 - 8) / 2;
+        int cardH = 40;
+        int gap = 8;
+        int rows = (apps.size() + cols - 1) / cols;
+        int visibleRows = Math.max(1, (panelH - 8 + gap) / (cardH + gap));
+        systemHideAppsMaxScroll = Math.max(0, rows - visibleRows);
+        systemHideAppsScroll = Math.max(0, Math.min(systemHideAppsScroll, systemHideAppsMaxScroll));
+
+        visibleSystemAppCards.clear();
+        for (int i = 0; i < apps.size(); i++) {
+            ExplorerAppEntry app = apps.get(i);
+            int row = i / cols;
+            int col = i % cols;
+            int renderRow = row - systemHideAppsScroll;
+            if (renderRow < 0 || renderRow >= visibleRows) {
+                continue;
+            }
+            int x = panelX + 4 + (col * (cardW + gap));
+            int y = panelY + 4 + (renderRow * (cardH + gap));
+            int accent = app.hidden() ? 0xFFD95C5C : 0xFF6FD39A;
+            DesktopButton button = addPcButton(
+                    x,
+                    y,
+                    cardW,
+                    cardH,
+                    fitToWidth(app.label(), cardW - 10),
+                    accent,
+                    btn -> {
+                        if (app.lockHide() && !app.hidden()) {
+                            ClientOwnerPcData.setToast(false, "This app cannot be hidden.");
+                            return;
+                        }
+                        sendDesktopAction("APP_VISIBILITY", app.appId(), app.hidden() ? "false" : "true");
+                    }
+            ).setLabelOffset(4, -3);
+            button.active = !(app.lockHide() && !app.hidden());
+            visibleSystemAppCards.add(new AppVisibilityCard(x, y, cardW, cardH, app));
+        }
+    }
+
+    private void initUnsavedClosePromptWidgets() {
+        int modalW = 330;
+        int modalH = 98;
+        int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+        int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+        int buttonW = (modalW - 32) / 3;
+        int buttonY = modalY + modalH - 28;
+
+        addPcButton(modalX + 8, buttonY, buttonW, 20, "Save", btn -> {
+            UtilityApp target = unsavedCloseTarget;
+            unsavedClosePromptOpen = false;
+            unsavedCloseTarget = null;
+            pendingCloseAfterSaveTarget = target;
+            if (target == UtilityApp.NOTEPAD) {
+                onNotepadSavePressed();
+            } else if (target == UtilityApp.PAINT) {
+                onPaintSavePressed();
+            } else {
+                pendingCloseAfterSaveTarget = null;
+            }
+        }).setLabelOffset(4, 1);
+        addPcButton(modalX + 16 + buttonW, buttonY, buttonW, 20, "Forget", btn -> {
+            UtilityApp target = unsavedCloseTarget;
+            unsavedClosePromptOpen = false;
+            unsavedCloseTarget = null;
+            pendingCloseAfterSaveTarget = null;
+            if (target != null && target == activeUtilityApp) {
+                closeActiveUtilityAppImmediately();
+            }
+        }).setLabelOffset(4, 1);
+        addPcButton(modalX + 24 + (buttonW * 2), buttonY, buttonW, 20, "Cancel", btn -> {
+            unsavedClosePromptOpen = false;
+            unsavedCloseTarget = null;
+            pendingCloseAfterSaveTarget = null;
+            rebuildWidgets();
+        }).setLabelOffset(4, 1);
     }
 
     private void initTaskbarWidgets() {
         int barY = this.height - PAD - TASKBAR_HEIGHT + 3;
         int x = PAD + 8;
+        int clockWidth = 106;
+        int clockX = this.width - PAD - 8 - clockWidth;
+        taskbarClockHitbox = new RectHitbox(clockX, barY - 1, clockWidth, 22);
+        taskbarMenuHitbox = null;
 
-        addPcButton(
-                x,
-                barY,
-                64,
-                20,
-                "Start",
-                btn -> {
-                    activeWindow = WindowMode.DESKTOP;
-                    rebuildWidgets();
-                }
-        );
-        x += 72;
-
-        if (bankWindowOpen) {
+        if (desktopAuthenticated) {
             addPcButton(
                     x,
                     barY,
-                    190,
+                    64,
                     20,
-                    fitToWidth("Bank Manager", 170),
+                    "Start",
                     btn -> {
+                        if (activeWindow == WindowMode.BANK_APP) {
+                            saveActiveBankWindowState();
+                        }
+                        activeWindow = WindowMode.DESKTOP;
+                        rebuildWidgets();
+                    }
+            );
+            x += 72;
+        }
+
+        int rightBound = clockX - 8;
+        int totalWindowTabs = bankWindowOrder.size() + (createWindowOpen ? 1 : 0) + utilityWindowOrder.size();
+        taskbarViewportX = x;
+        taskbarViewportY = barY;
+        taskbarViewportH = 20;
+        taskbarViewportW = 0;
+        taskbarMaxScroll = 0;
+        if (rightBound <= x || totalWindowTabs <= 0) {
+            taskbarScroll = 0;
+            initTaskbarPowerPanelButtons(barY);
+            return;
+        }
+
+        int availableWidth = Math.max(96, rightBound - x);
+        int gap = 6;
+        int tabWidth = Math.max(122, Math.min(200, availableWidth / Math.max(1, Math.min(totalWindowTabs, 4))));
+        int contentWidth = (totalWindowTabs * tabWidth) + (gap * Math.max(0, totalWindowTabs - 1));
+
+        int arrowW = 20;
+        int arrowGap = 4;
+        boolean needsScroll = contentWidth > availableWidth;
+        int viewportX = x;
+        int viewportW = availableWidth;
+        if (!needsScroll) {
+            taskbarScroll = 0;
+        }
+        if (needsScroll) {
+            viewportX = x + arrowW + arrowGap;
+            viewportW = Math.max(60, availableWidth - ((arrowW + arrowGap) * 2));
+            int maxScroll = Math.max(0, contentWidth - viewportW);
+            taskbarMaxScroll = maxScroll;
+            taskbarScroll = Math.max(0, Math.min(taskbarScroll, maxScroll));
+
+            DesktopButton leftScroll = addPcButton(
+                    x,
+                    barY,
+                    arrowW,
+                    20,
+                    "<",
+                    btn -> {
+                        if (taskbarScroll <= 0) {
+                            return;
+                        }
+                        taskbarScroll = Math.max(0, taskbarScroll - (tabWidth + gap));
+                        rebuildWidgets();
+                    }
+            );
+            leftScroll.active = taskbarScroll > 0;
+
+            DesktopButton rightScroll = addPcButton(
+                    rightBound - arrowW,
+                    barY,
+                    arrowW,
+                    20,
+                    ">",
+                    btn -> {
+                        if (taskbarScroll >= taskbarMaxScroll) {
+                            return;
+                        }
+                        taskbarScroll = Math.min(taskbarMaxScroll, taskbarScroll + (tabWidth + gap));
+                        rebuildWidgets();
+                    }
+            );
+            rightScroll.active = taskbarScroll < taskbarMaxScroll;
+        }
+
+        taskbarViewportX = viewportX;
+        taskbarViewportY = barY;
+        taskbarViewportW = viewportW;
+
+        int tabX = viewportX - taskbarScroll;
+        for (UUID bankId : bankWindowOrder) {
+            String label = resolveBankWindowTitle(bankId);
+            DesktopButton tab = addPcButton(
+                    tabX,
+                    barY,
+                    tabWidth,
+                    20,
+                    fitToWidth(label, tabWidth - 10),
+                    btn -> {
+                        activateBankWindow(bankId, true);
                         activeWindow = WindowMode.BANK_APP;
                         rebuildWidgets();
                     }
             );
-            x += 196;
+            boolean isActiveBankTab = activeWindow == WindowMode.BANK_APP
+                    && activeBankId != null
+                    && activeBankId.equals(bankId);
+            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
+            tab.visible = visible;
+            tab.active = visible && !isActiveBankTab;
+            tabX += tabWidth + gap;
         }
 
         if (createWindowOpen) {
-            addPcButton(
-                    x,
+            DesktopButton createTab = addPcButton(
+                    tabX,
                     barY,
-                    190,
+                    tabWidth,
                     20,
-                    "Create Bank",
+                    fitToWidth("Create Bank", tabWidth - 10),
                     btn -> {
+                        if (activeWindow == WindowMode.BANK_APP) {
+                            saveActiveBankWindowState();
+                        }
                         activeWindow = WindowMode.CREATE_BANK;
                         rebuildWidgets();
                     }
             );
+            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
+            createTab.visible = visible;
+            createTab.active = visible && activeWindow != WindowMode.CREATE_BANK;
+            tabX += tabWidth + gap;
         }
+
+        for (UtilityApp utilityApp : utilityWindowOrder) {
+            DesktopButton utilityTab = addPcButton(
+                    tabX,
+                    barY,
+                    tabWidth,
+                    20,
+                    fitToWidth(utilityWindowTitle(utilityApp), tabWidth - 10),
+                    btn -> {
+                        if (activeWindow == WindowMode.BANK_APP) {
+                            saveActiveBankWindowState();
+                        }
+                        activeUtilityApp = utilityApp;
+                        notepadFocused = false;
+                        suppressNextNotepadSpaceChar = false;
+                        paintDrawing = false;
+                        activeWindow = WindowMode.UTILITY_APP;
+                        rebuildWidgets();
+                    }
+            );
+            boolean activeUtilityTab = activeWindow == WindowMode.UTILITY_APP && activeUtilityApp == utilityApp;
+            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
+            utilityTab.visible = visible;
+            utilityTab.active = visible && !activeUtilityTab;
+            tabX += tabWidth + gap;
+        }
+
+        initTaskbarPowerPanelButtons(barY);
+    }
+
+    private void initTaskbarPowerPanelButtons(int barY) {
+        taskbarMenuHitbox = null;
+        taskbarLogoutHitbox = null;
+        taskbarTurnOffHitbox = null;
+        if (!taskbarMenuOpen || taskbarClockHitbox == null) {
+            return;
+        }
+        int panelW = 172;
+        int panelH = 74;
+        int panelX = taskbarClockHitbox.x() + taskbarClockHitbox.width() - panelW;
+        int panelY = barY - panelH - 8;
+        taskbarMenuHitbox = new RectHitbox(panelX, panelY, panelW, panelH);
+        int buttonX = panelX + 8;
+        int buttonW = panelW - 16;
+        taskbarLogoutHitbox = new RectHitbox(buttonX, panelY + 8, buttonW, 24);
+        taskbarTurnOffHitbox = new RectHitbox(buttonX, panelY + 38, buttonW, 24);
     }
 
     private void initSectionWidgets(int x, int y, int width) {
@@ -1134,14 +2178,49 @@ public class BankOwnerPcScreen extends Screen {
                                       int height,
                                       String label,
                                       java.util.function.Consumer<DesktopButton> onPress) {
+        return addPcButton(x, y, width, height, label, 0xFF69B8FF, onPress);
+    }
+
+    private DesktopButton addPcButton(int x,
+                                      int y,
+                                      int width,
+                                      int height,
+                                      String label,
+                                      int accentColor,
+                                      java.util.function.Consumer<DesktopButton> onPress) {
         return addRenderableWidget(new DesktopButton(
                 x,
                 y,
                 width,
                 height,
                 Component.literal(label),
+                accentColor,
                 onPress
         ));
+    }
+
+    private DesktopButton addPaintControlButton(int x,
+                                                int contentY,
+                                                int width,
+                                                int height,
+                                                String label,
+                                                java.util.function.Consumer<DesktopButton> onPress) {
+        return addPaintControlButton(x, contentY, width, height, label, 0xFF69B8FF, onPress);
+    }
+
+    private DesktopButton addPaintControlButton(int x,
+                                                int contentY,
+                                                int width,
+                                                int height,
+                                                String label,
+                                                int accentColor,
+                                                java.util.function.Consumer<DesktopButton> onPress) {
+        int renderY = paintControlsY + contentY - paintControlsScroll;
+        DesktopButton button = addPcButton(x, renderY, width, height, label, accentColor, onPress);
+        boolean visible = renderY >= paintControlsY && (renderY + height) <= (paintControlsY + paintControlsH);
+        button.visible = visible;
+        button.active = visible;
+        return button;
     }
 
     private DesktopButton addSectionActionButton(int x,
@@ -1278,6 +2357,801 @@ public class BankOwnerPcScreen extends Screen {
         ));
     }
 
+    private void openOrActivateBankWindow(UUID bankId) {
+        if (bankId == null) {
+            return;
+        }
+        if (!bankWindows.containsKey(bankId)) {
+            bankWindows.put(bankId, new BankWindowState(bankId));
+            bankWindowOrder.remove(bankId);
+            bankWindowOrder.add(bankId);
+        }
+        activateBankWindow(bankId, true);
+        activeWindow = WindowMode.BANK_APP;
+        bankWindowOpen = !bankWindowOrder.isEmpty();
+        rebuildWidgets();
+    }
+
+    private void activateBankWindow(UUID bankId, boolean requestData) {
+        if (bankId == null) {
+            return;
+        }
+        if (!bankWindows.containsKey(bankId)) {
+            bankWindows.put(bankId, new BankWindowState(bankId));
+        }
+        if (!bankWindowOrder.contains(bankId)) {
+            bankWindowOrder.add(bankId);
+        }
+
+        if (activeBankId != null
+                && !activeBankId.equals(bankId)
+                && (activeWindow == WindowMode.BANK_APP || bankWindows.containsKey(activeBankId))) {
+            saveActiveBankWindowState();
+            ClientOwnerPcData.clearActionOutput();
+        }
+
+        loadBankWindowState(bankId);
+        ClientOwnerPcData.setSelectedBankId(bankId);
+        if (requestData) {
+            requestBankData(bankId);
+        }
+        bankWindowOpen = !bankWindowOrder.isEmpty();
+    }
+
+    private void saveActiveBankWindowState() {
+        if (activeBankId == null) {
+            return;
+        }
+        BankWindowState state = bankWindows.computeIfAbsent(activeBankId, BankWindowState::new);
+        state.activeSection = activeSection;
+        state.outputScroll = outputScroll;
+        state.sectionScroll = sectionScroll;
+        state.navScroll = navScroll;
+        state.overviewDetailOpen = overviewDetailOpen;
+        state.overviewDetailAction = overviewDetailAction == null || overviewDetailAction.isBlank() ? "SHOW_INFO" : overviewDetailAction;
+        state.selectedAccountCard = selectedAccountCard;
+        state.accountProfileOpen = accountProfileOpen;
+        state.lendingMarketOpen = lendingMarketOpen;
+        state.marketSort = marketSort;
+        state.marketSortDescending = marketSortDescending;
+        state.marketOfferCache.clear();
+        state.marketOfferCache.addAll(marketOfferCache);
+        state.pendingMarketAccept = pendingMarketAccept;
+        state.refreshMarketAfterNextResponse = refreshMarketAfterNextResponse;
+        state.formValues.clear();
+        state.formValues.putAll(formValues);
+    }
+
+    private void loadBankWindowState(UUID bankId) {
+        BankWindowState state = bankWindows.computeIfAbsent(bankId, BankWindowState::new);
+        activeBankId = state.bankId;
+        activeSection = state.activeSection == null ? Section.OVERVIEW : state.activeSection;
+        outputScroll = Math.max(0, state.outputScroll);
+        sectionScroll = Math.max(0, state.sectionScroll);
+        navScroll = Math.max(0, state.navScroll);
+        overviewDetailOpen = state.overviewDetailOpen;
+        overviewDetailAction = state.overviewDetailAction == null || state.overviewDetailAction.isBlank()
+                ? "SHOW_INFO"
+                : state.overviewDetailAction;
+        selectedAccountCard = state.selectedAccountCard;
+        accountProfileOpen = state.accountProfileOpen;
+        lendingMarketOpen = state.lendingMarketOpen;
+        marketSort = state.marketSort == null ? MarketSort.AMOUNT : state.marketSort;
+        marketSortDescending = state.marketSortDescending;
+        marketOfferCache.clear();
+        marketOfferCache.addAll(state.marketOfferCache);
+        pendingMarketAccept = state.pendingMarketAccept;
+        refreshMarketAfterNextResponse = state.refreshMarketAfterNextResponse;
+        formValues.clear();
+        formValues.putAll(state.formValues);
+    }
+
+    private String resolveBankWindowTitle(UUID bankId) {
+        if (bankId == null) {
+            return "Bank";
+        }
+        for (OwnerPcBankAppSummary app : ClientOwnerPcData.getApps()) {
+            if (bankId.equals(app.bankId())) {
+                return app.bankName();
+            }
+        }
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (data != null && bankId.equals(data.bankId()) && data.bankName() != null && !data.bankName().isBlank()) {
+            return data.bankName();
+        }
+        String raw = bankId.toString();
+        return "Bank " + raw.substring(0, Math.min(8, raw.length()));
+    }
+
+    private String utilityDesktopLabel(UtilityApp app) {
+        if (app == null) {
+            return "APP | Utility";
+        }
+        return switch (app) {
+            case CALCULATOR -> "APP | Calculator";
+            case NOTEPAD -> "APP | Notepad";
+            case FILE_EXPLORER -> "APP | File Explorer";
+            case PAINT -> "APP | Paint";
+            case SYSTEM_MONITOR -> "APP | System Monitor";
+        };
+    }
+
+    private String utilityWindowTitle(UtilityApp app) {
+        if (app == null) {
+            return "Utility";
+        }
+        return switch (app) {
+            case CALCULATOR -> "Calculator";
+            case NOTEPAD -> "Notepad";
+            case FILE_EXPLORER -> "File Explorer";
+            case PAINT -> "Paint";
+            case SYSTEM_MONITOR -> "System";
+        };
+    }
+
+    private void openUtilityAppWindow(UtilityApp app) {
+        if (app == null) {
+            return;
+        }
+        if (activeWindow == WindowMode.BANK_APP) {
+            saveActiveBankWindowState();
+        }
+        if (!utilityWindowOrder.contains(app)) {
+            utilityWindowOrder.add(app);
+        }
+        activeUtilityApp = app;
+        notepadFocused = false;
+        suppressNextNotepadSpaceChar = false;
+        if (app != UtilityApp.NOTEPAD) {
+            notepadSaveModalOpen = false;
+        }
+        if (app != UtilityApp.PAINT) {
+            paintSaveModalOpen = false;
+        }
+        unsavedClosePromptOpen = false;
+        unsavedCloseTarget = null;
+        pendingCloseAfterSaveTarget = null;
+        paintDrawing = false;
+        activeWindow = WindowMode.UTILITY_APP;
+        rebuildWidgets();
+    }
+
+    private void closeActiveUtilityApp() {
+        if (activeUtilityApp == null) {
+            return;
+        }
+        if ((activeUtilityApp == UtilityApp.NOTEPAD || activeUtilityApp == UtilityApp.PAINT)
+                && hasUnsavedState(activeUtilityApp)) {
+            unsavedClosePromptOpen = true;
+            unsavedCloseTarget = activeUtilityApp;
+            pendingCloseAfterSaveTarget = null;
+            notepadSaveModalOpen = false;
+            paintSaveModalOpen = false;
+            rebuildWidgets();
+            return;
+        }
+        closeActiveUtilityAppImmediately();
+    }
+
+    private void closeActiveUtilityAppImmediately() {
+        if (activeUtilityApp == null) {
+            return;
+        }
+        UtilityApp closing = activeUtilityApp;
+        resetUtilityState(closing);
+        utilityWindowOrder.remove(closing);
+        activeUtilityApp = null;
+        notepadFocused = false;
+        suppressNextNotepadSpaceChar = false;
+        notepadSaveModalOpen = false;
+        paintSaveModalOpen = false;
+        unsavedClosePromptOpen = false;
+        unsavedCloseTarget = null;
+        pendingCloseAfterSaveTarget = null;
+        paintDrawing = false;
+
+        if (!utilityWindowOrder.isEmpty()) {
+            activeUtilityApp = utilityWindowOrder.get(Math.max(0, utilityWindowOrder.size() - 1));
+            activeWindow = WindowMode.UTILITY_APP;
+        } else if (createWindowOpen) {
+            activeWindow = WindowMode.CREATE_BANK;
+        } else if (!bankWindowOrder.isEmpty()) {
+            activateBankWindow(bankWindowOrder.get(Math.max(0, bankWindowOrder.size() - 1)), true);
+            activeWindow = WindowMode.BANK_APP;
+        } else {
+            activeWindow = WindowMode.DESKTOP;
+        }
+        rebuildWidgets();
+    }
+
+    private boolean hasUnsavedState(UtilityApp app) {
+        if (app == UtilityApp.NOTEPAD) {
+            return !notepadText.toString().equals(notepadSavedSnapshot);
+        }
+        if (app == UtilityApp.PAINT) {
+            return Arrays.hashCode(paintPixels) != paintSavedSnapshotHash;
+        }
+        return false;
+    }
+
+    private void resetUtilityState(UtilityApp app) {
+        if (app == null) {
+            return;
+        }
+        switch (app) {
+            case CALCULATOR -> {
+                calculatorExpression = "";
+                calculatorDisplay = "0";
+                calculatorStatus = "Ready";
+            }
+            case NOTEPAD -> {
+                notepadText.setLength(0);
+                notepadCursorIndex = 0;
+                notepadScroll = 0;
+                notepadFocused = false;
+                notepadSaveModalOpen = false;
+                notepadSavedSnapshot = "";
+                formValues.remove("notepad.linkedFile");
+                formValues.remove("notepad.saveas");
+            }
+            case FILE_EXPLORER -> {
+                selectedExplorerFileName = "";
+                explorerFilesScroll = 0;
+                formValues.remove("explorer.filename");
+            }
+            case PAINT -> {
+                Arrays.fill(paintPixels, 0xFFFFFFFF);
+                paintSelectedColor = 0xFF111111;
+                paintBrushSize = 1;
+                paintSaveModalOpen = false;
+                paintDrawing = false;
+                paintSavedSnapshotHash = Arrays.hashCode(paintPixels);
+                paintControlsScroll = 0;
+                paintControlsMaxScroll = 0;
+                paintControlsX = 0;
+                paintControlsY = 0;
+                paintControlsW = 0;
+                paintControlsH = 0;
+                formValues.remove("paint.linkedFile");
+                formValues.remove("paint.saveas");
+            }
+            case SYSTEM_MONITOR -> {
+                systemHideAppsMenuOpen = false;
+                systemHideAppsScroll = 0;
+                systemHideAppsMaxScroll = 0;
+                systemMonitorScroll = 0;
+                systemMonitorMaxScroll = 0;
+                systemMonitorViewportX = 0;
+                systemMonitorViewportY = 0;
+                systemMonitorViewportW = 0;
+                systemMonitorViewportH = 0;
+            }
+        }
+    }
+
+    private String paintColorLabel(int color) {
+        return switch (color) {
+            case 0xFF111111 -> "Black";
+            case 0xFF2A5F9E -> "Blue";
+            case 0xFF3E8E41 -> "Green";
+            case 0xFFC26A2D -> "Orange";
+            case 0xFFB23333 -> "Red";
+            case 0xFF7B57B8 -> "Purple";
+            case 0xFFD4B03D -> "Yellow";
+            default -> "White";
+        };
+    }
+
+    private void insertNotepadText(String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        int free = NOTEPAD_MAX_CHARS - notepadText.length();
+        if (free <= 0) {
+            ClientOwnerPcData.setToast(false, "Notepad is full.");
+            return;
+        }
+        String toInsert = text;
+        if (toInsert.length() > free) {
+            toInsert = toInsert.substring(0, free);
+            ClientOwnerPcData.setToast(false, "Notepad reached max size.");
+        }
+        int cursor = Math.max(0, Math.min(notepadCursorIndex, notepadText.length()));
+        notepadText.insert(cursor, toInsert);
+        notepadCursorIndex = Math.min(notepadText.length(), cursor + toInsert.length());
+        ensureNotepadCursorVisible();
+    }
+
+    private void appendNotepadText(String text) {
+        notepadCursorIndex = notepadText.length();
+        insertNotepadText(text);
+    }
+
+    private void deleteNotepadBackward() {
+        int cursor = Math.max(0, Math.min(notepadCursorIndex, notepadText.length()));
+        if (cursor <= 0 || notepadText.isEmpty()) {
+            return;
+        }
+        notepadText.deleteCharAt(cursor - 1);
+        notepadCursorIndex = cursor - 1;
+        ensureNotepadCursorVisible();
+    }
+
+    private void deleteNotepadForward() {
+        int cursor = Math.max(0, Math.min(notepadCursorIndex, notepadText.length()));
+        if (cursor >= notepadText.length() || notepadText.isEmpty()) {
+            return;
+        }
+        notepadText.deleteCharAt(cursor);
+        ensureNotepadCursorVisible();
+    }
+
+    private void moveNotepadCursor(int delta) {
+        notepadCursorIndex = Math.max(0, Math.min(notepadText.length(), notepadCursorIndex + delta));
+        ensureNotepadCursorVisible();
+    }
+
+    private void setNotepadCursor(int index) {
+        notepadCursorIndex = Math.max(0, Math.min(notepadText.length(), index));
+        ensureNotepadCursorVisible();
+    }
+
+    private void setNotepadTextFromFile(String content, String fileName) {
+        notepadText.setLength(0);
+        if (content != null && !content.isEmpty()) {
+            String clipped = content.length() > NOTEPAD_MAX_CHARS ? content.substring(0, NOTEPAD_MAX_CHARS) : content;
+            notepadText.append(clipped);
+        }
+        notepadCursorIndex = notepadText.length();
+        notepadSavedSnapshot = notepadText.toString();
+        if (fileName == null || fileName.isBlank()) {
+            formValues.remove("notepad.linkedFile");
+        } else {
+            formValues.put("notepad.linkedFile", fileName);
+        }
+        notepadScroll = 0;
+    }
+
+    private void ensureNotepadCursorVisible() {
+        if (notepadAreaW <= 0 || notepadAreaH <= 0) {
+            return;
+        }
+        NotepadLayout layout = buildNotepadLayout(Math.max(1, notepadAreaW - 14));
+        int cursor = Math.max(0, Math.min(notepadCursorIndex, notepadText.length()));
+        int lineIndex = 0;
+        for (int i = 0; i < layout.lines().size(); i++) {
+            int start = layout.starts().get(i);
+            int end = start + layout.lines().get(i).length();
+            if ((cursor >= start && cursor <= end) || (i == layout.lines().size() - 1 && cursor >= start)) {
+                lineIndex = i;
+                break;
+            }
+        }
+        int visible = Math.max(1, (notepadAreaH - 8) / LINE_HEIGHT);
+        if (lineIndex < notepadScroll) {
+            notepadScroll = lineIndex;
+        } else if (lineIndex >= notepadScroll + visible) {
+            notepadScroll = Math.max(0, lineIndex - visible + 1);
+        }
+    }
+
+    private void clearNotepad() {
+        notepadText.setLength(0);
+        notepadCursorIndex = 0;
+        notepadScroll = 0;
+        ClientOwnerPcData.setToast(true, "Notepad cleared.");
+    }
+
+    private void copyNotepadToClipboard() {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc != null && mc.keyboardHandler != null) {
+            mc.keyboardHandler.setClipboard(notepadText.toString());
+            ClientOwnerPcData.setToast(true, "Copied notepad text.");
+        }
+    }
+
+    private void pasteIntoNotepad() {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc != null && mc.keyboardHandler != null) {
+            insertNotepadText(mc.keyboardHandler.getClipboard());
+            ClientOwnerPcData.setToast(true, "Pasted clipboard into notepad.");
+        }
+    }
+
+    private void appendNotepadTimestamp() {
+        appendNotepadText((notepadText.isEmpty() ? "" : "\n") + "[" +
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "] ");
+    }
+
+    private void onNotepadSavePressed() {
+        String linkedName = formValues.getOrDefault("notepad.linkedFile", "").trim();
+        if (!linkedName.isBlank() && desktopFileExists(linkedName)) {
+            selectedExplorerFileName = linkedName;
+            sendDesktopAction("FILE_SAVE_TEXT", linkedName, notepadText.toString());
+            notepadSavedSnapshot = notepadText.toString();
+            if (pendingCloseAfterSaveTarget == UtilityApp.NOTEPAD && activeUtilityApp == UtilityApp.NOTEPAD) {
+                pendingCloseAfterSaveTarget = null;
+                closeActiveUtilityAppImmediately();
+            }
+            return;
+        }
+
+        String selectedName = selectedExplorerFileName == null ? "" : selectedExplorerFileName.trim();
+        if (!selectedName.isBlank() && desktopFileExists(selectedName)) {
+            formValues.put("notepad.linkedFile", selectedName);
+            sendDesktopAction("FILE_SAVE_TEXT", selectedName, notepadText.toString());
+            notepadSavedSnapshot = notepadText.toString();
+            if (pendingCloseAfterSaveTarget == UtilityApp.NOTEPAD && activeUtilityApp == UtilityApp.NOTEPAD) {
+                pendingCloseAfterSaveTarget = null;
+                closeActiveUtilityAppImmediately();
+            }
+            return;
+        }
+
+        openNotepadSaveModal();
+    }
+
+    private void confirmNotepadSaveAs() {
+        String name = formValues.getOrDefault("notepad.saveas", "").trim();
+        if (name.isBlank()) {
+            ClientOwnerPcData.setToast(false, "Enter a file name.");
+            return;
+        }
+        selectedExplorerFileName = name;
+        formValues.put("notepad.linkedFile", name);
+        notepadSaveModalOpen = false;
+        notepadSavedSnapshot = notepadText.toString();
+        sendDesktopAction("FILE_SAVE_TEXT", name, notepadText.toString());
+        if (pendingCloseAfterSaveTarget == UtilityApp.NOTEPAD && activeUtilityApp == UtilityApp.NOTEPAD) {
+            pendingCloseAfterSaveTarget = null;
+            closeActiveUtilityAppImmediately();
+            return;
+        }
+        pendingCloseAfterSaveTarget = null;
+        rebuildWidgets();
+    }
+
+    private void openNotepadSaveModal() {
+        String linkedName = formValues.getOrDefault("notepad.linkedFile", "").trim();
+        String selectedName = selectedExplorerFileName == null ? "" : selectedExplorerFileName.trim();
+        notepadSaveModalOpen = true;
+        notepadFocused = false;
+        suppressNextNotepadSpaceChar = false;
+        String suggested = !selectedName.isBlank() ? selectedName : linkedName;
+        if (!suggested.isBlank()) {
+            formValues.put("notepad.saveas", suggested);
+        }
+        rebuildWidgets();
+    }
+
+    private boolean desktopFileExists(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        for (OwnerPcFileEntry file : ClientOwnerPcData.getDesktopFiles()) {
+            if (file != null && file.name() != null && file.name().equalsIgnoreCase(name.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void saveExplorerFile(DesktopEditBox fileNameInput) {
+        OwnerPcFileEntry selected = getSelectedExplorerFile();
+        if (selected == null || selected.name() == null || selected.name().isBlank()) {
+            ClientOwnerPcData.setToast(false, "Select a file first.");
+            return;
+        }
+
+        String currentName = selected.name().trim();
+        String requestedName = textOrBlank(fileNameInput);
+        if (requestedName.isBlank()) {
+            requestedName = currentName;
+        }
+
+        formValues.put("explorer.filename", requestedName);
+        if (currentName.equalsIgnoreCase(requestedName)) {
+            selectedExplorerFileName = currentName;
+            ClientOwnerPcData.setToast(true, "File name unchanged.");
+            return;
+        }
+
+        selectedExplorerFileName = requestedName;
+        sendDesktopAction("FILE_RENAME", currentName, requestedName);
+    }
+
+    private String explorerOpenLabel(OwnerPcFileEntry file) {
+        if (file == null) {
+            return "Open File";
+        }
+        boolean canvas = file.kind() != null && file.kind().equalsIgnoreCase("CANVAS");
+        return canvas ? "Open Canvas" : "Open Note";
+    }
+
+    private String explorerCardLabel(OwnerPcFileEntry file, int approxBytes, boolean selected) {
+        if (file == null) {
+            return selected ? "Selected | Missing file" : "Missing file";
+        }
+        boolean canvas = file.kind() != null && file.kind().equalsIgnoreCase("CANVAS");
+        String kind = canvas ? "Canvas" : "Note";
+        String name = file.name() == null ? "" : file.name();
+        String prefix = selected ? "Selected | " : "";
+        return prefix + kind + " | " + name + "  (" + approxBytes + " B)";
+    }
+
+    private void openExplorerFile(OwnerPcFileEntry file) {
+        if (file == null) {
+            ClientOwnerPcData.setToast(false, "File is unavailable.");
+            return;
+        }
+        boolean canvas = file.kind() != null && file.kind().equalsIgnoreCase("CANVAS");
+        if (canvas) {
+            if (!loadPaintCanvasFromString(file.content())) {
+                ClientOwnerPcData.setToast(false, "Could not load canvas file.");
+                return;
+            }
+            formValues.put("paint.linkedFile", file.name());
+            paintSavedSnapshotHash = Arrays.hashCode(paintPixels);
+            paintSaveModalOpen = false;
+            openUtilityAppWindow(UtilityApp.PAINT);
+            ClientOwnerPcData.setToast(true, "Opened canvas " + file.name() + ".");
+            return;
+        }
+
+        notepadSaveModalOpen = false;
+        setNotepadTextFromFile(file.content(), file.name());
+        notepadFocused = true;
+        openUtilityAppWindow(UtilityApp.NOTEPAD);
+        ClientOwnerPcData.setToast(true, "Opened note " + file.name() + ".");
+    }
+
+    private void onPaintSavePressed() {
+        String linked = formValues.getOrDefault("paint.linkedFile", "").trim();
+        if (!linked.isBlank() && desktopFileExists(linked)) {
+            sendDesktopAction("FILE_SAVE_CANVAS", linked, serializePaintCanvas());
+            paintSavedSnapshotHash = Arrays.hashCode(paintPixels);
+            if (pendingCloseAfterSaveTarget == UtilityApp.PAINT && activeUtilityApp == UtilityApp.PAINT) {
+                pendingCloseAfterSaveTarget = null;
+                closeActiveUtilityAppImmediately();
+            }
+            return;
+        }
+        openPaintSaveModal();
+    }
+
+    private void confirmPaintSaveAs() {
+        String name = formValues.getOrDefault("paint.saveas", "").trim();
+        if (name.isBlank()) {
+            ClientOwnerPcData.setToast(false, "Enter a file name.");
+            return;
+        }
+        formValues.put("paint.linkedFile", name);
+        paintSaveModalOpen = false;
+        sendDesktopAction("FILE_SAVE_CANVAS", name, serializePaintCanvas());
+        paintSavedSnapshotHash = Arrays.hashCode(paintPixels);
+        if (pendingCloseAfterSaveTarget == UtilityApp.PAINT && activeUtilityApp == UtilityApp.PAINT) {
+            pendingCloseAfterSaveTarget = null;
+            closeActiveUtilityAppImmediately();
+            return;
+        }
+        pendingCloseAfterSaveTarget = null;
+        rebuildWidgets();
+    }
+
+    private void openPaintSaveModal() {
+        String linked = formValues.getOrDefault("paint.linkedFile", "").trim();
+        paintSaveModalOpen = true;
+        unsavedClosePromptOpen = false;
+        if (!linked.isBlank()) {
+            formValues.put("paint.saveas", linked);
+        }
+        rebuildWidgets();
+    }
+
+    private String serializePaintCanvas() {
+        StringBuilder out = new StringBuilder(paintPixels.length * 9 + 16);
+        out.append("CANVAS:").append(paintCanvasW).append("x").append(paintCanvasH).append("|");
+        for (int i = 0; i < paintPixels.length; i++) {
+            if (i > 0) {
+                out.append(',');
+            }
+            out.append(Integer.toHexString(paintPixels[i]));
+        }
+        return out.toString();
+    }
+
+    private boolean loadPaintCanvasFromString(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String payload = raw;
+        int sep = raw.indexOf('|');
+        if (sep >= 0) {
+            payload = raw.substring(sep + 1);
+        }
+        String[] parts = payload.split(",");
+        if (parts.length != paintPixels.length) {
+            return false;
+        }
+        for (int i = 0; i < parts.length; i++) {
+            try {
+                paintPixels[i] = (int) Long.parseLong(parts[i], 16);
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void deleteExplorerFile() {
+        String name = selectedExplorerFileName == null ? "" : selectedExplorerFileName.trim();
+        if (name.isBlank()) {
+            name = formValues.getOrDefault("explorer.filename", "").trim();
+        }
+        if (name.isBlank()) {
+            ClientOwnerPcData.setToast(false, "Select a file to delete.");
+            return;
+        }
+        sendDesktopAction("FILE_DELETE", name, "");
+        if (selectedExplorerFileName != null && selectedExplorerFileName.equalsIgnoreCase(name)) {
+            selectedExplorerFileName = "";
+        }
+    }
+
+    private void sendDesktopAction(String action, String arg1, String arg2) {
+        PacketDistributor.sendToServer(new OwnerPcDesktopActionPayload(
+                action == null ? "" : action,
+                arg1 == null ? "" : arg1,
+                arg2 == null ? "" : arg2
+        ));
+    }
+
+    private OwnerPcFileEntry getSelectedExplorerFile() {
+        List<OwnerPcFileEntry> files = ClientOwnerPcData.getDesktopFiles();
+        if (files.isEmpty()) {
+            return null;
+        }
+        String selectedName = selectedExplorerFileName == null ? "" : selectedExplorerFileName.trim();
+        if (selectedName.isBlank()) {
+            selectedName = formValues.getOrDefault("explorer.filename", "").trim();
+        }
+        if (selectedName.isBlank()) {
+            return null;
+        }
+        for (OwnerPcFileEntry entry : files) {
+            if (entry != null && entry.name() != null && entry.name().equalsIgnoreCase(selectedName)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private List<ExplorerAppEntry> buildExplorerAppEntries() {
+        List<ExplorerAppEntry> entries = new ArrayList<>();
+        for (UtilityApp app : DESKTOP_UTILITY_APPS) {
+            String id = utilityAppId(app);
+            entries.add(new ExplorerAppEntry(
+                    id,
+                    "Utility: " + utilityWindowTitle(app),
+                    ClientOwnerPcData.isAppHidden(id),
+                    app == UtilityApp.SYSTEM_MONITOR
+            ));
+        }
+        for (OwnerPcBankAppSummary app : ClientOwnerPcData.getApps()) {
+            if (app == null || app.bankId() == null) {
+                continue;
+            }
+            String id = bankAppId(app.bankId());
+            String label = "Bank: " + (app.bankName() == null ? "Unknown" : app.bankName());
+            if (!app.owner() && app.roleLabel() != null && !app.roleLabel().isBlank()) {
+                label = label + " [" + app.roleLabel() + "]";
+            }
+            entries.add(new ExplorerAppEntry(
+                    id,
+                    label,
+                    ClientOwnerPcData.isAppHidden(id),
+                    false
+            ));
+        }
+        return entries;
+    }
+
+    private String utilityAppId(UtilityApp app) {
+        if (app == null) {
+            return "utility:unknown";
+        }
+        return "utility:" + app.name().toLowerCase(Locale.ROOT);
+    }
+
+    private String bankAppId(UUID bankId) {
+        if (bankId == null) {
+            return "bank:unknown";
+        }
+        return "bank:" + bankId.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private void copySystemInfoToClipboard() {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        int guiScale = 0;
+        if (mc != null && mc.options != null && mc.options.guiScale() != null && mc.options.guiScale().get() != null) {
+            guiScale = mc.options.guiScale().get();
+        }
+        String info = "UBS Desktop System Info\n"
+                + "Resolution: " + this.width + "x" + this.height + "\n"
+                + "GUI Scale: " + guiScale + "\n"
+                + "PC UI Scale: 2 (forced)\n"
+                + "Virtual Scale Active: " + useVirtualScale + "\n"
+                + "Open Bank Windows: " + bankWindowOrder.size() + "\n"
+                + "Open Utility Windows: " + utilityWindowOrder.size() + "\n"
+                + "Timestamp: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        if (mc != null && mc.keyboardHandler != null) {
+            mc.keyboardHandler.setClipboard(info);
+            ClientOwnerPcData.setToast(true, "System info copied.");
+        }
+    }
+
+    private void closeBankAppWindow() {
+        if (activeBankId == null) {
+            return;
+        }
+
+        UUID closingBankId = activeBankId;
+        bankWindows.remove(closingBankId);
+        bankWindowOrder.remove(closingBankId);
+        activeBankId = null;
+        bankWindowOpen = !bankWindowOrder.isEmpty();
+
+        if (!bankWindowOrder.isEmpty()) {
+            UUID nextBankId = bankWindowOrder.get(Math.max(0, bankWindowOrder.size() - 1));
+            activateBankWindow(nextBankId, true);
+            activeWindow = WindowMode.BANK_APP;
+        } else {
+            activeBankId = null;
+            activeSection = Section.OVERVIEW;
+            outputScroll = 0;
+            sectionScroll = 0;
+            navScroll = 0;
+            overviewDetailOpen = false;
+            overviewDetailAction = "SHOW_INFO";
+            selectedAccountCard = null;
+            accountProfileOpen = false;
+            lendingMarketOpen = false;
+            pendingMarketAccept = null;
+            marketOfferCache.clear();
+            refreshMarketAfterNextResponse = false;
+            formValues.clear();
+            ClientOwnerPcData.clearActionOutput();
+            if (activeWindow == WindowMode.BANK_APP) {
+                if (createWindowOpen) {
+                    activeWindow = WindowMode.CREATE_BANK;
+                } else if (!utilityWindowOrder.isEmpty()) {
+                    activeUtilityApp = utilityWindowOrder.get(Math.max(0, utilityWindowOrder.size() - 1));
+                    activeWindow = WindowMode.UTILITY_APP;
+                } else {
+                    activeWindow = WindowMode.DESKTOP;
+                }
+            }
+        }
+        rebuildWidgets();
+    }
+
+    private void closeCreateBankWindow() {
+        createWindowOpen = false;
+        if (activeWindow == WindowMode.CREATE_BANK) {
+            if (!bankWindowOrder.isEmpty()) {
+                UUID target = activeBankId != null ? activeBankId : bankWindowOrder.get(Math.max(0, bankWindowOrder.size() - 1));
+                activateBankWindow(target, true);
+                activeWindow = WindowMode.BANK_APP;
+            } else if (!utilityWindowOrder.isEmpty()) {
+                activeUtilityApp = utilityWindowOrder.get(Math.max(0, utilityWindowOrder.size() - 1));
+                activeWindow = WindowMode.UTILITY_APP;
+            } else {
+                activeWindow = WindowMode.DESKTOP;
+            }
+        }
+        rebuildWidgets();
+    }
+
     private String resolveArg(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -1299,7 +3173,39 @@ public class BankOwnerPcScreen extends Screen {
         PacketDistributor.sendToServer(new OwnerPcBankDataRequestPayload(bankId));
     }
 
+    public void handleDesktopActionResponse(OwnerPcDesktopActionResponsePayload payload) {
+        if (payload == null) {
+            return;
+        }
+        String action = payload.action() == null ? "" : payload.action().trim().toUpperCase(Locale.ROOT);
+        if (!action.startsWith("AUTH_")) {
+            return;
+        }
+
+        if (payload.success()) {
+            desktopAuthenticated = true;
+            ClientOwnerPcData.markDesktopSessionUnlocked();
+            authStage = AuthStage.LOGIN;
+            formValues.remove("auth.password");
+            formValues.remove("auth.password_repeat");
+            formValues.remove("auth.recovery");
+        } else {
+            if ("AUTH_SET_PIN".equals(action) && payload.message() != null
+                    && payload.message().toLowerCase(Locale.ROOT).contains("already exists")) {
+                authStage = AuthStage.LOGIN;
+            }
+            if ("AUTH_VERIFY_PIN".equals(action)) {
+                formValues.put("auth.password", "");
+            }
+            if ("AUTH_RECOVER_RESET".equals(action)) {
+                formValues.put("auth.password", "");
+                formValues.put("auth.password_repeat", "");
+            }
+        }
+    }
+
     public void refreshFromNetwork() {
+        syncAuthStateFromDesktopData();
         if (refreshMarketAfterNextResponse
                 && activeWindow == WindowMode.BANK_APP
                 && activeSection == Section.LENDING
@@ -1308,27 +3214,327 @@ public class BankOwnerPcScreen extends Screen {
             refreshMarketAfterNextResponse = false;
             sendOwnerPcAction("SHOW_MARKET", "", "", "", "");
         }
+        if (selectedExplorerFileName != null && !selectedExplorerFileName.isBlank()) {
+            boolean exists = false;
+            for (OwnerPcFileEntry entry : ClientOwnerPcData.getDesktopFiles()) {
+                if (entry != null && entry.name() != null && entry.name().equalsIgnoreCase(selectedExplorerFileName)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                selectedExplorerFileName = "";
+                formValues.remove("explorer.filename");
+            }
+        }
         rebuildWidgets();
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (taskbarMenuOpen && keyCode == 256) {
+            taskbarMenuOpen = false;
+            rebuildWidgets();
+            return true;
+        }
+        if (!desktopAuthenticated) {
+            if (keyCode == 256) {
+                this.onClose();
+                return true;
+            }
+            if (keyCode == 257 || keyCode == 335) {
+                submitAuth();
+                return true;
+            }
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        if (activeWindow == WindowMode.UTILITY_APP && unsavedClosePromptOpen) {
+            if (keyCode == 256) {
+                unsavedClosePromptOpen = false;
+                unsavedCloseTarget = null;
+                rebuildWidgets();
+                return true;
+            }
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        if (activeWindow == WindowMode.UTILITY_APP
+                && activeUtilityApp == UtilityApp.NOTEPAD
+                && notepadSaveModalOpen) {
+            if (keyCode == 256) {
+                notepadSaveModalOpen = false;
+                if (pendingCloseAfterSaveTarget == UtilityApp.NOTEPAD) {
+                    pendingCloseAfterSaveTarget = null;
+                }
+                rebuildWidgets();
+                return true;
+            }
+            if (keyCode == 257 || keyCode == 335) {
+                confirmNotepadSaveAs();
+                return true;
+            }
+        }
+
+        if (activeWindow == WindowMode.UTILITY_APP
+                && activeUtilityApp == UtilityApp.PAINT
+                && paintSaveModalOpen) {
+            if (keyCode == 256) {
+                paintSaveModalOpen = false;
+                if (pendingCloseAfterSaveTarget == UtilityApp.PAINT) {
+                    pendingCloseAfterSaveTarget = null;
+                }
+                rebuildWidgets();
+                return true;
+            }
+            if (keyCode == 257 || keyCode == 335) {
+                confirmPaintSaveAs();
+                return true;
+            }
+        }
+
         if (keyCode == 256) {
             if (activeWindow == WindowMode.DESKTOP) {
                 this.onClose();
             } else {
+                if (activeWindow == WindowMode.BANK_APP) {
+                    saveActiveBankWindowState();
+                }
                 activeWindow = WindowMode.DESKTOP;
                 rebuildWidgets();
             }
             return true;
         }
+
+        if (activeWindow == WindowMode.UTILITY_APP) {
+            if (activeUtilityApp == UtilityApp.NOTEPAD && notepadFocused && !notepadSaveModalOpen) {
+                boolean controlDown = hasControlDown();
+                if (controlDown && keyCode == 67) {
+                    copyNotepadToClipboard();
+                    return true;
+                }
+                if (controlDown && keyCode == 86) {
+                    pasteIntoNotepad();
+                    return true;
+                }
+                if (keyCode == 32) {
+                    // Prevent focused desktop buttons from consuming SPACE while typing in notepad.
+                    insertNotepadText(" ");
+                    suppressNextNotepadSpaceChar = true;
+                    return true;
+                }
+                if (keyCode == 257 || keyCode == 335) {
+                    insertNotepadText("\n");
+                    return true;
+                }
+                if (keyCode == 259) {
+                    deleteNotepadBackward();
+                    return true;
+                }
+                if (keyCode == 261) {
+                    deleteNotepadForward();
+                    return true;
+                }
+                if (keyCode == 263) {
+                    moveNotepadCursor(-1);
+                    return true;
+                }
+                if (keyCode == 262) {
+                    moveNotepadCursor(1);
+                    return true;
+                }
+                if (keyCode == 268) {
+                    setNotepadCursor(0);
+                    return true;
+                }
+                if (keyCode == 269) {
+                    setNotepadCursor(notepadText.length());
+                    return true;
+                }
+                if (keyCode == 266) {
+                    notepadScroll = Math.max(0, notepadScroll - 4);
+                    return true;
+                }
+                if (keyCode == 267) {
+                    notepadScroll = Math.max(0, notepadScroll + 4);
+                    return true;
+                }
+            } else if (activeUtilityApp == UtilityApp.CALCULATOR) {
+                if (keyCode == 259) {
+                    onCalculatorButton("BK");
+                    return true;
+                }
+                if (keyCode == 261) {
+                    onCalculatorButton("C");
+                    return true;
+                }
+                if (keyCode == 257 || keyCode == 335) {
+                    onCalculatorButton("=");
+                    return true;
+                }
+            } else if (activeUtilityApp == UtilityApp.PAINT) {
+                if (keyCode == 67) {
+                    Arrays.fill(paintPixels, 0xFFFFFFFF);
+                    return true;
+                }
+                if (keyCode == 91) {
+                    paintBrushSize = Math.max(1, paintBrushSize - 1);
+                    return true;
+                }
+                if (keyCode == 93) {
+                    paintBrushSize = Math.min(8, paintBrushSize + 1);
+                    return true;
+                }
+            }
+        }
+
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (!desktopAuthenticated) {
+            return super.charTyped(codePoint, modifiers);
+        }
+        if (activeWindow == WindowMode.UTILITY_APP) {
+            if (activeUtilityApp == UtilityApp.NOTEPAD && notepadFocused && !notepadSaveModalOpen) {
+                if (codePoint == ' ' && suppressNextNotepadSpaceChar) {
+                    suppressNextNotepadSpaceChar = false;
+                    return true;
+                }
+                suppressNextNotepadSpaceChar = false;
+                if (!Character.isISOControl(codePoint) && codePoint != 127) {
+                    insertNotepadText(String.valueOf(codePoint));
+                    return true;
+                }
+            } else if (activeUtilityApp == UtilityApp.CALCULATOR) {
+                if (codePoint == '=') {
+                    onCalculatorButton("=");
+                    return true;
+                }
+                if ("0123456789.+-*/()".indexOf(codePoint) >= 0) {
+                    onCalculatorButton(String.valueOf(codePoint));
+                    return true;
+                }
+            }
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
+        if (desktopAuthenticated
+                && taskbarMaxScroll > 0
+                && localMouseX >= taskbarViewportX && localMouseX <= (taskbarViewportX + taskbarViewportW)
+                && localMouseY >= taskbarViewportY && localMouseY <= (taskbarViewportY + taskbarViewportH)) {
+            int previous = taskbarScroll;
+            int step = 56;
+            if (scrollY < 0) {
+                taskbarScroll = Math.min(taskbarMaxScroll, taskbarScroll + step);
+            } else if (scrollY > 0) {
+                taskbarScroll = Math.max(0, taskbarScroll - step);
+            }
+            if (previous != taskbarScroll) {
+                rebuildWidgets();
+            }
+            return true;
+        }
+        if (activeWindow == WindowMode.UTILITY_APP) {
+            if (activeUtilityApp == UtilityApp.NOTEPAD
+                    && localMouseX >= notepadAreaX && localMouseX <= (notepadAreaX + notepadAreaW)
+                    && localMouseY >= notepadAreaY && localMouseY <= (notepadAreaY + notepadAreaH)) {
+                List<String> lines = buildNotepadLayout(Math.max(1, notepadAreaW - 14)).lines();
+                int visible = Math.max(1, (notepadAreaH - 8) / LINE_HEIGHT);
+                int maxScroll = Math.max(0, lines.size() - visible);
+                int previous = Math.max(0, Math.min(notepadScroll, maxScroll));
+                if (scrollY < 0) {
+                    notepadScroll = Math.min(maxScroll, previous + 2);
+                } else if (scrollY > 0) {
+                    notepadScroll = Math.max(0, previous - 2);
+                }
+                return true;
+            }
+            if (activeUtilityApp == UtilityApp.FILE_EXPLORER
+                    && localMouseX >= explorerFileListX && localMouseX <= (explorerFileListX + explorerFileListW)
+                    && localMouseY >= explorerFileListY && localMouseY <= (explorerFileListY + explorerFileListH)
+                    && explorerFilesMaxScroll > 0) {
+                int previous = explorerFilesScroll;
+                if (scrollY < 0) {
+                    explorerFilesScroll = Math.min(explorerFilesMaxScroll, explorerFilesScroll + 1);
+                } else if (scrollY > 0) {
+                    explorerFilesScroll = Math.max(0, explorerFilesScroll - 1);
+                }
+                if (previous != explorerFilesScroll) {
+                    rebuildWidgets();
+                }
+                return true;
+            }
+            if (activeUtilityApp == UtilityApp.SYSTEM_MONITOR
+                    && systemHideAppsMenuOpen
+                    && localMouseX >= systemHideAppsX && localMouseX <= (systemHideAppsX + systemHideAppsW)
+                    && localMouseY >= systemHideAppsY && localMouseY <= (systemHideAppsY + systemHideAppsH)
+                    && systemHideAppsMaxScroll > 0) {
+                int previous = systemHideAppsScroll;
+                if (scrollY < 0) {
+                    systemHideAppsScroll = Math.min(systemHideAppsMaxScroll, systemHideAppsScroll + 1);
+                } else if (scrollY > 0) {
+                    systemHideAppsScroll = Math.max(0, systemHideAppsScroll - 1);
+                }
+                if (previous != systemHideAppsScroll) {
+                    rebuildWidgets();
+                }
+                return true;
+            }
+            if (activeUtilityApp == UtilityApp.SYSTEM_MONITOR
+                    && !systemHideAppsMenuOpen
+                    && localMouseX >= systemMonitorViewportX && localMouseX <= (systemMonitorViewportX + systemMonitorViewportW)
+                    && localMouseY >= systemMonitorViewportY && localMouseY <= (systemMonitorViewportY + systemMonitorViewportH)
+                    && systemMonitorMaxScroll > 0) {
+                int previous = systemMonitorScroll;
+                int step = 12;
+                if (scrollY < 0) {
+                    systemMonitorScroll = Math.min(systemMonitorMaxScroll, systemMonitorScroll + step);
+                } else if (scrollY > 0) {
+                    systemMonitorScroll = Math.max(0, systemMonitorScroll - step);
+                }
+                if (previous != systemMonitorScroll) {
+                    rebuildWidgets();
+                }
+                return true;
+            }
+            if (activeUtilityApp == UtilityApp.PAINT
+                    && !paintSaveModalOpen
+                    && !unsavedClosePromptOpen
+                    && localMouseX >= paintControlsX && localMouseX <= (paintControlsX + paintControlsW)
+                    && localMouseY >= paintControlsY && localMouseY <= (paintControlsY + paintControlsH)
+                    && paintControlsMaxScroll > 0) {
+                int previous = paintControlsScroll;
+                int step = 12;
+                if (scrollY < 0) {
+                    paintControlsScroll = Math.min(paintControlsMaxScroll, paintControlsScroll + step);
+                } else if (scrollY > 0) {
+                    paintControlsScroll = Math.max(0, paintControlsScroll - step);
+                }
+                if (previous != paintControlsScroll) {
+                    rebuildWidgets();
+                }
+                return true;
+            }
+            if (activeUtilityApp == UtilityApp.PAINT
+                    && !paintSaveModalOpen
+                    && !unsavedClosePromptOpen
+                    && isInsidePaintCanvas(localMouseX, localMouseY)) {
+                if (scrollY < 0) {
+                    paintBrushSize = Math.max(1, paintBrushSize - 1);
+                } else if (scrollY > 0) {
+                    paintBrushSize = Math.min(8, paintBrushSize + 1);
+                }
+                return true;
+            }
+        }
+
         if (activeWindow == WindowMode.BANK_APP) {
             if (localMouseX >= navViewportX && localMouseX <= (navViewportX + navViewportW)
                     && localMouseY >= navViewportY && localMouseY <= (navViewportY + navViewportH)
@@ -1365,12 +3571,15 @@ public class BankOwnerPcScreen extends Screen {
             if (localMouseX >= outputPanelX && localMouseX <= (outputPanelX + outputPanelW)
                     && localMouseY >= outputPanelY && localMouseY <= (outputPanelY + outputPanelH)) {
                 int maxScroll;
+                int step = 1;
+                int bodyWidth = Math.max(1, outputPanelW - (OUTPUT_PANEL_INSET * 2));
+                int bodyHeight = Math.max(1, outputPanelH - (OUTPUT_PANEL_INSET * 2));
+                OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+                InputHelp help = getFocusedInputHelp();
                 if (activeSection == Section.LENDING && lendingMarketOpen) {
                     if (pendingMarketAccept != null) {
                         return true;
                     }
-                    int bodyWidth = Math.max(120, outputPanelW - 12);
-                    int bodyHeight = Math.max(40, outputPanelH - 12);
                     int listHeight = Math.max(32, bodyHeight - 30);
                     int cardH = 76;
                     int gap = 10;
@@ -1380,17 +3589,36 @@ public class BankOwnerPcScreen extends Screen {
                     maxScroll = Math.max(0, rows - visibleRows);
                 } else if (activeSection == Section.OVERVIEW
                         && overviewDetailOpen
+                        && isOverviewMetricsAction(overviewDetailAction)
+                        && data != null) {
+                    int contentHeight = getOverviewDashboardContentHeight(bodyWidth, bodyHeight);
+                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    step = OUTPUT_PIXEL_SCROLL_STEP;
+                } else if (activeSection == Section.OVERVIEW
+                        && overviewDetailOpen
+                        && "SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction)
+                        && accountProfileOpen
+                        && selectedAccountCard != null) {
+                    int contentHeight = getAccountProfileContentHeight(bodyWidth, bodyHeight);
+                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    step = OUTPUT_PIXEL_SCROLL_STEP;
+                } else if (activeSection == Section.OVERVIEW
+                        && overviewDetailOpen
                         && !isOverviewMetricsAction(overviewDetailAction)
                         && !("SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction) && accountProfileOpen)
-                        && ClientOwnerPcData.getCurrentBankData() != null) {
-                    int bodyWidth = Math.max(120, outputPanelW - 12);
-                    int bodyHeight = Math.max(40, outputPanelH - 12);
+                        && data != null) {
                     int cols = bodyWidth >= 520 ? 2 : 1;
                     int cardH = 46;
                     int gap = 8;
                     int rows = (extractOverviewCardEntries().size() + cols - 1) / cols;
                     int visibleRows = Math.max(1, (bodyHeight + gap) / (cardH + gap));
                     maxScroll = Math.max(0, rows - visibleRows);
+                } else if (help != null
+                        && (activeSection == Section.LIMITS
+                        || (activeSection == Section.LENDING && !lendingMarketOpen))) {
+                    int contentHeight = getInputHelpContentHeight(help, bodyWidth, bodyHeight);
+                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    step = OUTPUT_PIXEL_SCROLL_STEP;
                 } else {
                     List<String> wrapped = getWrappedOutputLines();
                     int visible = Math.max(1, (outputPanelH - 10) / LINE_HEIGHT);
@@ -1398,9 +3626,9 @@ public class BankOwnerPcScreen extends Screen {
                 }
                 if (maxScroll > 0) {
                     if (scrollY < 0) {
-                        outputScroll = Math.min(maxScroll, outputScroll + 1);
+                        outputScroll = Math.min(maxScroll, outputScroll + step);
                     } else if (scrollY > 0) {
-                        outputScroll = Math.max(0, outputScroll - 1);
+                        outputScroll = Math.max(0, outputScroll - step);
                     }
                     return true;
                 }
@@ -1413,6 +3641,84 @@ public class BankOwnerPcScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
+        if (button == 0 && taskbarClockHitbox != null && taskbarClockHitbox.contains(localMouseX, localMouseY)) {
+            taskbarMenuOpen = !taskbarMenuOpen;
+            rebuildWidgets();
+            return true;
+        }
+        if (button == 0 && taskbarMenuOpen) {
+            if (taskbarLogoutHitbox != null && taskbarLogoutHitbox.contains(localMouseX, localMouseY)) {
+                ClientOwnerPcData.clearDesktopSession();
+                desktopAuthenticated = false;
+                authInitialized = true;
+                authStage = ClientOwnerPcData.isDesktopPinSet() ? AuthStage.LOGIN : AuthStage.SETUP;
+                formValues.put("auth.password", "");
+                formValues.put("auth.password_repeat", "");
+                activeWindow = WindowMode.DESKTOP;
+                taskbarMenuOpen = false;
+                rebuildWidgets();
+                return true;
+            }
+            if (taskbarTurnOffHitbox != null && taskbarTurnOffHitbox.contains(localMouseX, localMouseY)) {
+                taskbarMenuOpen = false;
+                ClientOwnerPcData.clearDesktopSession();
+                this.onClose();
+                return true;
+            }
+            if (taskbarMenuHitbox != null && taskbarMenuHitbox.contains(localMouseX, localMouseY)) {
+                return true;
+            }
+            if (taskbarMenuHitbox != null) {
+                taskbarMenuOpen = false;
+                rebuildWidgets();
+                return true;
+            }
+        }
+        if (activeWindow == WindowMode.UTILITY_APP) {
+            if (activeUtilityApp == UtilityApp.NOTEPAD) {
+                if (notepadSaveModalOpen || unsavedClosePromptOpen) {
+                    notepadFocused = false;
+                } else {
+                    notepadFocused = localMouseX >= notepadAreaX && localMouseX <= (notepadAreaX + notepadAreaW)
+                            && localMouseY >= notepadAreaY && localMouseY <= (notepadAreaY + notepadAreaH);
+                    if (!notepadFocused) {
+                        suppressNextNotepadSpaceChar = false;
+                    }
+                    if (notepadFocused) {
+                        int row = (int) ((localMouseY - (notepadAreaY + 4)) / LINE_HEIGHT);
+                        NotepadLayout layout = buildNotepadLayout(Math.max(1, notepadAreaW - 14));
+                        int lineIndex = Math.max(0, Math.min(layout.lines().size() - 1, notepadScroll + Math.max(0, row)));
+                        String line = layout.lines().get(lineIndex);
+                        int start = layout.starts().get(lineIndex);
+                        int xOffset = (int) Math.max(0, localMouseX - (notepadAreaX + 6));
+                        int col = 0;
+                        for (int i = 0; i < line.length(); i++) {
+                            int nextWidth = this.font.width(line.substring(0, i + 1));
+                            if (xOffset < nextWidth) {
+                                int leftWidth = this.font.width(line.substring(0, i));
+                                col = (xOffset - leftWidth) > (nextWidth - xOffset) ? i + 1 : i;
+                                break;
+                            }
+                            col = i + 1;
+                        }
+                        setNotepadCursor(start + col);
+                        return true;
+                    }
+                }
+            }
+            if (activeUtilityApp == UtilityApp.PAINT && (button == 0 || button == 1)) {
+                if (paintSaveModalOpen || unsavedClosePromptOpen) {
+                    return super.mouseClicked(localMouseX, localMouseY, button);
+                }
+                if (isInsidePaintCanvas(localMouseX, localMouseY)) {
+                    paintDrawing = true;
+                    paintDrawColor = (button == 1) ? 0xFFFFFFFF : paintSelectedColor;
+                    paintAt(localMouseX, localMouseY, paintDrawColor);
+                    return true;
+                }
+            }
+        }
+
         if (button == 0
                 && activeWindow == WindowMode.BANK_APP
                 && activeSection == Section.LENDING
@@ -1477,14 +3783,28 @@ public class BankOwnerPcScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (activeWindow == WindowMode.UTILITY_APP && activeUtilityApp == UtilityApp.PAINT) {
+            paintDrawing = false;
+        }
         return super.mouseReleased(toLocalX(mouseX), toLocalY(mouseY), button);
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        double localMouseX = toLocalX(mouseX);
+        double localMouseY = toLocalY(mouseY);
+        if (activeWindow == WindowMode.UTILITY_APP
+                && activeUtilityApp == UtilityApp.PAINT
+                && paintDrawing
+                && !paintSaveModalOpen
+                && !unsavedClosePromptOpen
+                && (button == 0 || button == 1)) {
+            paintAt(localMouseX, localMouseY, paintDrawColor);
+            return true;
+        }
         return super.mouseDragged(
-                toLocalX(mouseX),
-                toLocalY(mouseY),
+                localMouseX,
+                localMouseY,
                 button,
                 toLocalDeltaX(dragX),
                 toLocalDeltaY(dragY)
@@ -1493,7 +3813,57 @@ public class BankOwnerPcScreen extends Screen {
 
     @Override
     public void onClose() {
-        ClientOwnerPcData.clear();
+        bankWindows.clear();
+        bankWindowOrder.clear();
+        utilityWindowOrder.clear();
+        bankWindowOpen = false;
+        createWindowOpen = false;
+        activeBankId = null;
+        activeUtilityApp = null;
+        notepadFocused = false;
+        suppressNextNotepadSpaceChar = false;
+        notepadSaveModalOpen = false;
+        paintSaveModalOpen = false;
+        unsavedClosePromptOpen = false;
+        unsavedCloseTarget = null;
+        pendingCloseAfterSaveTarget = null;
+        systemHideAppsMenuOpen = false;
+        systemMonitorScroll = 0;
+        systemMonitorMaxScroll = 0;
+        systemMonitorViewportX = 0;
+        systemMonitorViewportY = 0;
+        systemMonitorViewportW = 0;
+        systemMonitorViewportH = 0;
+        systemHideAppsScroll = 0;
+        systemHideAppsMaxScroll = 0;
+        notepadCursorIndex = 0;
+        notepadSavedSnapshot = "";
+        paintSavedSnapshotHash = Arrays.hashCode(paintPixels);
+        selectedExplorerFileName = "";
+        explorerFilesScroll = 0;
+        explorerFilesMaxScroll = 0;
+        paintControlsScroll = 0;
+        paintControlsMaxScroll = 0;
+        paintControlsX = 0;
+        paintControlsY = 0;
+        paintControlsW = 0;
+        paintControlsH = 0;
+        taskbarScroll = 0;
+        taskbarMaxScroll = 0;
+        taskbarViewportX = 0;
+        taskbarViewportY = 0;
+        taskbarViewportW = 0;
+        taskbarViewportH = 0;
+        taskbarClockHitbox = null;
+        taskbarMenuHitbox = null;
+        taskbarLogoutHitbox = null;
+        taskbarTurnOffHitbox = null;
+        taskbarMenuOpen = false;
+        desktopAuthenticated = false;
+        authInitialized = false;
+        authStage = AuthStage.LOADING;
+        paintDrawing = false;
+        ClientOwnerPcData.clearForUiClose();
         super.onClose();
     }
 
@@ -1542,18 +3912,23 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         graphics.drawString(this.font, "UBS Desktop", left + 10, top + 9, 0xFF1E324E, false);
+        int desktopAppCount = ClientOwnerPcData.getApps().size() + DESKTOP_UTILITY_APPS.size();
         graphics.drawString(this.font,
-                "Apps: " + ClientOwnerPcData.getApps().size() + "   Owned: "
+                "Apps: " + desktopAppCount + "   Owned: "
                         + ClientOwnerPcData.getOwnedCount() + "/" + ClientOwnerPcData.getMaxBanks(),
                 left + 130,
                 top + 9,
                 0xFF2C4770,
                 false);
 
-        if (activeWindow == WindowMode.BANK_APP) {
+        if (!desktopAuthenticated) {
+            drawAuthLockScreen(graphics, left, top, right, bottom);
+        } else if (activeWindow == WindowMode.BANK_APP) {
             drawBankWindowFrame(graphics);
         } else if (activeWindow == WindowMode.CREATE_BANK) {
             drawCreateWindowFrame(graphics);
+        } else if (activeWindow == WindowMode.UTILITY_APP) {
+            drawUtilityWindowFrame(graphics);
         } else {
             drawDesktopHints(graphics);
         }
@@ -1561,6 +3936,7 @@ public class BankOwnerPcScreen extends Screen {
         super.render(graphics, localMouseX, localMouseY, partialTicks);
         drawViewportMasks(graphics);
         drawToast(graphics);
+        drawTaskbarClockAndPower(graphics, localMouseX, localMouseY);
         if (useVirtualScale) {
             graphics.pose().popPose();
         }
@@ -1589,6 +3965,143 @@ public class BankOwnerPcScreen extends Screen {
     @Override
     public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
         // No-op to hard-disable menu background paths.
+    }
+
+    private void drawTaskbarClockAndPower(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (taskbarClockHitbox == null) {
+            return;
+        }
+
+        int clockX = taskbarClockHitbox.x();
+        int clockY = taskbarClockHitbox.y();
+        int clockW = taskbarClockHitbox.width();
+        int clockH = taskbarClockHitbox.height();
+
+        if (taskbarMenuOpen && taskbarMenuHitbox != null) {
+            int panelX = taskbarMenuHitbox.x();
+            int panelY = taskbarMenuHitbox.y();
+            int panelW = taskbarMenuHitbox.width();
+            int panelH = taskbarMenuHitbox.height();
+            graphics.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xDD2A3F5E);
+            graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xE0122539);
+            graphics.fill(panelX, panelY, panelX + panelW, panelY + 18, 0xCC2A5B91);
+            drawTaskbarMenuButton(graphics, taskbarLogoutHitbox, "Log Out PC", mouseX, mouseY);
+            drawTaskbarMenuButton(graphics, taskbarTurnOffHitbox, "Turn Off", mouseX, mouseY);
+        }
+
+        int border = taskbarMenuOpen ? 0xFF9FCBF0 : 0xFF3C587A;
+        graphics.fill(clockX, clockY, clockX + clockW, clockY + clockH, border);
+        graphics.fill(clockX + 1, clockY + 1, clockX + clockW - 1, clockY + clockH - 1, 0xCC1A2F48);
+
+        LocalDateTime now = LocalDateTime.now();
+        String time = now.format(DateTimeFormatter.ofPattern("HH:mm"));
+        String date = now.format(DateTimeFormatter.ofPattern("d-M-yyyy"));
+        graphics.drawCenteredString(this.font, time, clockX + (clockW / 2), clockY + 3, 0xFFEAF5FF);
+        graphics.drawCenteredString(this.font, date, clockX + (clockW / 2), clockY + 12, 0xFFCFE4FF);
+    }
+
+    private void drawTaskbarMenuButton(GuiGraphics graphics, RectHitbox hitbox, String label, int mouseX, int mouseY) {
+        if (hitbox == null) {
+            return;
+        }
+        int x = hitbox.x();
+        int y = hitbox.y();
+        int w = hitbox.width();
+        int h = hitbox.height();
+        boolean hovered = hitbox.contains(mouseX, mouseY);
+
+        int border = hovered ? 0xFFCDE9FF : 0xFF355A83;
+        int top = hovered ? 0xEE2B5A8D : 0xE6264E7A;
+        int bottom = hovered ? 0xEE1D4062 : 0xE61A3856;
+        graphics.fill(x, y, x + w, y + h, border);
+
+        int innerX1 = x + 1;
+        int innerY1 = y + 1;
+        int innerX2 = x + w - 1;
+        int innerY2 = y + h - 1;
+        int innerH = Math.max(1, innerY2 - innerY1);
+        for (int i = 0; i < innerH; i++) {
+            float t = innerH <= 1 ? 0.0F : (float) i / (float) (innerH - 1);
+            graphics.fill(innerX1, innerY1 + i, innerX2, innerY1 + i + 1, lerpColor(top, bottom, t));
+        }
+
+        graphics.fill(innerX1 + 1, innerY1 + 1, innerX1 + 4, innerY2 - 1, 0xFF69B8FF);
+        int iconX = innerX1 + 8;
+        int iconY = innerY1 + Math.max(1, (innerY2 - innerY1 - 8) / 2);
+        graphics.fill(iconX, iconY, iconX + 8, iconY + 2, 0xFFEAF5FF);
+        graphics.fill(iconX, iconY + 3, iconX + 6, iconY + 5, 0xFFEAF5FF);
+        graphics.fill(iconX, iconY + 6, iconX + 4, iconY + 8, 0xFFEAF5FF);
+
+        graphics.drawString(this.font, fitToWidth(label, w - 28), innerX1 + 19, y + Math.max(1, (h - 8) / 2), 0xFFFFFFFF, false);
+        if (hovered) {
+            graphics.fill(innerX1 + 1, innerY1 + 1, innerX2 - 1, innerY1 + 2, 0x66FFFFFF);
+        }
+    }
+
+    private void drawAuthLockScreen(GuiGraphics graphics, int left, int top, int right, int bottom) {
+        int contentTop = top + TOPBAR_HEIGHT + 6;
+        int contentBottom = bottom - TASKBAR_HEIGHT - 6;
+        int contentHeight = Math.max(160, contentBottom - contentTop);
+        int panelW = Math.min(460, Math.max(300, this.width - 84));
+        int neededH = switch (authStage) {
+            case LOADING -> 148;
+            case LOGIN -> 214;
+            case SETUP, RECOVER -> 286;
+        };
+        int panelH = Math.min(Math.max(neededH, 140), Math.max(140, contentHeight - 8));
+        boolean compact = panelH < neededH;
+        int panelX = (this.width - panelW) / 2;
+        int panelY = contentTop + Math.max(0, (contentHeight - panelH) / 2);
+        int centerX = panelX + (panelW / 2);
+        int iconY = panelY + (compact ? 10 : 18);
+        int avatarSize = compact ? 40 : 52;
+
+        for (int y = contentTop; y < contentBottom; y++) {
+            float ratio = (float) (y - contentTop) / (float) Math.max(1, (contentBottom - contentTop - 1));
+            int row = lerpColor(0xAA1C4AA0, 0xAA10336F, ratio);
+            graphics.fill(left + 4, y, right - 4, y + 1, row);
+        }
+
+        graphics.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xB21E3A5D);
+        graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0x7F102843);
+        graphics.fill(panelX, panelY, panelX + panelW, panelY + 26, 0xAA2A5F9E);
+
+        graphics.fill(centerX - (avatarSize / 2), iconY, centerX + (avatarSize / 2), iconY + avatarSize, 0xFFE8EEF5);
+        int headHalf = Math.max(8, avatarSize / 5);
+        int headTop = iconY + Math.max(6, avatarSize / 6);
+        graphics.fill(centerX - headHalf, headTop, centerX + headHalf, headTop + (headHalf * 2), 0xFF8C8C8C);
+        int shoulderHalf = Math.max(12, avatarSize / 3);
+        int shouldersTop = iconY + avatarSize - Math.max(14, avatarSize / 3);
+        graphics.fill(centerX - shoulderHalf, shouldersTop, centerX + shoulderHalf, shouldersTop + Math.max(10, avatarSize / 4), 0xFF9D9D9D);
+
+        String computerLabel = ClientOwnerPcData.getDesktopComputerLabel();
+        if (computerLabel == null || computerLabel.isBlank()) {
+            computerLabel = "UBS Bank Owner PC";
+        }
+        int labelY = iconY + avatarSize + 8;
+        graphics.drawCenteredString(this.font, fitToWidth(computerLabel, panelW - 18), centerX, labelY, 0xFFE8F3FF);
+
+        String title;
+        String subtitle;
+        if (authStage == AuthStage.LOADING) {
+            title = "Loading security profile...";
+            subtitle = "Requesting desktop state from server";
+        } else if (authStage == AuthStage.SETUP) {
+            title = "Set your PC password";
+            subtitle = "First use requires a password and recovery phrase";
+        } else if (authStage == AuthStage.RECOVER) {
+            title = "Forgot password";
+            subtitle = "Enter your recovery phrase and create a new password";
+        } else {
+            title = "Enter your password";
+            subtitle = "Sign in to access this computer";
+        }
+
+        int titleY = labelY + 16;
+        int subtitleY = titleY + 14;
+
+        graphics.drawCenteredString(this.font, title, centerX, titleY, 0xFFFFFFFF);
+        graphics.drawCenteredString(this.font, fitToWidth(subtitle, panelW - 20), centerX, subtitleY, 0xFFD0E7FF);
     }
 
     private void drawDesktopHints(GuiGraphics graphics) {
@@ -1712,42 +4225,71 @@ public class BankOwnerPcScreen extends Screen {
         visibleMarketActions.clear();
         marketConfirmAcceptHitbox = null;
         marketConfirmCancelHitbox = null;
+        int bodyX = x + OUTPUT_PANEL_INSET;
+        int bodyY = y + OUTPUT_PANEL_INSET;
+        int bodyW = Math.max(1, width - (OUTPUT_PANEL_INSET * 2));
+        int bodyH = Math.max(1, height - (OUTPUT_PANEL_INSET * 2));
 
         if (activeSection == Section.OVERVIEW
                 && overviewDetailOpen
                 && isOverviewMetricsAction(overviewDetailAction)
                 && data != null) {
             visibleAccountCards.clear();
-            drawOverviewDashboard(graphics, data, overviewDetailAction, x + 6, y + 6, width - 12, height - 12);
+            int contentHeight = getOverviewDashboardContentHeight(bodyW, bodyH);
+            int maxScroll = Math.max(0, contentHeight - bodyH);
+            outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
+            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            drawOverviewDashboard(graphics, data, overviewDetailAction, bodyX, bodyY - outputScroll, bodyW, contentHeight);
+            graphics.disableScissor();
+            drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
             return;
         }
 
         if (activeSection == Section.OVERVIEW
                 && overviewDetailOpen
                 && data != null) {
+            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             if ("SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction) && accountProfileOpen && selectedAccountCard != null) {
                 visibleAccountCards.clear();
-                drawAccountProfilePanel(graphics, selectedAccountCard, x + 6, y + 6, width - 12, height - 12);
+                int contentHeight = getAccountProfileContentHeight(bodyW, bodyH);
+                int maxScroll = Math.max(0, contentHeight - bodyH);
+                outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
+                drawAccountProfilePanel(graphics, selectedAccountCard, bodyX, bodyY - outputScroll, bodyW, contentHeight);
+                graphics.disableScissor();
+                drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
                 return;
             }
-            drawOverviewListCards(graphics, overviewDetailAction, x + 6, y + 6, width - 12, height - 12);
+            drawOverviewListCards(graphics, overviewDetailAction, bodyX, bodyY, bodyW, bodyH);
+            graphics.disableScissor();
             return;
         }
 
         visibleAccountCards.clear();
 
         if (activeSection == Section.LENDING && lendingMarketOpen) {
-            drawLendingMarketPanel(graphics, x + 6, y + 6, width - 12, height - 12);
+            drawLendingMarketPanel(graphics, bodyX, bodyY, bodyW, bodyH);
             return;
         }
 
         InputHelp help = getFocusedInputHelp();
         if (help != null && activeSection == Section.LIMITS) {
-            drawInputHelpPanel(graphics, help, x + 6, y + 6, width - 12, height - 12);
+            int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
+            int maxScroll = Math.max(0, contentHeight - bodyH);
+            outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
+            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
+            graphics.disableScissor();
+            drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
             return;
         }
         if (help != null && activeSection == Section.LENDING && !lendingMarketOpen) {
-            drawInputHelpPanel(graphics, help, x + 6, y + 6, width - 12, height - 12);
+            int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
+            int maxScroll = Math.max(0, contentHeight - bodyH);
+            outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
+            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
+            graphics.disableScissor();
+            drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
             return;
         }
 
@@ -1780,30 +4322,73 @@ public class BankOwnerPcScreen extends Screen {
             }
         }
 
-        int available = Math.max(1, (height - 10) / LINE_HEIGHT);
+        int available = Math.max(1, bodyH / LINE_HEIGHT);
         int maxScroll = Math.max(0, lines.size() - available);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
-        int lineY = y + 4;
+        graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+        int lineY = bodyY;
         for (int i = 0; i < available; i++) {
             int idx = outputScroll + i;
             if (idx >= lines.size()) {
                 break;
             }
-            graphics.drawString(this.font, lines.get(idx), x + 6, lineY, 0xFFE7F3FF, false);
+            graphics.drawString(this.font, lines.get(idx), bodyX, lineY, 0xFFE7F3FF, false);
             lineY += LINE_HEIGHT;
         }
+        graphics.disableScissor();
 
-        if (maxScroll > 0) {
-            int barX1 = x + width - 5;
-            int barX2 = x + width - 2;
-            graphics.fill(barX1, y + 3, barX2, y + height - 3, 0x553C5878);
+        drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
+    }
 
-            int thumbH = Math.max(12, (int) ((height - 6) * (available / (float) lines.size())));
-            int thumbTravel = Math.max(1, (height - 6) - thumbH);
-            int thumbY = y + 3 + (int) (thumbTravel * (outputScroll / (float) maxScroll));
-            graphics.fill(barX1, thumbY, barX2, thumbY + thumbH, 0xCC9FD1FF);
+    private void drawOutputScrollbar(GuiGraphics graphics,
+                                     int x,
+                                     int y,
+                                     int width,
+                                     int height,
+                                     int position,
+                                     int maxPosition) {
+        if (maxPosition <= 0) {
+            return;
         }
+        drawVerticalScrollbar(
+                graphics,
+                x + width - 5,
+                y + 3,
+                3,
+                Math.max(10, height - 6),
+                position,
+                maxPosition
+        );
+    }
+
+    private int getOverviewDashboardContentHeight(int width, int viewportHeight) {
+        int cardGap = 6;
+        int cardH = 42;
+        int cardCols = width >= 560 ? 4 : width >= 360 ? 2 : 1;
+        int cardRows = (4 + cardCols - 1) / cardCols;
+        int cardsBlock = (cardRows * cardH) + (Math.max(0, cardRows - 1) * cardGap);
+        boolean compactCharts = width < 420;
+        int chartsBlock = compactCharts ? (62 + 8 + 62 + 10) : (64 + 10);
+        int listBlock = 56;
+        int estimated = 4 + cardsBlock + 4 + chartsBlock + listBlock + 8;
+        return Math.max(viewportHeight, estimated);
+    }
+
+    private int getAccountProfileContentHeight(int width, int viewportHeight) {
+        int cardGap = 8;
+        int cardCols = width >= 420 ? 2 : 1;
+        int cardH = 42;
+        int cardsBlock = cardCols > 1 ? cardH : ((cardH * 2) + cardGap);
+        int estimated = 38 + cardsBlock + 10 + 40 + 8 + 70 + 8;
+        return Math.max(viewportHeight, estimated);
+    }
+
+    private int getInputHelpContentHeight(InputHelp help, int width, int viewportHeight) {
+        int summaryWidth = Math.max(80, width - 16);
+        List<String> summaryLines = wrapLines(List.of(help.summary()), summaryWidth);
+        int estimated = 36 + 14 + (summaryLines.size() * LINE_HEIGHT) + 22 + 8;
+        return Math.max(viewportHeight, estimated);
     }
 
     private String currentToolTitle() {
@@ -1865,12 +4450,15 @@ public class BankOwnerPcScreen extends Screen {
                                        int y,
                                        int width,
                                        int height) {
+        if (width < 40 || height < 40) {
+            return;
+        }
         graphics.fill(x, y, x + width, y + height, 0x40213A56);
 
         String normalizedAction = action == null ? "SHOW_INFO" : action.toUpperCase(Locale.ROOT);
-        int cardGap = 6;
-        int cardH = 42;
-        int cardCols = width >= 520 ? 4 : 2;
+        int cardGap = height < 200 ? 4 : 6;
+        int cardH = height < 190 ? 34 : height < 250 ? 38 : 42;
+        int cardCols = width >= 560 ? 4 : width >= 360 ? 2 : 1;
         int cardW = Math.max(80, (width - (cardGap * (cardCols - 1))) / cardCols);
 
         BigDecimal reserve = parseDecimal(data.reserve());
@@ -1925,82 +4513,120 @@ public class BankOwnerPcScreen extends Screen {
             };
             accents = new int[]{0xFF66BCFF, 0xFF7BC8F6, 0xFF89DDB2, 0xFFC7C778};
         }
+        int cardsTop = y + 4;
         for (int i = 0; i < cardLabels.length; i++) {
             int col = i % cardCols;
             int row = i / cardCols;
             int cardX = x + (col * (cardW + cardGap));
-            int cardY = y + (row * (cardH + cardGap));
+            int cardY = cardsTop + (row * (cardH + cardGap));
             drawMetricCard(graphics, cardX, cardY, cardW, cardH, cardLabels[i], cardValues[i], accents[i]);
         }
 
         int cardRows = (cardLabels.length + cardCols - 1) / cardCols;
-        int chartTop = y + (cardRows * (cardH + cardGap)) + 4;
-        int chartH = Math.min(74, Math.max(56, height / 3));
+        int cursorY = cardsTop + (cardRows * (cardH + cardGap)) + 4;
+        int contentBottom = y + height - 6;
+        int remaining = contentBottom - cursorY;
         boolean compactCharts = width < 420;
-        int chartW = compactCharts ? width : (width - 8) / 2;
-        drawBarCard(graphics,
-                x,
-                chartTop,
-                chartW,
-                chartH,
-                "SHOW_RESERVE".equals(normalizedAction) ? "Reserve Cushion" : "Reserve Coverage",
-                minReserve.signum() <= 0
-                        ? 1.0F
-                        : reserve.divide(minReserve, 4, RoundingMode.HALF_EVEN).floatValue(),
-                "SHOW_RESERVE".equals(normalizedAction)
-                        ? "$" + compactCurrency(data.reserve()) + " vs min $" + compactCurrency(data.minReserve())
-                        : "Min $" + compactCurrency(data.minReserve()),
-                reserve.compareTo(minReserve) >= 0 ? 0xFF64D47B : 0xFFE36D6D);
+        int chartGap = 8;
+        int chartW = compactCharts ? width : (width - chartGap) / 2;
+
+        float reserveCoverage = minReserve.signum() <= 0
+                ? 1.0F
+                : reserve.divide(minReserve, 4, RoundingMode.HALF_EVEN).floatValue();
         float dailyUsedPct = dailyCap.signum() <= 0
                 ? 0.0F
                 : dailyUsed.divide(dailyCap, 4, RoundingMode.HALF_EVEN).floatValue();
-        drawBarCard(graphics,
-                compactCharts ? x : x + chartW + 8,
-                compactCharts ? chartTop + chartH + 8 : chartTop,
-                chartW,
-                chartH,
-                "SHOW_DASHBOARD".equals(normalizedAction) ? "Liquidity Headroom" : "Daily Utilization",
-                "SHOW_DASHBOARD".equals(normalizedAction) ? Math.max(0.0F, Math.min(1.0F, dailyRemaining.signum() <= 0 ? 0.0F :
-                        dailyRemaining.divide(dailyCap.max(BigDecimal.ONE), 4, RoundingMode.HALF_EVEN).floatValue())) : dailyUsedPct,
-                "SHOW_DASHBOARD".equals(normalizedAction)
-                        ? "$" + compactCurrency(data.dailyRemaining()) + " available"
-                        : "$" + compactCurrency(data.dailyUsed()) + " / $" + compactCurrency(data.dailyCap()),
-                0xFF6FB8FF);
+        float liquidityHeadroom = Math.max(0.0F, Math.min(1.0F, dailyRemaining.signum() <= 0
+                ? 0.0F
+                : dailyRemaining.divide(dailyCap.max(BigDecimal.ONE), 4, RoundingMode.HALF_EVEN).floatValue()));
+        String firstBarTitle = "SHOW_RESERVE".equals(normalizedAction) ? "Reserve Cushion" : "Reserve Coverage";
+        String firstBarSubtitle = "SHOW_RESERVE".equals(normalizedAction)
+                ? "$" + compactCurrency(data.reserve()) + " vs min $" + compactCurrency(data.minReserve())
+                : "Min $" + compactCurrency(data.minReserve());
+        String secondBarTitle = "SHOW_DASHBOARD".equals(normalizedAction) ? "Liquidity Headroom" : "Daily Utilization";
+        String secondBarSubtitle = "SHOW_DASHBOARD".equals(normalizedAction)
+                ? "$" + compactCurrency(data.dailyRemaining()) + " available"
+                : "$" + compactCurrency(data.dailyUsed()) + " / $" + compactCurrency(data.dailyCap());
+        float secondBarValue = "SHOW_DASHBOARD".equals(normalizedAction) ? liquidityHeadroom : dailyUsedPct;
 
-        int listTop = compactCharts ? chartTop + (chartH * 2) + 18 : chartTop + chartH + 10;
-        int listBottom = y + height - 6;
+        if (remaining >= 44) {
+            if (compactCharts) {
+                boolean drawTwo = remaining >= 98;
+                int chartH = drawTwo
+                        ? Math.min(62, Math.max(42, (remaining - chartGap - 14) / 2))
+                        : Math.min(58, Math.max(42, remaining - 14));
+                drawBarCard(graphics, x, cursorY, chartW, chartH, firstBarTitle, reserveCoverage, firstBarSubtitle,
+                        reserve.compareTo(minReserve) >= 0 ? 0xFF64D47B : 0xFFE36D6D);
+                cursorY += chartH + 8;
+                if (drawTwo) {
+                    drawBarCard(graphics, x, cursorY, chartW, chartH, secondBarTitle, secondBarValue, secondBarSubtitle, 0xFF6FB8FF);
+                    cursorY += chartH + 10;
+                } else {
+                    cursorY += 2;
+                }
+            } else {
+                int chartH = Math.min(64, Math.max(42, Math.min(58, remaining - 34)));
+                drawBarCard(graphics, x, cursorY, chartW, chartH, firstBarTitle, reserveCoverage, firstBarSubtitle,
+                        reserve.compareTo(minReserve) >= 0 ? 0xFF64D47B : 0xFFE36D6D);
+                drawBarCard(graphics, x + chartW + chartGap, cursorY, chartW, chartH, secondBarTitle, secondBarValue,
+                        secondBarSubtitle, 0xFF6FB8FF);
+                cursorY += chartH + 10;
+            }
+        }
+
+        int listTop = cursorY;
+        int listBottom = contentBottom;
         if (listBottom - listTop >= 48) {
             graphics.fill(x, listTop, x + width, listBottom, 0x55273E59);
             graphics.fill(x, listTop, x + width, listTop + 1, 0x88A9CBED);
 
+            int maxRows = Math.max(1, (listBottom - listTop - 10) / 12);
             int rowY = listTop + 6;
             if ("SHOW_RESERVE".equals(normalizedAction)) {
-                graphics.drawString(this.font, "Reserve Audit", x + 8, rowY, 0xFFE6F3FF, false);
-                graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Reserve Audit", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Declared Reserve: $" + compactCurrency(data.reserve()), x + 8, rowY, 0xFFD3E9FF, false);
-                graphics.drawString(this.font, "Minimum Reserve: $" + compactCurrency(data.minReserve()), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Declared Reserve: $" + compactCurrency(data.reserve()), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, "Minimum Reserve: $" + compactCurrency(data.minReserve()), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Daily Used: $" + compactCurrency(data.dailyUsed()), x + 8, rowY, 0xFFC6DEFA, false);
-                graphics.drawString(this.font, "Daily Cap: $" + compactCurrency(data.dailyCap()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                if (maxRows > 0) {
+                    graphics.drawString(this.font, "Daily Used: $" + compactCurrency(data.dailyUsed()), x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, "Daily Cap: $" + compactCurrency(data.dailyCap()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                }
             } else if ("SHOW_DASHBOARD".equals(normalizedAction)) {
-                graphics.drawString(this.font, "Operations Snapshot", x + 8, rowY, 0xFFE6F3FF, false);
-                graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Operations Snapshot", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
-                graphics.drawString(this.font, "Accounts: " + data.accountsCount(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, "Accounts: " + data.accountsCount(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Fed Funds: " + data.federalFundsRate() + "%", x + 8, rowY, 0xFFC6DEFA, false);
-                graphics.drawString(this.font, "Remaining Today: $" + compactCurrency(data.dailyRemaining()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                if (maxRows > 0) {
+                    graphics.drawString(this.font, "Fed Funds: " + data.federalFundsRate() + "%", x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, "Remaining Today: $" + compactCurrency(data.dailyRemaining()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                }
             } else {
-                graphics.drawString(this.font, "Bank Profile", x + 8, rowY, 0xFFE6F3FF, false);
-                graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Bank Profile", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
-                graphics.drawString(this.font, "Model: " + data.ownershipModel(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                if (maxRows-- > 0) {
+                    graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, "Model: " + data.ownershipModel(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                }
                 rowY += 12;
-                graphics.drawString(this.font, "Color: " + data.color(), x + 8, rowY, 0xFFC6DEFA, false);
-                graphics.drawString(this.font, "Motto: " + fitToWidth(data.motto().isBlank() ? "-" : data.motto(), Math.max(40, width / 2 - 20)), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                if (maxRows > 0) {
+                    graphics.drawString(this.font, "Color: " + data.color(), x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, "Motto: " + fitToWidth(data.motto().isBlank() ? "-" : data.motto(), Math.max(40, width / 2 - 20)), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                }
             }
         }
     }
@@ -2160,26 +4786,21 @@ public class BankOwnerPcScreen extends Screen {
                                          int y,
                                          int width,
                                          int height) {
+        if (width < 60 || height < 60) {
+            return;
+        }
         graphics.fill(x, y, x + width, y + height, 0x5A1D3550);
         graphics.fill(x, y, x + width, y + 30, 0xB2234B73);
         graphics.fill(x, y + 30, x + width, y + 31, 0x889CC8EE);
         graphics.drawString(this.font, "Account Profile", x + 8, y + 10, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(account.player(), width - 150), x + 118, y + 10, 0xFFE2F1FF, false);
+        graphics.drawString(this.font, fitToWidth(account.player(), Math.max(40, width - 126)), x + 118, y + 10, 0xFFE2F1FF, false);
+        graphics.drawString(this.font, fitToWidth(account.type(), Math.max(40, width - 126)), x + 118, y + 24, 0xFFCFE6FF, false);
 
-        int avatarX = x + 14;
-        int avatarY = y + 42;
-        int avatarSize = Math.min(56, Math.max(34, height / 4));
-        graphics.fill(avatarX - 1, avatarY - 1, avatarX + avatarSize + 1, avatarY + avatarSize + 1, 0xFF2E567D);
-        graphics.fill(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize, 0xFF67A5DC);
-        String initials = account.player().isBlank() ? "?" : account.player().substring(0, 1).toUpperCase(Locale.ROOT);
-        graphics.drawCenteredString(this.font, initials, avatarX + (avatarSize / 2), avatarY + (avatarSize / 2) - 4, 0xFFFFFFFF);
-        graphics.drawString(this.font, fitToWidth(account.type(), width - 120), x + 118, y + 28, 0xFFCFE6FF, false);
-
-        int cardY = avatarY + avatarSize + 10;
-        int cardGap = 8;
+        int cardGap = height < 190 ? 6 : 8;
         int cardCols = width >= 420 ? 2 : 1;
-        int cardW = Math.max(140, (width - (cardGap * (cardCols - 1))) / cardCols);
-        int cardH = 42;
+        int cardW = Math.max(120, (width - 20 - (cardGap * (cardCols - 1))) / cardCols);
+        int cardH = height < 190 ? 34 : 42;
+        int cardY = y + 38;
 
         drawMetricCard(graphics, x + 10, cardY, cardW, cardH, "Balance", account.balance(), 0xFF67C789);
         if (cardCols > 1) {
@@ -2188,27 +4809,51 @@ public class BankOwnerPcScreen extends Screen {
             drawMetricCard(graphics, x + 10, cardY + cardH + cardGap, cardW, cardH, "Account ID", account.id(), 0xFF70B9F2);
         }
 
-        int detailsTop = cardY + (cardCols > 1 ? (cardH + 12) : ((cardH * 2) + cardGap + 12));
+        int infoTop = cardY + (cardCols > 1 ? (cardH + 10) : ((cardH * 2) + cardGap + 10));
+        int avatarSize = Math.min(40, Math.max(24, (height - (infoTop - y) - 52) / 2));
+        boolean drawAvatar = infoTop + avatarSize + 8 <= (y + height - 8);
+        if (drawAvatar) {
+            int avatarX = x + 14;
+            int avatarY = infoTop;
+            graphics.fill(avatarX - 1, avatarY - 1, avatarX + avatarSize + 1, avatarY + avatarSize + 1, 0xFF2E567D);
+            graphics.fill(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize, 0xFF67A5DC);
+            String initials = account.player().isBlank() ? "?" : account.player().substring(0, 1).toUpperCase(Locale.ROOT);
+            graphics.drawCenteredString(this.font, initials, avatarX + (avatarSize / 2), avatarY + (avatarSize / 2) - 4, 0xFFFFFFFF);
+            infoTop = avatarY + avatarSize + 8;
+        }
+
+        int detailsTop = infoTop;
         int detailsBottom = y + height - 8;
-        if (detailsBottom - detailsTop >= 54) {
+        if (detailsBottom - detailsTop >= 36) {
             graphics.fill(x + 10, detailsTop, x + width - 10, detailsBottom, 0x6A16304A);
             graphics.fill(x + 10, detailsTop, x + width - 10, detailsTop + 1, 0x88A8CDEE);
 
+            int maxRows = Math.max(1, (detailsBottom - detailsTop - 10) / 12);
             int rowY = detailsTop + 8;
-            graphics.drawString(this.font, "Player", x + 18, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, fitToWidth(account.player(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            if (maxRows-- > 0) {
+                graphics.drawString(this.font, "Player", x + 18, rowY, 0xFFBFDFFF, false);
+                graphics.drawString(this.font, fitToWidth(account.player(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            }
             rowY += 12;
-            graphics.drawString(this.font, "Type", x + 18, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, fitToWidth(account.type(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            if (maxRows-- > 0) {
+                graphics.drawString(this.font, "Type", x + 18, rowY, 0xFFBFDFFF, false);
+                graphics.drawString(this.font, fitToWidth(account.type(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            }
             rowY += 12;
-            graphics.drawString(this.font, "Balance", x + 18, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, fitToWidth(account.balance(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            if (maxRows-- > 0) {
+                graphics.drawString(this.font, "Balance", x + 18, rowY, 0xFFBFDFFF, false);
+                graphics.drawString(this.font, fitToWidth(account.balance(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            }
             rowY += 12;
-            graphics.drawString(this.font, "Account ID", x + 18, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, fitToWidth(account.id(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            if (maxRows-- > 0) {
+                graphics.drawString(this.font, "Account ID", x + 18, rowY, 0xFFBFDFFF, false);
+                graphics.drawString(this.font, fitToWidth(account.id(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
+            }
             rowY += 12;
-            graphics.drawString(this.font, "Status", x + 18, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, "Active", x + 106, rowY, 0xFF8BE3A8, false);
+            if (maxRows > 0) {
+                graphics.drawString(this.font, "Status", x + 18, rowY, 0xFFBFDFFF, false);
+                graphics.drawString(this.font, "Active", x + 106, rowY, 0xFF8BE3A8, false);
+            }
         }
     }
 
@@ -2227,8 +4872,8 @@ public class BankOwnerPcScreen extends Screen {
 
         int listX = x + 4;
         int listY = y + 30;
-        int listW = Math.max(80, width - 8);
-        int listH = Math.max(24, height - 34);
+        int listW = Math.max(1, width - 8);
+        int listH = Math.max(1, height - 34);
         if (listH <= 24) {
             return;
         }
@@ -2659,6 +5304,13 @@ public class BankOwnerPcScreen extends Screen {
         return out + suffix;
     }
 
+    private int utf8Bytes(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        return value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+    }
+
     private List<String> getWrappedOutputLines() {
         List<String> base = ClientOwnerPcData.getActionOutputLines();
         if (base.isEmpty() || outputPanelW <= 0) {
@@ -2733,13 +5385,593 @@ public class BankOwnerPcScreen extends Screen {
                 0xFFE8F2FF,
                 false);
 
-        graphics.drawString(this.font, "Ownership Type", left + 2, top + 70, 0xFF1D2F4A, false);
+        graphics.drawString(this.font, "Ownership Type", left + 8, top + 56, 0xFF1D2F4A, false);
         graphics.drawString(this.font,
                 "Selected: " + prettifyOwnership(selectedOwnershipModel),
-                left + 2,
-                top + 82,
+                left + 8,
+                top + 68,
                 0xFF2A496E,
                 false);
+    }
+
+    private void drawUtilityWindowFrame(GuiGraphics graphics) {
+        int left = utilityFrameLeft > 0 ? utilityFrameLeft : PAD + 12;
+        int top = utilityFrameTop > 0 ? utilityFrameTop : PAD + TOPBAR_HEIGHT + 10;
+        int right = utilityFrameRight > 0 ? utilityFrameRight : this.width - PAD - 12;
+        int bottom = utilityFrameBottom > 0 ? utilityFrameBottom : this.height - PAD - TASKBAR_HEIGHT - 8;
+
+        graphics.fill(left - 1, top - 1, right + 1, bottom + 1, 0xFF2A3D59);
+        graphics.fill(left, top, right, bottom, 0xFFE8EEF6);
+        graphics.fill(left, top, right, top + 28, 0xFF6C93C8);
+
+        String title = "Utilities / " + utilityWindowTitle(activeUtilityApp);
+        graphics.drawString(this.font, fitToWidth(title, right - left - 20), left + 8, top + 10, 0xFFFFFFFF, false);
+
+        int contentX = utilityContentX > 0 ? utilityContentX : left + 12;
+        int contentY = utilityContentY > 0 ? utilityContentY : top + 38;
+        int contentW = utilityContentW > 0 ? utilityContentW : Math.max(180, right - left - 24);
+        int contentH = utilityContentH > 0 ? utilityContentH : Math.max(120, bottom - contentY - 10);
+
+        graphics.fill(contentX - 1, contentY - 1, contentX + contentW + 1, contentY + contentH + 1, 0xFF2C4768);
+        graphics.fill(contentX, contentY, contentX + contentW, contentY + contentH, 0xCC19314A);
+
+        if (activeUtilityApp == UtilityApp.CALCULATOR) {
+            drawCalculatorApp(graphics, contentX + 4, contentY + 4, contentW - 8, contentH - 8);
+        } else if (activeUtilityApp == UtilityApp.NOTEPAD) {
+            drawNotepadApp(graphics, contentX + 4, contentY + 4, contentW - 8, contentH - 8);
+        } else if (activeUtilityApp == UtilityApp.FILE_EXPLORER) {
+            drawFileExplorerApp(graphics, contentX + 4, contentY + 4, contentW - 8, contentH - 8);
+        } else if (activeUtilityApp == UtilityApp.PAINT) {
+            drawPaintApp(graphics, contentX + 4, contentY + 4, contentW - 8, contentH - 8);
+        } else if (activeUtilityApp == UtilityApp.SYSTEM_MONITOR) {
+            drawSystemMonitorApp(graphics, contentX + 4, contentY + 4, contentW - 8, contentH - 8);
+        }
+
+        if (unsavedClosePromptOpen) {
+            int modalW = 330;
+            int modalH = 98;
+            int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+            int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+            graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
+            graphics.drawString(this.font, "Unsaved changes", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            String label = unsavedCloseTarget == UtilityApp.PAINT ? "Paint" : "Notepad";
+            graphics.drawString(this.font, "Save " + label + " before closing?", modalX + 8, modalY + 30, 0xFFD5E9FF, false);
+        }
+    }
+
+    private void drawCalculatorApp(GuiGraphics graphics, int x, int y, int width, int height) {
+        int displayH = Math.min(48, Math.max(40, height / 4));
+        graphics.fill(x, y, x + width, y + displayH, 0x7A162E48);
+        graphics.fill(x, y, x + width, y + 1, 0x889FCEEF);
+        graphics.drawString(this.font, fitToWidth("Expression: " + (calculatorExpression.isBlank() ? "-" : calculatorExpression), width - 12), x + 6, y + 8, 0xFFCDE6FF, false);
+        graphics.drawString(this.font, fitToWidth("Result: " + calculatorDisplay, width - 12), x + 6, y + 20, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth("Status: " + calculatorStatus, width - 12), x + 6, y + 32, 0xFF9FD3FF, false);
+    }
+
+    private void drawNotepadApp(GuiGraphics graphics, int x, int y, int width, int height) {
+        notepadAreaX = x + 4;
+        notepadAreaY = Math.max(y + 30, notepadAreaY);
+        notepadAreaW = Math.max(120, width - 8);
+        notepadAreaH = Math.max(64, Math.min(height - 34, (y + height) - notepadAreaY - 2));
+
+        graphics.fill(notepadAreaX - 1, notepadAreaY - 1, notepadAreaX + notepadAreaW + 1, notepadAreaY + notepadAreaH + 1, 0xFF2D4B6D);
+        graphics.fill(notepadAreaX, notepadAreaY, notepadAreaX + notepadAreaW, notepadAreaY + notepadAreaH, 0xEE10253B);
+
+        NotepadLayout layout = buildNotepadLayout(Math.max(1, notepadAreaW - 14));
+        List<String> lines = layout.lines();
+        int visible = Math.max(1, (notepadAreaH - 8) / LINE_HEIGHT);
+        int maxScroll = Math.max(0, lines.size() - visible);
+        if (notepadScroll == Integer.MAX_VALUE) {
+            notepadScroll = maxScroll;
+        } else {
+            notepadScroll = Math.max(0, Math.min(notepadScroll, maxScroll));
+        }
+
+        int lineY = notepadAreaY + 4;
+        for (int i = 0; i < visible; i++) {
+            int idx = notepadScroll + i;
+            if (idx >= lines.size()) {
+                break;
+            }
+            graphics.drawString(this.font, lines.get(idx), notepadAreaX + 6, lineY, 0xFFE7F3FF, false);
+            lineY += LINE_HEIGHT;
+        }
+
+        if (notepadFocused && ((System.currentTimeMillis() / 400L) % 2L) == 0L) {
+            int cursor = Math.max(0, Math.min(notepadCursorIndex, notepadText.length()));
+            int caretLineIndex = 0;
+            int caretColumn = 0;
+            for (int i = 0; i < lines.size(); i++) {
+                int start = layout.starts().get(i);
+                int endExclusive = start + lines.get(i).length();
+                boolean inLine = (cursor >= start && cursor <= endExclusive)
+                        || (i == lines.size() - 1 && cursor >= start);
+                if (inLine) {
+                    caretLineIndex = i - notepadScroll;
+                    caretColumn = Math.max(0, Math.min(lines.get(i).length(), cursor - start));
+                    break;
+                }
+            }
+            if (caretLineIndex < visible) {
+                String caretLine = lines.isEmpty() ? "" : lines.get(Math.max(0, Math.min(lines.size() - 1, caretLineIndex + notepadScroll)));
+                String left = caretLine.substring(0, Math.max(0, Math.min(caretLine.length(), caretColumn)));
+                int cx = notepadAreaX + 6 + Math.min(this.font.width(left), notepadAreaW - 16);
+                int cy = notepadAreaY + 4 + (caretLineIndex * LINE_HEIGHT);
+                graphics.fill(cx, cy, cx + 1, cy + 9, 0xFFFFFFFF);
+            }
+        }
+
+        if (maxScroll > 0) {
+            int barX1 = notepadAreaX + notepadAreaW - 4;
+            int barX2 = notepadAreaX + notepadAreaW - 1;
+            graphics.fill(barX1, notepadAreaY + 1, barX2, notepadAreaY + notepadAreaH - 1, 0x553C5878);
+            int thumbH = Math.max(10, (int) ((notepadAreaH - 2) * (visible / (float) lines.size())));
+            int thumbTravel = Math.max(1, (notepadAreaH - 2) - thumbH);
+            int thumbY = notepadAreaY + 1 + (int) (thumbTravel * (notepadScroll / (float) maxScroll));
+            graphics.fill(barX1, thumbY, barX2, thumbY + thumbH, 0xCC9FD1FF);
+        }
+
+        if (notepadSaveModalOpen) {
+            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalH = 108;
+            int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+            int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+
+            graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
+            graphics.drawString(this.font, "Save Notepad", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, "Enter a file name:", modalX + 10, modalY + 26, 0xFFD5E9FF, false);
+        }
+    }
+
+    private void drawFileExplorerApp(GuiGraphics graphics, int x, int y, int width, int height) {
+        int innerX = x + 4;
+        int innerW = Math.max(120, width - 8);
+        int infoY = Math.max(y + 4, explorerFileListY - 20);
+
+        int used = ClientOwnerPcData.getDesktopUsedStorageBytes();
+        int max = Math.max(1, ClientOwnerPcData.getDesktopMaxStorageBytes());
+        String storageText = "PC " + fitToWidth(ClientOwnerPcData.getDesktopComputerLabel(), Math.max(80, innerW / 2))
+                + "  |  Storage " + used + " / " + max + " bytes";
+        graphics.drawString(this.font, fitToWidth(storageText, innerW - 8), innerX, infoY, 0xFFD6EBFF, false);
+
+        graphics.drawString(
+                this.font,
+                "Click a file card to open it.",
+                innerX,
+                infoY + 11,
+                0xFF9EF0B6,
+                false
+        );
+
+        graphics.fill(explorerFileListX - 1,
+                explorerFileListY - 1,
+                explorerFileListX + explorerFileListW + 1,
+                explorerFileListY + explorerFileListH + 1,
+                0xFF2D4B6D);
+        graphics.fill(explorerFileListX,
+                explorerFileListY,
+                explorerFileListX + explorerFileListW,
+                explorerFileListY + explorerFileListH,
+                0xC0182E46);
+
+        List<OwnerPcFileEntry> files = ClientOwnerPcData.getDesktopFiles();
+        if (files.isEmpty()) {
+            graphics.drawString(this.font, "No files saved on this PC yet.", explorerFileListX + 8, explorerFileListY + 8, 0xFF9FC2E6, false);
+        }
+    }
+
+    private void drawPaintApp(GuiGraphics graphics, int x, int y, int width, int height) {
+        int sideW = Math.min(166, Math.max(132, width / 4));
+        int canvasAreaX = x + 6;
+        int canvasAreaY = y + 30;
+        int canvasAreaW = Math.max(120, width - sideW - 14);
+        int canvasAreaH = Math.max(80, height - 36);
+
+        paintCellSize = Math.max(2, Math.min(canvasAreaW / paintCanvasW, canvasAreaH / paintCanvasH));
+        int pixelW = paintCanvasW * paintCellSize;
+        int pixelH = paintCanvasH * paintCellSize;
+        paintCanvasX = canvasAreaX + Math.max(0, (canvasAreaW - pixelW) / 2);
+        paintCanvasY = canvasAreaY + Math.max(0, (canvasAreaH - pixelH) / 2);
+
+        graphics.drawString(this.font,
+                "Brush: " + paintBrushSize + "   Color: " + paintColorLabel(paintSelectedColor),
+                x + 6,
+                y + 10,
+                0xFFE6F3FF,
+                false);
+
+        if (paintControlsW > 0 && paintControlsH > 0) {
+            graphics.fill(paintControlsX - 1, paintControlsY - 1, paintControlsX + paintControlsW + 1, paintControlsY + paintControlsH + 1, 0xFF2D4B6D);
+            graphics.fill(paintControlsX, paintControlsY, paintControlsX + paintControlsW, paintControlsY + paintControlsH, 0xA0182F47);
+            if (paintControlsMaxScroll > 0) {
+                drawVerticalScrollbar(
+                        graphics,
+                        paintControlsX + paintControlsW - 4,
+                        paintControlsY + 1,
+                        3,
+                        Math.max(10, paintControlsH - 2),
+                        paintControlsScroll,
+                        paintControlsMaxScroll
+                );
+            }
+        }
+
+        graphics.fill(paintCanvasX - 2, paintCanvasY - 2, paintCanvasX + pixelW + 2, paintCanvasY + pixelH + 2, 0xFF2B4B6C);
+        graphics.fill(paintCanvasX - 1, paintCanvasY - 1, paintCanvasX + pixelW + 1, paintCanvasY + pixelH + 1, 0xFF0F2135);
+
+        for (int py = 0; py < paintCanvasH; py++) {
+            int rowOffset = py * paintCanvasW;
+            int drawY = paintCanvasY + (py * paintCellSize);
+            for (int px = 0; px < paintCanvasW; px++) {
+                int drawX = paintCanvasX + (px * paintCellSize);
+                int color = paintPixels[rowOffset + px];
+                graphics.fill(drawX, drawY, drawX + paintCellSize, drawY + paintCellSize, color);
+            }
+        }
+
+        if (paintCellSize >= 8) {
+            for (int px = 0; px <= paintCanvasW; px++) {
+                int gx = paintCanvasX + (px * paintCellSize);
+                graphics.fill(gx, paintCanvasY, gx + 1, paintCanvasY + pixelH, 0x22000000);
+            }
+            for (int py = 0; py <= paintCanvasH; py++) {
+                int gy = paintCanvasY + (py * paintCellSize);
+                graphics.fill(paintCanvasX, gy, paintCanvasX + pixelW, gy + 1, 0x22000000);
+            }
+        }
+
+        if (paintSaveModalOpen) {
+            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalH = 108;
+            int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
+            int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
+            graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
+            graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
+            graphics.drawString(this.font, "Save Canvas", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, "Enter a file name:", modalX + 10, modalY + 26, 0xFFD5E9FF, false);
+        }
+    }
+
+    private void drawSystemMonitorApp(GuiGraphics graphics, int x, int y, int width, int height) {
+        if (systemHideAppsMenuOpen) {
+            int panelX = systemHideAppsX > 0 ? systemHideAppsX : (utilityContentX + 8);
+            int panelY = systemHideAppsY > 0 ? systemHideAppsY : (utilityContentY + 34);
+            int panelW = systemHideAppsW > 0 ? systemHideAppsW : Math.max(120, utilityContentW - 16);
+            int panelH = systemHideAppsH > 0 ? systemHideAppsH : Math.max(80, utilityContentH - 36);
+            graphics.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xFF2D4B6D);
+            graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xC8192F47);
+            graphics.drawString(this.font, "App Visibility", panelX + 8, panelY + 8, 0xFFE4F2FF, false);
+            graphics.drawString(this.font, "Click a card to toggle hidden/visible.", panelX + 8, panelY + 19, 0xFFBFD6EE, false);
+
+            for (AppVisibilityCard card : visibleSystemAppCards) {
+                boolean hidden = card.app().hidden();
+                int accent = hidden ? 0xFFD95C5C : 0xFF6FD39A;
+                graphics.fill(card.x(), card.y(), card.x() + card.width(), card.y() + 2, accent);
+                String status = hidden ? "Hidden" : "Visible";
+                graphics.drawString(this.font, status, card.x() + 8, card.y() + card.height() - 11, hidden ? 0xFFFFC7C7 : 0xFFC7FFE0, false);
+            }
+            return;
+        }
+
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        int guiScale = 0;
+        if (mc != null && mc.options != null && mc.options.guiScale() != null && mc.options.guiScale().get() != null) {
+            guiScale = mc.options.guiScale().get();
+        }
+        long gameTime = mc != null && mc.level != null ? mc.level.getDayTime() : -1L;
+        long day = gameTime >= 0 ? (gameTime / 24000L) : -1L;
+        long dayTime = gameTime >= 0 ? (gameTime % 24000L) : -1L;
+
+        int gap = 8;
+        int cols = width >= 560 ? 2 : 1;
+        int cardW = Math.max(120, (width - (gap * (cols - 1))) / cols);
+        int cardH = 46;
+        int viewportX = systemMonitorViewportX > 0 ? systemMonitorViewportX : (x + 2);
+        int viewportY = systemMonitorViewportY > 0 ? systemMonitorViewportY : (y + 34);
+        int viewportW = systemMonitorViewportW > 0 ? systemMonitorViewportW : Math.max(1, width - 4);
+        int viewportH = systemMonitorViewportH > 0 ? systemMonitorViewportH : Math.max(1, height - 38);
+        int cardStartY = viewportY + 34 - systemMonitorScroll;
+        List<String[]> entries = List.of(
+                new String[]{"Resolution", this.width + "x" + this.height},
+                new String[]{"GUI Scale", String.valueOf(guiScale)},
+                new String[]{"PC UI Scale", "2 (forced)"},
+                new String[]{"Virtual Scale", String.valueOf(useVirtualScale)},
+                new String[]{"Bank Windows", String.valueOf(bankWindowOrder.size())},
+                new String[]{"Utility Windows", String.valueOf(utilityWindowOrder.size())},
+                new String[]{"In-Game Day", day < 0 ? "-" : String.valueOf(day)},
+                new String[]{"Day Time", dayTime < 0 ? "-" : String.valueOf(dayTime)},
+                new String[]{"Local Time", LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))}
+        );
+
+        graphics.enableScissor(viewportX, viewportY, viewportX + viewportW, viewportY + viewportH);
+        for (int i = 0; i < entries.size(); i++) {
+            int col = i % cols;
+            int row = i / cols;
+            int cardX = x + (col * (cardW + gap));
+            int cardY = cardStartY + (row * (cardH + gap));
+            if (cardY + cardH < viewportY || cardY > viewportY + viewportH) {
+                continue;
+            }
+            drawMetricCard(graphics, cardX, cardY, cardW, cardH, entries.get(i)[0], entries.get(i)[1], 0xFF67B5F2);
+        }
+        graphics.disableScissor();
+
+        if (systemMonitorMaxScroll > 0) {
+            drawVerticalScrollbar(
+                    graphics,
+                    viewportX + viewportW - 4,
+                    viewportY + 1,
+                    3,
+                    Math.max(10, viewportH - 2),
+                    systemMonitorScroll,
+                    systemMonitorMaxScroll
+            );
+        }
+    }
+
+    private NotepadLayout buildNotepadLayout(int maxWidth) {
+        if (maxWidth <= 0) {
+            return new NotepadLayout(List.of(""), List.of(0));
+        }
+
+        List<String> lines = new ArrayList<>();
+        List<Integer> starts = new ArrayList<>();
+        String text = notepadText.toString();
+        int length = text.length();
+        int lineStart = 0;
+        int lineWidth = 0;
+        int lastBreakIndex = -1;
+        int i = 0;
+        while (i < length) {
+            char c = text.charAt(i);
+            if (c == '\n') {
+                lines.add(text.substring(lineStart, i));
+                starts.add(lineStart);
+                i++;
+                lineStart = i;
+                lineWidth = 0;
+                lastBreakIndex = -1;
+                continue;
+            }
+
+            int charWidth = this.font.width(String.valueOf(c));
+            int nextWidth = lineWidth + charWidth;
+            if (nextWidth > maxWidth && i > lineStart) {
+                int wrapIndex = i;
+                int newLineStart = i;
+                if (lastBreakIndex >= lineStart) {
+                    wrapIndex = lastBreakIndex + 1;
+                    newLineStart = wrapIndex;
+                    while (newLineStart < length && text.charAt(newLineStart) == ' ') {
+                        newLineStart++;
+                    }
+                }
+
+                lines.add(text.substring(lineStart, wrapIndex));
+                starts.add(lineStart);
+                lineStart = newLineStart;
+                lineWidth = this.font.width(text.substring(lineStart, i));
+                lastBreakIndex = -1;
+                continue;
+            }
+
+            lineWidth = nextWidth;
+            if (c == ' ' || c == '\t') {
+                lastBreakIndex = i;
+            }
+            i++;
+        }
+
+        lines.add(text.substring(lineStart));
+        starts.add(lineStart);
+        if (lines.isEmpty()) {
+            lines.add("");
+            starts.add(0);
+        }
+        return new NotepadLayout(lines, starts);
+    }
+
+    private boolean isInsidePaintCanvas(double mouseX, double mouseY) {
+        if (paintCellSize <= 0) {
+            return false;
+        }
+        int pixelW = paintCanvasW * paintCellSize;
+        int pixelH = paintCanvasH * paintCellSize;
+        return mouseX >= paintCanvasX
+                && mouseX < (paintCanvasX + pixelW)
+                && mouseY >= paintCanvasY
+                && mouseY < (paintCanvasY + pixelH);
+    }
+
+    private void paintAt(double mouseX, double mouseY, int color) {
+        if (!isInsidePaintCanvas(mouseX, mouseY)) {
+            return;
+        }
+        int px = (int) ((mouseX - paintCanvasX) / paintCellSize);
+        int py = (int) ((mouseY - paintCanvasY) / paintCellSize);
+        int radius = Math.max(0, paintBrushSize - 1);
+        for (int dy = -radius; dy <= radius; dy++) {
+            int yy = py + dy;
+            if (yy < 0 || yy >= paintCanvasH) {
+                continue;
+            }
+            for (int dx = -radius; dx <= radius; dx++) {
+                int xx = px + dx;
+                if (xx < 0 || xx >= paintCanvasW) {
+                    continue;
+                }
+                paintPixels[(yy * paintCanvasW) + xx] = color;
+            }
+        }
+    }
+
+    private void onCalculatorButton(String token) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+        switch (token) {
+            case "C" -> {
+                calculatorExpression = "";
+                calculatorDisplay = "0";
+                calculatorStatus = "Cleared";
+            }
+            case "BK" -> {
+                if (!calculatorExpression.isEmpty()) {
+                    calculatorExpression = calculatorExpression.substring(0, calculatorExpression.length() - 1);
+                    calculatorDisplay = calculatorExpression.isEmpty() ? "0" : calculatorExpression;
+                    calculatorStatus = "Ready";
+                }
+            }
+            case "=" -> evaluateCalculatorExpression();
+            default -> {
+                if (calculatorExpression.length() >= 128) {
+                    calculatorStatus = "Expression too long";
+                    return;
+                }
+                if ("ERR".equals(calculatorDisplay)
+                        || ("OK".equals(calculatorStatus) && "0123456789.(".contains(token) && calculatorExpression.equals(calculatorDisplay))) {
+                    calculatorExpression = "";
+                }
+                calculatorExpression = calculatorExpression + token;
+                calculatorDisplay = calculatorExpression;
+                calculatorStatus = "Ready";
+            }
+        }
+    }
+
+    private void evaluateCalculatorExpression() {
+        String expr = calculatorExpression == null ? "" : calculatorExpression.trim();
+        if (expr.isEmpty()) {
+            return;
+        }
+        try {
+            double value = new CalculatorParser(expr).parse();
+            if (!Double.isFinite(value)) {
+                throw new IllegalArgumentException("Non-finite result");
+            }
+            String result = BigDecimal.valueOf(value)
+                    .setScale(10, RoundingMode.HALF_UP)
+                    .stripTrailingZeros()
+                    .toPlainString();
+            if (result.length() > 24) {
+                result = String.format(Locale.ROOT, "%.8g", value);
+            }
+            calculatorDisplay = result;
+            calculatorExpression = result;
+            calculatorStatus = "OK";
+        } catch (RuntimeException ex) {
+            calculatorDisplay = "ERR";
+            calculatorStatus = "Error";
+        }
+    }
+
+    private static final class CalculatorParser {
+        private final String input;
+        private int index;
+
+        private CalculatorParser(String input) {
+            this.input = input == null ? "" : input;
+        }
+
+        private double parse() {
+            double value = parseExpression();
+            skipWhitespace();
+            if (index < input.length()) {
+                throw new IllegalArgumentException("Unexpected token");
+            }
+            return value;
+        }
+
+        private double parseExpression() {
+            double value = parseTerm();
+            while (true) {
+                skipWhitespace();
+                if (match('+')) {
+                    value += parseTerm();
+                } else if (match('-')) {
+                    value -= parseTerm();
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        private double parseTerm() {
+            double value = parseFactor();
+            while (true) {
+                skipWhitespace();
+                if (match('*')) {
+                    value *= parseFactor();
+                } else if (match('/')) {
+                    double divisor = parseFactor();
+                    if (Math.abs(divisor) < 1.0E-12) {
+                        throw new IllegalArgumentException("Division by zero");
+                    }
+                    value /= divisor;
+                } else {
+                    return value;
+                }
+            }
+        }
+
+        private double parseFactor() {
+            skipWhitespace();
+            if (match('+')) {
+                return parseFactor();
+            }
+            if (match('-')) {
+                return -parseFactor();
+            }
+            if (match('(')) {
+                double value = parseExpression();
+                skipWhitespace();
+                if (!match(')')) {
+                    throw new IllegalArgumentException("Missing ')'");
+                }
+                return value;
+            }
+            return parseNumber();
+        }
+
+        private double parseNumber() {
+            skipWhitespace();
+            int start = index;
+            boolean dotSeen = false;
+            while (index < input.length()) {
+                char c = input.charAt(index);
+                if (c >= '0' && c <= '9') {
+                    index++;
+                } else if (c == '.' && !dotSeen) {
+                    dotSeen = true;
+                    index++;
+                } else {
+                    break;
+                }
+            }
+            if (start == index) {
+                throw new IllegalArgumentException("Expected number");
+            }
+            return Double.parseDouble(input.substring(start, index));
+        }
+
+        private void skipWhitespace() {
+            while (index < input.length() && Character.isWhitespace(input.charAt(index))) {
+                index++;
+            }
+        }
+
+        private boolean match(char expected) {
+            if (index < input.length() && input.charAt(index) == expected) {
+                index++;
+                return true;
+            }
+            return false;
+        }
     }
 
     private void drawToast(GuiGraphics graphics) {
@@ -2770,33 +6002,48 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void configureVirtualScale() {
-        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
-        int currentScale = 2;
-        if (mc != null && mc.options != null && mc.options.guiScale() != null) {
-            Integer opt = mc.options.guiScale().get();
-            if (opt != null && opt > 0) {
-                currentScale = opt;
-            }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.getWindow() != null) {
+            this.width = mc.getWindow().getGuiScaledWidth();
+            this.height = mc.getWindow().getGuiScaledHeight();
         }
 
-        if (currentScale == 2) {
-            useVirtualScale = false;
-            virtualScaleX = 1.0F;
-            virtualScaleY = 1.0F;
+        useVirtualScale = false;
+        virtualScaleX = 1.0F;
+        virtualScaleY = 1.0F;
+
+        if (mc == null || mc.options == null || mc.options.guiScale() == null || mc.options.guiScale().get() == null) {
             return;
         }
 
-        float desiredFactor = currentScale / 2.0F;
-        int actualW = Math.max(1, this.width);
-        int actualH = Math.max(1, this.height);
-        int virtualW = Math.max(320, Math.round(actualW * desiredFactor));
-        int virtualH = Math.max(240, Math.round(actualH * desiredFactor));
+        int targetScale = 2;
+        int actualWidth = this.width;
+        int actualHeight = this.height;
+        int rawWidth = mc.getWindow().getWidth();
+        int rawHeight = mc.getWindow().getHeight();
 
-        useVirtualScale = true;
-        virtualScaleX = actualW / (float) virtualW;
-        virtualScaleY = actualH / (float) virtualH;
-        this.width = virtualW;
-        this.height = virtualH;
+        if (rawWidth <= 0 || rawHeight <= 0) {
+            double fallbackScale = mc.getWindow().getGuiScale();
+            Integer configuredScale = mc.options.guiScale().get();
+            if (fallbackScale <= 0.0D) {
+                fallbackScale = (configuredScale != null && configuredScale > 0) ? configuredScale : 1.0D;
+            }
+            rawWidth = Math.max(actualWidth, (int) Math.round(actualWidth * fallbackScale));
+            rawHeight = Math.max(actualHeight, (int) Math.round(actualHeight * fallbackScale));
+        }
+
+        int virtualWidth = Math.max(1, rawWidth / targetScale);
+        int virtualHeight = Math.max(1, rawHeight / targetScale);
+
+        if (virtualWidth == actualWidth && virtualHeight == actualHeight) {
+            return;
+        }
+
+        this.width = virtualWidth;
+        this.height = virtualHeight;
+        this.virtualScaleX = actualWidth / (float) virtualWidth;
+        this.virtualScaleY = actualHeight / (float) virtualHeight;
+        this.useVirtualScale = true;
     }
 
     private double toLocalX(double x) {
