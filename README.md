@@ -77,3 +77,25 @@ On Windows shell environments, run via `gradlew.bat`.
   - [`Developer-API.md`](docs/wiki/Developer-API.md)
   - [`Configuration.md`](docs/wiki/Configuration.md)
   - [`Migration-Guide.md`](docs/wiki/Migration-Guide.md)
+
+## Developer API (Quick View)
+
+Java entry point:
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+```
+
+Highlights:
+
+- Core money ops: balance/deposit/withdraw/transfer/shopPurchase
+- Typed snapshots:
+  - `ApiAccountSnapshot` via account/player/bank lookup
+  - `ApiBankSnapshot` via bank lookup/list
+  - `ApiTransactionSnapshot` via transaction/account/player history
+- Placeholder resolver for scoreboards/HUD:
+  - `resolvePlaceholder(playerId, token)`
+  - `resolvePlaceholders(playerId, text)`
+  - `getSupportedPlaceholders()`
+
+Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)

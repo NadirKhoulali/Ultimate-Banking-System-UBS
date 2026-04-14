@@ -10,13 +10,79 @@ Use:
 UltimateBankingApi api = UltimateBankingApiProvider.get();
 ```
 
-Main account operations:
+## Core API Operations
+
+Banking actions:
 
 - `getBalance(accountId)`
 - `deposit(accountId, amount)`
 - `withdraw(accountId, amount)`
 - `transfer(senderAccountId, receiverAccountId, amount)`
 - `shopPurchase(accountId, amount, shopName)`
+
+Service/runtime checks:
+
+- `getApiVersion()`
+- `isServerAvailable()`
+- `accountExists(accountId)`
+- `bankExists(bankId)`
+
+## Snapshot API (Typed Data)
+
+These methods expose stable read models for integration UIs, HUDs, dashboards, and leaderboards.
+
+### Account snapshots
+
+- `getAccountSnapshot(accountId)` -> `Optional<ApiAccountSnapshot>`
+- `getPrimaryAccountSnapshot(playerId)` -> `Optional<ApiAccountSnapshot>`
+- `getPlayerAccounts(playerId)` -> `List<ApiAccountSnapshot>`
+- `getBankAccounts(bankId)` -> `List<ApiAccountSnapshot>`
+- `setPrimaryAccount(playerId, accountId)` -> `ApiResult`
+
+`ApiAccountSnapshot` fields:
+- `accountId`
+- `playerId`
+- `bankId`
+- `accountType`
+- `accountTypeLabel`
+- `balance`
+- `primary`
+- `frozen`
+- `frozenReason`
+- `createdAt`
+
+### Bank snapshots
+
+- `getBankSnapshot(bankId)` -> `Optional<ApiBankSnapshot>`
+- `getBanks()` -> `List<ApiBankSnapshot>`
+
+`ApiBankSnapshot` fields:
+- `bankId`
+- `bankName`
+- `ownerId`
+- `status`
+- `declaredReserve`
+- `totalDeposits`
+- `minimumRequiredReserve`
+- `reserveRatio`
+- `outstandingLoanBalance`
+- `maxLendableAmount`
+- `interestRate`
+- `accountCount`
+
+### Transaction snapshots
+
+- `getTransactionSnapshot(transactionId)` -> `Optional<ApiTransactionSnapshot>`
+- `getAccountTransactions(accountId, limit)` -> `List<ApiTransactionSnapshot>`
+- `getPlayerTransactions(playerId, limit)` -> `List<ApiTransactionSnapshot>`
+
+`ApiTransactionSnapshot` fields:
+- `transactionId`
+- `senderAccountId`
+- `receiverAccountId`
+- `amount`
+- `timestamp`
+- `description`
 
 ## Aggregated Metrics API
 
@@ -95,4 +161,19 @@ String line = api.resolvePlaceholders(
 ```java
 String raw = api.resolvePlaceholder(playerId, "%ubs_player_total_balance_raw%");
 BigDecimal value = new BigDecimal(raw);
+```
+
+## Example: Snapshot Usage
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+
+api.getPrimaryAccountSnapshot(player.getUUID()).ifPresent(primary -> {
+    System.out.println("Primary account: " + primary.accountId());
+    System.out.println("Balance: " + primary.balance());
+});
+
+for (ApiBankSnapshot bank : api.getBanks()) {
+    System.out.println(bank.bankName() + " reserve ratio = " + bank.reserveRatio());
+}
 ```
