@@ -19,6 +19,10 @@ Banking actions:
 - `withdraw(accountId, amount)`
 - `transfer(senderAccountId, receiverAccountId, amount)`
 - `shopPurchase(accountId, amount, shopName)`
+- `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)`
+- `issueCheque(sourceAccountId, recipientPlayerId, amountDollars, writerPlayerId, writerName, recipientName)`
+- `giveDollarBills(playerId, denomination, billCount)`
+- `takeDollarBills(playerId, denomination, billCount)`
 
 Service/runtime checks:
 
@@ -83,6 +87,49 @@ These methods expose stable read models for integration UIs, HUDs, dashboards, a
 - `amount`
 - `timestamp`
 - `description`
+
+## Cash & Paper Instruments API
+
+These methods let integrations issue real UBS instruments and physical USD bill items.
+
+### Bank notes and cheques
+
+- `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)` -> `ApiItemResult`
+- `issueCheque(sourceAccountId, recipientPlayerId, amountDollars, writerPlayerId, writerName, recipientName)` -> `ApiItemResult`
+
+Behavior:
+
+- Withdraws the amount from `sourceAccountId`.
+- Returns a fully tagged `ItemStack` (`bank_note` or `cheque`) ready to give/store.
+- Returns the generated serial/ID in `referenceId`.
+
+`ApiItemResult` fields:
+
+- `success`
+- `reason`
+- `itemStack`
+- `referenceId`
+- `amount`
+
+### Dollar bills (denomination + bill count)
+
+- `giveDollarBills(playerId, denomination, billCount)` -> `ApiCashResult`
+- `takeDollarBills(playerId, denomination, billCount)` -> `ApiCashResult`
+- `getSupportedBillDenominations()` -> `List<Integer>`
+- `createDollarBillStacks(denomination, billCount)` -> `List<ItemStack>`
+- `getPlayerBillCount(playerId, denomination)` -> `int`
+- `getPlayerCashOnHand(playerId)` -> `int`
+
+`denomination` values are face-value dollars: `1, 2, 5, 10, 20, 50, 100`.
+`billCount` means count of bill items, not dollar amount.
+
+`ApiCashResult` fields:
+
+- `success`
+- `reason`
+- `denomination`
+- `billCount`
+- `totalDollarValue`
 
 ## Aggregated Metrics API
 
@@ -175,5 +222,35 @@ api.getPrimaryAccountSnapshot(player.getUUID()).ifPresent(primary -> {
 
 for (ApiBankSnapshot bank : api.getBanks()) {
     System.out.println(bank.bankName() + " reserve ratio = " + bank.reserveRatio());
+}
+```
+
+## Example: Give Bills
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+ApiCashResult result = api.giveDollarBills(player.getUUID(), 20, 6); // six $20 bills
+
+if (!result.success()) {
+    System.out.println("Failed to give bills: " + result.reason());
+}
+```
+
+## Example: Issue Cheque
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+ApiItemResult cheque = api.issueCheque(
+        sourceAccountId,
+        recipientPlayerId,
+        250L,
+        writerPlayerId,
+        "Bank Admin",
+        "RecipientName"
+);
+
+if (cheque.success()) {
+    ItemStack stack = cheque.itemStack();
+    // give to player inventory or store for later
 }
 ```

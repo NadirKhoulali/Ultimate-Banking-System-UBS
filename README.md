@@ -89,6 +89,10 @@ UltimateBankingApi api = UltimateBankingApiProvider.get();
 Highlights:
 
 - Core money ops: balance/deposit/withdraw/transfer/shopPurchase
+- Paper instruments + cash API:
+  - issue tagged `bank_note` and `cheque` item stacks
+  - give/take USD bills by `denomination + billCount`
+  - cash inventory helpers (`getPlayerBillCount`, `getPlayerCashOnHand`)
 - Typed snapshots:
   - `ApiAccountSnapshot` via account/player/bank lookup
   - `ApiBankSnapshot` via bank lookup/list
