@@ -75,6 +75,7 @@ On Windows shell environments, run via `gradlew.bat`.
   - [`Bank-Owner-PC.md`](docs/wiki/Bank-Owner-PC.md)
   - [`Admin-Commands.md`](docs/wiki/Admin-Commands.md)
   - [`Developer-API.md`](docs/wiki/Developer-API.md)
+  - [`Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)
   - [`Configuration.md`](docs/wiki/Configuration.md)
   - [`Migration-Guide.md`](docs/wiki/Migration-Guide.md)
 
@@ -103,3 +104,5 @@ Highlights:
   - `getSupportedPlaceholders()`
 
 Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)
+
+Integration walkthrough: [`docs/wiki/Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)

@@ -2,6 +2,8 @@
 
 This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
 
+Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
+
 ## Java API Entry Point
 
 Use:
