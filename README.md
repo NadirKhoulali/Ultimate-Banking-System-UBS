@@ -106,3 +106,4 @@ Highlights:
 Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)
 
 Integration walkthrough: [`docs/wiki/Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)
+Includes exact `settings.gradle`, `build.gradle`, and `neoforge.mods.toml` dependency setup (required + optional modes).

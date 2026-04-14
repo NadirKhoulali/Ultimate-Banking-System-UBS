@@ -1,153 +1,255 @@
 # Developer Integration Tutorial
 
-This tutorial shows how to integrate your mod with Ultimate Banking System (UBS).
+This guide explains exactly how to integrate UBS into another NeoForge mod dev environment.
 
-## 1. Prerequisites
+## 1. UBS coordinates and mod id
 
-- Minecraft `1.21.1`
-- NeoForge `21.1.x`
-- Java `21`
-- UBS installed on the server/client where your mod runs
+Current UBS identity:
 
-## 2. Add UBS as a dependency
+- Maven group: `net.austizz.ultimatebankingsystem`
+- Artifact: `ultimatebankingsystem`
+- Mod id: `ultimatebankingsystem`
+- Current version in this repo: `1.0.0`
 
-Use one of these approaches:
+Dependency coordinate format:
 
-- Development workspace: add UBS source as an included project.
-- JAR dependency: place UBS jar in your `libs/` folder and add it to your mod dependencies.
+```text
+net.austizz.ultimatebankingsystem:ultimatebankingsystem:<ubs_version>
+```
 
-At runtime, UBS must be loaded, otherwise API calls will return unavailable/empty results.
+## 2. Do you need Gradle dependency?
 
-## 3. Access the API
+Yes, if your code imports UBS classes (for example `UltimateBankingApiProvider`), your mod must have UBS on the compile classpath.
+
+You also need UBS present at runtime for tests/dev runs if you actually call UBS APIs.
+
+## 3. Choose integration mode
+
+Use one:
+
+1. Composite build (best when developing both mods locally)
+2. `mavenLocal()` (best if UBS is built/published locally)
+3. `libs/` jar dependency (quick local setup)
+
+## 4. Mode A: Composite build (recommended)
+
+### 4.1 In your mod's `settings.gradle`
+
+```gradle
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+includeBuild("../Ultimate-Banking-System-UBS-")
+```
+
+Point the path to your local UBS clone.
+
+### 4.2 In your mod's `build.gradle`
+
+```gradle
+dependencies {
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.0.0"
+
+    // Prefer localRuntime for NeoForge dev runs.
+    // If your template does not have localRuntime, use runtimeOnly instead.
+    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.0.0"
+}
+```
+
+## 5. Mode B: Publish UBS to `mavenLocal()`
+
+### 5.1 In UBS repo
+
+```bash
+./gradlew publishToMavenLocal
+```
+
+Windows:
+
+```bat
+gradlew.bat publishToMavenLocal
+```
+
+### 5.2 In your mod `build.gradle`
+
+```gradle
+repositories {
+    mavenLocal()
+    maven { url "https://libraries.minecraft.net" }
+    // other repos...
+}
+
+dependencies {
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.0.0"
+    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.0.0"
+}
+```
+
+## 6. Mode C: Local `libs/` jar
+
+### 6.1 Build UBS jar
+
+```bash
+./gradlew build
+```
+
+Take the produced UBS jar from `build/libs/` and place it in your mod's `libs/`.
+
+### 6.2 In your mod `build.gradle`
+
+```gradle
+repositories {
+    flatDir {
+        dirs "libs"
+    }
+}
+
+dependencies {
+    compileOnly name: "ultimatebankingsystem-1.0.0"
+    localRuntime name: "ultimatebankingsystem-1.0.0"
+}
+```
+
+If your setup does not have `localRuntime`, use `runtimeOnly`.
+
+## 7. Declare mod dependency in `neoforge.mods.toml`
+
+In your mod's `src/main/resources/META-INF/neoforge.mods.toml`, replace `<your_modid>` with your mod id.
+
+### Required UBS
+
+```toml
+[[dependencies.<your_modid>]]
+modId="ultimatebankingsystem"
+type="required"
+versionRange="[1.0.0,)"
+ordering="AFTER"
+side="BOTH"
+```
+
+### Optional UBS integration
+
+```toml
+[[dependencies.<your_modid>]]
+modId="ultimatebankingsystem"
+type="optional"
+versionRange="[1.0.0,)"
+ordering="AFTER"
+side="BOTH"
+```
+
+Use `required` if your mod cannot function without UBS.  
+Use `optional` if UBS features are add-ons.
+
+## 8. Required vs optional code patterns
+
+### 8.1 Required pattern
+
+You can call UBS API directly during normal server lifecycle points.
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+if (!api.isServerAvailable()) {
+    return;
+}
+```
+
+### 8.2 Optional pattern (important)
+
+Guard integration so your mod does not crash when UBS is missing.
+
+```java
+import net.neoforged.fml.ModList;
+
+boolean hasUbs = ModList.get().isLoaded("ultimatebankingsystem");
+if (!hasUbs) {
+    return;
+}
+```
+
+Keep UBS-specific code in classes only touched when UBS is loaded.
+
+Do not `jarJar`/shade UBS into your own mod jar. UBS should load as a separate mod.
+
+## 9. Basic API bootstrap
 
 ```java
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 
 UltimateBankingApi api = UltimateBankingApiProvider.get();
+String apiVersion = api.getApiVersion();
 ```
 
-## 4. Do a safe startup check
+## 10. Common usage examples
+
+### Account read/write
 
 ```java
-if (!api.isServerAvailable()) {
-    // Server not ready yet or UBS data not loaded
-    return;
+var bal = api.getBalance(accountId);
+if (bal.success()) {
+    // bal.balanceAfter()
+}
+
+var tx = api.transfer(senderAccountId, receiverAccountId, 250L);
+if (!tx.success()) {
+    // tx.reason()
 }
 ```
 
-You can also log API version:
+### Cheque / note issue
 
 ```java
-String version = api.getApiVersion();
-```
+var cheque = api.issueCheque(
+        sourceAccountId,
+        recipientPlayerId,
+        300L,
+        writerPlayerId,
+        "Cashier",
+        "Recipient"
+);
 
-## 5. Basic account operations
-
-```java
-var balance = api.getBalance(accountId);
-if (!balance.success()) {
-    // handle error: balance.reason()
-    return;
-}
-
-var withdraw = api.withdraw(accountId, 150L); // whole-dollar amount
-if (!withdraw.success()) {
-    // handle error: withdraw.reason()
+if (cheque.success()) {
+    ItemStack stack = cheque.itemStack();
 }
 ```
 
-## 6. Read snapshot data for UI/HUD
+### Cash bills
 
 ```java
-api.getPrimaryAccountSnapshot(playerId).ifPresent(primary -> {
-    // primary.balance(), primary.accountTypeLabel(), primary.bankId(), etc.
-});
-
-for (var bank : api.getBanks()) {
-    // bank.bankName(), bank.reserveRatio(), bank.status(), etc.
-}
-```
-
-## 7. Work with physical bills
-
-Bill APIs use:
-
-- `denomination`: one of `1, 2, 5, 10, 20, 50, 100`
-- `billCount`: number of bill items, not total dollars
-
-Examples:
-
-```java
-var cashResult = api.giveDollarBills(playerId, 20, 4); // gives 4x $20 bills
-if (!cashResult.success()) {
-    // cashResult.reason()
-}
-
-int twenties = api.getPlayerBillCount(playerId, 20);
+var cash = api.giveDollarBills(playerId, 20, 5); // 5x $20 bills
 int cashOnHand = api.getPlayerCashOnHand(playerId);
 ```
 
-## 8. Create cheques and bank notes
+## 11. Verification checklist
 
-These methods deduct balance from source account and return tagged item stacks you can give to players.
+After setup:
 
-```java
-var note = api.issueBankNote(sourceAccountId, 500L, issuerId, issuerName);
-if (note.success()) {
-    ItemStack stack = note.itemStack();
-    // give stack to player inventory
-}
+1. `./gradlew build` succeeds in your mod.
+2. Game starts with both mods in dev run.
+3. `ModList.get().isLoaded("ultimatebankingsystem")` reports true when expected.
+4. `api.isServerAvailable()` becomes true after server data init.
+5. A test API call (for example `getPlayerAccountCount`) returns expected values.
 
-var cheque = api.issueCheque(
-        sourceAccountId,
-        recipientId,
-        250L,
-        writerId,
-        writerName,
-        recipientName
-);
-if (cheque.success()) {
-    ItemStack stack = cheque.itemStack();
-    // give stack to player inventory
-}
-```
+## 12. Common mistakes
 
-## 9. Placeholder integration
+- Missing UBS on compile classpath:
+  - Causes compile errors for UBS imports.
+- Missing UBS on runtime classpath:
+  - Causes `ClassNotFound`/`NoClassDefFound` during dev run.
+- `optional` mods.toml but unguarded UBS class usage:
+  - Crashes when UBS is not installed.
+- Wrong version range in mods.toml:
+  - Dependency mismatch at load.
 
-Use placeholders for scoreboard/HUD text without manually formatting account data:
-
-```java
-String line = api.resolvePlaceholders(
-        playerId,
-        "Balance: %ubs_player_primary_balance% | Net: %ubs_player_total_balance%"
-);
-```
-
-For sort/ranking logic, use `_raw` placeholders:
-
-```java
-String raw = api.resolvePlaceholder(playerId, "%ubs_player_total_balance_raw%");
-```
-
-## 10. Recommended integration pattern
-
-- Check `isServerAvailable()` before heavy API usage.
-- Always check `result.success()` for `ApiResult`, `ApiCashResult`, `ApiItemResult`.
-- Treat player-inventory methods as server-side actions.
-- Use snapshot methods for read-only UI.
-- Keep writes (`withdraw`, `transfer`, `issueCheque`, `issueBankNote`) behind permission checks in your own mod.
-
-## 11. Troubleshooting
-
-- API returns empty/false for everything:
-  - UBS may not be loaded or server data is not initialized yet.
-- Cash methods fail with player errors:
-  - Bill methods require the target player to be online.
-- Instrument issue fails:
-  - Source account may not exist, be unavailable, or have insufficient balance.
-
-## 12. Related docs
+## 13. Related docs
 
 - [Developer API](Developer-API.md)
 - [Configuration](Configuration.md)
