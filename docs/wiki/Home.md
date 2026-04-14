@@ -10,6 +10,7 @@ This wiki tracks the current UBS feature set and command surface.
 - [Admin Commands](Admin-Commands.md)
 - [Configuration](Configuration.md)
 - [Migration Guide](Migration-Guide.md)
+- [Developer API](Developer-API.md)
 
 ## System Overview
 
