@@ -78,11 +78,11 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `SafeBoxSlotsSaving`
 - `SafeBoxSlotsMoneyMarket`
 - `SafeBoxSlotsCertificate`
-- `HeistDurationTicks`
-- `HeistMinPlayers`
-- `HeistSuccessChance`
-- `HeistPayoutRatio`
-- `HeistCooldownTicks`
+- `HeistDurationTicks` (Coming Soon)
+- `HeistMinPlayers` (Coming Soon)
+- `HeistSuccessChance` (Coming Soon)
+- `HeistPayoutRatio` (Coming Soon)
+- `HeistCooldownTicks` (Coming Soon)
 
 ## Display
 
@@ -91,4 +91,3 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `HudEnabledByDefault`
 - `HudCorner`
 - `HudTextColor`
-

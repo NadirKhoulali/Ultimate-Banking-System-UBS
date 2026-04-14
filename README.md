@@ -23,7 +23,7 @@ UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: 
   - open market operations
   - reserve audits/compliance + clearing ledger/suspense records
   - annual license renewals and periodic bank tax handling
-- Safe deposit box storage and bank heist mechanics
+- Safe deposit box storage and bank heist mechanics (Coming Soon)
 - Admin moderation and migration tooling (`csv`, `EssentialsX`, `CMI`, `iConomy`)
 
 ## Core Commands
@@ -37,7 +37,7 @@ Player-facing (examples):
 - `/bank reserve`
 - `/bank dashboard`
 - `/bank safebox list|deposit|withdraw <slot>`
-- `/bank heist start <bankName>`
+- `/bank heist start <bankName>` (Coming Soon)
 
 Admin-facing (examples):
 

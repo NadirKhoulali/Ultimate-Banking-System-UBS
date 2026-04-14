@@ -21,6 +21,7 @@ import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -59,29 +60,32 @@ import java.util.concurrent.ConcurrentHashMap;
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSCommands {
 
-    private static final Component helpMessage = Component.literal("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
+    private static final Component helpMessage = moneyLiteral("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
     private static final ConcurrentHashMap<UUID, LoanService.LoanQuote> PENDING_LOAN_CONFIRMATIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, Boolean> HUD_ENABLED_OVERRIDES = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, Long> LAST_BANK_CREATE_ATTEMPT_MILLIS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, CompoundTag> PENDING_CD_BREAK_CONFIRMATIONS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<UUID, Long> HEIST_WANTED_UNTIL = new ConcurrentHashMap<>();
 
     private record EmployeeSpec(String role, BigDecimal salary) {}
     private record LoanProductSpec(String name, BigDecimal maxAmount, double interestRate, long durationTicks) {}
 
+    private static MutableComponent moneyLiteral(String text) {
+        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+    }
+
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
-        return Component.literal("§6§lUltimate Banking System §7- ")
-                .append(Component.literal(title).withStyle(accentColor))
-                .append(Component.literal("\n§8────────────────────────\n"))
+        return moneyLiteral("§6§lUltimate Banking System §7- ")
+                .append(moneyLiteral(title).withStyle(accentColor))
+                .append(moneyLiteral("\n§8────────────────────────\n"))
                 .append(body);
     }
 
     private static Component ubsError(String title, String message) {
-        return ubsMessage(ChatFormatting.RED, "§c" + title, Component.literal("§c" + message));
+        return ubsMessage(ChatFormatting.RED, "§c" + title, moneyLiteral("§c" + message));
     }
 
     private static Component ubsSuccess(String title, String message) {
-        return ubsMessage(ChatFormatting.GREEN, "§a" + title, Component.literal("§a" + message));
+        return ubsMessage(ChatFormatting.GREEN, "§a" + title, moneyLiteral("§a" + message));
     }
 
     @SubscribeEvent
@@ -102,32 +106,32 @@ public class UBSCommands {
                                     CentralBank centralBank = BankManager.getCentralBank(server);
                                     ConcurrentHashMap<UUID, AccountHolder> account = centralBank.SearchForAccount(context.getSource().getPlayer().getUUID());
                                     if (account.isEmpty()) {
-                                        context.getSource().sendSystemMessage(Component.literal("§cYou currently do not have any accounts."));
+                                        context.getSource().sendSystemMessage(moneyLiteral("§cYou currently do not have any accounts."));
                                         return 1;
                                     }
                                     for(AccountHolder a :  account.values()){
                                         if (a.isPrimaryAccount()){
                                             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                                            Component info = Component.literal("§6§lUltimate Banking System §7- §eAccount Info\n"
+                                            Component info = moneyLiteral("§6§lUltimate Banking System §7- §eAccount Info\n"
                                                             + "§7Bank: §e" + centralBank.getBank(a.getBankId()).getBankName() + "\n"
                                                             + "§8(§7ID: §f" + a.getBankId() + "§8)\n")
-                                                    .append(Component.literal("§7Account ID: §f" + a.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, a.getAccountUUID().toString()))))
-                                                    .append(Component.literal("§7Primary Account: §f" + a.isPrimaryAccount() + "\n"
+                                                    .append(moneyLiteral("§7Account ID: §f" + a.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, a.getAccountUUID().toString()))))
+                                                    .append(moneyLiteral("§7Primary Account: §f" + a.isPrimaryAccount() + "\n"
                                                                     + "§7Type: §f" + (a.getAccountType() != null ? a.getAccountType().label : "Unknown") + "\n"
-                                                                    + "§7Balance: §a" + a.getBalance().toPlainString() + "\n"
+                                                                    + "§7Balance: §a$" + a.getBalance().toPlainString() + "\n"
                                                                     + "§7Created: §f" + a.getDateOfCreation().format(fmt) + "\n"
                                                                     + "Actions: ")
-                                                            .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + a.getAccountUUID()))))
-                                                            .append(Component.literal(" "))
-                                                            .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + a.getAccountUUID())))))
-                                                    .append(Component.literal(" \n"))
-                                                    .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + a.getAccountUUID()))))
-                                                    .append((Component) Component.literal("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + a.getAccountUUID()))));
+                                                            .append((Component) moneyLiteral("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + a.getAccountUUID()))))
+                                                            .append(moneyLiteral(" "))
+                                                            .append((Component) moneyLiteral("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + a.getAccountUUID())))))
+                                                    .append(moneyLiteral(" \n"))
+                                                    .append((Component) moneyLiteral("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + a.getAccountUUID()))))
+                                                    .append((Component) moneyLiteral("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + a.getAccountUUID()))));
                                             context.getSource().sendSystemMessage(info);
                                             return 1;
                                         }
                                     }
-                                    context.getSource().sendSystemMessage(Component.literal("§cNo primary account could be determined. Please check your accounts and set a primary account."));
+                                    context.getSource().sendSystemMessage(moneyLiteral("§cNo primary account could be determined. Please check your accounts and set a primary account."));
                                     return 1;
                                 })
                                 .then(Commands.literal("list")
@@ -140,10 +144,10 @@ public class UBSCommands {
 
                                             // Header
                                             context.getSource().sendSystemMessage(
-                                                    Component.literal("§6§lUltimate Banking System §7- §eYour Accounts (§f" + account.size() + "§e)\n§8────────────────────────")
+                                                    moneyLiteral("§6§lUltimate Banking System §7- §eYour Accounts (§f" + account.size() + "§e)\n§8────────────────────────")
                                             );
                                             if (account.isEmpty()) {
-                                                context.getSource().sendSystemMessage(Component.literal("§cNo account found."));
+                                                context.getSource().sendSystemMessage(moneyLiteral("§cNo account found."));
                                                 return 1;
                                             }
 
@@ -157,38 +161,38 @@ public class UBSCommands {
 
                                                 // Primary badge
                                                 Component primaryBadge = a.isPrimaryAccount()
-                                                        ? Component.literal(" §8[§2PRIMARY§8]")
+                                                        ? moneyLiteral(" §8[§2PRIMARY§8]")
                                                         : Component.empty();
 
                                                 // Build a compact multi-line card per account
-                                                MutableComponent entry = Component.literal("§7" + index + ". §e" + (a.getAccountType() != null ? a.getAccountType().label : "Account"));
+                                                MutableComponent entry = moneyLiteral("§7" + index + ". §e" + (a.getAccountType() != null ? a.getAccountType().label : "Account"));
                                                 entry.append(primaryBadge);
-                                                entry.append(Component.literal("\n§7Bank: §f" + bankName + " §8(§7ID: §f" + a.getBankId() + "§8)"));
-                                                entry.append(Component.literal("\n§7Balance: §a" + a.getBalance().toPlainString() + " §7Created: §f" + a.getDateOfCreation().format(fmt)));
+                                                entry.append(moneyLiteral("\n§7Bank: §f" + bankName + " §8(§7ID: §f" + a.getBankId() + "§8)"));
+                                                entry.append(moneyLiteral("\n§7Balance: §a$" + a.getBalance().toPlainString() + " §7Created: §f" + a.getDateOfCreation().format(fmt)));
 
                                                 // Actions row
-                                                entry.append(Component.literal("\n§7Actions: "));
+                                                entry.append(moneyLiteral("\n§7Actions: "));
                                                 entry.append(
-                                                        Component.literal("§f§l[§9Open§f§l]")
+                                                        moneyLiteral("§f§l[§9Open§f§l]")
                                                                 .setStyle(
                                                                         Style.EMPTY
                                                                                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account info " + a.getAccountUUID()))
-                                                                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to open account details")))
+                                                                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to open account details")))
                                                                 )
                                                 );
-                                                entry.append(Component.literal(" "));
+                                                entry.append(moneyLiteral(" "));
                                                 entry.append(
-                                                        Component.literal("§f§l[§3Copy ID§f§l]")
+                                                        moneyLiteral("§f§l[§3Copy ID§f§l]")
                                                                 .setStyle(
                                                                         Style.EMPTY
                                                                                 .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, a.getAccountUUID().toString()))
-                                                                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy Account ID (" + a.getAccountUUID() + ")")))
+                                                                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy Account ID (" + a.getAccountUUID() + ")")))
                                                                 )
                                                 );
 
                                                 context.getSource().sendSystemMessage(entry);
                                                 // Separator between accounts
-                                                context.getSource().sendSystemMessage(Component.literal("§8────────────────────────"));
+                                                context.getSource().sendSystemMessage(moneyLiteral("§8────────────────────────"));
                                             }
 
                                             return 1;
@@ -202,30 +206,30 @@ public class UBSCommands {
                                                     String BankName = StringArgumentType.getString(context, "Bank Name");
                                                     Bank Choise = centralBank.getBankByName(BankName);
                                                     if (Choise == null) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cThe bank '§e" + BankName + "§c' could not be found."));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cThe bank '§e" + BankName + "§c' could not be found."));
                                                         return 1;
                                                     }
                                                     AccountHolder account = Choise.getPlayerAccount(context.getSource().getPlayer());
                                                     if (account == null) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cYou do not have an account at §e" + Choise.getBankName() + "§c."));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cYou do not have an account at §e" + Choise.getBankName() + "§c."));
                                                         return 1;
                                                     }
                                                     DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                                                    Component info = Component.literal("§6§lUltimate Banking System §7- §eAccount Info\n"
+                                                    Component info = moneyLiteral("§6§lUltimate Banking System §7- §eAccount Info\n"
                                                                     + "§7Bank: §e" + Choise.getBankName() + "\n"
                                                                     + "§8(§7ID: §f" + Choise.getBankId() + "§8)\n")
-                                                            .append(Component.literal("§7Account ID: §f" + account.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, account.getAccountUUID().toString()))))
-                                                            .append(Component.literal("§7Primary Account: §f" + account.isPrimaryAccount() + "\n"
+                                                            .append(moneyLiteral("§7Account ID: §f" + account.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, account.getAccountUUID().toString()))))
+                                                            .append(moneyLiteral("§7Primary Account: §f" + account.isPrimaryAccount() + "\n"
                                                                             + "§7Type: §f" + (account.getAccountType() != null ? account.getAccountType().label : "Unknown") + "\n"
-                                                                            + "§7Balance: §a" + account.getBalance().toPlainString() + "\n"
+                                                                            + "§7Balance: §a$" + account.getBalance().toPlainString() + "\n"
                                                                             + "§7Created: §f" + account.getDateOfCreation().format(fmt) + "\n"
                                                                             + "Actions: ")
-                                                                    .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
-                                                                    .append(Component.literal(" "))
-                                                                    .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
-                                                            .append(Component.literal(" \n"))
-                                                            .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))))
-                                                            .append((Component) Component.literal("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + account.getAccountUUID()))));
+                                                                    .append((Component) moneyLiteral("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
+                                                                    .append(moneyLiteral(" "))
+                                                                    .append((Component) moneyLiteral("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
+                                                            .append(moneyLiteral(" \n"))
+                                                            .append((Component) moneyLiteral("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))))
+                                                            .append((Component) moneyLiteral("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + account.getAccountUUID()))));
                                                     context.getSource().sendSystemMessage(info);
                                                     return 1;
                                                 })
@@ -238,26 +242,26 @@ public class UBSCommands {
                                             UUID accountID = UUID.fromString(StringArgumentType.getString(context, "accountID"));
                                             AccountHolder account = centralBank.SearchForAccountByAccountId(accountID);
                                             if (account == null) {
-                                                context.getSource().sendSystemMessage(Component.literal("§cThe account '§e" + accountID + "§c' could not be found."));
+                                                context.getSource().sendSystemMessage(moneyLiteral("§cThe account '§e" + accountID + "§c' could not be found."));
                                                 return 1;
                                             }
 
                                             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                                            Component info = Component.literal("§6§lUltimate Banking System §7- §eAccount Info\n"
+                                            Component info = moneyLiteral("§6§lUltimate Banking System §7- §eAccount Info\n"
                                                             + "§7Bank: §e" + centralBank.getBank(account.getBankId()).getBankName() + "\n"
                                                             + "§8(§7ID: §f" + account.getBankId() + "§8)\n")
-                                                    .append(Component.literal("§7Account ID: §f" + account.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, account.getAccountUUID().toString()))))
-                                                    .append(Component.literal("§7Primary Account: §f" + account.isPrimaryAccount() + "\n"
+                                                    .append(moneyLiteral("§7Account ID: §f" + account.getAccountUUID() + "\n").withStyle(Style.EMPTY.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy"))).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, account.getAccountUUID().toString()))))
+                                                    .append(moneyLiteral("§7Primary Account: §f" + account.isPrimaryAccount() + "\n"
                                                                     + "§7Type: §f" + (account.getAccountType() != null ? account.getAccountType().label : "Unknown") + "\n"
-                                                                    + "§7Balance: §a" + account.getBalance().toPlainString() + "\n"
+                                                                    + "§7Balance: §a$" + account.getBalance().toPlainString() + "\n"
                                                                     + "§7Created: §f" + account.getDateOfCreation().format(fmt) + "\n"
                                                                     + "Actions: ")
-                                                            .append((Component) Component.literal("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
-                                                            .append(Component.literal(" "))
-                                                            .append((Component) Component.literal("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
-                                                    .append(Component.literal(" \n"))
-                                                    .append((Component) Component.literal("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))))
-                                                    .append((Component) Component.literal("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + account.getAccountUUID()))));
+                                                            .append((Component) moneyLiteral("§f§l[§4Delete Account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account delete " + account.getAccountUUID()))))
+                                                            .append(moneyLiteral(" "))
+                                                            .append((Component) moneyLiteral("§f§l[§2Set primary account§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account primary set " + account.getAccountUUID())))))
+                                                    .append(moneyLiteral(" \n"))
+                                                    .append((Component) moneyLiteral("§f§l[§3Transfer Money§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/account transfer " + account.getAccountUUID()))))
+                                                    .append((Component) moneyLiteral("§f§l[§6See Transactions§f§l]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction list " + account.getAccountUUID()))));
 
                                             context.getSource().sendSystemMessage(info);
                                             return 1;
@@ -283,7 +287,7 @@ public class UBSCommands {
                                                     String AccountType = StringArgumentType.getString(context, "Account Type");
 
                                                     if (BankChoice == null) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cThe bank '§e" + BankName + "§c' could not be found."));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cThe bank '§e" + BankName + "§c' could not be found."));
                                                         return 1;
                                                     }
 
@@ -295,7 +299,7 @@ public class UBSCommands {
                                                             .orElse(null);
 
                                                     if (selectedType == null) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cAccount Type does not exist!"));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cAccount Type does not exist!"));
                                                         return 1;
                                                     }
 
@@ -307,12 +311,12 @@ public class UBSCommands {
                                                             BankChoice.getBankId(),
                                                             null
                                                     ))) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cAccount with exact Account Type already exists at this bank!"));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cAccount with exact Account Type already exists at this bank!"));
                                                         return 1;
                                                     }
 
                                                     BankManager.markDirty();
-                                                    context.getSource().sendSystemMessage(Component.literal("§aSuccessfully created a §e" + selectedType.name() + " §aaccount at §e" + BankChoice.getBankName() + "§a!"));
+                                                    context.getSource().sendSystemMessage(moneyLiteral("§aSuccessfully created a §e" + selectedType.name() + " §aaccount at §e" + BankChoice.getBankName() + "§a!"));
 
                                                     return 1;
                                                 })
@@ -330,34 +334,34 @@ public class UBSCommands {
                                                             AccountHolder receiver = centralBank.SearchForAccountByAccountId(UuidArgument.getUuid(context, "Account ID (receiving)"));
 
                                                             if (sender == null) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cThe sender's account could not be found."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cThe sender's account could not be found."));
                                                                 return 1;
                                                             }
                                                             if (receiver == null) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cThe receiver's account could not be found."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cThe receiver's account could not be found."));
                                                                 return 1;
                                                             }
 
                                                             if (!sender.getPlayerUUID().equals(context.getSource().getPlayer().getUUID())) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cYou do not own the sender account."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cYou do not own the sender account."));
                                                                 return 1;
                                                             }
 
                                                             if (sender.getAccountUUID().equals(receiver.getAccountUUID())) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cYou cannot transfer to the same account."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cYou cannot transfer to the same account."));
                                                                 return 1;
                                                             }
 
                                                             if (sender.isFrozen()) {
                                                                 String reason = sender.getFrozenReason();
-                                                                context.getSource().sendSystemMessage(Component.literal(
+                                                                context.getSource().sendSystemMessage(moneyLiteral(
                                                                         "§cSender account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
                                                                 ));
                                                                 return 1;
                                                             }
 
                                                             if (receiver.isFrozen()) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cReceiver account is frozen."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cReceiver account is frozen."));
                                                                 return 1;
                                                             }
 
@@ -366,12 +370,12 @@ public class UBSCommands {
                                                             try {
                                                                 amount = new BigDecimal(amountStr);
                                                             } catch (NumberFormatException e) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cThe amount '§e" + amountStr + "§c' is not a valid number."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cThe amount '§e" + amountStr + "§c' is not a valid number."));
                                                                 return 1;
                                                             }
 
                                                             if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                                                                context.getSource().sendSystemMessage(Component.literal("§cThe transfer amount must be greater than zero."));
+                                                                context.getSource().sendSystemMessage(moneyLiteral("§cThe transfer amount must be greater than zero."));
                                                                 return 1;
                                                             }
                                                             
@@ -383,7 +387,7 @@ public class UBSCommands {
                                                                 context.getSource().sendSystemMessage(
                                                                         ubsError(
                                                                                 "Transfer Failed",
-                                                                                "Could not transfer §e" + amount.toPlainString() + "§c to §e" + receiverName + "§c. Please try again."
+                                                                                "Could not transfer §e$" + amount.toPlainString() + "§c to §e" + receiverName + "§c. Please try again."
                                                                         )
                                                                 );
                                                                 return 1;
@@ -396,7 +400,7 @@ public class UBSCommands {
                                                             context.getSource().sendSystemMessage(
                                                                     ubsSuccess(
                                                                             "Transfer Complete",
-                                                                            "Transferred §e" + amount.toPlainString() + "§a to §e" + receiverName + "§a successfully."
+                                                                            "Transferred §e$" + amount.toPlainString() + "§a to §e" + receiverName + "§a successfully."
                                                                     )
                                                             );
                                                             NeoForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), amount, false));
@@ -423,10 +427,10 @@ public class UBSCommands {
                                             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
                                             String timeStr = transaction.getTimestamp().format(fmt);
 
-                                            MutableComponent body = (Component.literal("§7Transaction ID: §f" + transaction.getTransactionUUID() + "\n"))
-                                                    .append(Component.literal("§7Amount: §a" + transaction.getAmount().toPlainString() + "\n"))
-                                                    .append(Component.literal("§7Time: §f" + timeStr + "\n"))
-                                                    .append(Component.literal("§7Description: §f" + transaction.getTransactionDescription()));
+                                            MutableComponent body = (moneyLiteral("§7Transaction ID: §f" + transaction.getTransactionUUID() + "\n"))
+                                                    .append(moneyLiteral("§7Amount: §a$" + transaction.getAmount().toPlainString() + "\n"))
+                                                    .append(moneyLiteral("§7Time: §f" + timeStr + "\n"))
+                                                    .append(moneyLiteral("§7Description: §f" + transaction.getTransactionDescription()));
 
                                             context.getSource().sendSystemMessage(
                                                     ubsMessage(ChatFormatting.GOLD, "§eTransaction Info", body)
@@ -449,28 +453,28 @@ public class UBSCommands {
 
                                                     if (account.getTransactions().isEmpty()) {
                                                         context.getSource().sendSystemMessage(
-                                                                ubsMessage(ChatFormatting.GOLD, "§eTransactions", Component.literal("§7No transactions on this account!"))
+                                                                ubsMessage(ChatFormatting.GOLD, "§eTransactions", moneyLiteral("§7No transactions on this account!"))
                                                         );
                                                         return 1;
                                                     }
 
                                                     DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-                                                    MutableComponent list = Component.literal("§7Transactions (§f" + account.getTransactions().size() + "§7)\n");
+                                                    MutableComponent list = moneyLiteral("§7Transactions (§f" + account.getTransactions().size() + "§7)\n");
                                                     account.getTransactions().forEach((uuid, transaction) -> {
-                                                        String amountStr = transaction.getAmount().toPlainString();
+                                                        String amountStr = "$" + transaction.getAmount().toPlainString();
                                                         String timeStr = transaction.getTimestamp().format(fmt);
                                                         String desc = transaction.getTransactionDescription();
 
-                                                        MutableComponent entry = Component.literal("§8- §7ID: §f" + uuid + "\n")
+                                                        MutableComponent entry = moneyLiteral("§8- §7ID: §f" + uuid + "\n")
                                                                 .setStyle(
                                                                         Style.EMPTY
                                                                                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                                                                        Component.literal("§eTransaction Details\n")
-                                                                                                .append(Component.literal("§7Amount: §a" + amountStr + "\n"))
-                                                                                                .append(Component.literal("§7Time: §f" + timeStr + "\n"))
-                                                                                                .append(Component.literal("§7Description: §f" + desc + "\n"))
-                                                                                                .append(Component.literal("\n§7Click to open transaction info"))
+                                                                                        moneyLiteral("§eTransaction Details\n")
+                                                                                                .append(moneyLiteral("§7Amount: §a" + amountStr + "\n"))
+                                                                                                .append(moneyLiteral("§7Time: §f" + timeStr + "\n"))
+                                                                                                .append(moneyLiteral("§7Description: §f" + desc + "\n"))
+                                                                                                .append(moneyLiteral("\n§7Click to open transaction info"))
                                                                                 ))
                                                                                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/account transaction " + uuid))
                                                                 );
@@ -495,7 +499,7 @@ public class UBSCommands {
                                             UUID accountID = UUID.fromString(StringArgumentType.getString(context, "Account ID"));
                                             AccountHolder account = centralBank.SearchForAccountByAccountId(accountID);
                                             if (account == null) {
-                                                context.getSource().sendSystemMessage(Component.literal("§cYour account was not found."));
+                                                context.getSource().sendSystemMessage(moneyLiteral("§cYour account was not found."));
                                                 return 1;
                                             }
                                             account.RequestAccountTermination(context.getSource().getPlayer());
@@ -512,17 +516,17 @@ public class UBSCommands {
                                                     CentralBank centralBank = BankManager.getCentralBank(server);
                                                     ConcurrentHashMap<UUID, AccountHolder> result = centralBank.SearchForAccount(context.getSource().getPlayer().getUUID());
                                                     if (result.isEmpty()) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cYour account was not found."));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cYour account was not found."));
                                                         return 1;
                                                     }
                                                     UUID targetId = UUID.fromString(StringArgumentType.getString(context, "Account ID"));
                                                     AccountHolder targetAccount = result.get(targetId);
                                                     if (targetAccount == null) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§cAccount not found!"));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§cAccount not found!"));
                                                         return 1;
                                                     }
                                                     if (targetAccount.isPrimaryAccount()) {
-                                                        context.getSource().sendSystemMessage(Component.literal("§aAccount at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a is already the primary account!"));
+                                                        context.getSource().sendSystemMessage(moneyLiteral("§aAccount at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a is already the primary account!"));
                                                         return 1;
                                                     }
                                                     // First, clear primary on ALL accounts
@@ -531,7 +535,7 @@ public class UBSCommands {
                                                     }
                                                     // Then set the target as primary
                                                     targetAccount.setPrimaryAccount(true);
-                                                    context.getSource().sendSystemMessage(Component.literal("§aSuccessfully made account at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a the primary account! \n §7This means that actions, invoices and or recurring payments will default to this account."));
+                                                    context.getSource().sendSystemMessage(moneyLiteral("§aSuccessfully made account at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a the primary account! \n §7This means that actions, invoices and or recurring payments will default to this account."));
                                                     return 1;
                                                 })
                                         )
@@ -556,7 +560,7 @@ public class UBSCommands {
                         .then(Commands.literal("cancel").executes(
                                 context -> {
                                     UUID id = UuidArgument.getUuid(context, "id");
-                                    context.getSource().sendSystemMessage(Component.literal("§cThe action has been cancelled."));
+                                    context.getSource().sendSystemMessage(moneyLiteral("§cThe action has been cancelled."));
                                     CallBackManager.removeCallback(id);
                                     return 1;
                                 }
@@ -605,7 +609,7 @@ public class UBSCommands {
     private static LiteralArgumentBuilder<CommandSourceStack> buildBankCommand() {
         return Commands.literal("bank")
                 .executes(context -> {
-                    context.getSource().sendSystemMessage(Component.literal(
+                    context.getSource().sendSystemMessage(moneyLiteral(
                             "§6§lUltimate Banking System §7- §eBank Commands\n"
                                     + "§8/§fbank §7balance §8- §7Show your primary account balance\n"
                                     + "§8/§fbank §7list §8- §7List available banks\n"
@@ -620,6 +624,7 @@ public class UBSCommands {
                                     + "§8/§fbank §7cheque deposit §8- §7Deposit the held cheque\n"
                                     + "§8/§fbank §7teller get §8- §7Issue a bank-bound teller spawn egg\n"
                                     + "§8/§fbank §7teller count §8- §7Show active teller count for your bank\n"
+                                    + "§8/§fbank §7heist start <bankName> §8- §eComing Soon\n"
                                     + "§8/§fbank §7hud toggle §8- §7Toggle on-screen balance HUD"
                     ));
                     return 1;
@@ -1038,12 +1043,11 @@ public class UBSCommands {
                         )
                 )
                 .then(Commands.literal("heist")
+                        .executes(context -> handleBankHeistComingSoon(context.getSource()))
                         .then(Commands.literal("start")
+                                .executes(context -> handleBankHeistComingSoon(context.getSource()))
                                 .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                        .executes(context -> handleBankHeistStart(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "bankName")
-                                        ))
+                                        .executes(context -> handleBankHeistComingSoon(context.getSource()))
                                 )
                         )
                 )
@@ -1166,41 +1170,41 @@ public class UBSCommands {
     private static int handleBankCreate(CommandSourceStack source, String bankNameRaw, String ownershipModelRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can create banks."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can create banks."));
             return 1;
         }
 
         if (!Config.PLAYER_BANKS_ENABLED.get()) {
-            source.sendSystemMessage(Component.literal("§cPlayer-created banks are disabled by server config."));
+            source.sendSystemMessage(moneyLiteral("§cPlayer-created banks are disabled by server config."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         String bankName = normalizeBankName(bankNameRaw);
         if (bankName.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cBank name cannot be empty."));
+            source.sendSystemMessage(moneyLiteral("§cBank name cannot be empty."));
             return 1;
         }
         if (bankName.length() > Config.PLAYER_BANKS_NAME_MAX_LENGTH.get()) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cBank name is too long. Max length: " + Config.PLAYER_BANKS_NAME_MAX_LENGTH.get()
             ));
             return 1;
         }
         if (resolveBankByName(centralBank, bankName) != null) {
-            source.sendSystemMessage(Component.literal("§cA bank with that name already exists."));
+            source.sendSystemMessage(moneyLiteral("§cA bank with that name already exists."));
             return 1;
         }
 
         int maxOwned = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
         int currentlyOwned = (int) getOwnedBanks(centralBank, player.getUUID()).size();
         if (currentlyOwned >= maxOwned) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cYou already own the maximum number of banks (" + maxOwned + ")."
             ));
             return 1;
@@ -1212,7 +1216,7 @@ public class UBSCommands {
         if (cooldownMs > 0L && lastAttempt != null && (nowMillis - lastAttempt) < cooldownMs) {
             long remainingMs = cooldownMs - (nowMillis - lastAttempt);
             long remainingMinutes = Math.max(1L, (remainingMs + 59_999L) / 60_000L);
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cYou must wait " + remainingMinutes + " more minute(s) before another bank creation attempt."
             ));
             return 1;
@@ -1222,7 +1226,7 @@ public class UBSCommands {
         int playTimeTicks = player.getStats().getValue(Stats.CUSTOM, Stats.PLAY_TIME);
         long playHours = playTimeTicks / (20L * 60L * 60L);
         if (playHours < requiredPlayHours) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cYou need at least " + requiredPlayHours + " play-time hour(s) to create a bank."
             ));
             return 1;
@@ -1236,13 +1240,13 @@ public class UBSCommands {
             }
         }
         if (fundingAccount == null) {
-            source.sendSystemMessage(Component.literal("§cYou need a bank account before creating a player bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou need a bank account before creating a player bank."));
             return 1;
         }
 
         BigDecimal minimumBalance = BigDecimal.valueOf(Math.max(0, Config.PLAYER_BANKS_MIN_BALANCE.get()));
         if (fundingAccount.getBalance().compareTo(minimumBalance) < 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cEligibility check failed: minimum required balance is $" + minimumBalance.toPlainString()
                             + " (you currently have $" + fundingAccount.getBalance().toPlainString() + ")."
             ));
@@ -1256,7 +1260,7 @@ public class UBSCommands {
                 : BigDecimal.valueOf(Math.max(0, Config.BANK_CHARTER_FEE.get()));
         BigDecimal totalFee = creationFee.add(charterFee);
         if (fundingAccount.getBalance().compareTo(totalFee) < 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cYou cannot afford bank creation fees. Required: $" + totalFee.toPlainString()
                             + " (creation $" + creationFee.toPlainString()
                             + " + charter $" + charterFee.toPlainString()
@@ -1273,7 +1277,7 @@ public class UBSCommands {
                     .anyMatch(tag -> player.getUUID().equals(readUuid(tag, "applicant"))
                             && "PENDING".equalsIgnoreCase(tag.getString("status")));
             if (hasPending) {
-                source.sendSystemMessage(Component.literal(
+                source.sendSystemMessage(moneyLiteral(
                         "§cYou already have a pending bank application. Wait for admin review first."
                 ));
                 return 1;
@@ -1293,7 +1297,7 @@ public class UBSCommands {
             centralBank.getBankApplications().put(applicationId, appTag);
             BankManager.markDirty();
 
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§eApplication submitted. Await admin review.\n"
                             + "§7Application ID: §f" + applicationId + "\n"
                             + "§7Requested bank: §f" + bankName + "\n"
@@ -1305,7 +1309,7 @@ public class UBSCommands {
                 if (!online.hasPermissions(3)) {
                     continue;
                 }
-                online.sendSystemMessage(Component.literal(
+                online.sendSystemMessage(moneyLiteral(
                         "§6[UBS] New bank application from "
                                 + player.getName().getString()
                                 + " for '" + bankName + "' (ID: " + applicationId + ")."
@@ -1327,7 +1331,7 @@ public class UBSCommands {
                                             BigDecimal charterFee) {
         BigDecimal totalFee = creationFee.add(charterFee);
         if (totalFee.compareTo(BigDecimal.ZERO) > 0 && !fundingAccount.RemoveBalance(totalFee)) {
-            source.sendSystemMessage(Component.literal("§cCould not deduct the required creation fees."));
+            source.sendSystemMessage(moneyLiteral("§cCould not deduct the required creation fees."));
             return 1;
         }
         if (totalFee.compareTo(BigDecimal.ZERO) > 0) {
@@ -1385,7 +1389,7 @@ public class UBSCommands {
                 null
         );
         if (!newBank.AddAccount(founderAccount)) {
-            source.sendSystemMessage(Component.literal("§cBank created, but could not create founder account."));
+            source.sendSystemMessage(moneyLiteral("§cBank created, but could not create founder account."));
             return 1;
         }
 
@@ -1404,7 +1408,7 @@ public class UBSCommands {
             );
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aBank created successfully: §e" + newBank.getBankName() + "\n"
                         + "§7Bank ID: §f" + newBank.getBankId() + "\n"
                         + "§7Owner: §f" + founder.getName().getString() + "\n"
@@ -1420,19 +1424,19 @@ public class UBSCommands {
                                              String certificateTierRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can open bank accounts."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can open bank accounts."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
@@ -1440,17 +1444,17 @@ public class UBSCommands {
         refreshBankOperationalState(centralBank, bank, gameTime, source.getServer());
         String status = getBankStatus(centralBank, bank);
         if ("SUSPENDED".equals(status) || "REVOKED".equals(status)) {
-            source.sendSystemMessage(Component.literal("§cThis bank is " + status.toLowerCase(Locale.ROOT) + " and cannot open new accounts."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank is " + status.toLowerCase(Locale.ROOT) + " and cannot open new accounts."));
             return 1;
         }
         if ("RESTRICTED".equals(status)) {
-            source.sendSystemMessage(Component.literal("§cThis bank is currently restricted and cannot open new accounts."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank is currently restricted and cannot open new accounts."));
             return 1;
         }
 
         AccountTypes accountType = parseAccountType(accountTypeRaw);
         if (accountType == null) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cUnknown account type. Use checking, saving, moneymarket, or certificate."
             ));
             return 1;
@@ -1468,7 +1472,7 @@ public class UBSCommands {
         if (accountType == AccountTypes.CertificateAccount) {
             String tier = normalizeCertificateTier(certificateTierRaw);
             if (tier.isBlank()) {
-                source.sendSystemMessage(Component.literal("§cCertificate account requires a tier: short, medium, or long."));
+                source.sendSystemMessage(moneyLiteral("§cCertificate account requires a tier: short, medium, or long."));
                 return 1;
             }
             long maturityTicks = switch (tier) {
@@ -1478,7 +1482,7 @@ public class UBSCommands {
                 default -> -1L;
             };
             if (maturityTicks <= 0L) {
-                source.sendSystemMessage(Component.literal("§cInvalid certificate tier configuration."));
+                source.sendSystemMessage(moneyLiteral("§cInvalid certificate tier configuration."));
                 return 1;
             }
             double cdRate = switch (tier) {
@@ -1491,7 +1495,7 @@ public class UBSCommands {
         }
 
         if (!bank.AddAccount(account)) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cYou already have this account type at " + bank.getBankName() + "."
             ));
             return 1;
@@ -1501,12 +1505,12 @@ public class UBSCommands {
             account.setPrimaryAccount(true);
         }
 
-        MutableComponent message = Component.literal(
+        MutableComponent message = moneyLiteral(
                 "§aOpened " + account.getAccountType().label + " at §e" + bank.getBankName()
                         + "§a.\n§7Account ID: §f" + account.getAccountUUID()
         );
         if (accountType == AccountTypes.CertificateAccount) {
-            message.append(Component.literal(
+            message.append(moneyLiteral(
                     "\n§7CD Tier: §f" + account.getCertificateTier()
                             + " §7Maturity Tick: §f" + account.getCertificateMaturityGameTime()
                             + " §7APR: §e" + account.getCertificateRate() + "%"
@@ -1519,25 +1523,25 @@ public class UBSCommands {
     private static int handleSetPrimaryBank(CommandSourceStack source, String bankNameRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can set a primary bank."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can set a primary bank."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
         List<AccountHolder> inBank = getPlayerAccountsInBank(bank, player.getUUID());
         if (inBank.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cYou do not have an account at that bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have an account at that bank."));
             return 1;
         }
 
@@ -1551,7 +1555,7 @@ public class UBSCommands {
         }
         selected.setPrimaryAccount(true);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aPrimary account set to §e" + bank.getBankName()
                         + " §7(" + selected.getAccountType().label + " " + shortId(selected.getAccountUUID()) + ")"
         ));
@@ -1561,31 +1565,31 @@ public class UBSCommands {
     private static int handleCloseBankAccount(CommandSourceStack source, String bankNameRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can close bank accounts."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can close bank accounts."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
         List<AccountHolder> inBank = getPlayerAccountsInBank(bank, player.getUUID());
         if (inBank.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cYou do not have an account at that bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have an account at that bank."));
             return 1;
         }
 
         List<AccountHolder> allAccounts = new ArrayList<>(centralBank.SearchForAccount(player.getUUID()).values());
         if (allAccounts.size() <= 1) {
-            source.sendSystemMessage(Component.literal("§cYou must keep at least one account open."));
+            source.sendSystemMessage(moneyLiteral("§cYou must keep at least one account open."));
             return 1;
         }
 
@@ -1604,14 +1608,14 @@ public class UBSCommands {
                         .orElse(null));
 
         if (fallback == null) {
-            source.sendSystemMessage(Component.literal("§cNo fallback account available for balance transfer."));
+            source.sendSystemMessage(moneyLiteral("§cNo fallback account available for balance transfer."));
             return 1;
         }
 
         BigDecimal transferAmount = toClose.getBalance();
         if (transferAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (!toClose.forceRemoveBalance(transferAmount) || !fallback.forceAddBalance(transferAmount)) {
-                source.sendSystemMessage(Component.literal("§cCould not transfer remaining balance to fallback account."));
+                source.sendSystemMessage(moneyLiteral("§cCould not transfer remaining balance to fallback account."));
                 return 1;
             }
             UserTransaction tx = new UserTransaction(
@@ -1635,7 +1639,7 @@ public class UBSCommands {
             fallback.setPrimaryAccount(true);
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aClosed account at §e" + bank.getBankName()
                         + "§a. Moved $" + transferAmount.toPlainString()
                         + " to §f" + accountLabel(fallback)
@@ -1649,7 +1653,7 @@ public class UBSCommands {
                                                    String amountRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can transfer between banks."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can transfer between banks."));
             return 1;
         }
 
@@ -1658,7 +1662,7 @@ public class UBSCommands {
             return 1;
         }
         if (amount.compareTo(BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()))) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cAmount exceeds global per-transaction limit of $" + Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()
             ));
             return 1;
@@ -1666,25 +1670,25 @@ public class UBSCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank fromBank = resolveBankByName(centralBank, fromBankRaw);
         Bank toBank = resolveBankByName(centralBank, toBankRaw);
         if (fromBank == null || toBank == null) {
-            source.sendSystemMessage(Component.literal("§cOne or both bank names are invalid."));
+            source.sendSystemMessage(moneyLiteral("§cOne or both bank names are invalid."));
             return 1;
         }
         if (fromBank.getBankId().equals(toBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cSource and destination bank must be different."));
+            source.sendSystemMessage(moneyLiteral("§cSource and destination bank must be different."));
             return 1;
         }
 
         AccountHolder fromAccount = findPlayerAccountInBank(fromBank, player.getUUID());
         AccountHolder toAccount = findPlayerAccountInBank(toBank, player.getUUID());
         if (fromAccount == null || toAccount == null) {
-            source.sendSystemMessage(Component.literal("§cYou must have an account at both banks."));
+            source.sendSystemMessage(moneyLiteral("§cYou must have an account at both banks."));
             return 1;
         }
 
@@ -1693,7 +1697,7 @@ public class UBSCommands {
         refreshBankOperationalState(centralBank, toBank, gameTime, source.getServer());
         if (!allowsCustomerTransfers(getBankStatus(centralBank, fromBank))
                 || !allowsCustomerTransfers(getBankStatus(centralBank, toBank))) {
-            source.sendSystemMessage(Component.literal("§cOne of the banks is not currently operational for transfers."));
+            source.sendSystemMessage(moneyLiteral("§cOne of the banks is not currently operational for transfers."));
             return 1;
         }
 
@@ -1709,11 +1713,11 @@ public class UBSCommands {
                 "INTER_BANK_SELF_TRANSFER"
         ).makeTransaction(source.getServer());
         if (!success) {
-            source.sendSystemMessage(Component.literal("§cTransfer failed."));
+            source.sendSystemMessage(moneyLiteral("§cTransfer failed."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aTransferred $" + amount.toPlainString()
                         + " from §e" + fromBank.getBankName()
                         + " §ato §e" + toBank.getBankName() + "§a."
@@ -1727,7 +1731,7 @@ public class UBSCommands {
                                                 String bankNameRaw) {
         ServerPlayer sender = source.getPlayer();
         if (sender == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can send bank payments."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can send bank payments."));
             return 1;
         }
 
@@ -1736,7 +1740,7 @@ public class UBSCommands {
             return 1;
         }
         if (amount.compareTo(BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()))) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cAmount exceeds global per-transaction limit of $" + Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()
             ));
             return 1;
@@ -1744,19 +1748,19 @@ public class UBSCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder senderAccount = resolveDefaultLoanAccount(centralBank, sender.getUUID());
         if (senderAccount == null) {
-            source.sendSystemMessage(Component.literal("§cNo source account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo source account available."));
             return 1;
         }
 
         String targetName = playerNameRaw == null ? "" : playerNameRaw.trim();
         if (targetName.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cInvalid player name."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid player name."));
             return 1;
         }
 
@@ -1776,7 +1780,7 @@ public class UBSCommands {
             }
         }
         if (targetId == null) {
-            source.sendSystemMessage(Component.literal("§cPlayer not found: " + targetName));
+            source.sendSystemMessage(moneyLiteral("§cPlayer not found: " + targetName));
             return 1;
         }
 
@@ -1786,25 +1790,25 @@ public class UBSCommands {
         } else {
             Bank targetBank = resolveBankByName(centralBank, bankNameRaw);
             if (targetBank == null) {
-                source.sendSystemMessage(Component.literal("§cTarget bank not found: " + bankNameRaw));
+                source.sendSystemMessage(moneyLiteral("§cTarget bank not found: " + bankNameRaw));
                 return 1;
             }
             receiverAccount = findPlayerAccountInBank(targetBank, targetId);
         }
 
         if (receiverAccount == null) {
-            source.sendSystemMessage(Component.literal("§cTarget player has no matching destination account."));
+            source.sendSystemMessage(moneyLiteral("§cTarget player has no matching destination account."));
             return 1;
         }
         if (senderAccount.getAccountUUID().equals(receiverAccount.getAccountUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou cannot send money to the same account."));
+            source.sendSystemMessage(moneyLiteral("§cYou cannot send money to the same account."));
             return 1;
         }
 
         Bank senderBank = centralBank.getBank(senderAccount.getBankId());
         Bank receiverBank = centralBank.getBank(receiverAccount.getBankId());
         if (senderBank == null || receiverBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is inconsistent for this transfer."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is inconsistent for this transfer."));
             return 1;
         }
 
@@ -1813,7 +1817,7 @@ public class UBSCommands {
         refreshBankOperationalState(centralBank, receiverBank, gameTime, source.getServer());
         if (!allowsCustomerTransfers(getBankStatus(centralBank, senderBank))
                 || !allowsCustomerTransfers(getBankStatus(centralBank, receiverBank))) {
-            source.sendSystemMessage(Component.literal("§cOne of the banks is not currently accepting transfers."));
+            source.sendSystemMessage(moneyLiteral("§cOne of the banks is not currently accepting transfers."));
             return 1;
         }
 
@@ -1829,16 +1833,16 @@ public class UBSCommands {
                 "INTER_BANK_SEND:" + sender.getName().getString()
         ).makeTransaction(source.getServer());
         if (!success) {
-            source.sendSystemMessage(Component.literal("§cTransfer failed."));
+            source.sendSystemMessage(moneyLiteral("§cTransfer failed."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aSent $" + amount.toPlainString() + " to §e" + resolvedTargetName
                         + "§a. Destination account: §f" + shortId(receiverAccount.getAccountUUID())
         ));
         if (onlineTarget != null) {
-            onlineTarget.sendSystemMessage(Component.literal(
+            onlineTarget.sendSystemMessage(moneyLiteral(
                     "§aYou received $" + amount.toPlainString()
                             + " from §e" + sender.getName().getString()
                             + "§a into §f" + accountLabel(receiverAccount)
@@ -1850,25 +1854,25 @@ public class UBSCommands {
     private static int handleSetBankMotto(CommandSourceStack source, String mottoRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can set bank branding."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can set bank branding."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cYou do not own a player bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not own a player bank."));
             return 1;
         }
 
         String motto = mottoRaw == null ? "" : mottoRaw.trim();
         if (motto.length() > 80) {
-            source.sendSystemMessage(Component.literal("§cMotto is too long (max 80 characters)."));
+            source.sendSystemMessage(moneyLiteral("§cMotto is too long (max 80 characters)."));
             return 1;
         }
 
@@ -1876,7 +1880,7 @@ public class UBSCommands {
         metadata.putString("motto", motto);
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aUpdated motto for §e" + bank.getBankName()
                         + "§a to: §f" + (motto.isBlank() ? "(empty)" : motto)
         ));
@@ -1886,25 +1890,25 @@ public class UBSCommands {
     private static int handleSetBankColor(CommandSourceStack source, String colorRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can set bank branding."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can set bank branding."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cYou do not own a player bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not own a player bank."));
             return 1;
         }
 
         String color = normalizeBankColor(colorRaw);
         if (color == null) {
-            source.sendSystemMessage(Component.literal("§cInvalid color. Use #RRGGBB or common names like blue, red, green."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid color. Use #RRGGBB or common names like blue, red, green."));
             return 1;
         }
 
@@ -1912,7 +1916,7 @@ public class UBSCommands {
         metadata.putString("color", color);
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aUpdated color branding for §e" + bank.getBankName() + "§a to §f" + color
         ));
         return 1;
@@ -1921,25 +1925,25 @@ public class UBSCommands {
     private static int handleBankTellerGet(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can request bank tellers."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can request bank tellers."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can request teller eggs."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can request teller eggs."));
             return 1;
         }
 
         int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
         if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§c" + bank.getBankName() + " already has the max "
                             + BankTellerEntity.MAX_TELLERS_PER_BANK + " active tellers."
             ));
@@ -1953,7 +1957,7 @@ public class UBSCommands {
             player.drop(egg, false);
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aIssued teller egg for §e" + bank.getBankName()
                         + "§a. Active tellers: §f" + activeCount
                         + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
@@ -1964,24 +1968,24 @@ public class UBSCommands {
     private static int handleBankTellerCount(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view teller count."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view teller count."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can view teller count."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can view teller count."));
             return 1;
         }
 
         int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§7Active tellers for §e" + bank.getBankName() + "§7: §b"
                         + activeCount + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
         ));
@@ -1991,13 +1995,13 @@ public class UBSCommands {
     private static int handleBankInfo(CommandSourceStack source, String bankNameRaw) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
@@ -2019,21 +2023,21 @@ public class UBSCommands {
                 : BigDecimal.valueOf(100);
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank Name: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Bank ID: §f" + bank.getBankId() + "\n"));
-        body.append(Component.literal("§7Owner: §f" + resolvePlayerName(source.getServer(), bank.getBankOwnerId()) + "\n"));
-        body.append(Component.literal("§7Status: §f" + status + "\n"));
-        body.append(Component.literal("§7Ownership Model: §f" + (ownershipModel == null || ownershipModel.isBlank() ? "SOLE" : ownershipModel) + "\n"));
-        body.append(Component.literal("§7Brand Color: §f" + (color == null || color.isBlank() ? "#55AAFF" : color) + "\n"));
-        body.append(Component.literal("§7Motto: §f" + (motto == null || motto.isBlank() ? "-" : motto) + "\n"));
-        body.append(Component.literal("§7Accounts: §b" + bank.getBankAccounts().size() + "\n"));
-        body.append(Component.literal("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
-        body.append(Component.literal("§7Deposits: §6$" + deposits.toPlainString() + "\n"));
-        body.append(Component.literal("§7Reserve Ratio: §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
-        body.append(Component.literal("§7Minimum Required Reserve: §f$" + minReserve.toPlainString()));
+        body.append(moneyLiteral("§7Bank Name: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Bank ID: §f" + bank.getBankId() + "\n"));
+        body.append(moneyLiteral("§7Owner: §f" + resolvePlayerName(source.getServer(), bank.getBankOwnerId()) + "\n"));
+        body.append(moneyLiteral("§7Status: §f" + status + "\n"));
+        body.append(moneyLiteral("§7Ownership Model: §f" + (ownershipModel == null || ownershipModel.isBlank() ? "SOLE" : ownershipModel) + "\n"));
+        body.append(moneyLiteral("§7Brand Color: §f" + (color == null || color.isBlank() ? "#55AAFF" : color) + "\n"));
+        body.append(moneyLiteral("§7Motto: §f" + (motto == null || motto.isBlank() ? "-" : motto) + "\n"));
+        body.append(moneyLiteral("§7Accounts: §b" + bank.getBankAccounts().size() + "\n"));
+        body.append(moneyLiteral("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Deposits: §6$" + deposits.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Reserve Ratio: §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
+        body.append(moneyLiteral("§7Minimum Required Reserve: §f$" + minReserve.toPlainString()));
 
         if (metadata.contains("nextLicenseFeeTick")) {
-            body.append(Component.literal("\n§7Next License Due Tick: §f" + metadata.getLong("nextLicenseFeeTick")));
+            body.append(moneyLiteral("\n§7Next License Due Tick: §f" + metadata.getLong("nextLicenseFeeTick")));
         }
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eBank Info", body));
@@ -2043,13 +2047,13 @@ public class UBSCommands {
     private static int handleBankReserve(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view reserve data."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view reserve data."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
@@ -2061,7 +2065,7 @@ public class UBSCommands {
             }
         }
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cNo bank context available."));
+            source.sendSystemMessage(moneyLiteral("§cNo bank context available."));
             return 1;
         }
 
@@ -2082,15 +2086,15 @@ public class UBSCommands {
         BigDecimal dailyRemaining = dailyCap.subtract(dailyUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN);
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Status: §f" + getBankStatus(centralBank, bank) + "\n"));
-        body.append(Component.literal("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
-        body.append(Component.literal("§7Total Deposits: §6$" + deposits.toPlainString() + "\n"));
-        body.append(Component.literal("§7Reserve Ratio: §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
-        body.append(Component.literal("§7Minimum Reserve: §f$" + minReserve.toPlainString() + "\n"));
-        body.append(Component.literal("§7Daily Bank Cap: §b$" + dailyCap.toPlainString() + "\n"));
-        body.append(Component.literal("§7Daily Withdrawn: §f$" + dailyUsed.toPlainString() + "\n"));
-        body.append(Component.literal("§7Remaining Today: §a$" + dailyRemaining.toPlainString()));
+        body.append(moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Status: §f" + getBankStatus(centralBank, bank) + "\n"));
+        body.append(moneyLiteral("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Total Deposits: §6$" + deposits.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Reserve Ratio: §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
+        body.append(moneyLiteral("§7Minimum Reserve: §f$" + minReserve.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Daily Bank Cap: §b$" + dailyCap.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Daily Withdrawn: §f$" + dailyUsed.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Remaining Today: §a$" + dailyRemaining.toPlainString()));
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.AQUA, "§bReserve Status", body));
         return 1;
@@ -2099,19 +2103,19 @@ public class UBSCommands {
     private static int handleBankDashboard(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view the dashboard."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view the dashboard."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cDashboard is available to bank owners."));
+            source.sendSystemMessage(moneyLiteral("§cDashboard is available to bank owners."));
             return 1;
         }
 
@@ -2151,18 +2155,18 @@ public class UBSCommands {
         }
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Status: §f" + status + "\n"));
-        body.append(Component.literal("§7Risk Level: ").append(Component.literal(risk).withStyle(riskColor)).append(Component.literal("\n")));
-        body.append(Component.literal("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
-        body.append(Component.literal("§7Reserve Ratio: §e" + reserveRatio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
-        body.append(Component.literal("§7Minimum Reserve: §f$" + minReserve.toPlainString() + "\n"));
-        body.append(Component.literal("§7Reserve Shortfall: §c$" + shortfall.toPlainString() + "\n"));
-        body.append(Component.literal("§7Daily Capacity: §b$" + dailyCap.toPlainString() + " / used $" + dailyUsed.toPlainString() + "\n"));
-        body.append(Component.literal("§7Outstanding Player Loans: §6$" + outstandingLoans.toPlainString() + "\n"));
-        body.append(Component.literal("§7Max Lendable: §f$" + maxLendable.toPlainString() + "\n"));
-        body.append(Component.literal("§7Queued Withdrawals: §f" + queuedWithdrawals + "\n"));
-        body.append(Component.literal("§7Federal Funds Rate: §e" + centralBank.getFederalFundsRate() + "%"));
+        body.append(moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Status: §f" + status + "\n"));
+        body.append(moneyLiteral("§7Risk Level: ").append(moneyLiteral(risk).withStyle(riskColor)).append(moneyLiteral("\n")));
+        body.append(moneyLiteral("§7Reserve: §a$" + reserve.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Reserve Ratio: §e" + reserveRatio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
+        body.append(moneyLiteral("§7Minimum Reserve: §f$" + minReserve.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Reserve Shortfall: §c$" + shortfall.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Daily Capacity: §b$" + dailyCap.toPlainString() + " / used $" + dailyUsed.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Outstanding Player Loans: §6$" + outstandingLoans.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Max Lendable: §f$" + maxLendable.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Queued Withdrawals: §f" + queuedWithdrawals + "\n"));
+        body.append(moneyLiteral("§7Federal Funds Rate: §e" + centralBank.getFederalFundsRate() + "%"));
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eLiquidity Dashboard", body));
         return 1;
@@ -2171,17 +2175,17 @@ public class UBSCommands {
     private static int handleBankAccountsList(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view bank account rosters."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view bank account rosters."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can list account holders."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can list account holders."));
             return 1;
         }
 
@@ -2189,16 +2193,16 @@ public class UBSCommands {
                 .sorted(Comparator.comparing(a -> a.getAccountUUID().toString()))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Account Holders: §b" + accounts.size() + "\n\n"));
+        body.append(moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Account Holders: §b" + accounts.size() + "\n\n"));
         for (AccountHolder account : accounts) {
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8- §f" + resolvePlayerName(source.getServer(), account.getPlayerUUID())
                             + " §7(" + account.getAccountType().label + " " + shortId(account.getAccountUUID()) + ")\n"
             ));
         }
         if (accounts.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         }
         source.sendSystemMessage(ubsMessage(ChatFormatting.AQUA, "§bBank Accounts", body));
         return 1;
@@ -2207,17 +2211,17 @@ public class UBSCommands {
     private static int handleBankCertificateSchedule(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view CD schedules."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view CD schedules."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can view CD schedules."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can view CD schedules."));
             return 1;
         }
         long now = currentOverworldGameTime(source.getServer());
@@ -2226,9 +2230,9 @@ public class UBSCommands {
                 .sorted(Comparator.comparingLong(AccountHolder::getCertificateMaturityGameTime))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Active CDs: §b" + cds.size() + "\n\n"));
+        body.append(moneyLiteral("§7Active CDs: §b" + cds.size() + "\n\n"));
         for (AccountHolder cd : cds) {
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8- §f" + shortId(cd.getAccountUUID())
                             + " §7holder §f" + resolvePlayerName(source.getServer(), cd.getPlayerUUID())
                             + " §7tier §f" + cd.getCertificateTier()
@@ -2239,7 +2243,7 @@ public class UBSCommands {
             ));
         }
         if (cds.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         }
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eCertificate Schedule", body));
         return 1;
@@ -2248,17 +2252,17 @@ public class UBSCommands {
     private static int handleBankLimitSet(CommandSourceStack source, String typeRaw, String amountRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can configure bank limits."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can configure bank limits."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can configure limits."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can configure limits."));
             return 1;
         }
 
@@ -2273,7 +2277,7 @@ public class UBSCommands {
             case "single", "transaction", "singletransaction" -> {
                 BigDecimal maxAllowed = BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get());
                 if (amount.compareTo(maxAllowed) > 0) {
-                    source.sendSystemMessage(Component.literal("§cSingle limit cannot exceed global max $" + maxAllowed.toPlainString()));
+                    source.sendSystemMessage(moneyLiteral("§cSingle limit cannot exceed global max $" + maxAllowed.toPlainString()));
                     return 1;
                 }
                 metadata.putString("limitSingle", amount.toPlainString());
@@ -2281,7 +2285,7 @@ public class UBSCommands {
             case "dailyplayer", "playerdaily" -> {
                 BigDecimal maxAllowed = BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get());
                 if (amount.compareTo(maxAllowed) > 0) {
-                    source.sendSystemMessage(Component.literal("§cDaily player limit cannot exceed global max $" + maxAllowed.toPlainString()));
+                    source.sendSystemMessage(moneyLiteral("§cDaily player limit cannot exceed global max $" + maxAllowed.toPlainString()));
                     return 1;
                 }
                 metadata.putString("limitDailyPlayer", amount.toPlainString());
@@ -2289,35 +2293,35 @@ public class UBSCommands {
             case "dailybank", "bankdaily" -> {
                 BigDecimal maxAllowed = BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
                 if (amount.compareTo(maxAllowed) > 0) {
-                    source.sendSystemMessage(Component.literal("§cDaily bank limit cannot exceed global max $" + maxAllowed.toPlainString()));
+                    source.sendSystemMessage(moneyLiteral("§cDaily bank limit cannot exceed global max $" + maxAllowed.toPlainString()));
                     return 1;
                 }
                 metadata.putString("limitDailyBank", amount.toPlainString());
             }
             default -> {
-                source.sendSystemMessage(Component.literal("§cUnknown limit type. Use single, dailyplayer, or dailybank."));
+                source.sendSystemMessage(moneyLiteral("§cUnknown limit type. Use single, dailyplayer, or dailybank."));
                 return 1;
             }
         }
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§aUpdated " + type + " limit to $" + amount.toPlainString() + "."));
+        source.sendSystemMessage(moneyLiteral("§aUpdated " + type + " limit to $" + amount.toPlainString() + "."));
         return 1;
     }
 
     private static int handleBankLimitView(CommandSourceStack source) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view bank limits."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view bank limits."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can view custom limits."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can view custom limits."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
@@ -2334,10 +2338,10 @@ public class UBSCommands {
         source.sendSystemMessage(ubsMessage(
                 ChatFormatting.GOLD,
                 "§eBank Limits",
-                Component.literal("§7Bank: §e" + bank.getBankName() + "\n")
-                        .append(Component.literal("§7Single Tx Limit: §f$" + single.toPlainString() + "\n"))
-                        .append(Component.literal("§7Daily Player Limit: §f$" + dailyPlayer.toPlainString() + "\n"))
-                        .append(Component.literal("§7Daily Bank Limit: §f$" + dailyBank.toPlainString()))
+                moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n")
+                        .append(moneyLiteral("§7Single Tx Limit: §f$" + single.toPlainString() + "\n"))
+                        .append(moneyLiteral("§7Daily Player Limit: §f$" + dailyPlayer.toPlainString() + "\n"))
+                        .append(moneyLiteral("§7Daily Bank Limit: §f$" + dailyBank.toPlainString()))
         ));
         return 1;
     }
@@ -2345,29 +2349,29 @@ public class UBSCommands {
     private static int handleBankRoleAssign(CommandSourceStack source, ServerPlayer target, String roleRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can assign roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can assign roles."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can assign roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can assign roles."));
             return 1;
         }
 
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         if (!"ROLE_BASED".equalsIgnoreCase(metadata.getString("ownershipModel"))) {
-            source.sendSystemMessage(Component.literal("§cThis bank is not configured for role-based governance."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank is not configured for role-based governance."));
             return 1;
         }
 
         String role = roleRaw == null ? "" : roleRaw.trim().toUpperCase(Locale.ROOT);
         if (!List.of("FOUNDER", "DIRECTOR", "TELLER", "AUDITOR").contains(role)) {
-            source.sendSystemMessage(Component.literal("§cRole must be FOUNDER, DIRECTOR, TELLER, or AUDITOR."));
+            source.sendSystemMessage(moneyLiteral("§cRole must be FOUNDER, DIRECTOR, TELLER, or AUDITOR."));
             return 1;
         }
 
@@ -2376,25 +2380,25 @@ public class UBSCommands {
         metadata.putString("roles", encodeUuidStringMap(roleMap));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-        source.sendSystemMessage(Component.literal("§aAssigned role §e" + role + " §ato " + target.getName().getString()));
-        target.sendSystemMessage(Component.literal("§aYou were assigned role §e" + role + " §aat bank " + bank.getBankName()));
+        source.sendSystemMessage(moneyLiteral("§aAssigned role §e" + role + " §ato " + target.getName().getString()));
+        target.sendSystemMessage(moneyLiteral("§aYou were assigned role §e" + role + " §aat bank " + bank.getBankName()));
         return 1;
     }
 
     private static int handleBankRoleRevoke(CommandSourceStack source, ServerPlayer target) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can revoke roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can revoke roles."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can revoke roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can revoke roles."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
@@ -2402,37 +2406,37 @@ public class UBSCommands {
         roleMap.remove(target.getUUID());
         metadata.putString("roles", encodeUuidStringMap(roleMap));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§aRevoked governance role for " + target.getName().getString()));
+        source.sendSystemMessage(moneyLiteral("§aRevoked governance role for " + target.getName().getString()));
         return 1;
     }
 
     private static int handleBankRoleList(CommandSourceStack source) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can list roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can list roles."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can list roles."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can list roles."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         Map<UUID, String> roleMap = decodeUuidStringMap(metadata.getString("roles"));
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Governance Roles for §e" + bank.getBankName() + "\n\n"));
+        body.append(moneyLiteral("§7Governance Roles for §e" + bank.getBankName() + "\n\n"));
         if (roleMap.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             roleMap.entrySet().stream()
                     .sorted(Map.Entry.comparingByValue())
-                    .forEach(entry -> body.append(Component.literal(
+                    .forEach(entry -> body.append(moneyLiteral(
                             "§8- §f" + resolvePlayerName(source.getServer(), entry.getKey())
                                     + " §7-> §e" + entry.getValue() + "\n"
                     )));
@@ -2444,22 +2448,22 @@ public class UBSCommands {
     private static int handleBankSharesSet(CommandSourceStack source, ServerPlayer target, String percentRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can manage shares."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can manage shares."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can manage shares."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can manage shares."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         if (!"PERCENTAGE_SHARES".equalsIgnoreCase(metadata.getString("ownershipModel"))) {
-            source.sendSystemMessage(Component.literal("§cThis bank is not using percentage-share governance."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank is not using percentage-share governance."));
             return 1;
         }
 
@@ -2467,11 +2471,11 @@ public class UBSCommands {
         try {
             percent = new BigDecimal(percentRaw.trim()).setScale(2, RoundingMode.HALF_EVEN);
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid percent."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid percent."));
             return 1;
         }
         if (percent.compareTo(BigDecimal.ZERO) <= 0 || percent.compareTo(BigDecimal.valueOf(100)) > 0) {
-            source.sendSystemMessage(Component.literal("§cPercent must be > 0 and <= 100."));
+            source.sendSystemMessage(moneyLiteral("§cPercent must be > 0 and <= 100."));
             return 1;
         }
 
@@ -2482,14 +2486,14 @@ public class UBSCommands {
             total = total.add(value);
         }
         if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cTotal shares would exceed 100%. Current proposed total: " + total.toPlainString() + "%"
             ));
             return 1;
         }
         metadata.putString("shares", encodeShareMap(shares));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aSet shares for " + target.getName().getString() + " to " + percent.toPlainString() + "%"
         ));
         return 1;
@@ -2498,29 +2502,29 @@ public class UBSCommands {
     private static int handleBankSharesList(CommandSourceStack source) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can list shares."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can list shares."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can list shares."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can list shares."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         Map<UUID, BigDecimal> shares = decodeShareMap(metadata.getString("shares"));
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Share Distribution for §e" + bank.getBankName() + "\n\n"));
+        body.append(moneyLiteral("§7Share Distribution for §e" + bank.getBankName() + "\n\n"));
         if (shares.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             shares.entrySet().stream()
                     .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
-                    .forEach(entry -> body.append(Component.literal(
+                    .forEach(entry -> body.append(moneyLiteral(
                             "§8- §f" + resolvePlayerName(source.getServer(), entry.getKey())
                                     + " §7-> §e" + entry.getValue().toPlainString() + "%\n"
                     )));
@@ -2532,22 +2536,22 @@ public class UBSCommands {
     private static int handleBankCofounderAdd(CommandSourceStack source, ServerPlayer target) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can manage co-founders."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can manage co-founders."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can manage co-founders."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can manage co-founders."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         if (!"FIXED_COFOUNDERS".equalsIgnoreCase(metadata.getString("ownershipModel"))) {
-            source.sendSystemMessage(Component.literal("§cThis bank is not configured for fixed co-founders."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank is not configured for fixed co-founders."));
             return 1;
         }
 
@@ -2557,35 +2561,35 @@ public class UBSCommands {
             metadata.putString("cofounders", encodeUuidList(cofounders));
             centralBank.putBankMetadata(bank.getBankId(), metadata);
         }
-        source.sendSystemMessage(Component.literal("§aAdded co-founder: " + target.getName().getString()));
+        source.sendSystemMessage(moneyLiteral("§aAdded co-founder: " + target.getName().getString()));
         return 1;
     }
 
     private static int handleBankCofounderList(CommandSourceStack source) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can list co-founders."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can list co-founders."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can list co-founders."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can list co-founders."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         List<UUID> cofounders = decodeUuidList(metadata.getString("cofounders"));
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Co-founders for §e" + bank.getBankName() + "\n\n"));
+        body.append(moneyLiteral("§7Co-founders for §e" + bank.getBankName() + "\n\n"));
         if (cofounders.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (UUID id : cofounders) {
-                body.append(Component.literal("§8- §f" + resolvePlayerName(source.getServer(), id) + "\n"));
+                body.append(moneyLiteral("§8- §f" + resolvePlayerName(source.getServer(), id) + "\n"));
             }
         }
         source.sendSystemMessage(ubsMessage(ChatFormatting.AQUA, "§bCo-Founders", body));
@@ -2598,33 +2602,33 @@ public class UBSCommands {
                                       String salaryRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can hire employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can hire employees."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can hire employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can hire employees."));
             return 1;
         }
         String role = roleRaw == null ? "" : roleRaw.trim().toUpperCase(Locale.ROOT);
         if (!List.of("TELLER", "DIRECTOR", "AUDITOR", "STAFF").contains(role)) {
-            source.sendSystemMessage(Component.literal("§cInvalid role. Use TELLER, DIRECTOR, AUDITOR, or STAFF."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid role. Use TELLER, DIRECTOR, AUDITOR, or STAFF."));
             return 1;
         }
         BigDecimal salary;
         try {
             salary = new BigDecimal(salaryRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid salary."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid salary."));
             return 1;
         }
         if (salary.compareTo(BigDecimal.ZERO) < 0) {
-            source.sendSystemMessage(Component.literal("§cSalary must be non-negative."));
+            source.sendSystemMessage(moneyLiteral("§cSalary must be non-negative."));
             return 1;
         }
 
@@ -2634,9 +2638,9 @@ public class UBSCommands {
         metadata.putString("employees", encodeEmployeeMap(employees));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-        source.sendSystemMessage(Component.literal("§aHired " + target.getName().getString()
+        source.sendSystemMessage(moneyLiteral("§aHired " + target.getName().getString()
                 + " as " + role + " ($" + salary.toPlainString() + ")."));
-        target.sendSystemMessage(Component.literal("§aYou were hired by " + bank.getBankName()
+        target.sendSystemMessage(moneyLiteral("§aYou were hired by " + bank.getBankName()
                 + " as " + role + " ($" + salary.toPlainString() + ")."));
         return 1;
     }
@@ -2644,17 +2648,17 @@ public class UBSCommands {
     private static int handleBankFire(CommandSourceStack source, ServerPlayer target) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can fire employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can fire employees."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can fire employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can fire employees."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
@@ -2662,35 +2666,35 @@ public class UBSCommands {
         employees.remove(target.getUUID());
         metadata.putString("employees", encodeEmployeeMap(employees));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§eFired employee " + target.getName().getString()));
-        target.sendSystemMessage(Component.literal("§cYou were removed from employment at " + bank.getBankName()));
+        source.sendSystemMessage(moneyLiteral("§eFired employee " + target.getName().getString()));
+        target.sendSystemMessage(moneyLiteral("§cYou were removed from employment at " + bank.getBankName()));
         return 1;
     }
 
     private static int handleBankEmployeesList(CommandSourceStack source) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can list employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can list employees."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can list employees."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can list employees."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Employees at §e" + bank.getBankName() + "\n\n"));
+        body.append(moneyLiteral("§7Employees at §e" + bank.getBankName() + "\n\n"));
         if (employees.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
-            employees.forEach((id, employee) -> body.append(Component.literal(
+            employees.forEach((id, employee) -> body.append(moneyLiteral(
                     "§8- §f" + resolvePlayerName(source.getServer(), id)
                             + " §7role §e" + employee.role()
                             + " §7salary §6$" + employee.salary().toPlainString() + "\n"
@@ -2703,28 +2707,28 @@ public class UBSCommands {
     private static int handleBankEmployeeQuit(CommandSourceStack source, String bankNameRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can quit bank employment."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can quit bank employment."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
         if (employees.remove(player.getUUID()) == null) {
-            source.sendSystemMessage(Component.literal("§cYou are not employed at this bank."));
+            source.sendSystemMessage(moneyLiteral("§cYou are not employed at this bank."));
             return 1;
         }
         metadata.putString("employees", encodeEmployeeMap(employees));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§aYou resigned from " + bank.getBankName() + "."));
+        source.sendSystemMessage(moneyLiteral("§aYou resigned from " + bank.getBankName() + "."));
         return 1;
     }
 
@@ -2735,17 +2739,17 @@ public class UBSCommands {
                                                    String durationTicksRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can create loan products."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can create loan products."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveOwnedBankForPlayer(centralBank, actor.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can create loan products."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can create loan products."));
             return 1;
         }
 
@@ -2757,22 +2761,22 @@ public class UBSCommands {
         try {
             rate = Double.parseDouble(interestRateRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid interest rate."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid interest rate."));
             return 1;
         }
         if (rate <= 0.0) {
-            source.sendSystemMessage(Component.literal("§cInterest rate must be positive."));
+            source.sendSystemMessage(moneyLiteral("§cInterest rate must be positive."));
             return 1;
         }
         long durationTicks;
         try {
             durationTicks = Long.parseLong(durationTicksRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid duration ticks."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid duration ticks."));
             return 1;
         }
         if (durationTicks < 20L) {
-            source.sendSystemMessage(Component.literal("§cDuration must be at least 20 ticks."));
+            source.sendSystemMessage(moneyLiteral("§cDuration must be at least 20 ticks."));
             return 1;
         }
 
@@ -2783,7 +2787,7 @@ public class UBSCommands {
         metadata.putString("loanProducts", encodeLoanProducts(products));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aLoan product created: §e" + name
                         + " §7max $"+ maxAmount.toPlainString()
                         + " §7APR " + rate + "% §7duration " + durationTicks + " ticks."
@@ -2794,23 +2798,23 @@ public class UBSCommands {
     private static int handleBankLoanProductList(CommandSourceStack source, String bankNameRaw) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         List<LoanProductSpec> products = decodeLoanProducts(metadata.getString("loanProducts"));
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Loan products at §e" + bank.getBankName() + "\n\n"));
+        body.append(moneyLiteral("§7Loan products at §e" + bank.getBankName() + "\n\n"));
         if (products.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (LoanProductSpec product : products) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + product.name()
                                 + " §7max §6$" + product.maxAmount().toPlainString()
                                 + " §7APR §e" + product.interestRate() + "%"
@@ -2828,22 +2832,22 @@ public class UBSCommands {
                                                   String amountRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can apply for loan products."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can apply for loan products."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         AccountHolder account = findPlayerAccountInBank(bank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cYou need an account at this bank to apply."));
+            source.sendSystemMessage(moneyLiteral("§cYou need an account at this bank to apply."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
@@ -2853,7 +2857,7 @@ public class UBSCommands {
                 .findFirst()
                 .orElse(null);
         if (product == null) {
-            source.sendSystemMessage(Component.literal("§cLoan product not found: " + productName));
+            source.sendSystemMessage(moneyLiteral("§cLoan product not found: " + productName));
             return 1;
         }
 
@@ -2862,13 +2866,13 @@ public class UBSCommands {
             return 1;
         }
         if (requested.compareTo(product.maxAmount()) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cRequested amount exceeds product max of $" + product.maxAmount().toPlainString()
             ));
             return 1;
         }
         if (!bank.canIssueLoan(requested)) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cLoan blocked by fractional reserve limit. Max lendable currently: $"
                             + bank.getMaxLendableAmount().toPlainString()
             ));
@@ -2900,11 +2904,11 @@ public class UBSCommands {
         );
         var issued = LoanService.issueLoan(source.getServer(), quote);
         if (issued == null) {
-            source.sendSystemMessage(Component.literal("§cLoan issuance failed (reserve or compliance restrictions)."));
+            source.sendSystemMessage(moneyLiteral("§cLoan issuance failed (reserve or compliance restrictions)."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aLoan approved from product §e" + product.name()
                         + "§a for §6$" + requested.toPlainString()
                         + "§a. Repayment: §f" + payments + " x $" + periodic.toPlainString()
@@ -2915,7 +2919,7 @@ public class UBSCommands {
     private static int handleBorrowFromCentralBank(CommandSourceStack source, String amountRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can borrow for banks."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can borrow for banks."));
             return 1;
         }
 
@@ -2924,7 +2928,7 @@ public class UBSCommands {
             return 1;
         }
         if (amount.compareTo(BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()))) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cBorrow amount exceeds global transaction cap of $" + Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()
             ));
             return 1;
@@ -2932,13 +2936,13 @@ public class UBSCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can borrow from the Central Bank."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can borrow from the Central Bank."));
             return 1;
         }
 
@@ -2946,7 +2950,7 @@ public class UBSCommands {
         refreshBankOperationalState(centralBank, bank, gameTime, source.getServer());
         String status = getBankStatus(centralBank, bank);
         if ("SUSPENDED".equals(status) || "REVOKED".equals(status)) {
-            source.sendSystemMessage(Component.literal("§cYour bank cannot borrow while " + status.toLowerCase(Locale.ROOT) + "."));
+            source.sendSystemMessage(moneyLiteral("§cYour bank cannot borrow while " + status.toLowerCase(Locale.ROOT) + "."));
             return 1;
         }
 
@@ -2979,7 +2983,7 @@ public class UBSCommands {
         recordSettlement(centralBank, centralBank.getBankId(), bank.getBankId(), amount, "CB_LOAN_DISBURSEMENT", true);
         BankManager.markDirty();
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aCentral Bank loan issued.\n"
                         + "§7Loan ID: §f" + loanId + "\n"
                         + "§7Principal: §6$" + amount.toPlainString() + "\n"
@@ -2992,19 +2996,19 @@ public class UBSCommands {
     private static int handleBankLoanSummary(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view bank loans."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view bank loans."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         Bank bank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can view this loan summary."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can view this loan summary."));
             return 1;
         }
 
@@ -3015,14 +3019,14 @@ public class UBSCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Outstanding CB Loans: §b" + loans.size() + "\n\n"));
+        body.append(moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Outstanding CB Loans: §b" + loans.size() + "\n\n"));
         if (loans.isEmpty()) {
-            body.append(Component.literal("§8No active Central Bank loans."));
+            body.append(moneyLiteral("§8No active Central Bank loans."));
         } else {
             for (Map.Entry<UUID, CompoundTag> entry : loans) {
                 CompoundTag loan = entry.getValue();
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + shortId(entry.getKey())
                                 + " §7remaining §6$" + readBigDecimal(loan, "remaining").toPlainString()
                                 + " §7next due tick §f" + loan.getLong("nextDueTick")
@@ -3042,7 +3046,7 @@ public class UBSCommands {
                                             String termTicksRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can post inter-bank offers."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can post inter-bank offers."));
             return 1;
         }
 
@@ -3055,11 +3059,11 @@ public class UBSCommands {
         try {
             annualRate = Double.parseDouble(annualRateRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid annual rate."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid annual rate."));
             return 1;
         }
         if (annualRate <= 0.0 || annualRate > 1000.0) {
-            source.sendSystemMessage(Component.literal("§cAnnual rate must be > 0 and <= 1000."));
+            source.sendSystemMessage(moneyLiteral("§cAnnual rate must be > 0 and <= 1000."));
             return 1;
         }
 
@@ -3067,26 +3071,26 @@ public class UBSCommands {
         try {
             termTicks = Long.parseLong(termTicksRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid term ticks."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid term ticks."));
             return 1;
         }
         if (termTicks < 20L) {
-            source.sendSystemMessage(Component.literal("§cTerm must be at least 20 ticks."));
+            source.sendSystemMessage(moneyLiteral("§cTerm must be at least 20 ticks."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank lenderBank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (lenderBank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can post lending offers."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can post lending offers."));
             return 1;
         }
         if (lenderBank.getDeclaredReserve().compareTo(amount) < 0) {
-            source.sendSystemMessage(Component.literal("§cInsufficient reserve to back this offer."));
+            source.sendSystemMessage(moneyLiteral("§cInsufficient reserve to back this offer."));
             return 1;
         }
 
@@ -3104,7 +3108,7 @@ public class UBSCommands {
         centralBank.getInterbankOffers().put(offerId, offer);
         BankManager.markDirty();
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aInter-bank offer posted.\n"
                         + "§7Offer ID: §f" + offerId + "\n"
                         + "§7Amount: §6$" + amount.toPlainString() + "\n"
@@ -3117,7 +3121,7 @@ public class UBSCommands {
     private static int handleInterbankMarket(CommandSourceStack source) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         long nowTick = currentOverworldGameTime(source.getServer());
@@ -3129,14 +3133,14 @@ public class UBSCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Open Offers: §b" + offers.size() + "\n\n"));
+        body.append(moneyLiteral("§7Open Offers: §b" + offers.size() + "\n\n"));
         if (offers.isEmpty()) {
-            body.append(Component.literal("§8No open inter-bank offers."));
+            body.append(moneyLiteral("§8No open inter-bank offers."));
         } else {
             for (CompoundTag offer : offers) {
                 UUID lenderId = offer.getUUID("lenderBankId");
                 Bank lender = centralBank.getBank(lenderId);
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + shortId(offer.getUUID("id"))
                                 + " §7lender §e" + (lender == null ? shortId(lenderId) : lender.getBankName())
                                 + " §7amount §6$" + readBigDecimal(offer, "amount").toPlainString()
@@ -3153,23 +3157,23 @@ public class UBSCommands {
     private static int handleInterbankAccept(CommandSourceStack source, UUID offerId) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can accept inter-bank offers."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can accept inter-bank offers."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         CompoundTag offer = centralBank.getInterbankOffers().get(offerId);
         if (offer == null) {
-            source.sendSystemMessage(Component.literal("§cOffer not found: " + offerId));
+            source.sendSystemMessage(moneyLiteral("§cOffer not found: " + offerId));
             return 1;
         }
         if (!"OPEN".equalsIgnoreCase(offer.getString("status"))) {
-            source.sendSystemMessage(Component.literal("§cOffer is not open."));
+            source.sendSystemMessage(moneyLiteral("§cOffer is not open."));
             return 1;
         }
 
@@ -3178,34 +3182,34 @@ public class UBSCommands {
             offer.putString("status", "EXPIRED");
             centralBank.getInterbankOffers().put(offerId, offer);
             BankManager.markDirty();
-            source.sendSystemMessage(Component.literal("§cOffer has expired."));
+            source.sendSystemMessage(moneyLiteral("§cOffer has expired."));
             return 1;
         }
 
         Bank borrowerBank = resolveOwnedBankForPlayer(centralBank, player.getUUID());
         if (borrowerBank == null) {
-            source.sendSystemMessage(Component.literal("§cOnly bank owners can accept inter-bank offers."));
+            source.sendSystemMessage(moneyLiteral("§cOnly bank owners can accept inter-bank offers."));
             return 1;
         }
 
         UUID lenderBankId = offer.getUUID("lenderBankId");
         Bank lenderBank = centralBank.getBank(lenderBankId);
         if (lenderBank == null) {
-            source.sendSystemMessage(Component.literal("§cLender bank no longer exists."));
+            source.sendSystemMessage(moneyLiteral("§cLender bank no longer exists."));
             return 1;
         }
         if (lenderBank.getBankId().equals(borrowerBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cYou cannot accept your own offer."));
+            source.sendSystemMessage(moneyLiteral("§cYou cannot accept your own offer."));
             return 1;
         }
 
         BigDecimal principal = readBigDecimal(offer, "amount");
         if (principal.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cOffer amount is invalid."));
+            source.sendSystemMessage(moneyLiteral("§cOffer amount is invalid."));
             return 1;
         }
         if (lenderBank.getDeclaredReserve().compareTo(principal) < 0) {
-            source.sendSystemMessage(Component.literal("§cLender bank no longer has sufficient reserve."));
+            source.sendSystemMessage(moneyLiteral("§cLender bank no longer has sufficient reserve."));
             recordSettlement(centralBank, lenderBank.getBankId(), borrowerBank.getBankId(), principal,
                     "INTERBANK_ACCEPT_FAILED_INSUFFICIENT_LENDER_RESERVE", false);
             return 1;
@@ -3250,7 +3254,7 @@ public class UBSCommands {
                 true
         );
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aAccepted inter-bank offer " + shortId(offerId)
                         + " for $" + principal.toPlainString()
                         + ". Maturity tick: " + (nowTick + termTicks)
@@ -3258,7 +3262,7 @@ public class UBSCommands {
 
         ServerPlayer lenderOwner = source.getServer().getPlayerList().getPlayer(lenderBank.getBankOwnerId());
         if (lenderOwner != null) {
-            lenderOwner.sendSystemMessage(Component.literal(
+            lenderOwner.sendSystemMessage(moneyLiteral(
                     "§aYour inter-bank offer " + shortId(offerId)
                             + " was accepted by " + borrowerBank.getBankName()
                             + " for $" + principal.toPlainString()
@@ -3270,23 +3274,23 @@ public class UBSCommands {
     private static int handleBankAppeal(CommandSourceStack source, String messageRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can submit appeals."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can submit appeals."));
             return 1;
         }
 
         String message = messageRaw == null ? "" : messageRaw.trim();
         if (message.isBlank()) {
-            source.sendSystemMessage(Component.literal("§cAppeal message cannot be empty."));
+            source.sendSystemMessage(moneyLiteral("§cAppeal message cannot be empty."));
             return 1;
         }
         if (message.length() > 256) {
-            source.sendSystemMessage(Component.literal("§cAppeal message is too long (max 256 chars)."));
+            source.sendSystemMessage(moneyLiteral("§cAppeal message is too long (max 256 chars)."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
@@ -3294,7 +3298,7 @@ public class UBSCommands {
                 .anyMatch(tag -> player.getUUID().equals(readUuid(tag, "playerId"))
                         && "PENDING".equalsIgnoreCase(tag.getString("status")));
         if (hasPendingAppeal) {
-            source.sendSystemMessage(Component.literal("§cYou already have a pending appeal."));
+            source.sendSystemMessage(moneyLiteral("§cYou already have a pending appeal."));
             return 1;
         }
 
@@ -3309,7 +3313,7 @@ public class UBSCommands {
         centralBank.getBankAppeals().put(appealId, appeal);
         BankManager.markDirty();
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aAppeal submitted. ID: §f" + appealId + "\n§7Message: §f" + message
         ));
 
@@ -3317,7 +3321,7 @@ public class UBSCommands {
             if (!online.hasPermissions(3)) {
                 continue;
             }
-            online.sendSystemMessage(Component.literal(
+            online.sendSystemMessage(moneyLiteral(
                     "§6[UBS] New bank appeal from " + player.getName().getString()
                             + " (ID: " + appealId + ")."
             ));
@@ -3550,7 +3554,7 @@ public class UBSCommands {
         BigDecimal dailyCap = getDailyCapForBank(bank, metadata);
         BigDecimal after = dailyWithdrawn.add(amount);
         if (after.compareTo(dailyCap) > 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cTransfer blocked by daily bank liquidity cap. Cap: $" + dailyCap.toPlainString()
                             + ", used: $" + dailyWithdrawn.toPlainString()
                             + ", attempted: $" + amount.toPlainString()
@@ -3573,7 +3577,7 @@ public class UBSCommands {
                     : source.getPlayer().getUUID().toString());
             centralBank.putBankMetadata(bank.getBankId(), metadata);
 
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§eRequest queued: this withdrawal would breach the bank minimum reserve. Queue position: "
                             + queueCount
             ));
@@ -3604,7 +3608,7 @@ public class UBSCommands {
             metadata.putString("status", "LOCKDOWN");
             metadata.putLong("lockdownUntilTick", until);
             source.getServer().getPlayerList().broadcastSystemMessage(
-                    Component.literal("§c[UBS] Bank run detected at " + bank.getBankName()
+                    moneyLiteral("§c[UBS] Bank run detected at " + bank.getBankName()
                             + ". Withdrawals are paused until tick " + until + "."),
                     false
             );
@@ -3681,7 +3685,7 @@ public class UBSCommands {
         if (owner == null) {
             return;
         }
-        owner.sendSystemMessage(Component.literal(
+        owner.sendSystemMessage(moneyLiteral(
                 "§6[UBS] Bank status update for " + bank.getBankName()
                         + ": " + oldStatus + " -> " + newStatus
         ));
@@ -3758,19 +3762,19 @@ public class UBSCommands {
     private static int handleBankBalance(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         ConcurrentHashMap<UUID, AccountHolder> accounts = centralBank.SearchForAccount(player.getUUID());
         if (accounts.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cYou do not have any bank accounts yet."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have any bank accounts yet."));
             return 1;
         }
 
@@ -3781,7 +3785,7 @@ public class UBSCommands {
 
         Bank bank = centralBank.getBank(selected.getBankId());
         String bankName = bank == null ? "Unknown" : bank.getBankName();
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§6§lUltimate Banking System §7- §eBalance\n"
                         + "§7Bank: §f" + bankName + "\n"
                         + "§7Type: §f" + selected.getAccountType().label + "\n"
@@ -3794,7 +3798,7 @@ public class UBSCommands {
     private static int handleBankList(CommandSourceStack source) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
@@ -3803,12 +3807,12 @@ public class UBSCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Banks Registered: §b" + banks.size() + "\n"));
+        body.append(moneyLiteral("§7Banks Registered: §b" + banks.size() + "\n"));
         if (banks.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (Bank bank : banks) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §e" + bank.getBankName() + " §7(" + bank.getBankId() + ")\n"
                 ));
             }
@@ -3821,27 +3825,27 @@ public class UBSCommands {
     private static int handleBankCredit(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (selected == null) {
-            source.sendSystemMessage(Component.literal("§cNo account found. Create an account first."));
+            source.sendSystemMessage(moneyLiteral("§cNo account found. Create an account first."));
             return 1;
         }
 
         source.sendSystemMessage(ubsMessage(
                 ChatFormatting.AQUA,
                 "§bCredit Score",
-                Component.literal("§7Account: §f" + shortId(selected.getAccountUUID()) + "\n")
-                        .append(Component.literal("§7Score: §e" + selected.getCreditScore()))
+                moneyLiteral("§7Account: §f" + shortId(selected.getAccountUUID()) + "\n")
+                        .append(moneyLiteral("§7Score: §e" + selected.getCreditScore()))
         ));
         return 1;
     }
@@ -3849,7 +3853,7 @@ public class UBSCommands {
     private static int handleLoanRequest(CommandSourceStack source, String amountRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can request loans."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can request loans."));
             return 1;
         }
 
@@ -3857,24 +3861,24 @@ public class UBSCommands {
         try {
             principal = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid loan amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid loan amount."));
             return 1;
         }
 
         if (principal.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be greater than zero."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (selected == null) {
-            source.sendSystemMessage(Component.literal("§cNo account found. Create an account first."));
+            source.sendSystemMessage(moneyLiteral("§cNo account found. Create an account first."));
             return 1;
         }
 
@@ -3883,19 +3887,19 @@ public class UBSCommands {
         PENDING_LOAN_CONFIRMATIONS.put(player.getUUID(), quote);
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Account: §f" + selected.getAccountUUID() + "\n"));
-        body.append(Component.literal("§7Principal: §6$" + quote.principal().toPlainString() + "\n"));
-        body.append(Component.literal("§7Interest Rate (APR): §e" + quote.annualInterestRate() + "%\n"));
-        body.append(Component.literal("§7Total Repayable: §6$" + quote.totalRepayable().toPlainString() + "\n"));
-        body.append(Component.literal("§7Payments: §f" + quote.totalPayments() + " x $" + quote.periodicPayment().toPlainString() + "\n"));
-        body.append(Component.literal("§7First Due (game ticks): §f" + quote.firstDueGameTime() + "\n"));
+        body.append(moneyLiteral("§7Account: §f" + selected.getAccountUUID() + "\n"));
+        body.append(moneyLiteral("§7Principal: §6$" + quote.principal().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Interest Rate (APR): §e" + quote.annualInterestRate() + "%\n"));
+        body.append(moneyLiteral("§7Total Repayable: §6$" + quote.totalRepayable().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Payments: §f" + quote.totalPayments() + " x $" + quote.periodicPayment().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7First Due (game ticks): §f" + quote.firstDueGameTime() + "\n"));
         if (quote.requiresAdminApproval()) {
-            body.append(Component.literal("§eThis loan requires admin approval after confirmation.\n"));
-            body.append(Component.literal("§7Reason: §f" + quote.approvalReason() + "\n"));
+            body.append(moneyLiteral("§eThis loan requires admin approval after confirmation.\n"));
+            body.append(moneyLiteral("§7Reason: §f" + quote.approvalReason() + "\n"));
         } else {
-            body.append(Component.literal("§aEligible for auto-approval after confirmation.\n"));
+            body.append(moneyLiteral("§aEligible for auto-approval after confirmation.\n"));
         }
-        body.append(Component.literal("\n§7Run §f/bank loan confirm §7to continue."));
+        body.append(moneyLiteral("\n§7Run §f/bank loan confirm §7to continue."));
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eLoan Terms Preview", body));
         return 1;
@@ -3904,24 +3908,24 @@ public class UBSCommands {
     private static int handleLoanConfirm(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can confirm loans."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can confirm loans."));
             return 1;
         }
 
         LoanService.LoanQuote quote = PENDING_LOAN_CONFIRMATIONS.remove(player.getUUID());
         if (quote == null) {
-            source.sendSystemMessage(Component.literal("§cNo pending loan request. Use /bank loan request <amount> first."));
+            source.sendSystemMessage(moneyLiteral("§cNo pending loan request. Use /bank loan request <amount> first."));
             return 1;
         }
 
         if (quote.requiresAdminApproval()) {
             LoanService.queueAdminApproval(quote);
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§eLoan submitted for admin approval. You will be notified when it is reviewed."
             ));
             for (ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
                 if (online.hasPermissions(3)) {
-                    online.sendSystemMessage(Component.literal(
+                    online.sendSystemMessage(moneyLiteral(
                             "§6[UBS] Loan approval needed: " + player.getName().getString()
                                     + " requested $" + quote.principal().toPlainString()
                     ));
@@ -3932,11 +3936,11 @@ public class UBSCommands {
 
         var issued = LoanService.issueLoan(source.getServer(), quote);
         if (issued == null) {
-            source.sendSystemMessage(Component.literal("§cLoan issuance failed. Please try again later."));
+            source.sendSystemMessage(moneyLiteral("§cLoan issuance failed. Please try again later."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aLoan approved and issued: §6$" + quote.principal().toPlainString()
                         + "§a. Repayment: §f" + quote.totalPayments()
                         + " x $" + quote.periodicPayment().toPlainString()
@@ -3947,19 +3951,19 @@ public class UBSCommands {
     private static int handleLoanStatus(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can view loan status."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can view loan status."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (selected == null) {
-            source.sendSystemMessage(Component.literal("§cNo account found."));
+            source.sendSystemMessage(moneyLiteral("§cNo account found."));
             return 1;
         }
 
@@ -3968,15 +3972,15 @@ public class UBSCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Account: §f" + selected.getAccountUUID() + "\n"));
-        body.append(Component.literal("§7Credit Score: §e" + selected.getCreditScore() + "\n"));
-        body.append(Component.literal("§7Defaulted: " + (selected.isDefaulted() ? "§cYES" : "§aNO") + "\n"));
-        body.append(Component.literal("§7Active Loans: §b" + loans.size() + "\n\n"));
+        body.append(moneyLiteral("§7Account: §f" + selected.getAccountUUID() + "\n"));
+        body.append(moneyLiteral("§7Credit Score: §e" + selected.getCreditScore() + "\n"));
+        body.append(moneyLiteral("§7Defaulted: " + (selected.isDefaulted() ? "§cYES" : "§aNO") + "\n"));
+        body.append(moneyLiteral("§7Active Loans: §b" + loans.size() + "\n\n"));
         if (loans.isEmpty()) {
-            body.append(Component.literal("§8No active loans."));
+            body.append(moneyLiteral("§8No active loans."));
         } else {
             for (var loan : loans) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + shortId(loan.getLoanId())
                                 + " §7remaining §6$" + loan.getRemainingBalance().toPlainString()
                                 + " §7next due tick §f" + loan.getNextDueGameTime()
@@ -3993,29 +3997,29 @@ public class UBSCommands {
     private static int handleCdBreakRequest(CommandSourceStack source, UUID accountId) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can request CD early withdrawal."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can request CD early withdrawal."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder cdAccount = centralBank.SearchForAccountByAccountId(accountId);
         if (cdAccount == null || !cdAccount.getPlayerUUID().equals(player.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cCD account not found or not owned by you."));
+            source.sendSystemMessage(moneyLiteral("§cCD account not found or not owned by you."));
             return 1;
         }
         if (cdAccount.getAccountType() != AccountTypes.CertificateAccount) {
-            source.sendSystemMessage(Component.literal("§cThat account is not a Certificate of Deposit account."));
+            source.sendSystemMessage(moneyLiteral("§cThat account is not a Certificate of Deposit account."));
             return 1;
         }
 
         long gameTime = currentOverworldGameTime(source.getServer());
         if (!cdAccount.isCertificateLocked(gameTime)) {
-            source.sendSystemMessage(Component.literal("§aThis CD is already matured/unlocked. No penalty required."));
+            source.sendSystemMessage(moneyLiteral("§aThis CD is already matured/unlocked. No penalty required."));
             return 1;
         }
 
@@ -4066,7 +4070,7 @@ public class UBSCommands {
         pending.putString("tier", tier);
         PENDING_CD_BREAK_CONFIRMATIONS.put(player.getUUID(), pending);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§eEarly CD withdrawal confirmation required.\n"
                         + "§7Account: §f" + shortId(cdAccount.getAccountUUID()) + "\n"
                         + "§7Principal: §6$" + principal.toPlainString() + "\n"
@@ -4080,32 +4084,32 @@ public class UBSCommands {
     private static int handleBankConfirm(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can confirm this action."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can confirm this action."));
             return 1;
         }
 
         CompoundTag pending = PENDING_CD_BREAK_CONFIRMATIONS.get(player.getUUID());
         if (pending == null) {
-            source.sendSystemMessage(Component.literal("§cNo pending confirmation action."));
+            source.sendSystemMessage(moneyLiteral("§cNo pending confirmation action."));
             return 1;
         }
 
         if (System.currentTimeMillis() > pending.getLong("expiresAtMillis")) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cConfirmation expired. Start the action again."));
+            source.sendSystemMessage(moneyLiteral("§cConfirmation expired. Start the action again."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder cdAccount = centralBank.SearchForAccountByAccountId(pending.getUUID("accountId"));
         if (cdAccount == null || !cdAccount.getPlayerUUID().equals(player.getUUID())) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cCD account is no longer available."));
+            source.sendSystemMessage(moneyLiteral("§cCD account is no longer available."));
             return 1;
         }
 
@@ -4114,14 +4118,14 @@ public class UBSCommands {
         BigDecimal payout = readBigDecimal(pending, "payout");
         if (principal.compareTo(BigDecimal.ZERO) <= 0) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cInvalid pending action."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid pending action."));
             return 1;
         }
 
         Bank bank = centralBank.getBank(cdAccount.getBankId());
         if (bank == null) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cBank no longer exists for this CD."));
+            source.sendSystemMessage(moneyLiteral("§cBank no longer exists for this CD."));
             return 1;
         }
 
@@ -4131,19 +4135,19 @@ public class UBSCommands {
                 .orElse(null);
         if (destination == null) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cYou need a checking account at this bank to receive the payout."));
+            source.sendSystemMessage(moneyLiteral("§cYou need a checking account at this bank to receive the payout."));
             return 1;
         }
 
         if (!cdAccount.forceRemoveBalance(principal)) {
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cFailed to release CD principal."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to release CD principal."));
             return 1;
         }
         if (!destination.forceAddBalance(payout)) {
             cdAccount.forceAddBalance(principal);
             PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-            source.sendSystemMessage(Component.literal("§cFailed to transfer payout to destination account."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to transfer payout to destination account."));
             return 1;
         }
 
@@ -4165,7 +4169,7 @@ public class UBSCommands {
         destination.addTransaction(tx);
 
         PENDING_CD_BREAK_CONFIRMATIONS.remove(player.getUUID());
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aEarly CD withdrawal completed.\n"
                         + "§7Payout: §a$" + payout.toPlainString()
                         + " §7Penalty retained by bank: §c$" + penalty.toPlainString()
@@ -4188,7 +4192,7 @@ public class UBSCommands {
     private static int handleShopPay(CommandSourceStack source, String amountRaw, String shopName) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
@@ -4196,24 +4200,24 @@ public class UBSCommands {
         try {
             amount = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid amount."));
             return 1;
         }
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.stripTrailingZeros().scale() > 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be a positive whole number."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be a positive whole number."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (selected == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
@@ -4221,7 +4225,7 @@ public class UBSCommands {
         try {
             amountLong = amount.longValueExact();
         } catch (ArithmeticException ex) {
-            source.sendSystemMessage(Component.literal("§cAmount is too large."));
+            source.sendSystemMessage(moneyLiteral("§cAmount is too large."));
             return 1;
         }
 
@@ -4231,11 +4235,11 @@ public class UBSCommands {
                 shopName
         );
         if (!result.success()) {
-            source.sendSystemMessage(Component.literal("§cPurchase failed: " + result.reason()));
+            source.sendSystemMessage(moneyLiteral("§cPurchase failed: " + result.reason()));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aPaid $" + amount.toPlainString() + " at " + shopName + ". New balance: $" + result.balanceAfter().toPlainString()
         ));
         return 1;
@@ -4244,7 +4248,7 @@ public class UBSCommands {
     private static int handleWithdrawNote(CommandSourceStack source, String amountRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
@@ -4255,17 +4259,17 @@ public class UBSCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
         if (!account.RemoveBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cWithdraw note failed: insufficient funds."));
+            source.sendSystemMessage(moneyLiteral("§cWithdraw note failed: insufficient funds."));
             return 1;
         }
 
@@ -4283,7 +4287,7 @@ public class UBSCommands {
             tag.putString("ubs_note_source_bank", sourceBank.getBankName());
         }
         applyCustomTag(note, tag);
-        note.set(DataComponents.CUSTOM_NAME, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        note.set(DataComponents.CUSTOM_NAME, moneyLiteral("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         if (!player.getInventory().add(note)) {
             player.drop(note, false);
@@ -4296,7 +4300,7 @@ public class UBSCommands {
                 "BANK_NOTE_ISSUED"
         ));
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aIssued bank note for §6$" + amount.toPlainString() + "§a. Serial: §f" + serial
         ));
         return 1;
@@ -4305,19 +4309,19 @@ public class UBSCommands {
     private static int handleDepositNote(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
         ItemStack held = player.getMainHandItem();
         if (held.isEmpty() || held.getItem() != ModItems.BANK_NOTE.get()) {
-            source.sendSystemMessage(Component.literal("§cHold a bank note in your main hand."));
+            source.sendSystemMessage(moneyLiteral("§cHold a bank note in your main hand."));
             return 1;
         }
 
         CompoundTag tag = readCustomTag(held);
         if (tag == null || !tag.contains("ubs_note_serial") || !tag.contains("ubs_note_amount")) {
-            source.sendSystemMessage(Component.literal("§cInvalid bank note data."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid bank note data."));
             return 1;
         }
 
@@ -4326,32 +4330,32 @@ public class UBSCommands {
         try {
             amount = new BigDecimal(tag.getString("ubs_note_amount"));
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid bank note amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid bank note amount."));
             return 1;
         }
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cInvalid bank note value."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid bank note value."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         if (centralBank.isNoteSerialRedeemed(serial)) {
-            source.sendSystemMessage(Component.literal("§cThis bank note serial has already been redeemed."));
+            source.sendSystemMessage(moneyLiteral("§cThis bank note serial has already been redeemed."));
             return 1;
         }
 
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
         if (!account.AddBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cDeposit failed."));
+            source.sendSystemMessage(moneyLiteral("§cDeposit failed."));
             return 1;
         }
         centralBank.markNoteSerialRedeemed(serial);
@@ -4363,7 +4367,7 @@ public class UBSCommands {
                 LocalDateTime.now(),
                 "BANK_NOTE_REDEEMED"
         ));
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aDeposited bank note: §6$" + amount.toPlainString() + "§a."
         ));
         return 1;
@@ -4372,13 +4376,13 @@ public class UBSCommands {
     private static int handleWriteCheque(CommandSourceStack source, String recipientNameRaw, String amountRaw) {
         ServerPlayer writer = source.getPlayer();
         if (writer == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
         String recipientName = recipientNameRaw == null ? "" : recipientNameRaw.trim();
         if (recipientName.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cInvalid recipient."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid recipient."));
             return 1;
         }
 
@@ -4401,12 +4405,12 @@ public class UBSCommands {
         }
 
         if (recipientUuid == null) {
-            source.sendSystemMessage(Component.literal("§cUnknown player profile: " + recipientNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cUnknown player profile: " + recipientNameRaw));
             return 1;
         }
 
         if (writer.getUUID().equals(recipientUuid)) {
-            source.sendSystemMessage(Component.literal("§cYou cannot write a cheque to yourself."));
+            source.sendSystemMessage(moneyLiteral("§cYou cannot write a cheque to yourself."));
             return 1;
         }
 
@@ -4417,17 +4421,17 @@ public class UBSCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         AccountHolder account = resolveDefaultLoanAccount(centralBank, writer.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo source account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo source account available."));
             return 1;
         }
         if (!account.RemoveBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cInsufficient funds for cheque."));
+            source.sendSystemMessage(moneyLiteral("§cInsufficient funds for cheque."));
             return 1;
         }
 
@@ -4446,7 +4450,7 @@ public class UBSCommands {
             tag.putString("ubs_cheque_source_bank", chequeSourceBank.getBankName());
         }
         applyCustomTag(cheque, tag);
-        cheque.set(DataComponents.CUSTOM_NAME, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        cheque.set(DataComponents.CUSTOM_NAME, moneyLiteral("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         if (!writer.getInventory().add(cheque)) {
             writer.drop(cheque, false);
@@ -4459,7 +4463,7 @@ public class UBSCommands {
                 LocalDateTime.now(),
                 "CHEQUE_WRITE:" + recipientUuid
         ));
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aCheque written for §6$" + amount.toPlainString() + "§a to §e" + recipientName
                         + "§a. ID: §f" + chequeId
         ));
@@ -4469,25 +4473,25 @@ public class UBSCommands {
     private static int handleDepositCheque(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
         ItemStack held = player.getMainHandItem();
         if (held.isEmpty() || held.getItem() != ModItems.CHEQUE.get()) {
-            source.sendSystemMessage(Component.literal("§cHold a cheque in your main hand."));
+            source.sendSystemMessage(moneyLiteral("§cHold a cheque in your main hand."));
             return 1;
         }
         CompoundTag tag = readCustomTag(held);
         if (tag == null || !tag.contains("ubs_cheque_id") || !tag.contains("ubs_cheque_amount") || !tag.contains("ubs_cheque_recipient")) {
-            source.sendSystemMessage(Component.literal("§cInvalid cheque data."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid cheque data."));
             return 1;
         }
 
         String chequeId = tag.getString("ubs_cheque_id");
         UUID recipientId = tag.getUUID("ubs_cheque_recipient");
         if (!player.getUUID().equals(recipientId)) {
-            source.sendSystemMessage(Component.literal("§cThis cheque is not payable to you."));
+            source.sendSystemMessage(moneyLiteral("§cThis cheque is not payable to you."));
             return 1;
         }
 
@@ -4495,27 +4499,27 @@ public class UBSCommands {
         try {
             amount = new BigDecimal(tag.getString("ubs_cheque_amount"));
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid cheque amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid cheque amount."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         if (centralBank.isChequeRedeemed(chequeId)) {
-            source.sendSystemMessage(Component.literal("§cThis cheque has already been redeemed."));
+            source.sendSystemMessage(moneyLiteral("§cThis cheque has already been redeemed."));
             return 1;
         }
 
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo destination account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo destination account available."));
             return 1;
         }
         if (!account.AddBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cFailed to redeem cheque."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to redeem cheque."));
             return 1;
         }
 
@@ -4528,7 +4532,7 @@ public class UBSCommands {
                 LocalDateTime.now(),
                 "CHEQUE_REDEEMED:" + chequeId
         ));
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aCheque deposited: §6$" + amount.toPlainString() + "§a."
         ));
         return 1;
@@ -4537,7 +4541,7 @@ public class UBSCommands {
     private static int handleHudToggle(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
 
@@ -4549,14 +4553,14 @@ public class UBSCommands {
         HudStatePayload hudState = buildHudStatePayload(centralBank, player.getUUID());
         PacketDistributor.sendToPlayer(player, hudState);
         if (!next) {
-            source.sendSystemMessage(Component.literal("§aBalance HUD is now §4disabled§a."));
+            source.sendSystemMessage(moneyLiteral("§aBalance HUD is now §4disabled§a."));
             return 1;
         }
 
         if (hudState.enabled()) {
-            source.sendSystemMessage(Component.literal("§aBalance HUD is now §2enabled§a."));
+            source.sendSystemMessage(moneyLiteral("§aBalance HUD is now §2enabled§a."));
         } else {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§eBalance HUD is toggled on, but hidden because no primary account is set."
             ));
         }
@@ -4566,17 +4570,17 @@ public class UBSCommands {
     private static int handleSafeBoxList(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use safe deposit boxes."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use safe deposit boxes."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
@@ -4584,21 +4588,21 @@ public class UBSCommands {
         int usedSlots = account.getSafeBoxSlots().size();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Account: §f" + accountLabel(account) + "\n"));
-        body.append(Component.literal("§7Slots Used: §b" + usedSlots + "§7/§b" + maxSlots + "\n\n"));
+        body.append(moneyLiteral("§7Account: §f" + accountLabel(account) + "\n"));
+        body.append(moneyLiteral("§7Slots Used: §b" + usedSlots + "§7/§b" + maxSlots + "\n\n"));
         for (int slot = 0; slot < maxSlots; slot++) {
             CompoundTag stackTag = account.getSafeBoxSlots().get(slot);
             if (stackTag == null) {
-                body.append(Component.literal("§8[" + slot + "] §7(empty)\n"));
+                body.append(moneyLiteral("§8[" + slot + "] §7(empty)\n"));
                 continue;
             }
             var parsed = ItemStack.parse(source.getServer().registryAccess(), stackTag);
             if (parsed.isEmpty() || parsed.get().isEmpty()) {
-                body.append(Component.literal("§8[" + slot + "] §7(invalid item)\n"));
+                body.append(moneyLiteral("§8[" + slot + "] §7(invalid item)\n"));
                 continue;
             }
             ItemStack stack = parsed.get();
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8[" + slot + "] §f" + stack.getHoverName().getString()
                             + " §7x" + stack.getCount() + "\n"
             ));
@@ -4611,32 +4615,32 @@ public class UBSCommands {
     private static int handleSafeBoxDeposit(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use safe deposit boxes."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use safe deposit boxes."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
         ItemStack held = player.getMainHandItem();
         if (held == null || held.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cHold an item in your main hand to deposit."));
+            source.sendSystemMessage(moneyLiteral("§cHold an item in your main hand to deposit."));
             return 1;
         }
         ItemStack copy = held.copy();
         if (!account.depositToSafeBox(copy, source.getServer().registryAccess())) {
-            source.sendSystemMessage(Component.literal("§cSafe box is full for this account type."));
+            source.sendSystemMessage(moneyLiteral("§cSafe box is full for this account type."));
             return 1;
         }
         held.shrink(held.getCount());
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aDeposited §f" + copy.getHoverName().getString()
                         + " §ax" + copy.getCount()
                         + " §ainto safe deposit box."
@@ -4647,17 +4651,17 @@ public class UBSCommands {
     private static int handleSafeBoxWithdraw(CommandSourceStack source, String slotRaw) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use safe deposit boxes."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use safe deposit boxes."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         AccountHolder account = resolveDefaultLoanAccount(centralBank, player.getUUID());
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cNo account available."));
+            source.sendSystemMessage(moneyLiteral("§cNo account available."));
             return 1;
         }
 
@@ -4665,154 +4669,55 @@ public class UBSCommands {
         try {
             slot = Integer.parseInt(slotRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cSlot must be a number."));
+            source.sendSystemMessage(moneyLiteral("§cSlot must be a number."));
             return 1;
         }
         if (slot < 0 || slot >= account.getSafeBoxSlotCount()) {
-            source.sendSystemMessage(Component.literal("§cSlot out of range."));
+            source.sendSystemMessage(moneyLiteral("§cSlot out of range."));
             return 1;
         }
 
         ItemStack withdrawn = account.withdrawFromSafeBox(slot, source.getServer().registryAccess());
         if (withdrawn.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cNo item in that slot."));
+            source.sendSystemMessage(moneyLiteral("§cNo item in that slot."));
             return 1;
         }
         if (!player.getInventory().add(withdrawn)) {
             player.drop(withdrawn, false);
         }
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aWithdrew §f" + withdrawn.getHoverName().getString()
                         + " §ax" + withdrawn.getCount() + " §afrom slot " + slot + "."
         ));
         return 1;
     }
 
-    private static int handleBankHeistStart(CommandSourceStack source, String bankNameRaw) {
-        ServerPlayer initiator = source.getPlayer();
-        if (initiator == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can start a heist."));
-            return 1;
-        }
-
-        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
-        if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
-            return 1;
-        }
-        Bank targetBank = resolveBankByName(centralBank, bankNameRaw);
-        if (targetBank == null || targetBank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cInvalid heist target bank."));
-            return 1;
-        }
-
-        long gameTime = currentOverworldGameTime(source.getServer());
-        long wantedUntil = HEIST_WANTED_UNTIL.getOrDefault(initiator.getUUID(), 0L);
-        if (gameTime < wantedUntil) {
-            source.sendSystemMessage(Component.literal(
-                    "§cYou are still on cooldown from a failed heist until tick " + wantedUntil + "."
-            ));
-            return 1;
-        }
-
-        List<ServerPlayer> nearby = initiator.serverLevel().getEntitiesOfClass(
-                ServerPlayer.class,
-                initiator.getBoundingBox().inflate(12.0D),
-                candidate -> candidate != null && candidate.isAlive()
-        );
-        int minimum = Math.max(1, Config.HEIST_MIN_PLAYERS.get());
-        if (nearby.size() < minimum) {
-            source.sendSystemMessage(Component.literal(
-                    "§cHeist requires at least " + minimum + " nearby participants."
-            ));
-            return 1;
-        }
-
-        source.getServer().getPlayerList().broadcastSystemMessage(
-                Component.literal("§4[UBS ALERT] §cA bank heist has started at §e" + targetBank.getBankName()
-                        + "§c by §f" + initiator.getName().getString() + "§c!"),
-                false
-        );
-
-        double successChance = Math.max(0.0D, Math.min(1.0D, Config.HEIST_SUCCESS_CHANCE.get()));
-        boolean success = Math.random() <= successChance;
-        if (!success) {
-            long cooldownUntil = gameTime + Math.max(20L, Config.HEIST_COOLDOWN_TICKS.get());
-            for (ServerPlayer participant : nearby) {
-                HEIST_WANTED_UNTIL.put(participant.getUUID(), cooldownUntil);
-                participant.sendSystemMessage(Component.literal(
-                        "§cHeist failed. You are flagged until tick " + cooldownUntil + "."
-                ));
-            }
-            return 1;
-        }
-
-        BigDecimal payoutTotal = targetBank.getDeclaredReserve()
-                .multiply(BigDecimal.valueOf(Math.max(0.0D, Math.min(1.0D, Config.HEIST_PAYOUT_RATIO.get()))))
-                .setScale(2, RoundingMode.HALF_EVEN);
-        if (payoutTotal.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§eHeist succeeded, but target reserve had no payoutable amount."));
-            return 1;
-        }
-
-        BigDecimal perPlayer = payoutTotal
-                .divide(BigDecimal.valueOf(nearby.size()), 2, RoundingMode.HALF_EVEN);
-        BigDecimal distributed = perPlayer.multiply(BigDecimal.valueOf(nearby.size())).setScale(2, RoundingMode.HALF_EVEN);
-        if (targetBank.getDeclaredReserve().compareTo(distributed) < 0) {
-            distributed = targetBank.getDeclaredReserve();
-            perPlayer = distributed.divide(BigDecimal.valueOf(nearby.size()), 2, RoundingMode.HALF_EVEN);
-            distributed = perPlayer.multiply(BigDecimal.valueOf(nearby.size())).setScale(2, RoundingMode.HALF_EVEN);
-        }
-
-        targetBank.setReserve(targetBank.getDeclaredReserve().subtract(distributed));
-        for (ServerPlayer participant : nearby) {
-            AccountHolder participantAccount = resolveDefaultLoanAccount(centralBank, participant.getUUID());
-            if (participantAccount == null || perPlayer.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            if (!participantAccount.AddBalance(perPlayer)) {
-                continue;
-            }
-            participantAccount.addTransaction(new UserTransaction(
-                    targetBank.getBankId(),
-                    participantAccount.getAccountUUID(),
-                    perPlayer,
-                    LocalDateTime.now(),
-                    "BANK_HEIST_PAYOUT:" + targetBank.getBankName()
-            ));
-            participant.sendSystemMessage(Component.literal(
-                    "§aHeist success! You received §6$" + perPlayer.toPlainString()
-                            + " §afrom " + targetBank.getBankName() + "."
-            ));
-        }
-
-        source.getServer().getPlayerList().broadcastSystemMessage(
-                Component.literal("§6[UBS ALERT] Heist on " + targetBank.getBankName()
-                        + " succeeded. Total payout: $" + distributed.toPlainString()),
-                false
-        );
+    private static int handleBankHeistComingSoon(CommandSourceStack source) {
+        source.sendSystemMessage(moneyLiteral(
+                "§eBank Heist is currently §6Coming Soon§e and temporarily disabled."
+        ));
         return 1;
     }
 
     private static int handleJointCreate(CommandSourceStack source, ServerPlayer invitedPlayer, String bankName) {
         ServerPlayer creator = source.getPlayer();
         if (creator == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can create joint accounts."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can create joint accounts."));
             return 1;
         }
         if (invitedPlayer.getUUID().equals(creator.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou cannot create a joint account with yourself."));
+            source.sendSystemMessage(moneyLiteral("§cYou cannot create a joint account with yourself."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = centralBank.getBankByName(bankName);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankName));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankName));
             return 1;
         }
 
@@ -4828,13 +4733,13 @@ public class UBSCommands {
         account.grantAccessRole(creator.getUUID(), "OWNER");
         account.grantAccessRole(invitedPlayer.getUUID(), "OWNER");
         if (!bank.AddAccount(account)) {
-            source.sendSystemMessage(Component.literal("§cUnable to create joint account (duplicate account type for owner in this bank)."));
+            source.sendSystemMessage(moneyLiteral("§cUnable to create joint account (duplicate account type for owner in this bank)."));
             return 1;
         }
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aJoint account created: §f" + account.getAccountUUID() + " §7at §e" + bank.getBankName()
         ));
-        invitedPlayer.sendSystemMessage(Component.literal(
+        invitedPlayer.sendSystemMessage(moneyLiteral(
                 "§aYou were added as co-owner of joint account §f" + account.getAccountUUID()
         ));
         return 1;
@@ -4843,18 +4748,18 @@ public class UBSCommands {
     private static int handleBusinessCreate(CommandSourceStack source, String label, String bankName) {
         ServerPlayer creator = source.getPlayer();
         if (creator == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can create business accounts."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can create business accounts."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         Bank bank = centralBank.getBankByName(bankName);
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankName));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankName));
             return 1;
         }
 
@@ -4870,10 +4775,10 @@ public class UBSCommands {
         account.setBusinessLabel(label);
         account.grantAccessRole(creator.getUUID(), "OWNER");
         if (!bank.AddAccount(account)) {
-            source.sendSystemMessage(Component.literal("§cUnable to create business account (duplicate account type for owner in this bank)."));
+            source.sendSystemMessage(moneyLiteral("§cUnable to create business account (duplicate account type for owner in this bank)."));
             return 1;
         }
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aBusiness account created for §e" + label + "§a. Account: §f" + account.getAccountUUID()
         ));
         return 1;
@@ -4882,7 +4787,7 @@ public class UBSCommands {
     private static int handleBusinessGrant(CommandSourceStack source, UUID accountId, ServerPlayer target, String role) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can grant access."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can grant access."));
             return 1;
         }
 
@@ -4891,23 +4796,23 @@ public class UBSCommands {
             return 1;
         }
         if (!"BUSINESS".equals(account.getAccountAccessType())) {
-            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            source.sendSystemMessage(moneyLiteral("§cThat account is not a business account."));
             return 1;
         }
         if (!account.canManage(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have manage permission for this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have manage permission for this account."));
             return 1;
         }
         String normalizedRole = role == null ? "" : role.trim().toUpperCase();
         if (!List.of("VIEW", "DEPOSIT", "WITHDRAW", "MANAGE", "OWNER").contains(normalizedRole)) {
-            source.sendSystemMessage(Component.literal("§cInvalid role. Use VIEW, DEPOSIT, WITHDRAW, MANAGE, or OWNER."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid role. Use VIEW, DEPOSIT, WITHDRAW, MANAGE, or OWNER."));
             return 1;
         }
         account.grantAccessRole(target.getUUID(), normalizedRole);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aGranted role §e" + normalizedRole + " §ato §f" + target.getName().getString()
         ));
-        target.sendSystemMessage(Component.literal(
+        target.sendSystemMessage(moneyLiteral(
                 "§aYou were granted role §e" + normalizedRole + " §aon business account §f" + account.getAccountUUID()
         ));
         return 1;
@@ -4916,7 +4821,7 @@ public class UBSCommands {
     private static int handleBusinessRevoke(CommandSourceStack source, UUID accountId, ServerPlayer target) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can revoke access."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can revoke access."));
             return 1;
         }
         AccountHolder account = resolveAccount(source, accountId);
@@ -4924,23 +4829,23 @@ public class UBSCommands {
             return 1;
         }
         if (!"BUSINESS".equals(account.getAccountAccessType())) {
-            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            source.sendSystemMessage(moneyLiteral("§cThat account is not a business account."));
             return 1;
         }
         if (!account.canManage(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have manage permission for this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have manage permission for this account."));
             return 1;
         }
         account.revokeAccessRole(target.getUUID());
-        source.sendSystemMessage(Component.literal("§aRevoked account access for §f" + target.getName().getString()));
-        target.sendSystemMessage(Component.literal("§eYour access to business account §f" + account.getAccountUUID() + " §ewas revoked."));
+        source.sendSystemMessage(moneyLiteral("§aRevoked account access for §f" + target.getName().getString()));
+        target.sendSystemMessage(moneyLiteral("§eYour access to business account §f" + account.getAccountUUID() + " §ewas revoked."));
         return 1;
     }
 
     private static int handleBusinessTransferOwner(CommandSourceStack source, UUID accountId, ServerPlayer target) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can transfer ownership."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can transfer ownership."));
             return 1;
         }
         AccountHolder account = resolveAccount(source, accountId);
@@ -4948,24 +4853,24 @@ public class UBSCommands {
             return 1;
         }
         if (!"BUSINESS".equals(account.getAccountAccessType())) {
-            source.sendSystemMessage(Component.literal("§cThat account is not a business account."));
+            source.sendSystemMessage(moneyLiteral("§cThat account is not a business account."));
             return 1;
         }
         if (!"OWNER".equals(account.getRole(actor.getUUID()))) {
-            source.sendSystemMessage(Component.literal("§cOnly current owner can transfer ownership."));
+            source.sendSystemMessage(moneyLiteral("§cOnly current owner can transfer ownership."));
             return 1;
         }
         account.grantAccessRole(actor.getUUID(), "MANAGE");
         account.grantAccessRole(target.getUUID(), "OWNER");
-        source.sendSystemMessage(Component.literal("§aOwnership transferred to §f" + target.getName().getString()));
-        target.sendSystemMessage(Component.literal("§aYou are now owner of business account §f" + account.getAccountUUID()));
+        source.sendSystemMessage(moneyLiteral("§aOwnership transferred to §f" + target.getName().getString()));
+        target.sendSystemMessage(moneyLiteral("§aYou are now owner of business account §f" + account.getAccountUUID()));
         return 1;
     }
 
     private static int handleSharedAccountInfo(CommandSourceStack source, UUID accountId) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
         AccountHolder account = resolveAccount(source, accountId);
@@ -4973,7 +4878,7 @@ public class UBSCommands {
             return 1;
         }
         if (!account.canView(player.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have access to this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have access to this account."));
             return 1;
         }
 
@@ -4985,14 +4890,14 @@ public class UBSCommands {
                 .orElse("none");
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Account ID: §f" + account.getAccountUUID() + "\n"));
-        body.append(Component.literal("§7Mode: §f" + account.getAccountAccessType() + "\n"));
+        body.append(moneyLiteral("§7Account ID: §f" + account.getAccountUUID() + "\n"));
+        body.append(moneyLiteral("§7Mode: §f" + account.getAccountAccessType() + "\n"));
         if ("BUSINESS".equals(account.getAccountAccessType())) {
-            body.append(Component.literal("§7Business: §f" + account.getBusinessLabel() + "\n"));
+            body.append(moneyLiteral("§7Business: §f" + account.getBusinessLabel() + "\n"));
         }
-        body.append(Component.literal("§7Balance: §a$" + account.getBalance().toPlainString() + "\n"));
-        body.append(Component.literal("§7Owners: §f" + owners + "\n"));
-        body.append(Component.literal("§7Your role: §e" + account.getRole(player.getUUID())));
+        body.append(moneyLiteral("§7Balance: §a$" + account.getBalance().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Owners: §f" + owners + "\n"));
+        body.append(moneyLiteral("§7Your role: §e" + account.getRole(player.getUUID())));
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eShared Account", body));
         return 1;
@@ -5001,7 +4906,7 @@ public class UBSCommands {
     private static int handleSharedAccountDeposit(CommandSourceStack source, UUID accountId, String amountRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
         AccountHolder account = resolveAccount(source, accountId);
@@ -5009,7 +4914,7 @@ public class UBSCommands {
             return 1;
         }
         if (!account.canDeposit(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have deposit access for this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have deposit access for this account."));
             return 1;
         }
         BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
@@ -5017,7 +4922,7 @@ public class UBSCommands {
             return 1;
         }
         if (!account.AddBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cDeposit failed."));
+            source.sendSystemMessage(moneyLiteral("§cDeposit failed."));
             return 1;
         }
         account.addTransaction(new UserTransaction(
@@ -5034,7 +4939,7 @@ public class UBSCommands {
     private static int handleSharedAccountWithdraw(CommandSourceStack source, UUID accountId, String amountRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
         AccountHolder account = resolveAccount(source, accountId);
@@ -5042,7 +4947,7 @@ public class UBSCommands {
             return 1;
         }
         if (!account.canWithdraw(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have withdraw access for this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have withdraw access for this account."));
             return 1;
         }
         BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
@@ -5050,7 +4955,7 @@ public class UBSCommands {
             return 1;
         }
         if (!account.RemoveBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cWithdraw failed (insufficient funds or frozen)."));
+            source.sendSystemMessage(moneyLiteral("§cWithdraw failed (insufficient funds or frozen)."));
             return 1;
         }
         account.addTransaction(new UserTransaction(
@@ -5067,7 +4972,7 @@ public class UBSCommands {
     private static int handleSharedAccountTransfer(CommandSourceStack source, UUID fromAccountId, UUID toAccountId, String amountRaw) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
         AccountHolder from = resolveAccount(source, fromAccountId);
@@ -5076,7 +4981,7 @@ public class UBSCommands {
             return 1;
         }
         if (!from.canWithdraw(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have withdraw access on the source account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have withdraw access on the source account."));
             return 1;
         }
         BigDecimal amount = parsePositiveWholeAmount(source, amountRaw);
@@ -5091,7 +4996,7 @@ public class UBSCommands {
                 "SHARED_TRANSFER:" + actor.getName().getString()
         ).makeTransaction(source.getServer());
         if (!success) {
-            source.sendSystemMessage(Component.literal("§cTransfer failed."));
+            source.sendSystemMessage(moneyLiteral("§cTransfer failed."));
             return 1;
         }
         notifyAllAccountMembers(source, from, "§bTransfer from shared account " + shortId(from.getAccountUUID()) + ": $" + amount.toPlainString());
@@ -5101,43 +5006,43 @@ public class UBSCommands {
     private static int handleSharedAccountClose(CommandSourceStack source, UUID accountId) {
         ServerPlayer actor = source.getPlayer();
         if (actor == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can use this command."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
             return 1;
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cAccount not found."));
+            source.sendSystemMessage(moneyLiteral("§cAccount not found."));
             return 1;
         }
         if (!account.canManage(actor.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou do not have close permission for this account."));
+            source.sendSystemMessage(moneyLiteral("§cYou do not have close permission for this account."));
             return 1;
         }
         Bank bank = centralBank.getBank(account.getBankId());
         if (bank == null) {
-            source.sendSystemMessage(Component.literal("§cBank not found for this account."));
+            source.sendSystemMessage(moneyLiteral("§cBank not found for this account."));
             return 1;
         }
         notifyAllAccountMembers(source, account, "§cShared account " + shortId(account.getAccountUUID()) + " was closed by " + actor.getName().getString());
         bank.RemoveAccount(account);
-        source.sendSystemMessage(Component.literal("§aClosed shared account §f" + accountId));
+        source.sendSystemMessage(moneyLiteral("§aClosed shared account §f" + accountId));
         return 1;
     }
 
     private static AccountHolder resolveAccount(CommandSourceStack source, UUID accountId) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return null;
         }
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cAccount not found: " + accountId));
+            source.sendSystemMessage(moneyLiteral("§cAccount not found: " + accountId));
         }
         return account;
     }
@@ -5168,15 +5073,15 @@ public class UBSCommands {
         try {
             amount = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid amount."));
             return null;
         }
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be greater than zero."));
             return null;
         }
         if (amount.stripTrailingZeros().scale() > 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be a whole number."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be a whole number."));
             return null;
         }
         return amount;
@@ -5189,7 +5094,7 @@ public class UBSCommands {
         for (UUID memberId : account.getAccessRoles().keySet()) {
             ServerPlayer member = source.getServer().getPlayerList().getPlayer(memberId);
             if (member != null) {
-                member.sendSystemMessage(Component.literal(message));
+                member.sendSystemMessage(moneyLiteral(message));
             }
         }
     }
@@ -5257,12 +5162,12 @@ public class UBSCommands {
                                               UUID destinationAccountId) {
         ServerPlayer requester = source.getPlayer();
         if (requester == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can send pay requests."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can send pay requests."));
             return 1;
         }
 
         if (payer.getUUID().equals(requester.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cYou cannot send a pay request to yourself."));
+            source.sendSystemMessage(moneyLiteral("§cYou cannot send a pay request to yourself."));
             return 1;
         }
 
@@ -5270,19 +5175,19 @@ public class UBSCommands {
         try {
             amount = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid amount."));
             return 1;
         }
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be greater than zero."));
             return 1;
         }
 
         MinecraftServer server = source.getServer();
         CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
@@ -5292,11 +5197,11 @@ public class UBSCommands {
 
         if (destinationAccount == null) {
             if (destinationAccountId == null) {
-                source.sendSystemMessage(Component.literal(
+                source.sendSystemMessage(moneyLiteral(
                         "§cNo primary receiving account is set. Set one as primary or provide a destination account ID."
                 ));
             } else {
-                source.sendSystemMessage(Component.literal("§cDestination account ID is invalid or not yours."));
+                source.sendSystemMessage(moneyLiteral("§cDestination account ID is invalid or not yours."));
             }
             return 1;
         }
@@ -5307,7 +5212,7 @@ public class UBSCommands {
                 destinationAccount.getAccountUUID(),
                 amount
         );
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aPay request sent to §e" + payer.getName().getString() + " §afor §6$" + amount.toPlainString()
                         + "§a. Destination: §f" + accountLabel(destinationAccount)
         ));
@@ -5318,32 +5223,32 @@ public class UBSCommands {
     private static int handlePayRequestAccept(CommandSourceStack source, UUID requestId, UUID accountId) {
         ServerPlayer payer = source.getPlayer();
         if (payer == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can accept pay requests."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can accept pay requests."));
             return 1;
         }
 
         MinecraftServer server = source.getServer();
         CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cBank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
             return 1;
         }
 
         PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
         if (request == null) {
-            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request no longer exists."));
             return 1;
         }
         if (!request.getPayerUUID().equals(payer.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is not addressed to you."));
             return 1;
         }
         if (request.getStatus() != PayRequestManager.Status.PENDING) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
             return 1;
         }
         if (PayRequestManager.isExpired(request)) {
-            source.sendSystemMessage(Component.literal("§cThis pay request has expired."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request has expired."));
             return 1;
         }
 
@@ -5352,17 +5257,17 @@ public class UBSCommands {
                 : findAccountForPlayer(centralBank, payer.getUUID(), accountId);
 
         if (senderAccount == null) {
-            source.sendSystemMessage(Component.literal("§cNo valid account selected. Choose an account first."));
+            source.sendSystemMessage(moneyLiteral("§cNo valid account selected. Choose an account first."));
             sendPayRequestAccountChoices(payer, request, "Choose an account to pay with:");
             return 1;
         }
 
         AccountHolder receiverAccount = findReceiverAccountForRequest(centralBank, request);
         if (receiverAccount == null) {
-            source.sendSystemMessage(Component.literal("§cRequester destination account is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cRequester destination account is unavailable."));
             ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
             if (requester != null) {
-                requester.sendSystemMessage(Component.literal(
+                requester.sendSystemMessage(moneyLiteral(
                         "§cYour pay request could not be completed because your destination account is unavailable."
                 ));
             }
@@ -5370,7 +5275,7 @@ public class UBSCommands {
         }
 
         if (senderAccount.getAccountUUID().equals(receiverAccount.getAccountUUID())) {
-            source.sendSystemMessage(Component.literal("§cCannot pay the same account."));
+            source.sendSystemMessage(moneyLiteral("§cCannot pay the same account."));
             return 1;
         }
 
@@ -5383,10 +5288,10 @@ public class UBSCommands {
         ).makeTransaction(server);
 
         if (!transferSuccess) {
-            source.sendSystemMessage(Component.literal("§cPayment failed. Check balance and account status."));
+            source.sendSystemMessage(moneyLiteral("§cPayment failed. Check balance and account status."));
             ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
             if (requester != null) {
-                requester.sendSystemMessage(Component.literal(
+                requester.sendSystemMessage(moneyLiteral(
                         "§e" + payer.getName().getString() + " tried to accept your pay request, but payment failed."
                 ));
             }
@@ -5394,7 +5299,7 @@ public class UBSCommands {
         }
 
         PayRequestManager.markAccepted(requestId);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aPaid §6$" + request.getAmount().toPlainString() + "§a to §e"
                         + resolvePlayerName(server, request.getRequesterUUID())
                         + "§a using account §7" + shortId(senderAccount.getAccountUUID())
@@ -5402,7 +5307,7 @@ public class UBSCommands {
 
         ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
         if (requester != null) {
-            requester.sendSystemMessage(Component.literal(
+            requester.sendSystemMessage(moneyLiteral(
                     "§a" + payer.getName().getString() + " accepted your pay request for §6$" + request.getAmount().toPlainString() + "§a."
             ));
         }
@@ -5415,31 +5320,31 @@ public class UBSCommands {
     private static int handlePayRequestDecline(CommandSourceStack source, UUID requestId) {
         ServerPlayer payer = source.getPlayer();
         if (payer == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can decline pay requests."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can decline pay requests."));
             return 1;
         }
 
         MinecraftServer server = source.getServer();
         PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
         if (request == null) {
-            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request no longer exists."));
             return 1;
         }
         if (!request.getPayerUUID().equals(payer.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is not addressed to you."));
             return 1;
         }
         if (request.getStatus() != PayRequestManager.Status.PENDING) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is already " + request.getStatus().name().toLowerCase() + "."));
             return 1;
         }
 
         PayRequestManager.markDeclined(requestId);
-        source.sendSystemMessage(Component.literal("§7You declined the pay request."));
+        source.sendSystemMessage(moneyLiteral("§7You declined the pay request."));
 
         ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
         if (requester != null) {
-            requester.sendSystemMessage(Component.literal(
+            requester.sendSystemMessage(moneyLiteral(
                     "§c" + payer.getName().getString() + " declined your pay request for §6$" + request.getAmount().toPlainString() + "§c."
             ));
         }
@@ -5449,21 +5354,21 @@ public class UBSCommands {
     private static int handlePayRequestChoose(CommandSourceStack source, UUID requestId) {
         ServerPlayer payer = source.getPlayer();
         if (payer == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can choose account for pay requests."));
+            source.sendSystemMessage(moneyLiteral("§cOnly players can choose account for pay requests."));
             return 1;
         }
 
         PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
         if (request == null) {
-            source.sendSystemMessage(Component.literal("§cThis pay request no longer exists."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request no longer exists."));
             return 1;
         }
         if (!request.getPayerUUID().equals(payer.getUUID())) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is not addressed to you."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is not addressed to you."));
             return 1;
         }
         if (request.getStatus() != PayRequestManager.Status.PENDING || PayRequestManager.isExpired(request)) {
-            source.sendSystemMessage(Component.literal("§cThis pay request is no longer pending."));
+            source.sendSystemMessage(moneyLiteral("§cThis pay request is no longer pending."));
             return 1;
         }
 
@@ -5489,7 +5394,7 @@ public class UBSCommands {
 
         AccountHolder primary = findPrimaryAccount(centralBank, payer.getUUID());
         if (primary == null) {
-            payer.sendSystemMessage(Component.literal(
+            payer.sendSystemMessage(moneyLiteral(
                     "§6Pay Request: §e" + requester.getName().getString() + " §7requests §6$"
                             + request.getAmount().toPlainString() + "§7.\n"
                             + "§7Destination: §f" + destinationLabel
@@ -5499,16 +5404,16 @@ public class UBSCommands {
         }
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7From: §e" + requester.getName().getString() + "\n"));
-        body.append(Component.literal("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
-        body.append(Component.literal("§7Destination: §f" + destinationLabel + "\n"));
-        body.append(Component.literal("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
+        body.append(moneyLiteral("§7From: §e" + requester.getName().getString() + "\n"));
+        body.append(moneyLiteral("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Destination: §f" + destinationLabel + "\n"));
+        body.append(moneyLiteral("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
 
         String requestId = request.getRequestId().toString();
         body.append(clickAction("[Accept]", ChatFormatting.GREEN, "/ubs_payrequest accept " + requestId, "Accept with primary account"));
-        body.append(Component.literal(" "));
+        body.append(moneyLiteral(" "));
         body.append(clickAction("[Decline]", ChatFormatting.RED, "/ubs_payrequest decline " + requestId, "Decline this request"));
-        body.append(Component.literal(" "));
+        body.append(moneyLiteral(" "));
         body.append(clickAction("[Choose Account]", ChatFormatting.AQUA, "/ubs_payrequest choose " + requestId, "Pay from a different account"));
 
         payer.sendSystemMessage(
@@ -5535,23 +5440,23 @@ public class UBSCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7" + titleLine + "\n"));
-        body.append(Component.literal("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
+        body.append(moneyLiteral("§7" + titleLine + "\n"));
+        body.append(moneyLiteral("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
         AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
-        body.append(Component.literal("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
+        body.append(moneyLiteral("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
 
         if (payerAccounts.isEmpty()) {
-            body.append(Component.literal("§cYou have no accounts available.\n"));
+            body.append(moneyLiteral("§cYou have no accounts available.\n"));
         } else {
             for (AccountHolder account : payerAccounts) {
                 String buttonLabel = "[" + account.getAccountType().label + " $" + account.getBalance().toPlainString() + "]";
                 String command = "/ubs_payrequest accept " + request.getRequestId() + " " + account.getAccountUUID();
                 body.append(clickAction(buttonLabel, ChatFormatting.AQUA, command, "Pay using " + accountLabel(account)));
-                body.append(Component.literal(" §7" + shortId(account.getAccountUUID()) + "\n"));
+                body.append(moneyLiteral(" §7" + shortId(account.getAccountUUID()) + "\n"));
             }
         }
 
-        body.append(Component.literal("\n"));
+        body.append(moneyLiteral("\n"));
         body.append(clickAction("[Decline]", ChatFormatting.RED,
                 "/ubs_payrequest decline " + request.getRequestId(),
                 "Decline this request"));
@@ -5563,12 +5468,12 @@ public class UBSCommands {
                                                 ChatFormatting color,
                                                 String runCommand,
                                                 String hoverText) {
-        return Component.literal(label).setStyle(
+        return moneyLiteral(label).setStyle(
                 Style.EMPTY
                         .withColor(color)
                         .withBold(true)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, runCommand))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hoverText)))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral(hoverText)))
         );
     }
 

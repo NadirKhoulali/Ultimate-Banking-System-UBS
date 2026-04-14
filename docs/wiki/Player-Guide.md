@@ -66,4 +66,4 @@ Deposit:
 - `/bank safebox list`
 - `/bank safebox deposit`
 - `/bank safebox withdraw <slot>`
-- `/bank heist start <bankName>`
+- `/bank heist start <bankName>` (Coming Soon)

@@ -189,23 +189,23 @@ public class Config {
             .defineInRange("BankRunLockdownTicks", 300, 20, Integer.MAX_VALUE);
 
     public static final ModConfigSpec.IntValue HEIST_DURATION_TICKS = BUILDER
-            .comment("Bank heist duration in ticks.")
+            .comment("Coming Soon: bank heist duration in ticks (currently unused).")
             .defineInRange("HeistDurationTicks", 600, 20, Integer.MAX_VALUE);
 
     public static final ModConfigSpec.IntValue HEIST_MIN_PLAYERS = BUILDER
-            .comment("Minimum nearby players required to start a heist.")
+            .comment("Coming Soon: minimum nearby players required to start a heist (currently unused).")
             .defineInRange("HeistMinPlayers", 2, 1, 64);
 
     public static final ModConfigSpec.DoubleValue HEIST_SUCCESS_CHANCE = BUILDER
-            .comment("Heist success probability from 0.0 to 1.0.")
+            .comment("Coming Soon: heist success probability from 0.0 to 1.0 (currently unused).")
             .defineInRange("HeistSuccessChance", 0.45, 0.0, 1.0);
 
     public static final ModConfigSpec.DoubleValue HEIST_PAYOUT_RATIO = BUILDER
-            .comment("Percentage of target reserve paid out on successful heist.")
+            .comment("Coming Soon: percentage of target reserve paid out on successful heist (currently unused).")
             .defineInRange("HeistPayoutRatio", 0.10, 0.0, 1.0);
 
     public static final ModConfigSpec.IntValue HEIST_COOLDOWN_TICKS = BUILDER
-            .comment("Cooldown (wanted state) applied after failed heist.")
+            .comment("Coming Soon: cooldown (wanted state) applied after failed heist (currently unused).")
             .defineInRange("HeistCooldownTicks", 24000, 20, Integer.MAX_VALUE);
 
     public static final ModConfigSpec.BooleanValue PLAYER_BANKS_ENABLED = BUILDER
