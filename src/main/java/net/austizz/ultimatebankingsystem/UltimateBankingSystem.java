@@ -13,6 +13,7 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.level.Level;
@@ -133,8 +134,8 @@ public class UltimateBankingSystem {
     @SubscribeEvent
     public void onBalanceChanged(BalanceChangedEvent event) {
         String message = event.isPositiveNumber()
-                ? "§a✅ Deposit Successful! You have received: " + event.getChangeAmount() + " into your bank account. Current Balance: §6" + event.getNewBalance() + "\n §aAccount ID: §6" + event.getAccount().getAccountUUID()
-                : "§c❌ Withdrawal Notice: " + event.getChangeAmount() + " has been deducted from your account. Current Balance: §6" + event.getNewBalance() + "\n §cAccount ID: §6" + event.getAccount().getAccountUUID();
+                ? "§a✅ Deposit Successful! You have received: $" + MoneyText.abbreviate(event.getChangeAmount()) + " into your bank account. Current Balance: §6$" + MoneyText.abbreviate(event.getNewBalance()) + "\n §aAccount ID: §6" + event.getAccount().getAccountUUID()
+                : "§c❌ Withdrawal Notice: $" + MoneyText.abbreviate(event.getChangeAmount()) + " has been deducted from your account. Current Balance: §6$" + MoneyText.abbreviate(event.getNewBalance()) + "\n §cAccount ID: §6" + event.getAccount().getAccountUUID();
         var server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) {
             return;
@@ -143,7 +144,7 @@ public class UltimateBankingSystem {
         if (targetPlayer == null) {
             return;
         }
-        targetPlayer.sendSystemMessage(Component.literal(message));
+        targetPlayer.sendSystemMessage(Component.literal(MoneyText.abbreviateCurrencyTokens(message)));
         CentralBank centralBank = BankManager.getCentralBank(server);
         PacketDistributor.sendToPlayer(targetPlayer, UBSCommands.buildHudStatePayload(centralBank, targetPlayer.getUUID()));
     }

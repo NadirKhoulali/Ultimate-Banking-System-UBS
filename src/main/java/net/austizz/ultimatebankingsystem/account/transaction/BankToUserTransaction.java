@@ -32,11 +32,17 @@ public class BankToUserTransaction extends UserTransaction {
 
     @Override
     public boolean makeTransaction(MinecraftServer server) {
+        if (server == null) {
+            return false;
+        }
         if (getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return false;
+        }
         Bank senderBank = centralBank.getBank(getSenderBankUUID());
         AccountHolder receiver = centralBank.SearchForAccountByAccountId(getReceiverAccountUUID());
 

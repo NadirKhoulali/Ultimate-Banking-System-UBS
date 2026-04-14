@@ -4,7 +4,7 @@ import org.jetbrains.annotations.ApiStatus;
 
 import java.math.BigDecimal;
 
-@ApiStatus.AvailableSince("1.0.0")
+@ApiStatus.AvailableSince("1.1.0")
 public record ApiResult(boolean success, String reason, BigDecimal balanceAfter) {
     public static ApiResult ok(BigDecimal balanceAfter) {
         return new ApiResult(true, "", balanceAfter);

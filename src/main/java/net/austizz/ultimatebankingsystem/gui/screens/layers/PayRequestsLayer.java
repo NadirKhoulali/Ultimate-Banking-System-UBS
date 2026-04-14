@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.PayRequestActionPayload;
 import net.austizz.ultimatebankingsystem.network.PayRequestActionResponsePayload;
@@ -156,7 +157,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
     }
 
     public void updateActionResult(PayRequestActionResponsePayload payload) {
-        statusMessage = payload.message();
+        statusMessage = MoneyText.abbreviateCurrencyTokens(payload.message());
         statusSuccess = payload.success();
         requestInbox();
     }
@@ -378,8 +379,9 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                     graphics.fill(listLeft + 2, entryTop + 1, listRight - 2, entryTop + 2, 0xFF9BD0FF);
                 }
 
-                int amountX = listRight - 12 - font.width("$" + entry.amount());
-                graphics.drawString(font, "$" + entry.amount(), amountX, entryTop + 4, 0xFFFFE27A);
+                String amountText = MoneyText.abbreviateWithDollar(entry.amount());
+                int amountX = listRight - 12 - font.width(amountText);
+                graphics.drawString(font, amountText, amountX, entryTop + 4, 0xFFFFE27A);
 
                 int textWidth = Math.max(12, amountX - (listLeft + 8) - 8);
                 drawFittedString(graphics, "From: " + entry.requesterName(), listLeft + 8, entryTop + 4, textWidth, COLOR_VALUE);

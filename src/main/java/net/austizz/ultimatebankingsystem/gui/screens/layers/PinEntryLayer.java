@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
 import net.austizz.ultimatebankingsystem.network.ChangePinPayload;
@@ -354,9 +355,13 @@ public class PinEntryLayer extends AbstractScreenLayer {
         if (payload.pinSetupRequired()) {
             pendingNewPin = "";
             mode = PinMode.SET_PIN;
-            setStatusInfo(payload.message().isEmpty() ? "PIN not set. Create a 4-digit PIN." : payload.message());
+            setStatusInfo(payload.message().isEmpty()
+                    ? "PIN not set. Create a 4-digit PIN."
+                    : MoneyText.abbreviateCurrencyTokens(payload.message()));
         } else {
-            setStatusError(payload.message().isEmpty() ? "Incorrect PIN." : payload.message());
+            setStatusError(payload.message().isEmpty()
+                    ? "Incorrect PIN."
+                    : MoneyText.abbreviateCurrencyTokens(payload.message()));
         }
 
         refreshButtons();

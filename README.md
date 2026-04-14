@@ -2,6 +2,8 @@
 
 UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: ATM UI, physical cash bills, account security, player-owned banks, central-bank regulation, loans, and admin tooling.
 
+Current release target: `1.1.0`
+
 ## What UBS Includes
 
 - Multi-account support per player: `Checking`, `Saving`, `Money Market`, `Certificate`
@@ -107,3 +109,9 @@ Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)
 
 Integration walkthrough: [`docs/wiki/Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)
 Includes exact `settings.gradle`, `build.gradle`, and `neoforge.mods.toml` dependency setup (required + optional modes).
+
+## Release
+
+- Changelog: [`CHANGELOG.md`](CHANGELOG.md)
+- Release checklist: [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md)
+- CurseForge WYSIWYG description source: [`docs/release/CURSEFORGE_DESCRIPTION_WYSIWYG.html`](docs/release/CURSEFORGE_DESCRIPTION_WYSIWYG.html)

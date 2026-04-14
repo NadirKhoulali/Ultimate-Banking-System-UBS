@@ -2,6 +2,8 @@
 
 This wiki tracks the current UBS feature set and command surface.
 
+Current release target: `1.1.0`
+
 ## Start Here
 
 - [Player Guide](Player-Guide.md)

@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.TransactionSummary;
 import net.austizz.ultimatebankingsystem.network.TxHistoryRequestPayload;
@@ -168,7 +169,7 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
                 graphics.fill(listLeft + 2, entryTop + 1, listRight - 2, entryBottom, fillColor);
 
                 String amountPrefix = summary.isIncoming() ? "+" : "-";
-                String amountText = fitToWidth(amountPrefix + "$" + summary.amount(), 72);
+                String amountText = fitToWidth(amountPrefix + MoneyText.abbreviateWithDollar(summary.amount()), 72);
                 int amountColor = summary.isIncoming() ? 0xFF55FF55 : 0xFFFF5555;
                 int amountX = listRight - 6 - font.width(amountText);
                 int textLeft = listLeft + 6;

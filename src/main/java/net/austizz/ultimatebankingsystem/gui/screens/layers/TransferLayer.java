@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -173,10 +174,12 @@ public class TransferLayer extends AbstractScreenLayer {
      */
     public void updateResult(TransferResponsePayload payload) {
         if (payload.success()) {
-            resultMessage = "Transfer successful! New balance: $" + payload.newBalance();
+            resultMessage = "Transfer successful! New balance: " + MoneyText.abbreviateWithDollar(payload.newBalance());
             resultSuccess = true;
         } else {
-            resultMessage = payload.errorMessage().isEmpty() ? "Transfer failed." : payload.errorMessage();
+            resultMessage = payload.errorMessage().isEmpty()
+                    ? "Transfer failed."
+                    : MoneyText.abbreviateCurrencyTokens(payload.errorMessage());
             resultSuccess = false;
         }
     }
@@ -194,7 +197,7 @@ public class TransferLayer extends AbstractScreenLayer {
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (showConfirmation) {
-            String confirmationText = "Transfer $" + pendingAmount + " to account ["
+            String confirmationText = "Transfer " + MoneyText.abbreviateWithDollar(pendingAmount) + " to account ["
                     + pendingRecipient.substring(0, Math.min(8, pendingRecipient.length())) + "...]?";
             drawWrappedCentered(graphics, confirmationText,
                     panelLeft + panelWidth / 2, sectionTop + 28, contentWidth - 10, 0xFFFFFF77, 2);

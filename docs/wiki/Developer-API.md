@@ -2,6 +2,8 @@
 
 This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
 
+API baseline in this release: `1.1.0`
+
 Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
 
 ## Java API Entry Point

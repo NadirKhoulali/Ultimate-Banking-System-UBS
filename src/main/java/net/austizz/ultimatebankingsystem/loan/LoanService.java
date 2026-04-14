@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -210,7 +211,7 @@ public final class LoanService {
                         ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                         if (borrower != null) {
                             borrower.sendSystemMessage(Component.literal(
-                                    "§eLoan payment due soon: §6$" + loan.getPeriodicPayment().toPlainString()
+                                    "§eLoan payment due soon: §6" + MoneyText.abbreviateWithDollar(loan.getPeriodicPayment())
                                             + " §ein " + (nextDue - currentGameTime) + " ticks."
                             ));
                         }
@@ -267,7 +268,7 @@ public final class LoanService {
                     ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                     if (borrower != null) {
                         borrower.sendSystemMessage(Component.literal(
-                                "§cLoan defaulted: you missed a payment of $" + due.toPlainString() + "."
+                                "§cLoan defaulted: you missed a payment of " + MoneyText.abbreviateWithDollar(due) + "."
                         ));
                     }
 

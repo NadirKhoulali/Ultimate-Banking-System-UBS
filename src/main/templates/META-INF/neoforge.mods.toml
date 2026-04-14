@@ -15,7 +15,7 @@ loaderVersion="${loader_version_range}" #mandatory
 license="${mod_license}"
 
 # A URL to refer people to when problems occur with this mod
-#issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/" #optional
+issueTrackerURL="https://github.com/NadirKhoulali/Ultimate-Banking-System-UBS/issues" #optional
 
 # A list of mods - how many allowed here is determined by the individual mod loader
 [[mods]] #mandatory
@@ -33,7 +33,7 @@ displayName="${mod_name}" #mandatory
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 
 # A URL for the "homepage" for this mod, displayed in the mod UI
-#displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
+displayURL="https://github.com/NadirKhoulali/Ultimate-Banking-System-UBS" #optional
 
 # A file name (in the root of the mod JAR) containing a logo for display
 #logoFile="examplemod.png" #optional
@@ -42,15 +42,15 @@ displayName="${mod_name}" #mandatory
 #credits="" #optional
 
 # The authors of the mod, displayed in the mod UI (optional)
-#authors=""
+authors="NadirKhoulali"
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''
-The Solution to the modded server economy problem, its called UBS... or Ultimate Banking System. \n
-A revolutionary System that provides seemless integration with the server for a smooth experience. \n
-No cheap made mods wich only include Cash Blocks or dollar bills, but an actual 1:1 of the World wide used Banking System.\n
-Modders who like this mod have the possibility to build on this mod and make payments go trough the banking system. \n
-Read more on the Github Page (https://github.com/NadirKhoulali/Ultimate-Banking-System-UBS).
+Ultimate Banking System (UBS) is a full-economy NeoForge mod for Minecraft 1.21.1.
+It adds secure multi-account banking, ATM and bank-owner PC interfaces, physical dollar bills,
+bank notes, cheques, pay requests, transaction history, lending, and central-bank regulation tools.
+Designed for survival and roleplay servers, UBS also provides a documented developer API for
+integration with shops, jobs, scoreboards, and custom economy gameplay.
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.

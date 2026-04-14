@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.WithdrawRequestPayload;
@@ -78,7 +79,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
                 btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("$" + amt).withStyle(ChatFormatting.WHITE),
+                Component.literal(MoneyText.abbreviateWithDollar(amt)).withStyle(ChatFormatting.WHITE),
                 btn -> sendWithdraw(amt)
             ));
             button.active = parseMoneyOrZero(amt).compareTo(effectiveWithdrawalLimit) <= 0;
@@ -132,7 +133,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
             }
 
             if (requestAmount.compareTo(effectiveWithdrawalLimit) > 0) {
-                resultMessage = "Amount exceeds active limit of $" + effectiveWithdrawalLimit.toPlainString() + ".";
+                resultMessage = "Amount exceeds active limit of $" + MoneyText.abbreviate(effectiveWithdrawalLimit) + ".";
                 resultSuccess = false;
                 return;
             }
@@ -181,7 +182,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
 
     public void updateResult(WithdrawResponsePayload payload) {
         if (payload.success()) {
-            resultMessage = "Withdrawal successful! New balance: $" + payload.newBalance();
+            resultMessage = "Withdrawal successful! New balance: " + MoneyText.abbreviateWithDollar(payload.newBalance());
             resultSuccess = true;
             // Update the cached account balance
             var selected = ClientATMData.getSelectedAccount();
@@ -208,7 +209,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
             dailyRemaining = parseMoneyOrZero(payload.dailyRemaining());
             dailyResetEpochMillis = payload.dailyResetEpochMillis();
         } else {
-            resultMessage = payload.errorMessage();
+            resultMessage = MoneyText.abbreviateCurrencyTokens(payload.errorMessage());
             resultSuccess = false;
             if (payload.dailyLimit() != null && !payload.dailyLimit().isBlank()) {
                 dailyWithdrawalLimit = parseMoneyOrZero(payload.dailyLimit());
@@ -240,12 +241,13 @@ public class WithdrawLayer extends AbstractScreenLayer {
 
         graphics.drawString(font, "Custom Amount", contentLeft + 6, customTop + 6, COLOR_LABEL);
         drawFittedString(graphics,
-                "Default ATM limit: $" + defaultWithdrawalLimit.toPlainString() + "   Active ATM limit: $" + effectiveWithdrawalLimit.toPlainString(),
+                "Default ATM limit: $" + MoneyText.abbreviate(defaultWithdrawalLimit)
+                        + "   Active ATM limit: $" + MoneyText.abbreviate(effectiveWithdrawalLimit),
                 contentLeft + 6, panelTop + 46, contentWidth - 10, COLOR_LABEL);
         drawFittedString(graphics,
-                "Daily limit: $" + dailyWithdrawalLimit.toPlainString()
-                        + "   Used today: $" + dailyWithdrawnToday.toPlainString()
-                        + "   Remaining: $" + dailyRemaining.toPlainString(),
+                "Daily limit: $" + MoneyText.abbreviate(dailyWithdrawalLimit)
+                        + "   Used today: $" + MoneyText.abbreviate(dailyWithdrawnToday)
+                        + "   Remaining: $" + MoneyText.abbreviate(dailyRemaining),
                 contentLeft + 6, panelTop + 58, contentWidth - 10, COLOR_LABEL);
         drawFittedString(graphics,
                 "Daily reset: " + formatResetEpoch(dailyResetEpochMillis),

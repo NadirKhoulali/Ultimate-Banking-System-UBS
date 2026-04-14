@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @ApiStatus.NonExtendable
-@ApiStatus.AvailableSince("1.0.0")
+@ApiStatus.AvailableSince("1.1.0")
 public interface UltimateBankingApi {
     String getApiVersion();
 

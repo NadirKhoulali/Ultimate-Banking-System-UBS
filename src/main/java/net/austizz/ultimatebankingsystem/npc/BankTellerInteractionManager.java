@@ -8,6 +8,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.component.DataComponents;
@@ -292,7 +293,7 @@ public final class BankTellerInteractionManager {
         int to = Math.min(accounts.size(), from + PAGE_SIZE);
 
         player.sendSystemMessage(Component.literal("§b[Bank Teller] §fChoose an account for §a$"
-                + session.cheque.amount.toPlainString() + "§f:"));
+                + MoneyText.abbreviate(session.cheque.amount) + "§f:"));
         player.sendSystemMessage(Component.literal("§7Page §f" + (session.page + 1) + "§7/§f" + pageCount));
 
         for (int i = from; i < to; i++) {
@@ -330,7 +331,7 @@ public final class BankTellerInteractionManager {
     private static void sendChoicePrompt(ServerPlayer player, Session session) {
         player.sendSystemMessage(Component.literal("§b[Bank Teller] §fHow would you like to handle this cheque?"));
         player.sendSystemMessage(Component.literal("§7Cheque ID: §f" + session.cheque.chequeId));
-        player.sendSystemMessage(Component.literal("§7Amount: §a$" + session.cheque.amount.toPlainString()));
+        player.sendSystemMessage(Component.literal("§7Amount: §a$" + MoneyText.abbreviate(session.cheque.amount)));
 
         MutableComponent choices = Component.literal("")
                 .append(actionButton("Return To Bank", "/bankteller choose bank", ChatFormatting.GREEN, "Deposit to one of your bank accounts"))

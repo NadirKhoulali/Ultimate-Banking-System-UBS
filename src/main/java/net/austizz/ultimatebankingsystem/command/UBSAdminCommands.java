@@ -14,6 +14,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -70,16 +71,20 @@ public class UBSAdminCommands {
         final List<String> errors = new ArrayList<>();
     }
 
+    private static MutableComponent moneyLiteral(String text) {
+        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+    }
+
     private static Component ubsPanel(ChatFormatting accentColor, String title, Component body) {
-        return Component.literal("§6§lUltimate Banking System §7- ")
-                .append(Component.literal(title).withStyle(accentColor))
-                .append(Component.literal("\n§8────────────────────────\n"))
+        return moneyLiteral("§6§lUltimate Banking System §7- ")
+                .append(moneyLiteral(title).withStyle(accentColor))
+                .append(moneyLiteral("\n§8────────────────────────\n"))
                 .append(body);
     }
 
     private static boolean requireAdminPermission(CommandSourceStack source) {
         if (source.getPlayer() != null && !source.getPlayer().hasPermissions(ADMIN_PERMISSION_LEVEL)) {
-            source.sendSystemMessage(Component.literal("§4You do not have permission to perform this action."));
+            source.sendSystemMessage(moneyLiteral("§4You do not have permission to perform this action."));
             return false;
         }
         return true;
@@ -570,49 +575,49 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         int bankCount = centralBank.getBanks() != null ? centralBank.getBanks().size() : 0;
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Name: §e" + centralBank.getBankName() + "\n"));
-        body.append(Component.literal("§7Bank ID: §f" + centralBank.getBankId() + "\n"));
-        body.append(Component.literal("§7Reserve: §a" + centralBank.getBankReserve() + "\n"));
-        body.append(Component.literal("§7Interest Rate: §e" + centralBank.getInterestRate() + "\n"));
-        body.append(Component.literal("§7Registered Banks: §b" + bankCount + "\n"));
+        body.append(moneyLiteral("§7Name: §e" + centralBank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Bank ID: §f" + centralBank.getBankId() + "\n"));
+        body.append(moneyLiteral("§7Reserve: §a" + centralBank.getBankReserve() + "\n"));
+        body.append(moneyLiteral("§7Interest Rate: §e" + centralBank.getInterestRate() + "\n"));
+        body.append(moneyLiteral("§7Registered Banks: §b" + bankCount + "\n"));
 
-        body.append(Component.literal("\n§7Actions:\n"));
-        body.append(Component.literal("§f§l[§aSave§f§l]")
+        body.append(moneyLiteral("\n§7Actions:\n"));
+        body.append(moneyLiteral("§f§l[§aSave§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ubs bank save"))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to save bank data")))));
-        body.append(Component.literal(" "));
-        body.append(Component.literal("§f§l[§eRename§f§l]")
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to save bank data")))));
+        body.append(moneyLiteral(" "));
+        body.append(moneyLiteral("§f§l[§eRename§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs bank rename "))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Suggest /ubs bank rename <name>")))));
-        body.append(Component.literal("\n"));
-        body.append(Component.literal("§f§l[§6Set Interest§f§l]")
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest /ubs bank rename <name>")))));
+        body.append(moneyLiteral("\n"));
+        body.append(moneyLiteral("§f§l[§6Set Interest§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs centralbank interest set "))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Suggest /ubs centralbank interest set <rate>")))));
-        body.append(Component.literal("\n"));
-        body.append(Component.literal("§f§l[§2Deposit§f§l]")
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest /ubs centralbank interest set <rate>")))));
+        body.append(moneyLiteral("\n"));
+        body.append(moneyLiteral("§f§l[§2Deposit§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs money deposit <accountId> <amount>"))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Suggest deposit to an account")))));
-        body.append(Component.literal(" "));
-        body.append(Component.literal("§f§l[§cWithdraw§f§l]")
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest deposit to an account")))));
+        body.append(moneyLiteral(" "));
+        body.append(moneyLiteral("§f§l[§cWithdraw§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs money withdraw <accountId> <amount>"))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Suggest withdraw from an account")))));
-        body.append(Component.literal("\n"));
-        body.append(Component.literal("§f§l[§bAdmin View§f§l]")
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest withdraw from an account")))));
+        body.append(moneyLiteral("\n"));
+        body.append(moneyLiteral("§f§l[§bAdmin View§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs admin view "))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Suggest /ubs admin view <player>")))));
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest /ubs admin view <player>")))));
 
         source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eCentral Bank", body));
         return 1;
@@ -627,13 +632,13 @@ public class UBSAdminCommands {
         try {
             rate = Double.parseDouble(rateStr);
         } catch (NumberFormatException e) {
-            source.sendSystemMessage(Component.literal("§cThe rate '§e" + rateStr + "§c' is not a valid number."));
+            source.sendSystemMessage(moneyLiteral("§cThe rate '§e" + rateStr + "§c' is not a valid number."));
             return 1;
         }
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -642,13 +647,13 @@ public class UBSAdminCommands {
         double after = centralBank.getInterestRate();
 
         if (Double.compare(before, after) == 0 && Double.compare(before, rate) != 0) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cInterest rate not changed. Rate must be within allowed range. Current: §e" + before
             ));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aCentral Bank interest rate updated: §e" + before + " §7-> §e" + after
         ));
         return 1;
@@ -657,7 +662,7 @@ public class UBSAdminCommands {
     private static int centralBankRateShow(CommandSourceStack source) {
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -665,10 +670,10 @@ public class UBSAdminCommands {
         double floor = rate * Config.SAVINGS_RATE_FLOOR_MULTIPLIER.get();
         double ceiling = rate * Config.SAVINGS_RATE_CEILING_MULTIPLIER.get();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Federal Funds Rate: §e" + rate + "%\n"));
-        body.append(Component.literal("§7Implied Savings Floor: §f" + floor + "%\n"));
-        body.append(Component.literal("§7Implied Savings Ceiling: §f" + ceiling + "%\n"));
-        body.append(Component.literal("§7Allowed FFR Range: §f" + Config.MIN_FEDERAL_FUNDS_RATE.get()
+        body.append(moneyLiteral("§7Federal Funds Rate: §e" + rate + "%\n"));
+        body.append(moneyLiteral("§7Implied Savings Floor: §f" + floor + "%\n"));
+        body.append(moneyLiteral("§7Implied Savings Ceiling: §f" + ceiling + "%\n"));
+        body.append(moneyLiteral("§7Allowed FFR Range: §f" + Config.MIN_FEDERAL_FUNDS_RATE.get()
                 + "% §7to §f" + Config.MAX_FEDERAL_FUNDS_RATE.get() + "%"));
         source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eCentral Bank Rate", body));
         return 1;
@@ -680,7 +685,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -688,13 +693,13 @@ public class UBSAdminCommands {
         try {
             requested = Double.parseDouble(rateRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid rate: " + rateRaw));
+            source.sendSystemMessage(moneyLiteral("§cInvalid rate: " + rateRaw));
             return 1;
         }
 
         double previous = centralBank.getFederalFundsRate();
         if (!centralBank.setFederalFundsRate(requested)) {
-            source.sendSystemMessage(Component.literal(
+            source.sendSystemMessage(moneyLiteral(
                     "§cRate out of bounds. Allowed range: "
                             + Config.MIN_FEDERAL_FUNDS_RATE.get()
                             + "% to " + Config.MAX_FEDERAL_FUNDS_RATE.get() + "%"
@@ -703,11 +708,11 @@ public class UBSAdminCommands {
         }
 
         double next = centralBank.getFederalFundsRate();
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aFederal Funds Rate updated: §e" + previous + "% §7-> §e" + next + "%"
         ));
         source.getServer().getPlayerList().broadcastSystemMessage(
-                Component.literal("§6[UBS] Federal Funds Rate updated to §e" + next + "%§6 by " + source.getTextName()),
+                moneyLiteral("§6[UBS] Federal Funds Rate updated to §e" + next + "%§6 by " + source.getTextName()),
                 false
         );
         return 1;
@@ -719,7 +724,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -730,7 +735,7 @@ public class UBSAdminCommands {
         BigDecimal before = centralBank.getDeclaredReserve();
         BigDecimal after = inject ? before.add(amount) : before.subtract(amount);
         if (after.compareTo(BigDecimal.ZERO) < 0) {
-            source.sendSystemMessage(Component.literal("§cOperation rejected: Central Bank reserve cannot go negative."));
+            source.sendSystemMessage(moneyLiteral("§cOperation rejected: Central Bank reserve cannot go negative."));
             return 1;
         }
 
@@ -748,7 +753,7 @@ public class UBSAdminCommands {
         trimTagMap(centralBank.getOpenMarketOperations(), Math.max(1, Config.OMO_HISTORY_LIMIT.get()));
         BankManager.markDirty();
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aOpen market operation executed: §f" + op.getString("type")
                         + " §6$" + amount.toPlainString()
                         + " §7(CB reserve " + before.toPlainString() + " -> " + after.toPlainString() + ")"
@@ -762,7 +767,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -770,13 +775,13 @@ public class UBSAdminCommands {
                 .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Open Market Operations: §b" + entries.size() + "\n\n"));
+        body.append(moneyLiteral("§7Open Market Operations: §b" + entries.size() + "\n\n"));
         if (entries.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (int i = Math.max(0, entries.size() - Config.OMO_HISTORY_LIMIT.get()); i < entries.size(); i++) {
                 CompoundTag tag = entries.get(i);
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + tag.getString("type")
                                 + " §6$" + readDecimalTag(tag, "amount").toPlainString()
                                 + " §7by §f" + tag.getString("actor")
@@ -794,7 +799,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -808,14 +813,14 @@ public class UBSAdminCommands {
         } else {
             Bank bank = resolveBankByName(centralBank, bankName);
             if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-                source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+                source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
                 return 1;
             }
             banks = List.of(bank);
         }
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Audited Banks: §b" + banks.size() + "\n\n"));
+        body.append(moneyLiteral("§7Audited Banks: §b" + banks.size() + "\n\n"));
         for (Bank bank : banks) {
             CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
             BigDecimal deposits = bank.getTotalDeposits();
@@ -824,7 +829,7 @@ public class UBSAdminCommands {
                     ? reserve.divide(deposits, 4, RoundingMode.HALF_EVEN).multiply(BigDecimal.valueOf(100))
                     : BigDecimal.valueOf(100);
             long breachStart = metadata.contains("reserveBreachStartTick") ? metadata.getLong("reserveBreachStartTick") : -1L;
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8- §e" + bank.getBankName()
                             + " §7status §f" + getBankStatus(centralBank, bank)
                             + " §7reserve ratio §e" + ratio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"
@@ -843,7 +848,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -920,25 +925,25 @@ public class UBSAdminCommands {
         trimTagMap(centralBank.getReportSnapshots(), 200);
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Total Circulation: §a$" + totalCirculation.toPlainString() + "\n"));
-        body.append(Component.literal("§7Total Central+Bank Reserves: §a$" + totalReserves.toPlainString() + "\n"));
-        body.append(Component.literal("§7Active Player Banks: §b" + activeBanks + "\n"));
-        body.append(Component.literal("§7Avg Reserve Ratio: §e" + avgReserveRatio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
-        body.append(Component.literal("§7Banks WARNING/RESTRICTED/SUSPENDED: §c" + warningOrRestricted + "\n"));
-        body.append(Component.literal("§7Outstanding Loans: §6$" + totalOutstandingLoans.toPlainString() + "\n"));
-        body.append(Component.literal("§7Federal Funds Rate: §e" + centralBank.getFederalFundsRate() + "%\n"));
-        body.append(Component.literal("§7Net OMO Since Start: §f$" + netOmo.toPlainString() + "\n"));
-        body.append(Component.literal("§7Inter-bank Settlements (24h): §f" + settlements24h + "\n"));
+        body.append(moneyLiteral("§7Total Circulation: §a$" + totalCirculation.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Total Central+Bank Reserves: §a$" + totalReserves.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Active Player Banks: §b" + activeBanks + "\n"));
+        body.append(moneyLiteral("§7Avg Reserve Ratio: §e" + avgReserveRatio.setScale(2, RoundingMode.HALF_EVEN).toPlainString() + "%\n"));
+        body.append(moneyLiteral("§7Banks WARNING/RESTRICTED/SUSPENDED: §c" + warningOrRestricted + "\n"));
+        body.append(moneyLiteral("§7Outstanding Loans: §6$" + totalOutstandingLoans.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Federal Funds Rate: §e" + centralBank.getFederalFundsRate() + "%\n"));
+        body.append(moneyLiteral("§7Net OMO Since Start: §f$" + netOmo.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Inter-bank Settlements (24h): §f" + settlements24h + "\n"));
 
         if (history) {
-            body.append(Component.literal("\n§7Recent Snapshots:\n"));
+            body.append(moneyLiteral("\n§7Recent Snapshots:\n"));
             List<CompoundTag> snapshots = centralBank.getReportSnapshots().values().stream()
                     .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
                     .toList();
             int start = Math.max(0, snapshots.size() - 10);
             for (int i = start; i < snapshots.size(); i++) {
                 CompoundTag snap = snapshots.get(i);
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + snap.getLong("timestampMillis")
                                 + " §7circulation §a$" + readDecimalTag(snap, "totalCirculation").toPlainString()
                                 + " §7rate §e" + snap.getDouble("federalFundsRate") + "%\n"
@@ -956,7 +961,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -966,12 +971,12 @@ public class UBSAdminCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Entries: §b" + entries.size() + "\n\n"));
+        body.append(moneyLiteral("§7Entries: §b" + entries.size() + "\n\n"));
         int limit = Math.max(1, Config.CLEARING_LEDGER_LIMIT.get());
         int start = Math.max(0, entries.size() - limit);
         for (int i = start; i < entries.size(); i++) {
             CompoundTag tag = entries.get(i);
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8- §f" + shortId(readUuidTag(tag, "id"))
                             + " §7from §f" + shortId(readUuidTag(tag, "fromBankId"))
                             + " §7to §f" + shortId(readUuidTag(tag, "toBankId"))
@@ -995,21 +1000,21 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         List<CompoundTag> apps = centralBank.getBankApplications().values().stream()
                 .sorted(Comparator.comparingLong(tag -> tag.getLong("createdMillis")))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Applications: §b" + apps.size() + "\n\n"));
+        body.append(moneyLiteral("§7Applications: §b" + apps.size() + "\n\n"));
         if (apps.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (CompoundTag app : apps) {
                 UUID id = readUuidTag(app, "id");
                 UUID applicant = readUuidTag(app, "applicant");
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + id + "\n"
                                 + "  §7Applicant: §f" + resolvePlayerName(source.getServer(), applicant) + "\n"
                                 + "  §7Bank: §e" + app.getString("bankName") + "\n"
@@ -1028,27 +1033,27 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         CompoundTag app = centralBank.getBankApplications().get(applicationId);
         if (app == null) {
-            source.sendSystemMessage(Component.literal("§cApplication not found: " + applicationId));
+            source.sendSystemMessage(moneyLiteral("§cApplication not found: " + applicationId));
             return 1;
         }
         if (!"PENDING".equalsIgnoreCase(app.getString("status"))) {
-            source.sendSystemMessage(Component.literal("§cApplication is not pending."));
+            source.sendSystemMessage(moneyLiteral("§cApplication is not pending."));
             return 1;
         }
 
         UUID applicantId = readUuidTag(app, "applicant");
         if (applicantId == null) {
-            source.sendSystemMessage(Component.literal("§cApplication has no applicant."));
+            source.sendSystemMessage(moneyLiteral("§cApplication has no applicant."));
             return 1;
         }
         String bankName = app.getString("bankName");
         if (resolveBankByName(centralBank, bankName) != null) {
-            source.sendSystemMessage(Component.literal("§cA bank with this name already exists."));
+            source.sendSystemMessage(moneyLiteral("§cA bank with this name already exists."));
             return 1;
         }
 
@@ -1061,7 +1066,7 @@ public class UBSAdminCommands {
             funding = findPrimaryAccount(centralBank, applicantId);
         }
         if (funding == null) {
-            source.sendSystemMessage(Component.literal("§cApplicant has no funding account available."));
+            source.sendSystemMessage(moneyLiteral("§cApplicant has no funding account available."));
             return 1;
         }
 
@@ -1069,12 +1074,12 @@ public class UBSAdminCommands {
         BigDecimal charterFee = readDecimalTag(app, "charterFee");
         BigDecimal totalFee = creationFee.add(charterFee);
         if (funding.getBalance().compareTo(totalFee) < 0) {
-            source.sendSystemMessage(Component.literal("§cApplicant cannot afford required fees $" + totalFee.toPlainString()));
+            source.sendSystemMessage(moneyLiteral("§cApplicant cannot afford required fees $" + totalFee.toPlainString()));
             return 1;
         }
 
         if (!funding.RemoveBalance(totalFee)) {
-            source.sendSystemMessage(Component.literal("§cFailed to deduct applicant fees."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to deduct applicant fees."));
             return 1;
         }
         centralBank.setReserve(centralBank.getDeclaredReserve().add(totalFee));
@@ -1126,12 +1131,12 @@ public class UBSAdminCommands {
         centralBank.getBankApplications().put(applicationId, app);
         BankManager.markDirty();
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aApproved application " + applicationId + " and created bank §e" + bankName
         ));
         ServerPlayer applicantOnline = source.getServer().getPlayerList().getPlayer(applicantId);
         if (applicantOnline != null) {
-            applicantOnline.sendSystemMessage(Component.literal(
+            applicantOnline.sendSystemMessage(moneyLiteral(
                     "§aYour bank application was approved. Bank created: §e" + bankName
             ));
         }
@@ -1144,12 +1149,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         CompoundTag app = centralBank.getBankApplications().get(applicationId);
         if (app == null) {
-            source.sendSystemMessage(Component.literal("§cApplication not found: " + applicationId));
+            source.sendSystemMessage(moneyLiteral("§cApplication not found: " + applicationId));
             return 1;
         }
 
@@ -1163,13 +1168,13 @@ public class UBSAdminCommands {
         UUID applicantId = readUuidTag(app, "applicant");
         ServerPlayer applicantOnline = applicantId == null ? null : source.getServer().getPlayerList().getPlayer(applicantId);
         if (applicantOnline != null) {
-            applicantOnline.sendSystemMessage(Component.literal(
+            applicantOnline.sendSystemMessage(moneyLiteral(
                     "§cYour bank application was denied."
                             + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason)
                             + " §7You can appeal with /bank appeal <message>."
             ));
         }
-        source.sendSystemMessage(Component.literal("§eApplication denied: " + applicationId));
+        source.sendSystemMessage(moneyLiteral("§eApplication denied: " + applicationId));
         return 1;
     }
 
@@ -1179,18 +1184,18 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         List<CompoundTag> appeals = centralBank.getBankAppeals().values().stream()
                 .sorted(Comparator.comparingLong(tag -> tag.getLong("createdMillis")))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Appeals: §b" + appeals.size() + "\n\n"));
+        body.append(moneyLiteral("§7Appeals: §b" + appeals.size() + "\n\n"));
         for (CompoundTag appeal : appeals) {
             UUID id = readUuidTag(appeal, "id");
             UUID playerId = readUuidTag(appeal, "playerId");
-            body.append(Component.literal(
+            body.append(moneyLiteral(
                     "§8- §f" + id + "\n"
                             + "  §7Player: §f" + resolvePlayerName(source.getServer(), playerId) + "\n"
                             + "  §7Status: §f" + appeal.getString("status") + "\n"
@@ -1198,7 +1203,7 @@ public class UBSAdminCommands {
             ));
         }
         if (appeals.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         }
         source.sendSystemMessage(ubsPanel(ChatFormatting.LIGHT_PURPLE, "§dAppeals Inbox", body));
         return 1;
@@ -1210,12 +1215,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         CompoundTag appeal = centralBank.getBankAppeals().get(appealId);
         if (appeal == null) {
-            source.sendSystemMessage(Component.literal("§cAppeal not found: " + appealId));
+            source.sendSystemMessage(moneyLiteral("§cAppeal not found: " + appealId));
             return 1;
         }
 
@@ -1229,12 +1234,12 @@ public class UBSAdminCommands {
         UUID playerId = readUuidTag(appeal, "playerId");
         ServerPlayer player = playerId == null ? null : source.getServer().getPlayerList().getPlayer(playerId);
         if (player != null) {
-            player.sendSystemMessage(Component.literal(
+            player.sendSystemMessage(moneyLiteral(
                     (approve ? "§aYour bank appeal was approved." : "§cYour bank appeal was denied.")
                             + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason)
             ));
         }
-        source.sendSystemMessage(Component.literal("§aAppeal " + appealId + " reviewed: " + (approve ? "APPROVED" : "DENIED")));
+        source.sendSystemMessage(moneyLiteral("§aAppeal " + appealId + " reviewed: " + (approve ? "APPROVED" : "DENIED")));
         return 1;
     }
 
@@ -1244,12 +1249,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
@@ -1261,7 +1266,7 @@ public class UBSAdminCommands {
         BigDecimal ratio = deposits.compareTo(BigDecimal.ZERO) > 0
                 ? reserve.divide(deposits, 4, RoundingMode.HALF_EVEN).multiply(BigDecimal.valueOf(100))
                 : BigDecimal.valueOf(100);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§7Bank: §e" + bank.getBankName()
                         + "\n§7Status: §f" + getBankStatus(centralBank, bank)
                         + "\n§7Reserve: §a$" + reserve.toPlainString()
@@ -1285,22 +1290,22 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Bank: §e" + bank.getBankName() + "\n"));
-        body.append(Component.literal("§7Status: §f" + getBankStatus(centralBank, bank) + "\n"));
-        body.append(Component.literal("§7Owner: §f" + resolvePlayerName(source.getServer(), bank.getBankOwnerId()) + "\n"));
-        body.append(Component.literal("§7Metadata:\n"));
+        body.append(moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n"));
+        body.append(moneyLiteral("§7Status: §f" + getBankStatus(centralBank, bank) + "\n"));
+        body.append(moneyLiteral("§7Owner: §f" + resolvePlayerName(source.getServer(), bank.getBankOwnerId()) + "\n"));
+        body.append(moneyLiteral("§7Metadata:\n"));
         for (String key : metadata.getAllKeys()) {
-            body.append(Component.literal("§8- §7" + key + ": §f" + metadata.get(key) + "\n"));
+            body.append(moneyLiteral("§8- §7" + key + ": §f" + metadata.get(key) + "\n"));
         }
         source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bBank Audit", body));
         return 1;
@@ -1312,12 +1317,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
 
@@ -1326,7 +1331,7 @@ public class UBSAdminCommands {
         metadata.putString("suspendReason", reason == null ? "" : reason.trim());
         metadata.putLong("suspendedAtMillis", System.currentTimeMillis());
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§eSuspended bank: " + bank.getBankName()));
+        source.sendSystemMessage(moneyLiteral("§eSuspended bank: " + bank.getBankName()));
         notifyBankOwner(source.getServer(), bank, "§cYour bank has been suspended."
                 + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason));
         return 1;
@@ -1338,19 +1343,19 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         metadata.putString("status", "ACTIVE");
         metadata.remove("suspendReason");
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§aUnsuspended bank: " + bank.getBankName()));
+        source.sendSystemMessage(moneyLiteral("§aUnsuspended bank: " + bank.getBankName()));
         notifyBankOwner(source.getServer(), bank, "§aYour bank suspension has been lifted.");
         return 1;
     }
@@ -1361,19 +1366,19 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         metadata.putString("status", "ACTIVE");
         metadata.remove("lockdownUntilTick");
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal("§aLifted bank-run lockdown for " + bank.getBankName()));
+        source.sendSystemMessage(moneyLiteral("§aLifted bank-run lockdown for " + bank.getBankName()));
         notifyBankOwner(source.getServer(), bank, "§aYour bank lockdown was lifted by an admin.");
         return 1;
     }
@@ -1384,16 +1389,16 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§7Bank: §e" + bank.getBankName()
                         + "\n§7Status: §f" + getBankStatus(centralBank, bank)
                         + "\n§7Window start tick: §f" + metadata.getLong("bankRunWindowStartTick")
@@ -1409,12 +1414,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found or protected: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found or protected: " + bankNameRaw));
             return 1;
         }
 
@@ -1444,7 +1449,7 @@ public class UBSAdminCommands {
         centralBank.putBankMetadata(bank.getBankId(), metadata);
         centralBank.removeBank(bank);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§cRevoked bank " + bank.getBankName()
                         + ". Recovered $" + movedAmount.toPlainString()
                         + " across " + movedAccounts + " account(s)."
@@ -1460,19 +1465,19 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         boolean next = !metadata.getBoolean("rateExempt");
         metadata.putBoolean("rateExempt", next);
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aRate-band exemption for " + bank.getBankName() + " is now " + (next ? "ENABLED" : "DISABLED")
         ));
         return 1;
@@ -1484,29 +1489,29 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         BigDecimal amount;
         try {
             amount = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid amount: " + amountRaw));
+            source.sendSystemMessage(moneyLiteral("§cInvalid amount: " + amountRaw));
             return 1;
         }
         if (amount.compareTo(BigDecimal.ZERO) < 0) {
-            source.sendSystemMessage(Component.literal("§cOverride amount must be >= 0."));
+            source.sendSystemMessage(moneyLiteral("§cOverride amount must be >= 0."));
             return 1;
         }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         metadata.putString("dailyCapOverride", amount.toPlainString());
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aDaily cap override for " + bank.getBankName() + " set to $" + amount.toPlainString()
         ));
         return 1;
@@ -1517,10 +1522,10 @@ public class UBSAdminCommands {
             return 1;
         }
         CHARTER_FEE_WAIVERS.put(player.getUUID(), System.currentTimeMillis());
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aOne-time charter fee waiver granted to §e" + player.getName().getString()
         ));
-        player.sendSystemMessage(Component.literal("§aYour next bank creation will waive the charter fee."));
+        player.sendSystemMessage(moneyLiteral("§aYour next bank creation will waive the charter fee."));
         return 1;
     }
 
@@ -1530,12 +1535,12 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         Bank bank = resolveBankByName(centralBank, bankNameRaw);
         if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
-            source.sendSystemMessage(Component.literal("§cBank not found: " + bankNameRaw));
+            source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
         long deferBy = Math.max(20, Config.BANK_ANNUAL_LICENSE_INTERVAL_TICKS.get());
@@ -1546,7 +1551,7 @@ public class UBSAdminCommands {
         long nextDue = currentDue + deferBy;
         metadata.putLong("nextLicenseFeeTick", nextDue);
         centralBank.putBankMetadata(bank.getBankId(), metadata);
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aDeferred annual license renewal for " + bank.getBankName()
                         + " to tick " + nextDue
         ));
@@ -1559,7 +1564,7 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         List<CompoundTag> flags = centralBank.getSettlementSuspense().values().stream()
@@ -1567,12 +1572,12 @@ public class UBSAdminCommands {
                 .sorted(Comparator.comparingLong(tag -> tag.getLong("timestampMillis")))
                 .toList();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Flagged events: §b" + flags.size() + "\n\n"));
+        body.append(moneyLiteral("§7Flagged events: §b" + flags.size() + "\n\n"));
         if (flags.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (CompoundTag flag : flags) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + shortId(readUuidTag(flag, "id"))
                                 + " §7" + flag.getString("reason")
                                 + " §7amount §6$" + readDecimalTag(flag, "amount").toPlainString()
@@ -1589,7 +1594,7 @@ public class UBSAdminCommands {
             return 1;
         }
         BankManager.markDirty();
-        source.sendSystemMessage(Component.literal("§aBank data marked dirty for save."));
+        source.sendSystemMessage(moneyLiteral("§aBank data marked dirty for save."));
         return 1;
     }
 
@@ -1599,11 +1604,11 @@ public class UBSAdminCommands {
         }
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
         centralBank.setBankName(newName);
-        source.sendSystemMessage(Component.literal("§aThe bank name has been updated to: §e" + newName + "§a."));
+        source.sendSystemMessage(moneyLiteral("§aThe bank name has been updated to: §e" + newName + "§a."));
         return 1;
     }
 
@@ -1614,13 +1619,13 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cThe account '§e" + accountId + "§c' could not be found."));
+            source.sendSystemMessage(moneyLiteral("§cThe account '§e" + accountId + "§c' could not be found."));
             return 1;
         }
 
@@ -1630,12 +1635,12 @@ public class UBSAdminCommands {
         }
 
         if (!account.AddBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cFailed to add amount '§e" + amount + "§c' to account '§e" + accountId + "§c'."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to add amount '§e$" + amount + "§c' to account '§e" + accountId + "§c'."));
             return 1;
         }
 
         addAdminAuditTransaction(account, amount, true, source.getTextName());
-        source.sendSystemMessage(Component.literal("§aSuccessfully added '§e" + amount + "§a' to '§e" + accountId + "§a'. New Balance: §2" + account.getBalance()));
+        source.sendSystemMessage(moneyLiteral("§aSuccessfully added '§e$" + amount + "§a' to '§e" + accountId + "§a'. New Balance: §2$" + account.getBalance()));
         NeoForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, true));
         return 1;
     }
@@ -1647,13 +1652,13 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cThe account '§e" + accountId + "§c' could not be found."));
+            source.sendSystemMessage(moneyLiteral("§cThe account '§e" + accountId + "§c' could not be found."));
             return 1;
         }
 
@@ -1663,12 +1668,12 @@ public class UBSAdminCommands {
         }
 
         if (!account.RemoveBalance(amount)) {
-            source.sendSystemMessage(Component.literal("§cFailed to remove amount '§e" + amount + "§c' from account '§e" + accountId + "§c'."));
+            source.sendSystemMessage(moneyLiteral("§cFailed to remove amount '§e$" + amount + "§c' from account '§e" + accountId + "§c'."));
             return 1;
         }
 
         addAdminAuditTransaction(account, amount, false, source.getTextName());
-        source.sendSystemMessage(Component.literal("§aSuccessfully removed '§e" + amount + "§a' from '§e" + accountId + "§a'. New Balance: §2" + account.getBalance()));
+        source.sendSystemMessage(moneyLiteral("§aSuccessfully removed '§e$" + amount + "§a' from '§e" + accountId + "§a'. New Balance: §2$" + account.getBalance()));
         NeoForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, false));
         return 1;
     }
@@ -1680,19 +1685,19 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         Map<UUID, AccountHolder> accounts = centralBank.SearchForAccount(target.getUUID());
         if (accounts.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§e" + target.getName().getString() + " has no accounts."));
+            source.sendSystemMessage(moneyLiteral("§e" + target.getName().getString() + " has no accounts."));
             return 1;
         }
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Player: §f" + target.getName().getString() + " §8(" + target.getUUID() + ")\n"));
-        body.append(Component.literal("§7Accounts: §b" + accounts.size() + "\n\n"));
+        body.append(moneyLiteral("§7Player: §f" + target.getName().getString() + " §8(" + target.getUUID() + ")\n"));
+        body.append(moneyLiteral("§7Accounts: §b" + accounts.size() + "\n\n"));
 
         List<AccountHolder> ordered = new ArrayList<>(accounts.values());
         ordered.sort(Comparator.comparing(a -> a.getAccountUUID().toString()));
@@ -1702,43 +1707,43 @@ public class UBSAdminCommands {
             String accountId = account.getAccountUUID().toString();
             String shortAccountId = accountId.substring(0, Math.min(8, accountId.length()));
 
-            body.append(Component.literal("§e" + shortAccountId + "§7 (" + account.getAccountType().label + ")\n"));
-            body.append(Component.literal("§7Bank: §f" + bankName + "\n"));
-            body.append(Component.literal("§7Balance: §a" + account.getBalance().toPlainString() + "  "));
-            body.append(Component.literal("§7Primary: §f" + account.isPrimaryAccount() + "\n"));
-            body.append(Component.literal("§7Frozen: " + (account.isFrozen() ? "§cYes" : "§aNo")));
+            body.append(moneyLiteral("§e" + shortAccountId + "§7 (" + account.getAccountType().label + ")\n"));
+            body.append(moneyLiteral("§7Bank: §f" + bankName + "\n"));
+            body.append(moneyLiteral("§7Balance: §a$" + account.getBalance().toPlainString() + "  "));
+            body.append(moneyLiteral("§7Primary: §f" + account.isPrimaryAccount() + "\n"));
+            body.append(moneyLiteral("§7Frozen: " + (account.isFrozen() ? "§cYes" : "§aNo")));
             if (account.isFrozen() && !account.getFrozenReason().isEmpty()) {
-                body.append(Component.literal(" §8(" + account.getFrozenReason() + ")"));
+                body.append(moneyLiteral(" §8(" + account.getFrozenReason() + ")"));
             }
-            body.append(Component.literal("\n"));
-            body.append(Component.literal("§7PIN Set: §f" + account.hasPin() + "  "));
-            body.append(Component.literal("§7Used Today: §f$" + account.getDailyWithdrawnAmount().toPlainString() + "\n"));
-            body.append(Component.literal("§7Account ID: §f" + accountId + "\n")
+            body.append(moneyLiteral("\n"));
+            body.append(moneyLiteral("§7PIN Set: §f" + account.hasPin() + "  "));
+            body.append(moneyLiteral("§7Used Today: §f$" + account.getDailyWithdrawnAmount().toPlainString() + "\n"));
+            body.append(moneyLiteral("§7Account ID: §f" + accountId + "\n")
                     .setStyle(Style.EMPTY
                             .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, accountId))
-                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy account ID")))));
+                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy account ID")))));
 
             List<UserTransaction> recent = account.getTransactions().values().stream()
                     .sorted(Comparator.comparing(UserTransaction::getTimestamp).reversed())
                     .limit(10)
                     .toList();
-            body.append(Component.literal("§7Recent Transactions: §f" + recent.size() + "\n"));
+            body.append(moneyLiteral("§7Recent Transactions: §f" + recent.size() + "\n"));
             if (recent.isEmpty()) {
-                body.append(Component.literal("§8- none\n"));
+                body.append(moneyLiteral("§8- none\n"));
             } else {
                 for (UserTransaction tx : recent) {
                     boolean incoming = account.getAccountUUID().equals(tx.getReceiverUUID());
                     String sign = incoming ? "+" : "-";
                     UUID cp = incoming ? tx.getSenderUUID() : tx.getReceiverUUID();
                     String cpShort = cp == null ? "unknown" : cp.toString().substring(0, Math.min(8, cp.toString().length()));
-                    body.append(Component.literal(
+                    body.append(moneyLiteral(
                             "§8- §7" + ADMIN_TX_TIME_FMT.format(tx.getTimestamp())
-                                    + " §f" + sign + tx.getAmount().toPlainString()
+                                    + " §f" + sign + "$" + tx.getAmount().toPlainString()
                                     + " §8[" + tx.getTransactionDescription() + "] §7cp:§f" + cpShort + "\n"
                     ));
                 }
             }
-            body.append(Component.literal("§8────────────────────────\n"));
+            body.append(moneyLiteral("§8────────────────────────\n"));
         }
 
         source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bAdmin Account View", body));
@@ -1752,13 +1757,13 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         Map<UUID, AccountHolder> accounts = centralBank.SearchForAccount(target.getUUID());
         if (accounts.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§e" + target.getName().getString() + " has no accounts to freeze."));
+            source.sendSystemMessage(moneyLiteral("§e" + target.getName().getString() + " has no accounts to freeze."));
             return 1;
         }
 
@@ -1772,13 +1777,13 @@ public class UBSAdminCommands {
             }
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aFroze §e" + accounts.size() + "§a account(s) for §e" + target.getName().getString()
                         + "§a. Newly frozen: §e" + changed + "§a."
         ));
 
         String cleanReason = reason == null ? "" : reason.trim();
-        target.sendSystemMessage(Component.literal(
+        target.sendSystemMessage(moneyLiteral(
                 "§cYour banking access has been frozen by an administrator."
                         + (cleanReason.isEmpty() ? "" : " Reason: " + cleanReason)
         ));
@@ -1792,13 +1797,13 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         Map<UUID, AccountHolder> accounts = centralBank.SearchForAccount(target.getUUID());
         if (accounts.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§e" + target.getName().getString() + " has no accounts to unfreeze."));
+            source.sendSystemMessage(moneyLiteral("§e" + target.getName().getString() + " has no accounts to unfreeze."));
             return 1;
         }
 
@@ -1811,11 +1816,11 @@ public class UBSAdminCommands {
             addAdminAuditMarker(account, source.getTextName(), "ADMIN_UNFREEZE", "");
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aUnfroze §e" + accounts.size() + "§a account(s) for §e" + target.getName().getString()
                         + "§a. Previously frozen: §e" + changed + "§a."
         ));
-        target.sendSystemMessage(Component.literal("§aYour banking access has been restored by an administrator."));
+        target.sendSystemMessage(moneyLiteral("§aYour banking access has been restored by an administrator."));
         return 1;
     }
 
@@ -1826,24 +1831,24 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cThe account '§e" + accountId + "§c' could not be found."));
+            source.sendSystemMessage(moneyLiteral("§cThe account '§e" + accountId + "§c' could not be found."));
             return 1;
         }
 
         account.freeze(reason);
         addAdminAuditMarker(account, source.getTextName(), "ADMIN_FREEZE", account.getFrozenReason());
-        source.sendSystemMessage(Component.literal("§aAccount §e" + accountId + "§a is now frozen."));
+        source.sendSystemMessage(moneyLiteral("§aAccount §e" + accountId + "§a is now frozen."));
 
         ServerPlayer target = source.getServer().getPlayerList().getPlayer(account.getPlayerUUID());
         if (target != null) {
             String cleanReason = account.getFrozenReason();
-            target.sendSystemMessage(Component.literal(
+            target.sendSystemMessage(moneyLiteral(
                     "§cYour account " + accountId + " has been frozen by an administrator."
                             + (cleanReason.isEmpty() ? "" : " Reason: " + cleanReason)
             ));
@@ -1858,23 +1863,23 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
         AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
         if (account == null) {
-            source.sendSystemMessage(Component.literal("§cThe account '§e" + accountId + "§c' could not be found."));
+            source.sendSystemMessage(moneyLiteral("§cThe account '§e" + accountId + "§c' could not be found."));
             return 1;
         }
 
         account.unfreeze();
         addAdminAuditMarker(account, source.getTextName(), "ADMIN_UNFREEZE", "");
-        source.sendSystemMessage(Component.literal("§aAccount §e" + accountId + "§a has been unfrozen."));
+        source.sendSystemMessage(moneyLiteral("§aAccount §e" + accountId + "§a has been unfrozen."));
 
         ServerPlayer target = source.getServer().getPlayerList().getPlayer(account.getPlayerUUID());
         if (target != null) {
-            target.sendSystemMessage(Component.literal("§aYour account " + accountId + " has been unfrozen by an administrator."));
+            target.sendSystemMessage(moneyLiteral("§aYour account " + accountId + " has been unfrozen by an administrator."));
         }
         return 1;
     }
@@ -1886,7 +1891,7 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -1923,28 +1928,28 @@ public class UBSAdminCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Registered Banks: §b" + registeredBanks + "\n"));
-        body.append(Component.literal("§7Total Accounts: §b" + totalAccounts + "\n"));
-        body.append(Component.literal("§7Active Accounts: §b" + activeAccounts + "\n"));
-        body.append(Component.literal("§7Frozen Accounts: §c" + frozenAccounts + "\n"));
-        body.append(Component.literal("§7Total Circulation: §a$" + totalBalances.toPlainString() + "\n"));
-        body.append(Component.literal("§7ATM Withdrawn Today: §e$" + totalDailyWithdrawn.toPlainString() + "\n"));
-        body.append(Component.literal("§7Central Bank Reserve: §a$" + centralBank.getBankReserve().toPlainString() + "\n"));
-        body.append(Component.literal("§7Central Bank Interest Rate: §e" + centralBank.getInterestRate() + "\n"));
-        body.append(Component.literal("\n§7Top 10 Richest Players:\n"));
+        body.append(moneyLiteral("§7Registered Banks: §b" + registeredBanks + "\n"));
+        body.append(moneyLiteral("§7Total Accounts: §b" + totalAccounts + "\n"));
+        body.append(moneyLiteral("§7Active Accounts: §b" + activeAccounts + "\n"));
+        body.append(moneyLiteral("§7Frozen Accounts: §c" + frozenAccounts + "\n"));
+        body.append(moneyLiteral("§7Total Circulation: §a$" + totalBalances.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7ATM Withdrawn Today: §e$" + totalDailyWithdrawn.toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Central Bank Reserve: §a$" + centralBank.getBankReserve().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Central Bank Interest Rate: §e" + centralBank.getInterestRate() + "\n"));
+        body.append(moneyLiteral("\n§7Top 10 Richest Players:\n"));
         if (richest.isEmpty()) {
-            body.append(Component.literal("§8- none\n"));
+            body.append(moneyLiteral("§8- none\n"));
         } else {
             int rank = 1;
             for (Map.Entry<UUID, BigDecimal> entry : richest) {
                 String name = resolvePlayerName(server, entry.getKey());
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8" + rank + ". §f" + name + " §8(" + entry.getKey() + ") §7- §a$" + entry.getValue().toPlainString() + "\n"
                 ));
                 rank++;
             }
         }
-        body.append(Component.literal("\n§8Generated at world time: §7" + currentOverworldGameTime(server)));
+        body.append(moneyLiteral("\n§8Generated at world time: §7" + currentOverworldGameTime(server)));
 
         source.sendSystemMessage(ubsPanel(ChatFormatting.YELLOW, "§eEconomy Report", body));
         return 1;
@@ -1957,12 +1962,12 @@ public class UBSAdminCommands {
 
         List<LoanService.LoanQuote> pending = LoanService.listPendingApprovals();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Pending Loan Approvals: §b" + pending.size() + "\n\n"));
+        body.append(moneyLiteral("§7Pending Loan Approvals: §b" + pending.size() + "\n\n"));
         if (pending.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (LoanService.LoanQuote quote : pending) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + quote.borrowerPlayerId()
                                 + " §7amount §6$" + quote.principal().toPlainString()
                                 + " §7APR §e" + quote.annualInterestRate() + "%\n"
@@ -1980,22 +1985,22 @@ public class UBSAdminCommands {
 
         LoanService.LoanQuote pending = LoanService.getPendingApproval(borrower.getUUID());
         if (pending == null) {
-            source.sendSystemMessage(Component.literal("§cNo pending loan request for that player."));
+            source.sendSystemMessage(moneyLiteral("§cNo pending loan request for that player."));
             return 1;
         }
 
         var issued = LoanService.approvePending(source.getServer(), borrower.getUUID());
         if (issued == null) {
-            source.sendSystemMessage(Component.literal("§cLoan approval failed while issuing funds."));
-            borrower.sendSystemMessage(Component.literal("§cYour loan request could not be issued after approval."));
+            source.sendSystemMessage(moneyLiteral("§cLoan approval failed while issuing funds."));
+            borrower.sendSystemMessage(moneyLiteral("§cYour loan request could not be issued after approval."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aLoan approved for §e" + borrower.getName().getString()
                         + "§a: $" + pending.principal().toPlainString()
         ));
-        borrower.sendSystemMessage(Component.literal(
+        borrower.sendSystemMessage(moneyLiteral(
                 "§aYour loan request was approved. Funds have been deposited to your account."
         ));
         return 1;
@@ -2008,15 +2013,15 @@ public class UBSAdminCommands {
 
         boolean removed = LoanService.denyPending(borrower.getUUID());
         if (!removed) {
-            source.sendSystemMessage(Component.literal("§cNo pending loan request for that player."));
+            source.sendSystemMessage(moneyLiteral("§cNo pending loan request for that player."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§eDenied pending loan for §f" + borrower.getName().getString() + "§e."
         ));
         String cleanReason = reason == null ? "" : reason.trim();
-        borrower.sendSystemMessage(Component.literal(
+        borrower.sendSystemMessage(moneyLiteral(
                 "§cYour loan request was denied." + (cleanReason.isEmpty() ? "" : " Reason: " + cleanReason)
         ));
         return 1;
@@ -2033,14 +2038,14 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is unavailable."));
             return 1;
         }
 
         AccountHolder sourceAccount = centralBank.SearchForAccountByAccountId(sourceAccountId);
         AccountHolder targetAccount = centralBank.SearchForAccountByAccountId(targetAccountId);
         if (sourceAccount == null || targetAccount == null) {
-            source.sendSystemMessage(Component.literal("§cSource or target account was not found."));
+            source.sendSystemMessage(moneyLiteral("§cSource or target account was not found."));
             return 1;
         }
 
@@ -2048,12 +2053,12 @@ public class UBSAdminCommands {
         try {
             amount = new BigDecimal(amountRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid amount."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid amount."));
             return 1;
         }
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be greater than zero."));
             return 1;
         }
 
@@ -2061,12 +2066,12 @@ public class UBSAdminCommands {
         try {
             frequencyTicks = Long.parseLong(frequencyRaw.trim());
         } catch (NumberFormatException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid frequency ticks."));
+            source.sendSystemMessage(moneyLiteral("§cInvalid frequency ticks."));
             return 1;
         }
 
         if (frequencyTicks < 20L) {
-            source.sendSystemMessage(Component.literal("§cFrequency must be at least 20 ticks."));
+            source.sendSystemMessage(moneyLiteral("§cFrequency must be at least 20 ticks."));
             return 1;
         }
 
@@ -2083,7 +2088,7 @@ public class UBSAdminCommands {
         );
         centralBank.addScheduledPayment(payment);
 
-        source.sendSystemMessage(Component.literal(
+        source.sendSystemMessage(moneyLiteral(
                 "§aScheduled payment created: §f" + payment.getPaymentId()
                         + " §7amount §6$" + amount.toPlainString()
                         + " §7every §f" + frequencyTicks + " ticks"
@@ -2098,7 +2103,7 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is unavailable."));
             return 1;
         }
 
@@ -2107,12 +2112,12 @@ public class UBSAdminCommands {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7Scheduled Payments: §b" + payments.size() + "\n\n"));
+        body.append(moneyLiteral("§7Scheduled Payments: §b" + payments.size() + "\n\n"));
         if (payments.isEmpty()) {
-            body.append(Component.literal("§8- none"));
+            body.append(moneyLiteral("§8- none"));
         } else {
             for (ScheduledPayment payment : payments) {
-                body.append(Component.literal(
+                body.append(moneyLiteral(
                         "§8- §f" + payment.getPaymentId() + "\n"
                                 + "  §7from: §f" + payment.getSourceAccountId() + "\n"
                                 + "  §7to: §f" + payment.getTargetAccountId() + "\n"
@@ -2134,17 +2139,17 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is unavailable."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is unavailable."));
             return 1;
         }
 
         boolean removed = centralBank.removeScheduledPayment(paymentId);
         if (!removed) {
-            source.sendSystemMessage(Component.literal("§cScheduled payment not found."));
+            source.sendSystemMessage(moneyLiteral("§cScheduled payment not found."));
             return 1;
         }
 
-        source.sendSystemMessage(Component.literal("§aRemoved scheduled payment §f" + paymentId + "§a."));
+        source.sendSystemMessage(moneyLiteral("§aRemoved scheduled payment §f" + paymentId + "§a."));
         return 1;
     }
 
@@ -2155,7 +2160,7 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -2164,7 +2169,7 @@ public class UBSAdminCommands {
             return 1;
         }
         if (!Files.exists(path)) {
-            source.sendSystemMessage(Component.literal("§cCSV file not found: §e" + path));
+            source.sendSystemMessage(moneyLiteral("§cCSV file not found: §e" + path));
             return 1;
         }
 
@@ -2235,7 +2240,7 @@ public class UBSAdminCommands {
                 }
             }
         } catch (IOException ex) {
-            source.sendSystemMessage(Component.literal("§cFailed to read CSV: §e" + ex.getMessage()));
+            source.sendSystemMessage(moneyLiteral("§cFailed to read CSV: §e" + ex.getMessage()));
             return 1;
         }
 
@@ -2258,7 +2263,7 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -2267,13 +2272,13 @@ public class UBSAdminCommands {
             return 1;
         }
         if (!Files.exists(path)) {
-            source.sendSystemMessage(Component.literal("§cImport path not found: §e" + path));
+            source.sendSystemMessage(moneyLiteral("§cImport path not found: §e" + path));
             return 1;
         }
 
         List<Path> files = listYamlFiles(path);
         if (files.isEmpty()) {
-            source.sendSystemMessage(Component.literal("§cNo .yml/.yaml files found at: §e" + path));
+            source.sendSystemMessage(moneyLiteral("§cNo .yml/.yaml files found at: §e" + path));
             return 1;
         }
 
@@ -2346,7 +2351,7 @@ public class UBSAdminCommands {
 
         CentralBank centralBank = BankManager.getCentralBank(source.getServer());
         if (centralBank == null) {
-            source.sendSystemMessage(Component.literal("§cCentral bank data is not available."));
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
             return 1;
         }
 
@@ -2355,7 +2360,7 @@ public class UBSAdminCommands {
             return 1;
         }
         if (!Files.exists(path)) {
-            source.sendSystemMessage(Component.literal("§cImport file not found: §e" + path));
+            source.sendSystemMessage(moneyLiteral("§cImport file not found: §e" + path));
             return 1;
         }
 
@@ -2408,7 +2413,7 @@ public class UBSAdminCommands {
                 }
             }
         } catch (IOException ex) {
-            source.sendSystemMessage(Component.literal("§cFailed to read import file: §e" + ex.getMessage()));
+            source.sendSystemMessage(moneyLiteral("§cFailed to read import file: §e" + ex.getMessage()));
             return 1;
         }
 
@@ -2420,15 +2425,15 @@ public class UBSAdminCommands {
         BankManager.markDirty();
 
         MutableComponent summary = Component.empty();
-        summary.append(Component.literal("§7Source: §f" + path + "\n"));
-        summary.append(Component.literal("§7Created: §a" + stats.created + "\n"));
-        summary.append(Component.literal("§7Updated: §e" + stats.updated + "\n"));
-        summary.append(Component.literal("§7Imported History Entries: §b" + stats.importedHistoryEntries + "\n"));
-        summary.append(Component.literal("§7Failed: §c" + stats.failed + "\n"));
+        summary.append(moneyLiteral("§7Source: §f" + path + "\n"));
+        summary.append(moneyLiteral("§7Created: §a" + stats.created + "\n"));
+        summary.append(moneyLiteral("§7Updated: §e" + stats.updated + "\n"));
+        summary.append(moneyLiteral("§7Imported History Entries: §b" + stats.importedHistoryEntries + "\n"));
+        summary.append(moneyLiteral("§7Failed: §c" + stats.failed + "\n"));
         if (!stats.errors.isEmpty()) {
-            summary.append(Component.literal("\n§cFirst errors:\n"));
+            summary.append(moneyLiteral("\n§cFirst errors:\n"));
             for (int i = 0; i < Math.min(5, stats.errors.size()); i++) {
-                summary.append(Component.literal("§8- §c" + stats.errors.get(i) + "\n"));
+                summary.append(moneyLiteral("§8- §c" + stats.errors.get(i) + "\n"));
             }
         }
 
@@ -2547,7 +2552,7 @@ public class UBSAdminCommands {
             }
             return path;
         } catch (InvalidPathException ex) {
-            source.sendSystemMessage(Component.literal("§cInvalid path: §e" + rawPath));
+            source.sendSystemMessage(moneyLiteral("§cInvalid path: §e" + rawPath));
             return null;
         }
     }
@@ -2800,7 +2805,7 @@ public class UBSAdminCommands {
         }
         ServerPlayer owner = server.getPlayerList().getPlayer(bank.getBankOwnerId());
         if (owner != null) {
-            owner.sendSystemMessage(Component.literal(message));
+            owner.sendSystemMessage(moneyLiteral(message));
         }
     }
 
@@ -2809,11 +2814,11 @@ public class UBSAdminCommands {
         try {
             amount = new BigDecimal(amountRaw);
         } catch (NumberFormatException e) {
-            source.sendSystemMessage(Component.literal("§cThe amount '§e" + amountRaw + "§c' is not a valid number."));
+            source.sendSystemMessage(moneyLiteral("§cThe amount '§e" + amountRaw + "§c' is not a valid number."));
             return null;
         }
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            source.sendSystemMessage(Component.literal("§cAmount must be greater than zero."));
+            source.sendSystemMessage(moneyLiteral("§cAmount must be greater than zero."));
             return null;
         }
         return amount;

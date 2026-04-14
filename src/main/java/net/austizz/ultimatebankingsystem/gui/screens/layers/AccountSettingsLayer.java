@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -519,14 +520,18 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 ));
             }
         } else {
-            statusMessage = payload.errorMessage().isEmpty() ? "PIN change failed." : payload.errorMessage();
+            statusMessage = payload.errorMessage().isEmpty()
+                    ? "PIN change failed."
+                    : MoneyText.abbreviateCurrencyTokens(payload.errorMessage());
             statusSuccess = false;
         }
     }
 
     public void updateWithdrawalLimitResult(SetTemporaryWithdrawalLimitResponsePayload payload) {
         if (!payload.success()) {
-            statusMessage = payload.errorMessage().isEmpty() ? "Could not apply temporary limit." : payload.errorMessage();
+            statusMessage = payload.errorMessage().isEmpty()
+                    ? "Could not apply temporary limit."
+                    : MoneyText.abbreviateCurrencyTokens(payload.errorMessage());
             statusSuccess = false;
             return;
         }
@@ -633,11 +638,11 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 graphics.drawString(font, "Confirm PIN", contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
         } else {
-            graphics.drawString(font, "Default ATM limit: $" + defaultWithdrawalLimit, contentLeft + 6, sectionTop + 8, COLOR_LABEL);
-            graphics.drawString(font, "Active ATM limit: $" + effectiveWithdrawalLimit, contentLeft + 152, sectionTop + 8, COLOR_VALUE);
-            graphics.drawString(font, "Daily limit: $" + dailyWithdrawalLimit, contentLeft + 6, sectionTop + 22, COLOR_LABEL);
-            graphics.drawString(font, "Used today: $" + dailyWithdrawnToday, contentLeft + 152, sectionTop + 22, COLOR_VALUE);
-            graphics.drawString(font, "Remaining today: $" + dailyWithdrawalRemaining, contentLeft + 6, sectionTop + 36, COLOR_VALUE);
+            graphics.drawString(font, "Default ATM limit: " + MoneyText.abbreviateWithDollar(defaultWithdrawalLimit), contentLeft + 6, sectionTop + 8, COLOR_LABEL);
+            graphics.drawString(font, "Active ATM limit: " + MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit), contentLeft + 152, sectionTop + 8, COLOR_VALUE);
+            graphics.drawString(font, "Daily limit: " + MoneyText.abbreviateWithDollar(dailyWithdrawalLimit), contentLeft + 6, sectionTop + 22, COLOR_LABEL);
+            graphics.drawString(font, "Used today: " + MoneyText.abbreviateWithDollar(dailyWithdrawnToday), contentLeft + 152, sectionTop + 22, COLOR_VALUE);
+            graphics.drawString(font, "Remaining today: " + MoneyText.abbreviateWithDollar(dailyWithdrawalRemaining), contentLeft + 6, sectionTop + 36, COLOR_VALUE);
             drawFittedString(graphics, "Resets: " + formatResetTime(dailyResetEpochMillis), contentLeft + 152, sectionTop + 36, contentWidth - 156, COLOR_MUTED);
 
             graphics.drawString(font, "Custom limit", contentLeft + 6, panelTop + 136, COLOR_LABEL);

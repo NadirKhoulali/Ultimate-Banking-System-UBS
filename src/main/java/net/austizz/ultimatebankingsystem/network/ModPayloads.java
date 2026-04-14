@@ -28,6 +28,7 @@ import net.austizz.ultimatebankingsystem.gui.screens.layers.TransferLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.WithdrawLayer;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -1306,7 +1307,7 @@ public final class ModPayloads {
                 PayRequestManager.markDeclined(request.getRequestId());
                 ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
                 if (requester != null) {
-                    requester.sendSystemMessage(Component.literal(
+                    requester.sendSystemMessage(moneyLiteral(
                             "§c" + player.getName().getString() + " declined your pay request for $" + request.getAmount().toPlainString() + "."
                     ));
                 }
@@ -1345,7 +1346,7 @@ public final class ModPayloads {
                 PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Requester destination account is unavailable."));
                 ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
                 if (requester != null) {
-                    requester.sendSystemMessage(Component.literal(
+                    requester.sendSystemMessage(moneyLiteral(
                             "§cYour pay request could not be completed because your destination account is unavailable."
                     ));
                 }
@@ -1369,7 +1370,7 @@ public final class ModPayloads {
                 PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(false, "Payment failed. Check balance/account status."));
                 ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
                 if (requester != null) {
-                    requester.sendSystemMessage(Component.literal(
+                    requester.sendSystemMessage(moneyLiteral(
                             "§e" + player.getName().getString() + " tried to accept your pay request, but payment failed."
                     ));
                 }
@@ -1383,14 +1384,16 @@ public final class ModPayloads {
 
             ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
             if (requester != null) {
-                requester.sendSystemMessage(Component.literal(
+                requester.sendSystemMessage(moneyLiteral(
                         "§a" + player.getName().getString() + " accepted your pay request for $" + request.getAmount().toPlainString() + "."
                 ));
             }
 
             PacketDistributor.sendToPlayer(player, new PayRequestActionResponsePayload(
                     true,
-                    "Paid $" + request.getAmount().toPlainString() + " using " + sender.getAccountType().label + "."
+                    MoneyText.abbreviateCurrencyTokens(
+                            "Paid $" + request.getAmount().toPlainString() + " using " + sender.getAccountType().label + "."
+                    )
             ));
         });
     }
@@ -1518,7 +1521,7 @@ public final class ModPayloads {
 
         AccountHolder primary = findPrimaryAccount(centralBank, payer.getUUID());
         if (primary == null) {
-            payer.sendSystemMessage(Component.literal(
+            payer.sendSystemMessage(moneyLiteral(
                     "§6Pay Request: §e" + requester.getName().getString() + " §7requests §6$"
                             + request.getAmount().toPlainString() + "§7.\n"
                             + "§7Destination: §f" + destinationLabel
@@ -1529,14 +1532,14 @@ public final class ModPayloads {
 
         String requestId = request.getRequestId().toString();
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7From: §e" + requester.getName().getString() + "\n"));
-        body.append(Component.literal("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
-        body.append(Component.literal("§7Destination: §f" + destinationLabel + "\n"));
-        body.append(Component.literal("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
+        body.append(moneyLiteral("§7From: §e" + requester.getName().getString() + "\n"));
+        body.append(moneyLiteral("§7Amount: §6$" + request.getAmount().toPlainString() + "\n"));
+        body.append(moneyLiteral("§7Destination: §f" + destinationLabel + "\n"));
+        body.append(moneyLiteral("§7Primary account: §f" + accountLabel(primary) + "\n\n"));
         body.append(clickAction("[Accept]", ChatFormatting.GREEN, "/ubs_payrequest accept " + requestId, "Accept with primary account"));
-        body.append(Component.literal(" "));
+        body.append(moneyLiteral(" "));
         body.append(clickAction("[Decline]", ChatFormatting.RED, "/ubs_payrequest decline " + requestId, "Decline this request"));
-        body.append(Component.literal(" "));
+        body.append(moneyLiteral(" "));
         body.append(clickAction("[Choose Account]", ChatFormatting.AQUA, "/ubs_payrequest choose " + requestId, "Pay from a different account"));
 
         payer.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§ePay Request", body));
@@ -1553,23 +1556,23 @@ public final class ModPayloads {
                 .toList();
 
         MutableComponent body = Component.empty();
-        body.append(Component.literal("§7" + titleLine + "\n"));
-        body.append(Component.literal("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
+        body.append(moneyLiteral("§7" + titleLine + "\n"));
+        body.append(moneyLiteral("§7Requested amount: §6$" + request.getAmount().toPlainString() + "\n\n"));
         AccountHolder destination = findReceiverAccountForRequest(centralBank, request);
-        body.append(Component.literal("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
+        body.append(moneyLiteral("§7Destination: §f" + (destination == null ? "Unavailable" : accountLabel(destination)) + "\n\n"));
 
         if (payerAccounts.isEmpty()) {
-            body.append(Component.literal("§cYou have no accounts available.\n"));
+            body.append(moneyLiteral("§cYou have no accounts available.\n"));
         } else {
             for (AccountHolder account : payerAccounts) {
                 String buttonLabel = "[" + account.getAccountType().label + " $" + account.getBalance().toPlainString() + "]";
                 String command = "/ubs_payrequest accept " + request.getRequestId() + " " + account.getAccountUUID();
                 body.append(clickAction(buttonLabel, ChatFormatting.AQUA, command, "Pay using " + accountLabel(account)));
-                body.append(Component.literal(" §7" + shortId(account.getAccountUUID()) + "\n"));
+                body.append(moneyLiteral(" §7" + shortId(account.getAccountUUID()) + "\n"));
             }
         }
 
-        body.append(Component.literal("\n"));
+        body.append(moneyLiteral("\n"));
         body.append(clickAction("[Decline]", ChatFormatting.RED,
                 "/ubs_payrequest decline " + request.getRequestId(),
                 "Decline this request"));
@@ -1580,20 +1583,24 @@ public final class ModPayloads {
                                                 ChatFormatting color,
                                                 String runCommand,
                                                 String hoverText) {
-        return Component.literal(label).setStyle(
+        return moneyLiteral(label).setStyle(
                 Style.EMPTY
                         .withColor(color)
                         .withBold(true)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, runCommand))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hoverText)))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral(hoverText)))
         );
     }
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {
-        return Component.literal("§6§lUltimate Banking System §7- ")
-                .append(Component.literal(title).withStyle(accentColor))
-                .append(Component.literal("\n§8────────────────────────\n"))
+        return moneyLiteral("§6§lUltimate Banking System §7- ")
+                .append(moneyLiteral(title).withStyle(accentColor))
+                .append(moneyLiteral("\n§8────────────────────────\n"))
                 .append(body);
+    }
+
+    private static MutableComponent moneyLiteral(String text) {
+        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
     }
 
     private static String accountLabel(AccountHolder account) {

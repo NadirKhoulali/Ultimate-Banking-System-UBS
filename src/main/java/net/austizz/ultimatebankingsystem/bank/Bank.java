@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.BankToUserTransacti
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -166,13 +167,18 @@ public class Bank {
         BankManager.markDirty();
     }
     public AccountHolder getPlayerAccount(Player player) {
-        UltimateBankingSystem.LOGGER.info("Geting player account for " + player.getName());
+        if (player == null) {
+            return null;
+        }
+        UltimateBankingSystem.LOGGER.debug("Getting player account for {}", player.getName().getString());
         for (AccountHolder account : this.BankAccounts.values()) {
-            UltimateBankingSystem.LOGGER.info("Player UUID : " + player.getUUID() + " " + "Account UUID: " + account.getPlayerUUID());
-            if (account.getPlayerUUID().equals(player.getUUID())) {
+            if (account == null) {
+                continue;
+            }
+            if (player.getUUID().equals(account.getPlayerUUID())) {
                 return account;
             }
-        };
+        }
         return null;
     }
     public boolean AddAccount(AccountHolder AccountHolder) {
@@ -284,9 +290,9 @@ public class Bank {
                 ServerPlayer holder = server.getPlayerList().getPlayer(account.getPlayerUUID());
                 if (holder != null) {
                     holder.sendSystemMessage(Component.literal(
-                            "§aInterest paid: §6$" + payoutAmount.toPlainString()
-                                    + " §a(" + annualRate + "% APR) New balance: §f$"
-                                    + account.getBalance().toPlainString()
+                            "§aInterest paid: §6" + MoneyText.abbreviateWithDollar(payoutAmount)
+                                    + " §a(" + annualRate + "% APR) New balance: §f"
+                                    + MoneyText.abbreviateWithDollar(account.getBalance())
                     ));
                 }
             }
@@ -352,8 +358,8 @@ public class Bank {
         ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
         if (holder != null) {
             holder.sendSystemMessage(Component.literal(
-                    "§aYour CD matured. Interest credited: §6$" + interest.toPlainString()
-                            + " §a(new balance: §f$" + account.getBalance().toPlainString() + "§a)."
+                    "§aYour CD matured. Interest credited: §6" + MoneyText.abbreviateWithDollar(interest)
+                            + " §a(new balance: §f" + MoneyText.abbreviateWithDollar(account.getBalance()) + "§a)."
             ));
         }
     }

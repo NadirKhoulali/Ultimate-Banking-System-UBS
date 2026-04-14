@@ -7,7 +7,22 @@ import net.neoforged.api.distmarker.OnlyIn;
 
 @OnlyIn(Dist.CLIENT)
 public class OwnerPcScreenHelper {
+    private static BankOwnerPcScreen cachedScreen;
+
     public static void openOwnerPcScreen() {
-        Minecraft.getInstance().setScreen(new BankOwnerPcScreen(Component.literal("Bank Owner PC")));
+        if (cachedScreen == null) {
+            cachedScreen = new BankOwnerPcScreen(Component.literal("Bank Owner PC"));
+        }
+        Minecraft.getInstance().setScreen(cachedScreen);
+    }
+
+    public static void invalidateCachedScreen(BankOwnerPcScreen screen) {
+        if (cachedScreen == screen) {
+            cachedScreen = null;
+        }
+    }
+
+    public static void invalidateCachedScreen() {
+        cachedScreen = null;
     }
 }

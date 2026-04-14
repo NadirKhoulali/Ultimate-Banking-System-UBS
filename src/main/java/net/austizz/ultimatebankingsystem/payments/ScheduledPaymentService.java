@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.payments;
 
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -47,7 +48,7 @@ public final class ScheduledPaymentService {
                     if (online.hasPermissions(3)) {
                         online.sendSystemMessage(Component.literal(
                                 "§c[UBS] Scheduled payment failed: " + payment.getPaymentId()
-                                        + " (" + payment.getAmount().toPlainString() + ")"
+                                        + " (" + MoneyText.abbreviateWithDollar(payment.getAmount()) + ")"
                         ));
                     }
                 }

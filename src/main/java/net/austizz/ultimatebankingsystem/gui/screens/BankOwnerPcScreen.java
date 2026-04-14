@@ -11,6 +11,7 @@ import net.austizz.ultimatebankingsystem.network.OwnerPcCreateBankPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionResponsePayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -205,6 +206,7 @@ public class BankOwnerPcScreen extends Screen {
     private MarketOfferData pendingMarketAccept;
     private RectHitbox marketConfirmAcceptHitbox;
     private RectHitbox marketConfirmCancelHitbox;
+    private RectHitbox accountProfileCopyIdHitbox;
     private boolean refreshMarketAfterNextResponse;
     private boolean useVirtualScale;
     private float virtualScaleX = 1.0F;
@@ -287,6 +289,7 @@ public class BankOwnerPcScreen extends Screen {
     private boolean authInitialized;
     private AuthStage authStage = AuthStage.LOADING;
     private boolean taskbarMenuOpen;
+    private boolean discardCachedScreenOnClose;
 
     private final int[] paintPixels = new int[48 * 32];
     private int paintSelectedColor = 0xFF111111;
@@ -318,6 +321,7 @@ public class BankOwnerPcScreen extends Screen {
         this.visibleSystemAppCards.clear();
         this.marketConfirmAcceptHitbox = null;
         this.marketConfirmCancelHitbox = null;
+        this.accountProfileCopyIdHitbox = null;
         this.taskbarClockHitbox = null;
         this.taskbarMenuHitbox = null;
         this.taskbarLogoutHitbox = null;
@@ -1549,6 +1553,7 @@ public class BankOwnerPcScreen extends Screen {
                     boolean accountProfileView = accountProfileOpen
                             && "SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction)
                             && selectedAccountCard != null;
+                    boolean accountsListView = "SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction) && !accountProfileView;
                     if (accountProfileView) {
                         if (innerWidth < 320) {
                             addSectionPcButton(
@@ -1671,6 +1676,21 @@ public class BankOwnerPcScreen extends Screen {
                                     sendOwnerPcAction(overviewDetailAction, "", "", "", "");
                                 }
                         ).setLabelOffset(6, 1);
+                    }
+
+                    if (accountsListView) {
+                        int searchY = Math.max(y + 40, sectionViewportY + sectionViewportH - 22);
+                        DesktopEditBox search = addFormInput(
+                                "overview.accounts.search",
+                                innerX,
+                                searchY,
+                                innerWidth,
+                                "Search player / type / account id..."
+                        );
+                        search.setResponder(value -> {
+                            formValues.put("overview.accounts.search", value == null ? "" : value);
+                            outputScroll = 0;
+                        });
                     }
                 } else {
                     String[] labels = {"Info", "Dashboard", "Reserve", "Accounts", "Certificates", "Loan Summary"};
@@ -2304,6 +2324,9 @@ public class BankOwnerPcScreen extends Screen {
     private void openOverviewDetail(String action) {
         overviewDetailOpen = true;
         overviewDetailAction = action == null || action.isBlank() ? "SHOW_INFO" : action;
+        if (!"SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction)) {
+            formValues.put("overview.accounts.search", "");
+        }
         selectedAccountCard = null;
         accountProfileOpen = false;
         lendingMarketOpen = false;
@@ -3621,7 +3644,7 @@ public class BankOwnerPcScreen extends Screen {
                     int cols = bodyWidth >= 520 ? 2 : 1;
                     int cardH = 46;
                     int gap = 8;
-                    int rows = (extractOverviewCardEntries().size() + cols - 1) / cols;
+                    int rows = (extractOverviewCardEntries(overviewDetailAction).size() + cols - 1) / cols;
                     int visibleRows = Math.max(1, (bodyHeight + gap) / (cardH + gap));
                     maxScroll = Math.max(0, rows - visibleRows);
                 } else if (help != null
@@ -3673,6 +3696,7 @@ public class BankOwnerPcScreen extends Screen {
             if (taskbarTurnOffHitbox != null && taskbarTurnOffHitbox.contains(localMouseX, localMouseY)) {
                 taskbarMenuOpen = false;
                 ClientOwnerPcData.clearDesktopSession();
+                discardCachedScreenOnClose = true;
                 this.onClose();
                 return true;
             }
@@ -3778,6 +3802,23 @@ public class BankOwnerPcScreen extends Screen {
                 && activeSection == Section.OVERVIEW
                 && overviewDetailOpen
                 && "SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction)
+                && accountProfileOpen
+                && selectedAccountCard != null
+                && accountProfileCopyIdHitbox != null
+                && accountProfileCopyIdHitbox.contains(localMouseX, localMouseY)) {
+            Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+            if (mc != null && mc.keyboardHandler != null) {
+                mc.keyboardHandler.setClipboard(selectedAccountCard.id());
+            }
+            ClientOwnerPcData.setToast(true, "Copied full account id to clipboard.");
+            return true;
+        }
+
+        if (button == 0
+                && activeWindow == WindowMode.BANK_APP
+                && activeSection == Section.OVERVIEW
+                && overviewDetailOpen
+                && "SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction)
                 && !accountProfileOpen) {
             for (AccountCardHitbox card : visibleAccountCards) {
                 if (card.contains(localMouseX, localMouseY)) {
@@ -3824,6 +3865,16 @@ public class BankOwnerPcScreen extends Screen {
 
     @Override
     public void onClose() {
+        if (!discardCachedScreenOnClose) {
+            // Preserve open windows and app state so reopening behaves like returning to the PC.
+            taskbarMenuOpen = false;
+            paintDrawing = false;
+            notepadFocused = false;
+            suppressNextNotepadSpaceChar = false;
+            super.onClose();
+            return;
+        }
+
         bankWindows.clear();
         bankWindowOrder.clear();
         utilityWindowOrder.clear();
@@ -3869,12 +3920,15 @@ public class BankOwnerPcScreen extends Screen {
         taskbarMenuHitbox = null;
         taskbarLogoutHitbox = null;
         taskbarTurnOffHitbox = null;
+        accountProfileCopyIdHitbox = null;
         taskbarMenuOpen = false;
         desktopAuthenticated = false;
         authInitialized = false;
         authStage = AuthStage.LOADING;
         paintDrawing = false;
         ClientOwnerPcData.clearForUiClose();
+        OwnerPcScreenHelper.invalidateCachedScreen(this);
+        discardCachedScreenOnClose = false;
         super.onClose();
     }
 
@@ -4236,6 +4290,7 @@ public class BankOwnerPcScreen extends Screen {
         visibleMarketActions.clear();
         marketConfirmAcceptHitbox = null;
         marketConfirmCancelHitbox = null;
+        accountProfileCopyIdHitbox = null;
         int bodyX = x + OUTPUT_PANEL_INSET;
         int bodyY = y + OUTPUT_PANEL_INSET;
         int bodyW = Math.max(1, width - (OUTPUT_PANEL_INSET * 2));
@@ -4249,7 +4304,7 @@ public class BankOwnerPcScreen extends Screen {
             int contentHeight = getOverviewDashboardContentHeight(bodyW, bodyH);
             int maxScroll = Math.max(0, contentHeight - bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
-            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawOverviewDashboard(graphics, data, overviewDetailAction, bodyX, bodyY - outputScroll, bodyW, contentHeight);
             graphics.disableScissor();
             drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
@@ -4259,7 +4314,7 @@ public class BankOwnerPcScreen extends Screen {
         if (activeSection == Section.OVERVIEW
                 && overviewDetailOpen
                 && data != null) {
-            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             if ("SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction) && accountProfileOpen && selectedAccountCard != null) {
                 visibleAccountCards.clear();
                 int contentHeight = getAccountProfileContentHeight(bodyW, bodyH);
@@ -4287,7 +4342,7 @@ public class BankOwnerPcScreen extends Screen {
             int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
             int maxScroll = Math.max(0, contentHeight - bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
-            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
             graphics.disableScissor();
             drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
@@ -4297,7 +4352,7 @@ public class BankOwnerPcScreen extends Screen {
             int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
             int maxScroll = Math.max(0, contentHeight - bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
-            graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
             graphics.disableScissor();
             drawOutputScrollbar(graphics, x, y, width, height, outputScroll, maxScroll);
@@ -4337,7 +4392,7 @@ public class BankOwnerPcScreen extends Screen {
         int maxScroll = Math.max(0, lines.size() - available);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
-        graphics.enableScissor(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+        enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
         int lineY = bodyY;
         for (int i = 0; i < available; i++) {
             int idx = outputScroll + i;
@@ -4649,9 +4704,15 @@ public class BankOwnerPcScreen extends Screen {
                                        int width,
                                        int height) {
         visibleAccountCards.clear();
-        List<String> cards = extractOverviewCardEntries();
+        List<String> cards = extractOverviewCardEntries(action);
         if (cards.isEmpty()) {
-            graphics.drawString(this.font, "No entries available.", x + 6, y + 8, 0xFFE6F3FF, false);
+            String query = formValues.getOrDefault("overview.accounts.search", "").trim();
+            if ("SHOW_ACCOUNTS".equalsIgnoreCase(action) && !query.isBlank()) {
+                graphics.drawString(this.font, "No accounts match \"" + fitToWidth(query, 40) + "\".", x + 6, y + 8, 0xFFE6F3FF, false);
+                graphics.drawString(this.font, "Try player name, type, or account id.", x + 6, y + 20, 0xFFBFD7EE, false);
+            } else {
+                graphics.drawString(this.font, "No entries available.", x + 6, y + 8, 0xFFE6F3FF, false);
+            }
             return;
         }
 
@@ -4686,12 +4747,14 @@ public class BankOwnerPcScreen extends Screen {
         }
     }
 
-    private List<String> extractOverviewCardEntries() {
+    private List<String> extractOverviewCardEntries(String action) {
         List<String> base = ClientOwnerPcData.getActionOutputLines();
         if (base.isEmpty()) {
             return List.of();
         }
         List<String> out = new ArrayList<>();
+        String query = formValues.getOrDefault("overview.accounts.search", "").trim().toLowerCase(Locale.ROOT);
+        boolean filterAccounts = "SHOW_ACCOUNTS".equalsIgnoreCase(action) && !query.isBlank();
         for (int i = 0; i < base.size(); i++) {
             String line = base.get(i) == null ? "" : base.get(i).trim();
             if (line.isEmpty()) {
@@ -4701,8 +4764,21 @@ public class BankOwnerPcScreen extends Screen {
                 continue;
             }
             if (line.startsWith("- ")) {
-                out.add(line.substring(2).trim());
+                String entry = line.substring(2).trim();
+                if (filterAccounts) {
+                    AccountCardData account = parseAccountCard(entry);
+                    if (account == null || !accountMatchesQuery(account, query)) {
+                        continue;
+                    }
+                }
+                out.add(entry);
             } else if (!line.contains("(") || !line.endsWith(")")) {
+                if (filterAccounts) {
+                    AccountCardData account = parseAccountCard(line);
+                    if (account == null || !accountMatchesQuery(account, query)) {
+                        continue;
+                    }
+                }
                 out.add(line);
             }
         }
@@ -4725,7 +4801,7 @@ public class BankOwnerPcScreen extends Screen {
             String[] parts = text.split("\\|");
             String player = parts.length > 0 ? parts[0].trim() : "Account";
             String type = parts.length > 1 ? parts[1].trim() : "";
-            String balance = parts.length > 2 ? parts[2].trim() : "";
+            String balance = parts.length > 2 ? "$" + compactCurrency(parts[2].trim()) : "$0.00";
             String id = parts.length > 3 ? parts[3].trim() : "";
 
             int avatarX = x + 6;
@@ -4744,7 +4820,7 @@ public class BankOwnerPcScreen extends Screen {
             String id = parts.length > 0 ? parts[0].trim() : "CD";
             String holder = parts.length > 1 ? parts[1].trim() : "";
             String tier = parts.length > 2 ? parts[2].trim() : "";
-            String maturity = parts.length > 3 ? parts[3].trim() : "";
+            String maturity = parts.length > 3 ? abbreviateMoneyInLine(parts[3].trim()) : "";
 
             int chipX = x + 6;
             int chipY = y + 8;
@@ -4759,7 +4835,7 @@ public class BankOwnerPcScreen extends Screen {
             String[] parts = text.split("\\|");
             String id = parts.length > 0 ? parts[0].trim() : "Loan";
             String type = parts.length > 1 ? parts[1].trim() : "";
-            String remaining = parts.length > 2 ? parts[2].trim() : "";
+            String remaining = parts.length > 2 ? abbreviateMoneyInLine(parts[2].trim()) : "";
             String state = parts.length > 3 ? parts[3].trim() : "";
 
             int stateColor = state.toUpperCase(Locale.ROOT).contains("OPEN")
@@ -4775,7 +4851,7 @@ public class BankOwnerPcScreen extends Screen {
             graphics.drawString(this.font, fitToWidth(remaining, width - 12), x + 6, y + 22, 0xFFD4E8FF, false);
         } else {
             graphics.drawString(this.font, fitToWidth(overviewActionLabel(action), width - 12), x + 6, y + 7, 0xFFD8EDFF, false);
-            graphics.drawString(this.font, fitToWidth(text, width - 12), x + 6, y + 22, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, fitToWidth(abbreviateMoneyInLine(text), width - 12), x + 6, y + 22, 0xFFFFFFFF, false);
         }
     }
 
@@ -4791,80 +4867,97 @@ public class BankOwnerPcScreen extends Screen {
         return new AccountCardData(player, type, balance, id);
     }
 
+    private boolean accountMatchesQuery(AccountCardData account, String query) {
+        if (account == null || query == null || query.isBlank()) {
+            return true;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return account.player().toLowerCase(Locale.ROOT).contains(q)
+                || account.type().toLowerCase(Locale.ROOT).contains(q)
+                || account.id().toLowerCase(Locale.ROOT).contains(q)
+                || account.balance().toLowerCase(Locale.ROOT).contains(q);
+    }
+
     private void drawAccountProfilePanel(GuiGraphics graphics,
                                          AccountCardData account,
                                          int x,
                                          int y,
                                          int width,
                                          int height) {
-        if (width < 60 || height < 60) {
+        accountProfileCopyIdHitbox = null;
+        if (width < 60 || height < 90) {
             return;
         }
+        String fullBalance = "$" + compactCurrency(account.balance());
+        int headerH = Math.min(46, Math.max(40, height / 5));
         graphics.fill(x, y, x + width, y + height, 0x5A1D3550);
-        graphics.fill(x, y, x + width, y + 30, 0xB2234B73);
-        graphics.fill(x, y + 30, x + width, y + 31, 0x889CC8EE);
+        graphics.fill(x, y, x + width, y + headerH, 0xB2234B73);
+        graphics.fill(x, y + headerH, x + width, y + headerH + 1, 0x889CC8EE);
         graphics.drawString(this.font, "Account Profile", x + 8, y + 10, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(account.player(), Math.max(40, width - 126)), x + 118, y + 10, 0xFFE2F1FF, false);
-        graphics.drawString(this.font, fitToWidth(account.type(), Math.max(40, width - 126)), x + 118, y + 24, 0xFFCFE6FF, false);
+        int profileTextX = x + 118;
+        int profileTextW = Math.max(52, width - 126);
+        graphics.drawString(this.font, fitToWidth(account.player(), profileTextW), profileTextX, y + 9, 0xFFE2F1FF, false);
+        graphics.drawString(this.font, fitToWidth(account.type(), profileTextW), profileTextX, y + 22, 0xFFCFE6FF, false);
 
-        int cardGap = height < 190 ? 6 : 8;
-        int cardCols = width >= 420 ? 2 : 1;
-        int cardW = Math.max(120, (width - 20 - (cardGap * (cardCols - 1))) / cardCols);
-        int cardH = height < 190 ? 34 : 42;
-        int cardY = y + 38;
+        int contentX = x + 10;
+        int contentW = Math.max(120, width - 20);
+        int balanceCardY = y + headerH + 8;
+        int balanceCardH = 30;
+        int idCardH = Math.max(32, Math.min(38, height / 4));
+        int idCardY = y + height - idCardH - 8;
 
-        drawMetricCard(graphics, x + 10, cardY, cardW, cardH, "Balance", account.balance(), 0xFF67C789);
-        if (cardCols > 1) {
-            drawMetricCard(graphics, x + 10 + cardW + cardGap, cardY, cardW, cardH, "Account ID", account.id(), 0xFF70B9F2);
-        } else {
-            drawMetricCard(graphics, x + 10, cardY + cardH + cardGap, cardW, cardH, "Account ID", account.id(), 0xFF70B9F2);
+        int detailsTop = balanceCardY + balanceCardH + 8;
+        int detailsBottom = idCardY - 8;
+        if (detailsBottom < detailsTop + 20) {
+            detailsBottom = detailsTop + 20;
         }
 
-        int infoTop = cardY + (cardCols > 1 ? (cardH + 10) : ((cardH * 2) + cardGap + 10));
-        int avatarSize = Math.min(40, Math.max(24, (height - (infoTop - y) - 52) / 2));
-        boolean drawAvatar = infoTop + avatarSize + 8 <= (y + height - 8);
-        if (drawAvatar) {
-            int avatarX = x + 14;
-            int avatarY = infoTop;
+        graphics.fill(contentX - 1, balanceCardY - 1, contentX + contentW + 1, balanceCardY + balanceCardH + 1, 0xFF2E4D6D);
+        graphics.fill(contentX, balanceCardY, contentX + contentW, balanceCardY + balanceCardH, 0x8A1A304A);
+        graphics.fill(contentX, balanceCardY, contentX + contentW, balanceCardY + 2, 0xFF67C789);
+        graphics.drawString(this.font, "Balance", contentX + 8, balanceCardY + 7, 0xFFC6DEF7, false);
+        graphics.drawString(this.font, fitToWidth(fullBalance, contentW - 90), contentX + 74, balanceCardY + 7, 0xFFFFFFFF, false);
+
+        graphics.fill(contentX - 1, idCardY - 1, contentX + contentW + 1, idCardY + idCardH + 1, 0xFF2E4D6D);
+        graphics.fill(contentX, idCardY, contentX + contentW, idCardY + idCardH, 0x8A1A304A);
+        graphics.fill(contentX, idCardY, contentX + contentW, idCardY + 2, 0xFF70B9F2);
+        graphics.drawString(this.font, "Account ID", contentX + 6, idCardY + 7, 0xFFC6DEF7, false);
+
+        int copyW = Math.min(88, Math.max(72, contentW / 4));
+        int copyH = 16;
+        int copyX = contentX + contentW - copyW - 8;
+        int copyY = idCardY + Math.max(8, (idCardH - copyH) / 2);
+        drawInlineActionButton(graphics, copyX, copyY, copyW, copyH, "Copy ID", 0xFF5E9ED0);
+        accountProfileCopyIdHitbox = new RectHitbox(copyX, copyY, copyW, copyH);
+
+        int idTextY = idCardY + Math.max(8, (idCardH / 2) - 1);
+        int idTextW = Math.max(20, contentW - copyW - 28);
+        graphics.drawString(this.font, fitToWidth(account.id(), idTextW), contentX + 6, idTextY, 0xFFFFFFFF, false);
+
+        if (detailsBottom - detailsTop >= 36) {
+            graphics.fill(contentX, detailsTop, contentX + contentW, detailsBottom, 0x6A16304A);
+            graphics.fill(contentX, detailsTop, contentX + contentW, detailsTop + 1, 0x88A8CDEE);
+
+            int avatarSize = Math.min(34, Math.max(24, detailsBottom - detailsTop - 18));
+            int avatarX = contentX + 8;
+            int avatarY = detailsTop + 7;
             graphics.fill(avatarX - 1, avatarY - 1, avatarX + avatarSize + 1, avatarY + avatarSize + 1, 0xFF2E567D);
             graphics.fill(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize, 0xFF67A5DC);
             String initials = account.player().isBlank() ? "?" : account.player().substring(0, 1).toUpperCase(Locale.ROOT);
             graphics.drawCenteredString(this.font, initials, avatarX + (avatarSize / 2), avatarY + (avatarSize / 2) - 4, 0xFFFFFFFF);
-            infoTop = avatarY + avatarSize + 8;
-        }
 
-        int detailsTop = infoTop;
-        int detailsBottom = y + height - 8;
-        if (detailsBottom - detailsTop >= 36) {
-            graphics.fill(x + 10, detailsTop, x + width - 10, detailsBottom, 0x6A16304A);
-            graphics.fill(x + 10, detailsTop, x + width - 10, detailsTop + 1, 0x88A8CDEE);
-
-            int maxRows = Math.max(1, (detailsBottom - detailsTop - 10) / 12);
+            int rowX = avatarX + avatarSize + 12;
+            int rowW = Math.max(40, contentX + contentW - rowX - 8);
             int rowY = detailsTop + 8;
-            if (maxRows-- > 0) {
-                graphics.drawString(this.font, "Player", x + 18, rowY, 0xFFBFDFFF, false);
-                graphics.drawString(this.font, fitToWidth(account.player(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
-            }
-            rowY += 12;
-            if (maxRows-- > 0) {
-                graphics.drawString(this.font, "Type", x + 18, rowY, 0xFFBFDFFF, false);
-                graphics.drawString(this.font, fitToWidth(account.type(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
-            }
-            rowY += 12;
-            if (maxRows-- > 0) {
-                graphics.drawString(this.font, "Balance", x + 18, rowY, 0xFFBFDFFF, false);
-                graphics.drawString(this.font, fitToWidth(account.balance(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
-            }
-            rowY += 12;
-            if (maxRows-- > 0) {
-                graphics.drawString(this.font, "Account ID", x + 18, rowY, 0xFFBFDFFF, false);
-                graphics.drawString(this.font, fitToWidth(account.id(), width - 150), x + 106, rowY, 0xFFFFFFFF, false);
-            }
-            rowY += 12;
-            if (maxRows > 0) {
-                graphics.drawString(this.font, "Status", x + 18, rowY, 0xFFBFDFFF, false);
-                graphics.drawString(this.font, "Active", x + 106, rowY, 0xFF8BE3A8, false);
-            }
+            int rowStep = 12;
+            graphics.drawString(this.font, "Player", rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, fitToWidth(account.player(), rowW - 62), rowX + 56, rowY, 0xFFFFFFFF, false);
+            rowY += rowStep;
+            graphics.drawString(this.font, "Type", rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, fitToWidth(account.type(), rowW - 62), rowX + 56, rowY, 0xFFFFFFFF, false);
+            rowY += rowStep;
+            graphics.drawString(this.font, "Status", rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, "Active", rowX + 56, rowY, 0xFF8BE3A8, false);
         }
     }
 
@@ -4915,7 +5008,7 @@ public class BankOwnerPcScreen extends Screen {
             int maxRowScroll = Math.max(0, rows - visibleRows);
             outputScroll = Math.max(0, Math.min(outputScroll, maxRowScroll));
 
-            graphics.enableScissor(listX, listY, listX + listW, listY + listH);
+            enableScaledScissor(graphics, listX, listY, listX + listW, listY + listH);
             int startRow = outputScroll;
             int endRow = Math.min(rows, startRow + visibleRows);
             for (int row = startRow; row < endRow; row++) {
@@ -5293,26 +5386,11 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private String compactCurrency(String value) {
-        BigDecimal amount = parseDecimal(value).abs();
-        String suffix = "";
-        BigDecimal divisor = BigDecimal.ONE;
-        if (amount.compareTo(BigDecimal.valueOf(1_000_000_000_000L)) >= 0) {
-            suffix = "T";
-            divisor = BigDecimal.valueOf(1_000_000_000_000L);
-        } else if (amount.compareTo(BigDecimal.valueOf(1_000_000_000L)) >= 0) {
-            suffix = "B";
-            divisor = BigDecimal.valueOf(1_000_000_000L);
-        } else if (amount.compareTo(BigDecimal.valueOf(1_000_000L)) >= 0) {
-            suffix = "M";
-            divisor = BigDecimal.valueOf(1_000_000L);
-        } else if (amount.compareTo(BigDecimal.valueOf(1_000L)) >= 0) {
-            suffix = "K";
-            divisor = BigDecimal.valueOf(1_000L);
-        }
+        return MoneyText.abbreviate(value);
+    }
 
-        BigDecimal shortened = parseDecimal(value).divide(divisor, 2, RoundingMode.HALF_UP);
-        String out = shortened.stripTrailingZeros().toPlainString();
-        return out + suffix;
+    private String abbreviateMoneyInLine(String line) {
+        return MoneyText.abbreviateCurrencyTokens(line);
     }
 
     private int utf8Bytes(String value) {
@@ -5327,7 +5405,11 @@ public class BankOwnerPcScreen extends Screen {
         if (base.isEmpty() || outputPanelW <= 0) {
             return List.of();
         }
-        return wrapLines(base, Math.max(1, outputPanelW - 14));
+        List<String> formatted = new ArrayList<>(base.size());
+        for (String line : base) {
+            formatted.add(abbreviateMoneyInLine(line));
+        }
+        return wrapLines(formatted, Math.max(1, outputPanelW - 14));
     }
 
     private List<String> wrapLines(List<String> lines, int maxWidth) {
@@ -5699,7 +5781,7 @@ public class BankOwnerPcScreen extends Screen {
                 new String[]{"Local Time", LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))}
         );
 
-        graphics.enableScissor(viewportX, viewportY, viewportX + viewportW, viewportY + viewportH);
+        enableScaledScissor(graphics, viewportX, viewportY, viewportX + viewportW, viewportY + viewportH);
         for (int i = 0; i < entries.size(); i++) {
             int col = i % cols;
             int row = i / cols;
@@ -6010,6 +6092,39 @@ public class BankOwnerPcScreen extends Screen {
             case "FIXED_COFOUNDERS" -> "Fixed Cofounders";
             default -> "Sole";
         };
+    }
+
+    private void enableScaledScissor(GuiGraphics graphics, int x1, int y1, int x2, int y2) {
+        int minX = Math.min(x1, x2);
+        int minY = Math.min(y1, y2);
+        int maxX = Math.max(x1, x2);
+        int maxY = Math.max(y1, y2);
+
+        if (useVirtualScale) {
+            minX = (int) Math.floor(minX * virtualScaleX);
+            minY = (int) Math.floor(minY * virtualScaleY);
+            maxX = (int) Math.ceil(maxX * virtualScaleX);
+            maxY = (int) Math.ceil(maxY * virtualScaleY);
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        int screenW = this.width;
+        int screenH = this.height;
+        if (mc != null && mc.getWindow() != null) {
+            screenW = mc.getWindow().getGuiScaledWidth();
+            screenH = mc.getWindow().getGuiScaledHeight();
+        }
+
+        minX = Math.max(0, Math.min(screenW, minX));
+        minY = Math.max(0, Math.min(screenH, minY));
+        maxX = Math.max(0, Math.min(screenW, maxX));
+        maxY = Math.max(0, Math.min(screenH, maxY));
+
+        if (maxX <= minX || maxY <= minY) {
+            return;
+        }
+
+        graphics.enableScissor(minX, minY, maxX, maxY);
     }
 
     private void configureVirtualScale() {

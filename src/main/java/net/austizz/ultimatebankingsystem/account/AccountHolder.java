@@ -210,7 +210,7 @@ public class AccountHolder {
             p.sendSystemMessage(Component.literal("Your account has been successfully terminated. Your balance has been transferred to the bank.")
                     .withStyle(ChatFormatting.DARK_RED));
 
-            System.out.println("Account terminated for: " + p.getScoreboardName());
+            UltimateBankingSystem.LOGGER.debug("Account terminated for {}", p.getScoreboardName());
         });
 
         // Het bericht opbouwen
@@ -872,7 +872,7 @@ public class AccountHolder {
         return account;
     }
 
-    private static final int OUTGOING_TX_CAPACITY = Config.TRANSACTIONS_PER_MINUTE.get();
+    private static final int OUTGOING_TX_CAPACITY = Math.max(1, Config.TRANSACTIONS_PER_MINUTE.get());
     private static final Duration OUTGOING_TX_REFILL_PERIOD = Duration.ofMinutes(1);
 
     /**

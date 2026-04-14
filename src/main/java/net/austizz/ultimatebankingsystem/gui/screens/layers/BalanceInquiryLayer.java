@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.BalanceRequestPayload;
 import net.austizz.ultimatebankingsystem.network.BalanceResponsePayload;
@@ -116,7 +117,7 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         y += lineSpacing;
 
         graphics.drawString(font, "Balance:", labelX, y, labelColor);
-        drawFittedString(graphics, "$" + balance, valueX, y, valueMaxWidth, COLOR_SUCCESS);
+        drawFittedString(graphics, MoneyText.abbreviateWithDollar(balance), valueX, y, valueMaxWidth, COLOR_SUCCESS);
         y += lineSpacing;
 
         graphics.drawString(font, "Created:", labelX, y, labelColor);

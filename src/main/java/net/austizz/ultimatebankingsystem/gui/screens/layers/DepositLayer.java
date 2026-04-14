@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -109,11 +110,13 @@ public class DepositLayer extends AbstractScreenLayer {
      */
     public void updateResult(DepositResponsePayload payload) {
         if (payload.success()) {
-            resultMessage = "Deposit successful! New balance: $" + payload.newBalance();
+            resultMessage = "Deposit successful! New balance: " + MoneyText.abbreviateWithDollar(payload.newBalance());
             resultSuccess = true;
             amountField.setValue("");
         } else {
-            resultMessage = payload.errorMessage().isEmpty() ? "Deposit failed." : payload.errorMessage();
+            resultMessage = payload.errorMessage().isEmpty()
+                    ? "Deposit failed."
+                    : MoneyText.abbreviateCurrencyTokens(payload.errorMessage());
             resultSuccess = false;
         }
     }

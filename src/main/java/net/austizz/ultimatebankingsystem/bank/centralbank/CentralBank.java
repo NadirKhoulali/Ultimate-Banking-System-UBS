@@ -79,15 +79,29 @@ public class CentralBank extends Bank{
         return this.banks.get(uuid);
     }
     public Bank getBankByName(String bankName) {
-        return this.banks.values().stream().filter(bank -> bank.getBankName().equals(bankName)).findFirst().orElse(null);
+        if (bankName == null || bankName.isBlank()) {
+            return null;
+        }
+        String normalized = bankName.trim();
+        return this.banks.values().stream()
+                .filter(bank -> bank != null && bank.getBankName() != null)
+                .filter(bank -> bank.getBankName().equalsIgnoreCase(normalized))
+                .findFirst()
+                .orElse(null);
     }
     public ConcurrentHashMap<UUID, AccountHolder> SearchForAccount(UUID playerId) {
         ConcurrentHashMap<UUID, AccountHolder> result = new ConcurrentHashMap<>();
+        if (playerId == null) {
+            return result;
+        }
 
         // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
         for (Bank bank : this.banks.values()) {
+            if (bank == null || bank.getBankAccounts() == null) {
+                continue;
+            }
             for (AccountHolder account : bank.getBankAccounts().values()){
-                if (account.getPlayerUUID().equals(playerId)) {
+                if (account != null && playerId.equals(account.getPlayerUUID())) {
                     result.put(account.getAccountUUID(), account);
                 }
             }
@@ -95,10 +109,16 @@ public class CentralBank extends Bank{
         return result;
     }
     public AccountHolder SearchForAccountByAccountId(UUID accountId) {
+        if (accountId == null) {
+            return null;
+        }
         // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
         for (Bank bank : this.banks.values()) {
+            if (bank == null || bank.getBankAccounts() == null) {
+                continue;
+            }
             for (AccountHolder account : bank.getBankAccounts().values()){
-                if (account.getAccountUUID().equals(accountId)) {
+                if (account != null && accountId.equals(account.getAccountUUID())) {
                     return account;
                 }
             }
@@ -106,9 +126,18 @@ public class CentralBank extends Bank{
         return null;
     }
     public UserTransaction getTransaction(UUID transactionID) {
+        if (transactionID == null) {
+            return null;
+        }
         // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
         for (Bank bank : this.banks.values()) {
+            if (bank == null || bank.getBankAccounts() == null) {
+                continue;
+            }
             for (AccountHolder account : bank.getBankAccounts().values()) {
+                if (account == null || account.getTransactions() == null) {
+                    continue;
+                }
                 UserTransaction tx = account.getTransactions().get(transactionID);
                 if (tx != null) {
                     return tx;

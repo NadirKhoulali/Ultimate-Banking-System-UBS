@@ -10,6 +10,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
@@ -54,7 +55,7 @@ public final class BankOwnerPcService {
         public ActionResult(String action, boolean success, String message) {
             this.action = action == null ? "" : action;
             this.success = success;
-            this.message = message == null ? "" : message;
+            this.message = MoneyText.abbreviateCurrencyTokens(message == null ? "" : message);
         }
 
         public String action() {
@@ -558,7 +559,7 @@ public final class BankOwnerPcService {
                 .map(account -> resolvePlayerName(server, account.getPlayerUUID())
                         + " | " + account.getAccountType().label
                         + " | $" + account.getBalance().setScale(2, RoundingMode.HALF_EVEN).toPlainString()
-                        + " | " + shortId(account.getAccountUUID()))
+                        + " | " + account.getAccountUUID())
                 .toList();
 
         List<String> certificateSchedule = bank.getBankAccounts().values().stream()
@@ -854,9 +855,11 @@ public final class BankOwnerPcService {
                     continue;
                 }
                 online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                        "§6[UBS] New bank application from "
-                                + player.getName().getString()
-                                + " for '" + normalizedName + "' (ID: " + applicationId + ")."
+                        MoneyText.abbreviateCurrencyTokens(
+                                "§6[UBS] New bank application from "
+                                        + player.getName().getString()
+                                        + " for '" + normalizedName + "' (ID: " + applicationId + ")."
+                        )
                 ));
             }
 
@@ -983,7 +986,9 @@ public final class BankOwnerPcService {
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
             onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§aYou were assigned role §e" + role + " §aat bank " + bank.getBankName()
+                    MoneyText.abbreviateCurrencyTokens(
+                            "§aYou were assigned role §e" + role + " §aat bank " + bank.getBankName()
+                    )
             ));
         }
 
@@ -1127,7 +1132,9 @@ public final class BankOwnerPcService {
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
             onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§aYou were hired by " + bank.getBankName() + " as " + role + " ($" + salary.toPlainString() + ")."
+                    MoneyText.abbreviateCurrencyTokens(
+                            "§aYou were hired by " + bank.getBankName() + " as " + role + " ($" + salary.toPlainString() + ")."
+                    )
             ));
         }
 
@@ -1158,7 +1165,9 @@ public final class BankOwnerPcService {
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
             onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§cYou were removed from employment at " + bank.getBankName() + "."
+                    MoneyText.abbreviateCurrencyTokens(
+                            "§cYou were removed from employment at " + bank.getBankName() + "."
+                    )
             ));
         }
 
@@ -1421,9 +1430,11 @@ public final class BankOwnerPcService {
         ServerPlayer lenderOwner = server.getPlayerList().getPlayer(lenderBank.getBankOwnerId());
         if (lenderOwner != null) {
             lenderOwner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§aYour inter-bank offer " + shortId(offerId)
-                            + " was accepted by " + borrowerBank.getBankName()
-                            + " for $" + principal.toPlainString()
+                    MoneyText.abbreviateCurrencyTokens(
+                            "§aYour inter-bank offer " + shortId(offerId)
+                                    + " was accepted by " + borrowerBank.getBankName()
+                                    + " for $" + principal.toPlainString()
+                    )
             ));
         }
 
@@ -1472,8 +1483,10 @@ public final class BankOwnerPcService {
                 continue;
             }
             online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "§6[UBS] New bank appeal from " + actor.getName().getString()
-                            + " (ID: " + appealId + ")."
+                    MoneyText.abbreviateCurrencyTokens(
+                            "§6[UBS] New bank appeal from " + actor.getName().getString()
+                                    + " (ID: " + appealId + ")."
+                    )
             ));
         }
 
@@ -2238,7 +2251,9 @@ public final class BankOwnerPcService {
             return;
         }
         owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                "§6[UBS] Bank status update for " + bank.getBankName() + ": " + oldStatus + " -> " + newStatus
+                MoneyText.abbreviateCurrencyTokens(
+                        "§6[UBS] Bank status update for " + bank.getBankName() + ": " + oldStatus + " -> " + newStatus
+                )
         ));
     }
 

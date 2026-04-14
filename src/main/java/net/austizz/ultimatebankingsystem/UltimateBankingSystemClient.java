@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.Minecraft;
@@ -57,7 +58,7 @@ public class UltimateBankingSystemClient {
             return;
         }
 
-        String text = "Balance: " + Config.CURRENCY_SYMBOL.get() + balance;
+        String text = "Balance: " + Config.CURRENCY_SYMBOL.get() + MoneyText.abbreviate(balance);
         GuiGraphics graphics = event.getGuiGraphics();
         int color = Config.HUD_TEXT_COLOR.get();
         int width = graphics.guiWidth();
@@ -144,7 +145,7 @@ public class UltimateBankingSystemClient {
         tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
         tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal("$" + amount).withStyle(ChatFormatting.GREEN)));
+                .append(Component.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
     }
 
     private static void addBankNoteTooltip(List<Component> tooltip, CompoundTag tag) {
@@ -168,6 +169,6 @@ public class UltimateBankingSystemClient {
         tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
         tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal("$" + amount).withStyle(ChatFormatting.GREEN)));
+                .append(Component.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
     }
 }

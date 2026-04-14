@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@ApiStatus.AvailableSince("1.0.0")
+@ApiStatus.AvailableSince("1.1.0")
 public record ApiTransactionSnapshot(
         UUID transactionId,
         UUID senderAccountId,

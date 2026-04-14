@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -109,7 +110,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
 
     public void updateResult(PayRequestCreateResponsePayload payload) {
         resultSuccess = payload.success();
-        resultMessage = payload.message();
+        resultMessage = MoneyText.abbreviateCurrencyTokens(payload.message());
     }
 
     private void sendCreateRequest() {

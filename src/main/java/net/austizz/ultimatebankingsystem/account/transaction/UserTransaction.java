@@ -65,6 +65,9 @@ public class UserTransaction {
     }
 
     public boolean makeTransaction(MinecraftServer server) {
+        if (server == null) {
+            return false;
+        }
         CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
             return false;
