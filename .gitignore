@@ -40,4 +40,5 @@ repo/
 !**/src/**/repo/
 /.claude
 /.sisyphus
+/.sissyphus
 
