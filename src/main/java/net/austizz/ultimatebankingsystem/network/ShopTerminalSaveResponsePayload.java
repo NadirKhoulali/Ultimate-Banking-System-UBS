@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 public record ShopTerminalSaveResponsePayload(
@@ -23,7 +23,7 @@ public record ShopTerminalSaveResponsePayload(
 ) implements CustomPacketPayload {
 
     public static final Type<ShopTerminalSaveResponsePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "shop_terminal_save_response"));
+            new ResourceLocation(UltimateBankingSystem.MODID, "shop_terminal_save_response"));
 
     private static final StreamCodec<RegistryFriendlyByteBuf, Long> LONG_CODEC =
             StreamCodec.of((buf, value) -> buf.writeLong(value), RegistryFriendlyByteBuf::readLong);

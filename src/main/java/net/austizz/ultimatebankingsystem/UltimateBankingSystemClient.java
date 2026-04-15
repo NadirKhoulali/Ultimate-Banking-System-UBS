@@ -6,42 +6,24 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.phys.EntityHitResult;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.RenderGuiEvent;
-import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
-import net.neoforged.neoforge.client.gui.ConfigurationScreen;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
-import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.client.event.RenderGuiEvent;
+import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 
 import java.util.List;
 
-// This class will not load on dedicated servers. Accessing client side code from here is safe.
-@Mod(value = UltimateBankingSystem.MODID, dist = Dist.CLIENT)
-// You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID, value = Dist.CLIENT)
 public class UltimateBankingSystemClient {
-    public UltimateBankingSystemClient(ModContainer container) {
-        // Allows NeoForge to create a config screen for this mod's configs.
-        // The config screen is accessed by going to the Mods screen > clicking on your mod > clicking on config.
-        // Do not forget to add translations for your config options to the en_us.json file.
-        container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
-    }
-
     @SubscribeEvent
     static void onClientSetup(FMLClientSetupEvent event) {
         // Some client setup code
@@ -58,18 +40,7 @@ public class UltimateBankingSystemClient {
 
         GuiGraphics graphics = event.getGuiGraphics();
         renderBalanceHud(mc, graphics);
-    }
-
-    @SubscribeEvent
-    static void onRenderGuiLayer(RenderGuiLayerEvent.Pre event) {
-        if (!event.getName().equals(VanillaGuiLayers.CHAT)) {
-            return;
-        }
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui) {
-            return;
-        }
-        renderHandheldTerminalOverlay(mc, event.getGuiGraphics());
+        renderHandheldTerminalOverlay(mc, graphics);
     }
 
     private static void renderBalanceHud(Minecraft mc, GuiGraphics graphics) {
@@ -159,8 +130,7 @@ public class UltimateBankingSystemClient {
             return;
         }
 
-        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
-        CompoundTag tag = customData == null ? new CompoundTag() : customData.copyTag();
+        CompoundTag tag = stack.getTag();
         if (tag == null) {
             tag = new CompoundTag();
         }

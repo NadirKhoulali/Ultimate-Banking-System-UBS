@@ -4,7 +4,6 @@ import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.custom.ShopTerminalBlock;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.util.Mth;
@@ -144,7 +143,7 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
                              int newFailurePulseTicks,
                              int newIdlePulseStrength) {
         this.shopName = sanitizeShopName(newShopName);
-        this.priceDollars = Mth.clamp(newPrice, 1L, MAX_PRICE_DOLLARS);
+        this.priceDollars = clampLong(newPrice, 1L, MAX_PRICE_DOLLARS);
         this.merchantAccountId = newMerchantAccountId;
         this.pulseOnSuccess = newPulseOnSuccess;
         this.pulseOnFailure = newPulseOnFailure;
@@ -228,12 +227,12 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
     }
 
     @Override
-    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
+    public void load(CompoundTag tag) {
+        super.load(tag);
         this.ownerUuid = tag.contains("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         this.ownerName = tag.getString("owner_name");
         this.shopName = sanitizeShopName(tag.getString("shop_name"));
-        this.priceDollars = Mth.clamp(tag.getLong("price_dollars"), 1L, MAX_PRICE_DOLLARS);
+        this.priceDollars = clampLong(tag.getLong("price_dollars"), 1L, MAX_PRICE_DOLLARS);
         this.merchantAccountId = tag.contains("merchant_account_id") ? tag.getUUID("merchant_account_id") : null;
         this.pulseOnSuccess = !tag.contains("pulse_on_success") || tag.getBoolean("pulse_on_success");
         this.pulseOnFailure = !tag.contains("pulse_on_failure") || tag.getBoolean("pulse_on_failure");
@@ -251,8 +250,8 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+    protected void saveAdditional(CompoundTag tag) {
+        super.saveAdditional(tag);
         if (ownerUuid != null) {
             tag.putUUID("owner_uuid", ownerUuid);
         }
@@ -274,8 +273,8 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
     }
 
     @Override
-    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        return this.saveWithoutMetadata(registries);
+    public CompoundTag getUpdateTag() {
+        return this.saveWithoutMetadata();
     }
 
     @Override
@@ -300,5 +299,9 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
             return normalized.substring(0, 42);
         }
         return normalized;
+    }
+
+    private static long clampLong(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

@@ -27,6 +27,7 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -39,16 +40,14 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.stats.Stats;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -581,8 +580,8 @@ public class UBSCommands {
                                                                             "Transferred §e$" + amount.toPlainString() + "§a to §e" + receiverName + "§a successfully."
                                                                     )
                                                             );
-                                                            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), amount, false));
-                                                            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), amount, true));
+                                                            MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), amount, false));
+                                                            MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), amount, true));
 
                                                             return 1;
                                                         })
@@ -4587,7 +4586,7 @@ public class UBSCommands {
             tag.putString("ubs_note_source_bank", sourceBank.getBankName());
         }
         applyCustomTag(note, tag);
-        note.set(DataComponents.CUSTOM_NAME, moneyLiteral("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        ItemStackDataCompat.setCustomName(note, moneyLiteral("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         if (!player.getInventory().add(note)) {
             player.drop(note, false);
@@ -4750,7 +4749,7 @@ public class UBSCommands {
             tag.putString("ubs_cheque_source_bank", chequeSourceBank.getBankName());
         }
         applyCustomTag(cheque, tag);
-        cheque.set(DataComponents.CUSTOM_NAME, moneyLiteral("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        ItemStackDataCompat.setCustomName(cheque, moneyLiteral("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         if (!writer.getInventory().add(cheque)) {
             writer.drop(cheque, false);
@@ -4955,12 +4954,12 @@ public class UBSCommands {
                 body.append(moneyLiteral("§8[" + slot + "] §7(empty)\n"));
                 continue;
             }
-            var parsed = ItemStack.parse(source.getServer().registryAccess(), stackTag);
-            if (parsed.isEmpty() || parsed.get().isEmpty()) {
+            ItemStack parsed = ItemStack.of(stackTag);
+            if (parsed.isEmpty()) {
                 body.append(moneyLiteral("§8[" + slot + "] §7(invalid item)\n"));
                 continue;
             }
-            ItemStack stack = parsed.get();
+            ItemStack stack = parsed;
             body.append(moneyLiteral(
                     "§8[" + slot + "] §f" + stack.getHoverName().getString()
                             + " §7x" + stack.getCount() + "\n"
@@ -5410,11 +5409,11 @@ public class UBSCommands {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        if (data == null) {
+        CompoundTag data = ItemStackDataCompat.getCustomData(stack);
+        if (data == null || data.isEmpty()) {
             return null;
         }
-        return data.copyTag();
+        return data.copy();
     }
 
     private static void applyCustomTag(ItemStack stack, CompoundTag tag) {
@@ -5424,7 +5423,7 @@ public class UBSCommands {
         if (tag == null) {
             return;
         }
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(stack, tag);
     }
 
     private static BigDecimal parsePositiveWholeAmount(CommandSourceStack source, String amountRaw) {
@@ -5650,8 +5649,8 @@ public class UBSCommands {
             ));
         }
 
-        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(senderAccount, senderAccount.getBalance(), request.getAmount(), false));
-        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiverAccount, receiverAccount.getBalance(), request.getAmount(), true));
+        MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(senderAccount, senderAccount.getBalance(), request.getAmount(), false));
+        MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(receiverAccount, receiverAccount.getBalance(), request.getAmount(), true));
         return 1;
     }
 

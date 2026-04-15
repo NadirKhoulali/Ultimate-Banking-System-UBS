@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -20,7 +20,7 @@ import java.util.List;
 public record AccountListPayload(List<AccountSummary> accounts) implements CustomPacketPayload {
 
     public static final Type<AccountListPayload> TYPE = new Type<>(
-        ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "account_list"));
+        new ResourceLocation(UltimateBankingSystem.MODID, "account_list"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, AccountListPayload> STREAM_CODEC =
         StreamCodec.composite(

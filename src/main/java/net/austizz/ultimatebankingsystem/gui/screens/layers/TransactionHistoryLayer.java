@@ -10,13 +10,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class TransactionHistoryLayer extends AbstractScreenLayer {
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation ATM_BUTTONS = new ResourceLocation(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int MAX_ENTRIES = 50;
     private static final int ENTRY_HEIGHT = 32;
@@ -62,7 +62,7 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
         if (!loaded || summaries.isEmpty()) {
             return false;
         }
@@ -81,9 +81,9 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
             return false;
         }
 
-        int delta = (int) Math.round(scrollY * SCROLL_STEP);
+        int delta = (int) Math.round(scrollDelta * SCROLL_STEP);
         if (delta == 0) {
-            delta = scrollY > 0 ? SCROLL_STEP : -SCROLL_STEP;
+            delta = scrollDelta > 0 ? SCROLL_STEP : -SCROLL_STEP;
         }
 
         scrollOffset = clamp(scrollOffset - delta, 0, maxScroll);

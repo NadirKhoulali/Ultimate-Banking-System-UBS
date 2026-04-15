@@ -28,7 +28,7 @@ public interface ScreenLayer {
 
     default void setBankScreen(BankScreen screen) {}
 
-    default boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    default boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
         return false;
     }
 

@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class PlayerSelectionLayer extends AbstractScreenLayer {
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation ATM_BUTTONS = new ResourceLocation(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int VISIBLE_ROWS = 5;
     private static final int ROW_HEIGHT = 27;
@@ -159,15 +159,15 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
         if (filteredPlayers.size() <= VISIBLE_ROWS) {
             return false;
         }
-        if (!isInsideList(mouseX, mouseY) || scrollY == 0.0D) {
+        if (!isInsideList(mouseX, mouseY) || scrollDelta == 0.0D) {
             return false;
         }
 
-        int delta = scrollY > 0 ? -1 : 1;
+        int delta = scrollDelta > 0 ? -1 : 1;
         int next = clamp(scrollIndex + delta, 0, getMaxScrollIndex());
         if (next != scrollIndex) {
             scrollIndex = next;
@@ -266,7 +266,7 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
             graphics.drawString(font, fitToWidth(player.name(), textWidth), textX, textY,
                     isSelected ? 0xFFFFFF99 : 0xFFFFFFFF);
 
-            PlayerFaceRenderer.draw(graphics, player.info().getSkin(), headX, headY, PLAYER_HEAD_SIZE);
+            PlayerFaceRenderer.draw(graphics, player.info().getSkinLocation(), headX, headY, PLAYER_HEAD_SIZE);
         }
     }
 

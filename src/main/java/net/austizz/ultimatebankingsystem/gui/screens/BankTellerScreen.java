@@ -11,7 +11,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -647,28 +647,8 @@ public class BankTellerScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void renderBackground(GuiGraphics graphics) {
         // No-op: hard disable vanilla blur/background for this screen.
-    }
-
-    @Override
-    public void renderTransparentBackground(GuiGraphics graphics) {
-        // No-op.
-    }
-
-    @Override
-    public void renderBlurredBackground(float partialTick) {
-        // No-op.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics) {
-        // No-op.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
-        // No-op.
     }
 
     private static String fitToWidth(String text, int width) {

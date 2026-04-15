@@ -30,13 +30,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import net.minecraftforge.common.MinecraftForge;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.handling.IPayloadContext;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.registration.PayloadRegistrar;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -51,15 +49,14 @@ import java.util.UUID;
 /**
  * Registers all network payloads (custom packets) for the Ultimate Banking System mod.
  *
- * <p>NeoForge auto-discovers this class via {@link EventBusSubscriber} and fires
- * {@link RegisterPayloadHandlersEvent} on the mod event bus during startup.</p>
+ * <p>On Forge 1.20.1 this is invoked explicitly during common setup.</p>
  *
  * <h3>Adding a new payload</h3>
  * <pre>{@code
  * // 1. Create a record implementing CustomPacketPayload:
  * public record ExamplePayload(String data) implements CustomPacketPayload {
  *     public static final Type<ExamplePayload> TYPE = new Type<>(
- *         ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "example"));
+ *         new ResourceLocation("ultimatebankingsystem", "example"));
  *     public static final StreamCodec<RegistryFriendlyByteBuf, ExamplePayload> STREAM_CODEC =
  *         StreamCodec.composite(
  *             ByteBufCodecs.STRING_UTF8, ExamplePayload::data,
@@ -88,7 +85,6 @@ import java.util.UUID;
  *   <li>{@code playBidirectional} — both directions</li>
  * </ul>
  */
-@EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public final class ModPayloads {
 
     private static final UUID ATM_TERMINAL_ID = UUID.nameUUIDFromBytes(
@@ -96,7 +92,6 @@ public final class ModPayloads {
 
     private ModPayloads() {}
 
-    @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         UltimateBankingSystem.LOGGER.info("[UBS] Registering network payloads");
         final PayloadRegistrar registrar = event.registrar("1");
@@ -1277,13 +1272,13 @@ public final class ModPayloads {
             String newBalance = updatedSender != null ? updatedSender.getBalance().toPlainString() : "0";
 
             if (success) {
-                NeoForge.EVENT_BUS.post(new BalanceChangedEvent(
+                MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(
                     sender,
                     sender.getBalance(),
                     amount,
                     false
                 ));
-                NeoForge.EVENT_BUS.post(new BalanceChangedEvent(
+                MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(
                     recipient,
                     recipient.getBalance(),
                     amount,
@@ -1733,8 +1728,8 @@ public final class ModPayloads {
 
             PayRequestManager.markAccepted(request.getRequestId());
 
-            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), request.getAmount(), false));
-            NeoForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), request.getAmount(), true));
+            MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(sender, sender.getBalance(), request.getAmount(), false));
+            MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(receiver, receiver.getBalance(), request.getAmount(), true));
 
             ServerPlayer requester = server.getPlayerList().getPlayer(request.getRequesterUUID());
             if (requester != null) {

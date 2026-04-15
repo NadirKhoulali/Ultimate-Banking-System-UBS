@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -22,7 +22,7 @@ public record OwnerPcDesktopDataPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<OwnerPcDesktopDataPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "owner_pc_desktop_data"));
+            new ResourceLocation(UltimateBankingSystem.MODID, "owner_pc_desktop_data"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, OwnerPcDesktopDataPayload> STREAM_CODEC =
             StreamCodec.of(

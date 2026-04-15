@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -13,7 +13,7 @@ import net.minecraft.resources.ResourceLocation;
 public record ChangePinResponsePayload(boolean success, String errorMessage) implements CustomPacketPayload {
 
     public static final Type<ChangePinResponsePayload> TYPE = new Type<>(
-        ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "change_pin_response"));
+        new ResourceLocation(UltimateBankingSystem.MODID, "change_pin_response"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ChangePinResponsePayload> STREAM_CODEC =
         StreamCodec.composite(

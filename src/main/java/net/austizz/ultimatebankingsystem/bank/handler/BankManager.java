@@ -30,7 +30,8 @@ public class BankManager {
             // Dit roept BankSavedData.load() aan als het bestand bestaat,
             // of de constructor BankSavedData() als het nieuw is.
             dataRef = overworld.getDataStorage().computeIfAbsent(
-                    BankSavedData.factory(),
+                    BankSavedData::load,
+                    BankSavedData::new,
                     "ultimate_banking_system"
             );
 
@@ -66,7 +67,7 @@ public class BankManager {
             // Fallback: try to fetch and mark
             ServerLevel overworld = serverInstance.getLevel(Level.OVERWORLD);
             if (overworld != null) {
-                BankSavedData data = overworld.getDataStorage().get(BankSavedData.factory(), "ultimate_banking_system");
+                BankSavedData data = overworld.getDataStorage().get(BankSavedData::load, "ultimate_banking_system");
                 if (data != null) {
                     data.setDirty();
                 }

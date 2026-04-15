@@ -48,7 +48,7 @@ public final class ClientOwnerPcData {
 
         if (!APPS.isEmpty()) {
             if (selectedBankId == null || APPS.stream().noneMatch(app -> app.bankId().equals(selectedBankId))) {
-                selectedBankId = APPS.getFirst().bankId();
+                selectedBankId = APPS.get(0).bankId();
             }
         } else {
             selectedBankId = null;
@@ -79,14 +79,14 @@ public final class ClientOwnerPcData {
 
     public static OwnerPcBankAppSummary getSelectedApp() {
         if (selectedBankId == null) {
-            return APPS.isEmpty() ? null : APPS.getFirst();
+            return APPS.isEmpty() ? null : APPS.get(0);
         }
         for (OwnerPcBankAppSummary app : APPS) {
             if (app.bankId().equals(selectedBankId)) {
                 return app;
             }
         }
-        return APPS.isEmpty() ? null : APPS.getFirst();
+        return APPS.isEmpty() ? null : APPS.get(0);
     }
 
     public static void setCurrentBankData(OwnerPcBankDataPayload data) {

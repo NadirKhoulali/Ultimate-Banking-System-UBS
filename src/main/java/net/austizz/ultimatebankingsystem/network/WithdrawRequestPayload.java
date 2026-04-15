@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.UUID;
@@ -15,7 +15,7 @@ import java.util.UUID;
 public record WithdrawRequestPayload(UUID accountId, String amount) implements CustomPacketPayload {
 
     public static final Type<WithdrawRequestPayload> TYPE = new Type<>(
-        ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "withdraw_request"));
+        new ResourceLocation(UltimateBankingSystem.MODID, "withdraw_request"));
 
     /** StreamCodec for UUID — serialises as two longs (mostSigBits, leastSigBits). */
     private static final StreamCodec<RegistryFriendlyByteBuf, UUID> UUID_CODEC =

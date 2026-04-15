@@ -1,8 +1,8 @@
 package net.austizz.ultimatebankingsystem.account.invoice;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

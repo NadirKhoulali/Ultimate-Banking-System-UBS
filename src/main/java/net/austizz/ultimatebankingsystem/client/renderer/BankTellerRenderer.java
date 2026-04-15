@@ -12,9 +12,9 @@ import net.minecraft.resources.ResourceLocation;
 public class BankTellerRenderer extends HumanoidMobRenderer<BankTellerEntity, PlayerModel<BankTellerEntity>> {
 
     private static final ResourceLocation MALE_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "textures/entity/bank_teller_male.png");
+            new ResourceLocation(UltimateBankingSystem.MODID, "textures/entity/bank_teller_male.png");
     private static final ResourceLocation FEMALE_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "textures/entity/bank_teller_female.png");
+            new ResourceLocation(UltimateBankingSystem.MODID, "textures/entity/bank_teller_female.png");
 
     private final PlayerModel<BankTellerEntity> wideModel;
     private final PlayerModel<BankTellerEntity> slimModel;

@@ -1,9 +1,9 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -15,7 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 public record OpenATMPayload() implements CustomPacketPayload {
 
     public static final Type<OpenATMPayload> TYPE = new Type<>(
-        ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "open_atm"));
+        new ResourceLocation(UltimateBankingSystem.MODID, "open_atm"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, OpenATMPayload> STREAM_CODEC =
         StreamCodec.of((buf, val) -> {}, buf -> new OpenATMPayload());

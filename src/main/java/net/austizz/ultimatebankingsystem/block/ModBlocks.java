@@ -11,16 +11,17 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.registries.DeferredBlock;
-import net.neoforged.neoforge.registries.DeferredRegister;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.RegistryObject;
 
 import java.util.function.Supplier;
 
 public class ModBlocks {
-    public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(UltimateBankingSystem.MODID);
+    public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, UltimateBankingSystem.MODID);
 
-    public static final DeferredBlock<Block> ATM_MACHINE = registerBlock("atm_machine",
+    public static final RegistryObject<Block> ATM_MACHINE = registerBlock("atm_machine",
             () -> new ATMBlock(BlockBehaviour.Properties.of()
                     .noOcclusion()
                     .strength(4f)
@@ -28,20 +29,20 @@ public class ModBlocks {
 
 
             ));
-    public static final DeferredBlock<Block> BANK_OWNER_PC = registerBlock("bank_owner_pc",
+    public static final RegistryObject<Block> BANK_OWNER_PC = registerBlock("bank_owner_pc",
             () -> new BankOwnerPcBlock(BlockBehaviour.Properties.of()
                     .noOcclusion()
                     .strength(3.5f)
                     .sound(SoundType.METAL)
             ));
-    public static final DeferredBlock<Block> COLOR_BUTTON_BLOCK = registerBlock("color_button_block",
+    public static final RegistryObject<Block> COLOR_BUTTON_BLOCK = registerBlock("color_button_block",
             () -> new ColorButtonBlock(BlockBehaviour.Properties.of()
                     .strength(1.5f)
                     .sound(SoundType.STONE)
 
 
             ));
-    public static final DeferredBlock<Block> PAYMENT_TERMINAL = registerBlock("payment_terminal",
+    public static final RegistryObject<Block> PAYMENT_TERMINAL = registerBlock("payment_terminal",
             () -> new ShopTerminalBlock(BlockBehaviour.Properties.of()
                     .noOcclusion()
                     .strength(3.0f)
@@ -49,13 +50,13 @@ public class ModBlocks {
             ));
 
 
-    private static <T extends Block> DeferredBlock<T> registerBlock(String name, Supplier<T> block) {
-        DeferredBlock<T> toReturn = BLOCKS.register(name, block);
+    private static <T extends Block> RegistryObject<T> registerBlock(String name, Supplier<T> block) {
+        RegistryObject<T> toReturn = BLOCKS.register(name, block);
         registerBlockItem(name, toReturn);
         return toReturn;
     }
 
-    private static  <T extends Block> void registerBlockItem (String name, DeferredBlock<T> block) {
+    private static  <T extends Block> void registerBlockItem (String name, RegistryObject<T> block) {
         ModItems.ITEMS.register(name, () -> new BlockItem(block.get(), new Item.Properties()));
     }
 

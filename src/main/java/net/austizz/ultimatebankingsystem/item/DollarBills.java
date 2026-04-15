@@ -188,7 +188,7 @@ public final class DollarBills {
                 continue;
             }
 
-            int maxStack = cashItem.getDefaultMaxStackSize();
+            int maxStack = cashItem.getMaxStackSize();
             while (remaining > 0) {
                 int giveCount = Math.min(maxStack, remaining);
                 ItemStack stack = new ItemStack(cashItem, giveCount);

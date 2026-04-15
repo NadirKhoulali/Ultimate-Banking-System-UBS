@@ -28,10 +28,10 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -1641,7 +1641,7 @@ public class UBSAdminCommands {
 
         addAdminAuditTransaction(account, amount, true, source.getTextName());
         source.sendSystemMessage(moneyLiteral("§aSuccessfully added '§e$" + amount + "§a' to '§e" + accountId + "§a'. New Balance: §2$" + account.getBalance()));
-        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, true));
+        MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, true));
         return 1;
     }
 
@@ -1674,7 +1674,7 @@ public class UBSAdminCommands {
 
         addAdminAuditTransaction(account, amount, false, source.getTextName());
         source.sendSystemMessage(moneyLiteral("§aSuccessfully removed '§e$" + amount + "§a' from '§e" + accountId + "§a'. New Balance: §2$" + account.getBalance()));
-        NeoForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, false));
+        MinecraftForge.EVENT_BUS.post(new BalanceChangedEvent(account, account.getBalance(), amount, false));
         return 1;
     }
 
@@ -2548,7 +2548,7 @@ public class UBSAdminCommands {
         try {
             Path path = Path.of(rawPath);
             if (!path.isAbsolute()) {
-                path = source.getServer().getFile(".").resolve(path).normalize();
+                path = source.getServer().getFile(".").toPath().resolve(path).normalize();
             }
             return path;
         } catch (InvalidPathException ex) {

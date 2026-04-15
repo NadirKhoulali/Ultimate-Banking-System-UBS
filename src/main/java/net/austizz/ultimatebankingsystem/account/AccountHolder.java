@@ -1,6 +1,4 @@
 package net.austizz.ultimatebankingsystem.account;
-
-import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.loan.AccountLoan;
@@ -23,16 +21,15 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayDeque;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -362,7 +359,7 @@ public class AccountHolder {
         }
 
         CompoundTag stackTag = new CompoundTag();
-        stack.save(registries, stackTag);
+        stack.save(stackTag);
         getSafeBoxSlots().put(freeSlot, stackTag);
         BankManager.markDirty();
         return true;
@@ -376,12 +373,12 @@ public class AccountHolder {
         if (stackTag == null) {
             return ItemStack.EMPTY;
         }
-        Optional<ItemStack> parsed = ItemStack.parse(registries, stackTag);
+        ItemStack parsed = ItemStack.of(stackTag);
         if (parsed.isEmpty()) {
             return ItemStack.EMPTY;
         }
         BankManager.markDirty();
-        return parsed.get();
+        return parsed;
     }
 
     public void configureCertificate(String tier, long maturityGameTime, double rate) {
@@ -874,17 +871,13 @@ public class AccountHolder {
         return account;
     }
 
-    private static final int OUTGOING_TX_CAPACITY = Math.max(1, Config.TRANSACTIONS_PER_MINUTE.get());
-    private static final Duration OUTGOING_TX_REFILL_PERIOD = Duration.ofMinutes(1);
+    private static final long OUTGOING_TX_WINDOW_MS = 60_000L;
 
     /**
-     * Rate limiter for outgoing transactions for this account.
+     * Sliding-window limiter for outgoing transactions for this account.
      * Not persisted; recreated on load (per AccountHolder instance).
      */
-    private final Bucket outgoingTxBucket = Bucket.builder()
-            .addLimit(limit -> limit.capacity(OUTGOING_TX_CAPACITY)
-                    .refillIntervally(OUTGOING_TX_CAPACITY, OUTGOING_TX_REFILL_PERIOD))
-            .build();
+    private final ArrayDeque<Long> outgoingTxTimestamps = new ArrayDeque<>();
 
     /**
      * Try to consume 1 outgoing transaction token.
@@ -892,7 +885,19 @@ public class AccountHolder {
      * @return true if the transaction is allowed right now.
      */
     public boolean tryConsumeOutgoingTransaction() {
-        return outgoingTxBucket.tryConsume(1);
+        long now = System.currentTimeMillis();
+        int capacity = Math.max(1, Config.TRANSACTIONS_PER_MINUTE.get());
+        synchronized (outgoingTxTimestamps) {
+            while (!outgoingTxTimestamps.isEmpty()
+                    && now - outgoingTxTimestamps.peekFirst() >= OUTGOING_TX_WINDOW_MS) {
+                outgoingTxTimestamps.pollFirst();
+            }
+            if (outgoingTxTimestamps.size() >= capacity) {
+                return false;
+            }
+            outgoingTxTimestamps.addLast(now);
+            return true;
+        }
     }
 
     private static boolean isFourDigitPin(String pin) {

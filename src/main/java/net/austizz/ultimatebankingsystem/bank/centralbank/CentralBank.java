@@ -10,8 +10,8 @@ import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.common.MinecraftForge;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -63,7 +63,7 @@ public class CentralBank extends Bank{
     }
     public void addBank(Bank bank) {
         this.banks.put(bank.getBankId(), bank);
-//        NeoForge.EVENT_BUS.register(bank);
+//        MinecraftForge.EVENT_BUS.register(bank);
         BankManager.markDirty();
     }
     public boolean removeBank(Bank bank) {

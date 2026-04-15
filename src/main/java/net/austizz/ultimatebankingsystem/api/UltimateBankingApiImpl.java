@@ -8,17 +8,16 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -314,7 +313,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(note, tag);
-        note.set(DataComponents.CUSTOM_NAME, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        ItemStackDataCompat.setCustomName(note, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),
@@ -374,7 +373,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(cheque, tag);
-        cheque.set(DataComponents.CUSTOM_NAME, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        ItemStackDataCompat.setCustomName(cheque, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),
@@ -497,7 +496,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (billItem == null) {
             return List.of();
         }
-        int maxStack = billItem.getDefaultMaxStackSize();
+        int maxStack = billItem.getMaxStackSize();
         int remaining = billCount;
         List<ItemStack> stacks = new ArrayList<>();
         while (remaining > 0) {
@@ -517,7 +516,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (coinItem == null) {
             return List.of();
         }
-        int maxStack = coinItem.getDefaultMaxStackSize();
+        int maxStack = coinItem.getMaxStackSize();
         int remaining = coinCount;
         List<ItemStack> stacks = new ArrayList<>();
         while (remaining > 0) {
@@ -1118,7 +1117,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (stack == null || stack.isEmpty() || tag == null) {
             return;
         }
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(stack, tag);
     }
 
     private ApiAccountSnapshot toAccountSnapshot(AccountHolder account) {

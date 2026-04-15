@@ -5,15 +5,14 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -208,16 +207,16 @@ public final class CreditCardService {
             stackUpdated = true;
         }
         if (stackUpdated) {
-            stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+            ItemStackDataCompat.setCustomData(stack, tag);
         }
         if (recordUpdated) {
             BankManager.markDirty();
         }
         if (tag.getBoolean(TAG_BLOCKED) != blocked) {
             tag.putBoolean(TAG_BLOCKED, blocked);
-            stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+            ItemStackDataCompat.setCustomData(stack, tag);
         }
-        stack.set(DataComponents.CUSTOM_NAME, buildCardDisplayName(bankName, cardNumber, blocked));
+        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, blocked));
 
         if (blocked) {
             return new CardValidationResult(false,
@@ -303,8 +302,7 @@ public final class CreditCardService {
         writeCreditCardTag(stack, record);
 
         String masked = maskCardNumber(cardNumber);
-        stack.set(DataComponents.CUSTOM_NAME,
-                buildCardDisplayName(bankName, masked, false));
+        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, masked, false));
 
         return new CardIssueResult(
                 true,
@@ -447,7 +445,7 @@ public final class CreditCardService {
         tag.putLong(TAG_EXPIRY_AT, record.contains("expiryEpochMillis") ? record.getLong("expiryEpochMillis") : 0L);
         tag.putBoolean(TAG_BLOCKED, record.getBoolean("blocked"));
 
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(stack, tag);
     }
 
     private static boolean isCreditCard(ItemStack stack) {
@@ -568,8 +566,8 @@ public final class CreditCardService {
                 if (!bankName.isBlank()) {
                     tag.putString(TAG_BANK_NAME, bankName);
                 }
-                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
-                stack.set(DataComponents.CUSTOM_NAME, buildCardDisplayName(bankName, cardNumber, true));
+                ItemStackDataCompat.setCustomData(stack, tag);
+                ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, true));
             }
             player.containerMenu.broadcastChanges();
         }
@@ -579,7 +577,7 @@ public final class CreditCardService {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        return data == null ? null : data.copyTag();
+        CompoundTag data = ItemStackDataCompat.getCustomData(stack);
+        return data == null ? null : data.copy();
     }
 }

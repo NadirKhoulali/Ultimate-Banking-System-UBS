@@ -13,7 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 
 public class PinEntryLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation ATM_BUTTONS = new ResourceLocation(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int PIN_LENGTH = 4;
 

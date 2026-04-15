@@ -16,7 +16,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -170,7 +170,7 @@ public class BankOwnerPcScreen extends Screen {
     private final List<UtilityApp> utilityWindowOrder = new ArrayList<>();
     private UtilityApp activeUtilityApp;
 
-    private String selectedOwnershipModel = OWNERSHIP_MODELS.getFirst();
+    private String selectedOwnershipModel = OWNERSHIP_MODELS.get(0);
 
     private final Map<String, String> formValues = new HashMap<>();
 
@@ -326,6 +326,21 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        applyForcedGuiScale();
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) {
+            return;
+        }
+        int scaledW = mc.getWindow().getGuiScaledWidth();
+        int scaledH = mc.getWindow().getGuiScaledHeight();
+        if (scaledW > 0 && scaledH > 0 && (this.width != scaledW || this.height != scaledH)) {
+            this.resize(mc, scaledW, scaledH);
+        }
+    }
+
+    @Override
     public void removed() {
         restoreForcedGuiScale();
         super.removed();
@@ -442,7 +457,7 @@ public class BankOwnerPcScreen extends Screen {
         marketOfferCache.clear();
         formValues.clear();
         activeFormInputs.clear();
-        selectedOwnershipModel = OWNERSHIP_MODELS.getFirst();
+        selectedOwnershipModel = OWNERSHIP_MODELS.get(0);
         selectedExplorerFileName = "";
         explorerFilesScroll = 0;
         systemMonitorScroll = 0;
@@ -3539,7 +3554,7 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
         if (desktopAuthenticated
@@ -3548,9 +3563,9 @@ public class BankOwnerPcScreen extends Screen {
                 && localMouseY >= taskbarViewportY && localMouseY <= (taskbarViewportY + taskbarViewportH)) {
             int previous = taskbarScroll;
             int step = 56;
-            if (scrollY < 0) {
+            if (scrollDelta < 0) {
                 taskbarScroll = Math.min(taskbarMaxScroll, taskbarScroll + step);
-            } else if (scrollY > 0) {
+            } else if (scrollDelta > 0) {
                 taskbarScroll = Math.max(0, taskbarScroll - step);
             }
             if (previous != taskbarScroll) {
@@ -3566,9 +3581,9 @@ public class BankOwnerPcScreen extends Screen {
                 int visible = Math.max(1, (notepadAreaH - 8) / LINE_HEIGHT);
                 int maxScroll = Math.max(0, lines.size() - visible);
                 int previous = Math.max(0, Math.min(notepadScroll, maxScroll));
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     notepadScroll = Math.min(maxScroll, previous + 2);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     notepadScroll = Math.max(0, previous - 2);
                 }
                 return true;
@@ -3578,9 +3593,9 @@ public class BankOwnerPcScreen extends Screen {
                     && localMouseY >= explorerFileListY && localMouseY <= (explorerFileListY + explorerFileListH)
                     && explorerFilesMaxScroll > 0) {
                 int previous = explorerFilesScroll;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     explorerFilesScroll = Math.min(explorerFilesMaxScroll, explorerFilesScroll + 1);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     explorerFilesScroll = Math.max(0, explorerFilesScroll - 1);
                 }
                 if (previous != explorerFilesScroll) {
@@ -3594,9 +3609,9 @@ public class BankOwnerPcScreen extends Screen {
                     && localMouseY >= systemHideAppsY && localMouseY <= (systemHideAppsY + systemHideAppsH)
                     && systemHideAppsMaxScroll > 0) {
                 int previous = systemHideAppsScroll;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     systemHideAppsScroll = Math.min(systemHideAppsMaxScroll, systemHideAppsScroll + 1);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     systemHideAppsScroll = Math.max(0, systemHideAppsScroll - 1);
                 }
                 if (previous != systemHideAppsScroll) {
@@ -3611,9 +3626,9 @@ public class BankOwnerPcScreen extends Screen {
                     && systemMonitorMaxScroll > 0) {
                 int previous = systemMonitorScroll;
                 int step = 12;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     systemMonitorScroll = Math.min(systemMonitorMaxScroll, systemMonitorScroll + step);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     systemMonitorScroll = Math.max(0, systemMonitorScroll - step);
                 }
                 if (previous != systemMonitorScroll) {
@@ -3629,9 +3644,9 @@ public class BankOwnerPcScreen extends Screen {
                     && paintControlsMaxScroll > 0) {
                 int previous = paintControlsScroll;
                 int step = 12;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     paintControlsScroll = Math.min(paintControlsMaxScroll, paintControlsScroll + step);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     paintControlsScroll = Math.max(0, paintControlsScroll - step);
                 }
                 if (previous != paintControlsScroll) {
@@ -3643,9 +3658,9 @@ public class BankOwnerPcScreen extends Screen {
                     && !paintSaveModalOpen
                     && !unsavedClosePromptOpen
                     && isInsidePaintCanvas(localMouseX, localMouseY)) {
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     paintBrushSize = Math.max(1, paintBrushSize - 1);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     paintBrushSize = Math.min(8, paintBrushSize + 1);
                 }
                 return true;
@@ -3658,9 +3673,9 @@ public class BankOwnerPcScreen extends Screen {
                     && navMaxScroll > 0) {
                 int previous = navScroll;
                 int step = 16;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     navScroll = Math.min(navMaxScroll, navScroll + step);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     navScroll = Math.max(0, navScroll - step);
                 }
                 if (navScroll != previous) {
@@ -3674,9 +3689,9 @@ public class BankOwnerPcScreen extends Screen {
                     && sectionMaxScroll > 0) {
                 int previous = sectionScroll;
                 int step = 16;
-                if (scrollY < 0) {
+                if (scrollDelta < 0) {
                     sectionScroll = Math.min(sectionMaxScroll, sectionScroll + step);
-                } else if (scrollY > 0) {
+                } else if (scrollDelta > 0) {
                     sectionScroll = Math.max(0, sectionScroll - step);
                 }
                 if (sectionScroll != previous) {
@@ -3742,16 +3757,16 @@ public class BankOwnerPcScreen extends Screen {
                     maxScroll = Math.max(0, wrapped.size() - visible);
                 }
                 if (maxScroll > 0) {
-                    if (scrollY < 0) {
+                    if (scrollDelta < 0) {
                         outputScroll = Math.min(maxScroll, outputScroll + step);
-                    } else if (scrollY > 0) {
+                    } else if (scrollDelta > 0) {
                         outputScroll = Math.max(0, outputScroll - step);
                     }
                     return true;
                 }
             }
         }
-        return super.mouseScrolled(localMouseX, localMouseY, scrollX, scrollY);
+        return super.mouseScrolled(localMouseX, localMouseY, scrollDelta);
     }
 
     @Override
@@ -4049,6 +4064,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         if (current != 2) {
             mc.options.guiScale().set(2);
+            mc.resizeDisplay();
         }
     }
 
@@ -4061,6 +4077,7 @@ public class BankOwnerPcScreen extends Screen {
             Integer current = mc.options.guiScale().get();
             if (current == null || !current.equals(previousGuiScale)) {
                 mc.options.guiScale().set(previousGuiScale);
+                mc.resizeDisplay();
             }
         }
         forcedGuiScaleActive = false;
@@ -4153,28 +4170,8 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void renderBackground(GuiGraphics graphics) {
         // No-op to hard-disable vanilla menu blur/background behavior.
-    }
-
-    @Override
-    public void renderTransparentBackground(GuiGraphics graphics) {
-        // No-op to hard-disable transparent background blur paths.
-    }
-
-    @Override
-    public void renderBlurredBackground(float partialTick) {
-        // No-op to hard-disable blur paths.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics) {
-        // No-op to hard-disable menu background paths.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
-        // No-op to hard-disable menu background paths.
     }
 
     private void drawTaskbarClockAndPower(GuiGraphics graphics, int mouseX, int mouseY) {

@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.network;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.austizz.ultimatebankingsystem.compat.network.RegistryFriendlyByteBuf;
+import net.austizz.ultimatebankingsystem.compat.network.codec.ByteBufCodecs;
+import net.austizz.ultimatebankingsystem.compat.network.codec.StreamCodec;
+import net.austizz.ultimatebankingsystem.compat.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 public record OwnerPcCreateBankResponsePayload(
@@ -13,7 +13,7 @@ public record OwnerPcCreateBankResponsePayload(
 ) implements CustomPacketPayload {
 
     public static final Type<OwnerPcCreateBankResponsePayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(UltimateBankingSystem.MODID, "owner_pc_create_bank_response"));
+            new ResourceLocation(UltimateBankingSystem.MODID, "owner_pc_create_bank_response"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, OwnerPcCreateBankResponsePayload> STREAM_CODEC =
             StreamCodec.composite(

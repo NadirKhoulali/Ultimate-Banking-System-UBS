@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -27,11 +28,9 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -70,12 +69,12 @@ public class BankTellerEntity extends PathfinderMob {
     }
 
     @Override
-    protected void defineSynchedData(SynchedEntityData.Builder builder) {
-        super.defineSynchedData(builder);
-        builder.define(OWNER_UUID, Optional.empty());
-        builder.define(VARIANT, VARIANT_MALE);
-        builder.define(FIXED_YAW, 0.0F);
-        builder.define(BOUND_BANK_UUID, Optional.empty());
+    protected void defineSynchedData() {
+        super.defineSynchedData();
+        this.entityData.define(OWNER_UUID, Optional.empty());
+        this.entityData.define(VARIANT, VARIANT_MALE);
+        this.entityData.define(FIXED_YAW, 0.0F);
+        this.entityData.define(BOUND_BANK_UUID, Optional.empty());
     }
 
     @Override
@@ -131,7 +130,7 @@ public class BankTellerEntity extends PathfinderMob {
     }
 
     @Override
-    public boolean canBeLeashed() {
+    public boolean canBeLeashed(Player player) {
         return false;
     }
 
@@ -343,10 +342,10 @@ public class BankTellerEntity extends PathfinderMob {
             tag = new CompoundTag();
         }
         tag.putUUID(EGG_BOUND_BANK_ID_TAG, bankId);
-        egg.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(egg, tag);
 
         String safeBankName = bankName == null || bankName.isBlank() ? shortId(bankId) : bankName.trim();
-        egg.set(DataComponents.CUSTOM_NAME,
+        ItemStackDataCompat.setCustomName(egg,
                 Component.literal("[" + safeBankName + "] Teller Spawn Egg").withStyle(ChatFormatting.AQUA));
     }
 
@@ -410,8 +409,8 @@ public class BankTellerEntity extends PathfinderMob {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        return data == null ? null : data.copyTag();
+        CompoundTag data = ItemStackDataCompat.getCustomData(stack);
+        return data == null ? null : data.copy();
     }
 
     private static String shortId(UUID id) {

@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 
 public class MainMenuLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation ATM_BUTTONS = new ResourceLocation(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private final List<NineSliceTexturedButton> operationButtons = new ArrayList<>();
@@ -38,7 +38,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
         List<AccountSummary> accounts = ClientATMData.getAccounts();
 
         if (accounts.size() == 1 && ClientATMData.getSelectedAccount() == null) {
-            ClientATMData.setSelectedAccount(accounts.getFirst());
+            ClientATMData.setSelectedAccount(accounts.get(0));
         }
 
         AccountSummary selectedAccount = ClientATMData.getSelectedAccount();

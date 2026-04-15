@@ -10,9 +10,9 @@ import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.network.HandheldTerminalOpenPayload;
 import net.austizz.ultimatebankingsystem.network.ShopTerminalAccountSummary;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -23,10 +23,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
-import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -445,27 +443,27 @@ public class HandheldPaymentTerminalItem extends Item {
             tag.putLong(TAG_RESULT_UNTIL, System.currentTimeMillis() + RESULT_DISPLAY_MILLIS);
         }
         writeData(stack, tag);
-        stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(clamped));
+        ItemStackDataCompat.setCustomModelData(stack, clamped);
     }
 
     public static void syncExpiredResultState(ItemStack stack) {
         CompoundTag tag = getOrCreateData(stack);
         int result = tag.contains(TAG_RESULT) ? tag.getInt(TAG_RESULT) : RESULT_IDLE;
         if (result == RESULT_IDLE) {
-            if (!stack.has(DataComponents.CUSTOM_MODEL_DATA)) {
-                stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(RESULT_IDLE));
+            if (!ItemStackDataCompat.hasCustomModelData(stack)) {
+                ItemStackDataCompat.setCustomModelData(stack, RESULT_IDLE);
             }
             return;
         }
         long until = tag.contains(TAG_RESULT_UNTIL) ? tag.getLong(TAG_RESULT_UNTIL) : 0L;
         if (until > System.currentTimeMillis()) {
-            stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(Math.max(RESULT_IDLE, Math.min(RESULT_DENIED, result))));
+            ItemStackDataCompat.setCustomModelData(stack, Math.max(RESULT_IDLE, Math.min(RESULT_DENIED, result)));
             return;
         }
         tag.putInt(TAG_RESULT, RESULT_IDLE);
         tag.remove(TAG_RESULT_UNTIL);
         writeData(stack, tag);
-        stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(RESULT_IDLE));
+        ItemStackDataCompat.setCustomModelData(stack, RESULT_IDLE);
     }
 
     public static boolean isHandheldTerminal(ItemStack stack) {
@@ -487,8 +485,7 @@ public class HandheldPaymentTerminalItem extends Item {
     }
 
     private static CompoundTag getOrCreateData(ItemStack stack) {
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        CompoundTag tag = data == null ? new CompoundTag() : data.copyTag();
+        CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
         if (tag == null) {
             tag = new CompoundTag();
         }
@@ -496,7 +493,7 @@ public class HandheldPaymentTerminalItem extends Item {
     }
 
     private static void writeData(ItemStack stack, CompoundTag tag) {
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag == null ? new CompoundTag() : tag));
+        ItemStackDataCompat.setCustomData(stack, tag == null ? new CompoundTag() : tag);
     }
 
     private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {

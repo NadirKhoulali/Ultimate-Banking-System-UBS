@@ -13,13 +13,13 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 
 import java.util.List;
 import java.util.UUID;
 
 public class CreatePayRequestLayer extends AbstractScreenLayer {
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation ATM_BUTTONS = new ResourceLocation(
             "ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private NineSliceTexturedButton playerSelectButton;
@@ -187,7 +187,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         if (selected != null) {
             return selected.accountId();
         }
-        return accounts.isEmpty() ? null : accounts.getFirst().accountId();
+        return accounts.isEmpty() ? null : accounts.get(0).accountId();
     }
 
     private static String resolveDestinationLabel(UUID accountId) {
