@@ -1,0 +1,7 @@
+{
+  "parent": "ultimatebankingsystem:block/payment_terminal",
+  "textures": {
+    "terminal": "ultimatebankingsystem:block/payment_terminal_success",
+    "particle": "ultimatebankingsystem:block/payment_terminal_success"
+  }
+}

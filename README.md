@@ -1,19 +1,29 @@
 # Ultimate Banking System (UBS)
 
-UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: ATM UI, physical cash bills, account security, player-owned banks, central-bank regulation, loans, and admin tooling.
+UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: ATM UI, physical cash (bills + coins), payment terminals, account security, player-owned banks, central-bank regulation, loans, and admin tooling.
 
-Current release target: `1.1.0`
+Current release target: `1.2.0`
 
 ## What UBS Includes
 
 - Multi-account support per player: `Checking`, `Saving`, `Money Market`, `Certificate`
 - ATM workflow with account selection, PIN setup/login, and account switching
-- Physical USD bill items (`$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`) for real withdraw/deposit flow
+- Physical USD legal tender:
+  - bills: `$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`
+  - coins: `$0.01`, `$0.05`, `$0.10`, `$0.25`, `$0.50`
+- ATM cash behavior:
+  - withdraw: bills only
+  - deposit: bills + coins (exact match from inventory)
+- Bank Teller cash-out can dispense bills + coins
+- Payment Terminal block:
+  - merchant checkout from primary account or held credit card
+  - owner/OP configuration UI
+  - success/denied visual feedback and configurable redstone outputs
 - Transfers, transaction history, and per-account controls
 - Pay request system:
   - inbox + accept/decline/choose account
   - ATM pay request creation UI with player picker + search + destination account picker
-  - command flow via `/payrequest ...`
+  - command flow via `/account payrequest ...`
 - Scheduled interest, daily withdrawal limits, and transaction rate limiting
 - Joint accounts, business accounts, cheques, and note withdrawal/deposit commands
 - Player-owned bank systems:
@@ -32,10 +42,10 @@ Current release target: `1.1.0`
 
 Player-facing (examples):
 
-- `/account create <AccountType> <Bank Name>`
+- `/account open <accountType> [certificateTier] <bankName>`
 - `/account info list`
 - `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
-- `/payrequest <player> <amount> [destinationAccountId]`
+- `/account payrequest <player> <amount> [destinationAccountId]`
 - `/bank reserve`
 - `/bank dashboard`
 - `/bank safebox list|deposit|withdraw <slot>`
@@ -74,6 +84,8 @@ On Windows shell environments, run via `gradlew.bat`.
   - [`Home.md`](docs/wiki/Home.md)
   - [`Player-Guide.md`](docs/wiki/Player-Guide.md)
   - [`ATM-Flow.md`](docs/wiki/ATM-Flow.md)
+  - [`Currency-Legal-Tender.md`](docs/wiki/Currency-Legal-Tender.md)
+  - [`Payment-Terminal-Guide.md`](docs/wiki/Payment-Terminal-Guide.md)
   - [`Bank-Owner-PC.md`](docs/wiki/Bank-Owner-PC.md)
   - [`Admin-Commands.md`](docs/wiki/Admin-Commands.md)
   - [`Developer-API.md`](docs/wiki/Developer-API.md)
@@ -95,7 +107,8 @@ Highlights:
 - Paper instruments + cash API:
   - issue tagged `bank_note` and `cheque` item stacks
   - give/take USD bills by `denomination + billCount`
-  - cash inventory helpers (`getPlayerBillCount`, `getPlayerCashOnHand`)
+  - give/take USD coins by `denominationCents + coinCount`
+  - cash inventory helpers (`getPlayerBillCount`, `getPlayerCoinCount`, `getPlayerCashOnHand`)
 - Typed snapshots:
   - `ApiAccountSnapshot` via account/player/bank lookup
   - `ApiBankSnapshot` via bank lookup/list

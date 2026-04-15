@@ -7,22 +7,18 @@ import net.neoforged.api.distmarker.OnlyIn;
 
 @OnlyIn(Dist.CLIENT)
 public class OwnerPcScreenHelper {
-    private static BankOwnerPcScreen cachedScreen;
-
     public static void openOwnerPcScreen() {
-        if (cachedScreen == null) {
-            cachedScreen = new BankOwnerPcScreen(Component.literal("Bank Owner PC"));
-        }
-        Minecraft.getInstance().setScreen(cachedScreen);
+        Minecraft minecraft = Minecraft.getInstance();
+        BankOwnerPcScreen freshScreen = new BankOwnerPcScreen(Component.literal("Bank Owner PC"));
+        minecraft.setScreen(freshScreen);
+        freshScreen.relayoutForCurrentWindow();
     }
 
     public static void invalidateCachedScreen(BankOwnerPcScreen screen) {
-        if (cachedScreen == screen) {
-            cachedScreen = null;
-        }
+        // No-op: screens are not globally cached anymore.
     }
 
     public static void invalidateCachedScreen() {
-        cachedScreen = null;
+        // No-op: screens are not globally cached anymore.
     }
 }

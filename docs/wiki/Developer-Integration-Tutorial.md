@@ -9,7 +9,7 @@ Current UBS identity:
 - Maven group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
 - Mod id: `ultimatebankingsystem`
-- Current version in this repo: `1.1.0`
+- Current version in this repo: `1.2.0`
 
 Dependency coordinate format:
 
@@ -55,11 +55,11 @@ Point the path to your local UBS clone.
 
 ```gradle
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.1.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 
     // Prefer localRuntime for NeoForge dev runs.
     // If your template does not have localRuntime, use runtimeOnly instead.
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.1.0"
+    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -87,8 +87,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.1.0"
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.1.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -112,8 +112,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-1.1.0"
-    localRuntime name: "ultimatebankingsystem-1.1.0"
+    compileOnly name: "ultimatebankingsystem-1.2.0"
+    localRuntime name: "ultimatebankingsystem-1.2.0"
 }
 ```
 
@@ -129,7 +129,7 @@ In your mod's `src/main/resources/META-INF/neoforge.mods.toml`, replace `<your_m
 [[dependencies.<your_modid>]]
 modId="ultimatebankingsystem"
 type="required"
-versionRange="[1.1.0,)"
+versionRange="[1.2.0,)"
 ordering="AFTER"
 side="BOTH"
 ```
@@ -140,7 +140,7 @@ side="BOTH"
 [[dependencies.<your_modid>]]
 modId="ultimatebankingsystem"
 type="optional"
-versionRange="[1.1.0,)"
+versionRange="[1.2.0,)"
 ordering="AFTER"
 side="BOTH"
 ```
@@ -226,6 +226,25 @@ if (cheque.success()) {
 ```java
 var cash = api.giveDollarBills(playerId, 20, 5); // 5x $20 bills
 int cashOnHand = api.getPlayerCashOnHand(playerId);
+```
+
+### Coins
+
+```java
+var coins = api.giveCoins(playerId, 25, 8); // 8x quarters
+int quarterCount = api.getPlayerCoinCount(playerId, 25);
+```
+
+### Shop/terminal-style payment to a specific merchant account
+
+```java
+var pay = api.shopPurchase(
+        payerAccountId,
+        merchantAccountId,
+        45L,
+        "Coffee Counter",
+        "pos-terminal-01"
+);
 ```
 
 ## 11. Verification checklist

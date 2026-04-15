@@ -35,6 +35,7 @@ public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, CompoundTag> interbankOffers;
     private ConcurrentHashMap<UUID, CompoundTag> interbankLoans;
     private ConcurrentHashMap<UUID, CompoundTag> reportSnapshots;
+    private ConcurrentHashMap<UUID, CompoundTag> issuedCreditCards;
     private int nextBankTellerVariant;
 
     public CentralBank() {
@@ -54,6 +55,7 @@ public class CentralBank extends Bank{
         this.interbankOffers = new ConcurrentHashMap<>();
         this.interbankLoans = new ConcurrentHashMap<>();
         this.reportSnapshots = new ConcurrentHashMap<>();
+        this.issuedCreditCards = new ConcurrentHashMap<>();
         this.nextBankTellerVariant = TELLER_VARIANT_MALE;
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
@@ -278,6 +280,8 @@ public class CentralBank extends Bank{
             meta.putString("dailyWithdrawn", "0");
             meta.putLong("dailyWindowDay", 0L);
             meta.putString("reserveMinRatio", String.valueOf(Config.BANK_MIN_RESERVE_RATIO.get()));
+            meta.putString("cardIssueFee", "25");
+            meta.putString("cardReplacementFee", "50");
             return meta;
         });
     }
@@ -344,6 +348,13 @@ public class CentralBank extends Bank{
             reportSnapshots = new ConcurrentHashMap<>();
         }
         return reportSnapshots;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getIssuedCreditCards() {
+        if (issuedCreditCards == null) {
+            issuedCreditCards = new ConcurrentHashMap<>();
+        }
+        return issuedCreditCards;
     }
 
     public boolean isNoteSerialRedeemed(String serial) {
@@ -447,6 +458,7 @@ public class CentralBank extends Bank{
         tag.put("interbank_offers", saveTagMap(getInterbankOffers()));
         tag.put("interbank_loans", saveTagMap(getInterbankLoans()));
         tag.put("report_snapshots", saveTagMap(getReportSnapshots()));
+        tag.put("issued_credit_cards", saveTagMap(getIssuedCreditCards()));
         tag.putInt("next_bank_teller_variant", this.nextBankTellerVariant);
 
         return tag;
@@ -522,6 +534,7 @@ public class CentralBank extends Bank{
         centralBank.interbankOffers = loadTagMap(tag.getList("interbank_offers", 10));
         centralBank.interbankLoans = loadTagMap(tag.getList("interbank_loans", 10));
         centralBank.reportSnapshots = loadTagMap(tag.getList("report_snapshots", 10));
+        centralBank.issuedCreditCards = loadTagMap(tag.getList("issued_credit_cards", 10));
         centralBank.nextBankTellerVariant = tag.contains("next_bank_teller_variant")
                 ? tag.getInt("next_bank_teller_variant")
                 : TELLER_VARIANT_MALE;

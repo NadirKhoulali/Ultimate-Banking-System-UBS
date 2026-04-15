@@ -2,8 +2,12 @@ package net.austizz.ultimatebankingsystem.command;
 
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
@@ -18,13 +22,16 @@ import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
+import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.UuidArgument;
 import net.minecraft.network.chat.*;
@@ -50,21 +57,115 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSCommands {
 
-    private static final Component helpMessage = moneyLiteral("§6§lUltimate Banking System §7- §eAccount Commands\n" + "§8/§faccount §7help §8- §7Show this help\n" + "§8/§faccount §7create §8- §7Create a new account\n" + "§8/§faccount §7delete §8- §7Delete your account\n" + "§8/§faccount §7info §8- §7View your account info\n" + "§8/§faccount §7deposit §8<§famount§8> §8- §7Deposit money\n" + "§8/§faccount §7withdraw §8<§famount§8> §8- §7Withdraw money\n" + "§8/§faccount §7balance §8- §7Show your balance\n" + "§8/§faccount §7transfer §8<§fplayer§8> <§famount§8> §8- §7Transfer money\n" + "§8/§fpayrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Request money from a player");
+    private static final int HELP_ENTRIES_PER_PAGE = 14;
+    private static final List<String> ACCOUNT_HELP_ENTRIES = List.of(
+            "§8/§faccount §7help [page] §8- §7Show account help pages",
+            "§8/§faccount §7open §8<§faccountType§8> [§fcertificateTier§8] <§fbankName§8> §8- §7Open account",
+            "§8/§faccount §7close §8<§fbankName§8> §8- §7Close your account at a bank",
+            "§8/§faccount §7balance §8- §7Show your primary account balance",
+            "§8/§faccount §7info §8- §7View your primary account info",
+            "§8/§faccount §7info list §8- §7List all your accounts",
+            "§8/§faccount §7info bank §8<§fbankName§8> §8- §7View your account at a bank",
+            "§8/§faccount §7info §8<§faccountId§8> §8- §7View specific account info",
+            "§8/§faccount §7primary set §8<§faccountId§8> §8- §7Set primary account",
+            "§8/§faccount §7primary bank §8<§fbankName§8> §8- §7Set primary by bank",
+            "§8/§faccount §7delete §8<§faccountId§8> §8- §7Delete your account",
+            "§8/§faccount §7transfer §8<§ffromAccountId§8> <§ftoAccountId§8> <§famount§8> §8- §7Transfer funds",
+            "§8/§faccount §7transfer bank §8<§ffromBank§8> <§ftoBank§8> <§famount§8> §8- §7Move funds between your banks",
+            "§8/§faccount §7send §8<§fplayer§8> <§famount§8> [§fbankName§8] §8- §7Send money to a player",
+            "§8/§faccount §7transaction §8<§ftransactionId§8> §8- §7Show transaction details",
+            "§8/§faccount §7transaction list §8<§faccountId§8> §8- §7List account transactions",
+            "§8/§faccount §7payrequest §8<§fplayer§8> <§famount§8> [§fdestinationAccountId§8] §8- §7Create pay request",
+            "§8/§faccount §7credit §8- §7Show your credit score",
+            "§8/§faccount §7loan request §8<§famount§8> §8- §7Preview a personal loan",
+            "§8/§faccount §7loan confirm §8- §7Confirm your pending personal loan",
+            "§8/§faccount §7loan status §8- §7Show your active personal loans",
+            "§8/§faccount §7shop pay §8<§famount§8> [§fshop§8] §8- §7Pay from your account",
+            "§8/§faccount §7note write §8<§famount§8> §8- §7Create a bank note item",
+            "§8/§faccount §7cheque write §8<§fplayer§8> <§famount§8> §8- §7Write cheque",
+            "§8/§faccount §7hud toggle §8- §7Toggle account HUD",
+            "§8/§faccount §7hud primary §8- §7Monitor primary account on HUD",
+            "§8/§faccount §7hud account §8<§faccountId§8> §8- §7Monitor a specific account on HUD",
+            "§8/§faccount §7safebox list §8- §7List your safe box slots",
+            "§8/§faccount §7safebox deposit §8- §7Store held item in safe box",
+            "§8/§faccount §7safebox withdraw §8<§fslot§8> §8- §7Withdraw safe box slot",
+            "§8/§faccount §7cd break §8<§faccountId§8> §8- §7Request early CD break",
+            "§8/§faccount §7cd confirm §8- §7Confirm pending CD break",
+            "§8/§faccount §7joint create §8<§fplayer§8> <§fbankName§8> §8- §7Create joint account",
+            "§8/§faccount §7joint info §8<§faccountId§8> §8- §7Show shared account details",
+            "§8/§faccount §7joint deposit §8<§faccountId§8> <§famount§8> §8- §7Deposit to shared account",
+            "§8/§faccount §7joint withdraw §8<§faccountId§8> <§famount§8> §8- §7Withdraw from shared account",
+            "§8/§faccount §7joint transfer §8<§ffrom§8> <§fto§8> <§famount§8> §8- §7Transfer between shared accounts",
+            "§8/§faccount §7joint close §8<§faccountId§8> §8- §7Close shared account",
+            "§8/§faccount §7business create §8<§flabel§8> <§fbankName§8> §8- §7Create business account",
+            "§8/§faccount §7business grant §8<§faccountId§8> <§fplayer§8> <§frole§8> §8- §7Grant business role",
+            "§8/§faccount §7business revoke §8<§faccountId§8> <§fplayer§8> §8- §7Revoke business role",
+            "§8/§faccount §7business transferowner §8<§faccountId§8> <§fplayer§8> §8- §7Transfer business ownership"
+    );
+    private static final List<String> BANK_HELP_ENTRIES = List.of(
+            "§8/§fbank §7help [page] §8- §7Show bank help pages",
+            "§8/§fbank §7list §8- §7List available banks",
+            "§8/§fbank §7create §8<§fname§8> [§fownershipModel§8] §8- §7Create a player bank",
+            "§8/§fbank §7motto §8<§ftext§8> §8- §7Set your bank motto",
+            "§8/§fbank §7color §8<§fvalue§8> §8- §7Set your bank color",
+            "§8/§fbank §7teller get §8- §7Issue a bank teller spawn egg",
+            "§8/§fbank §7teller count §8- §7Show teller count for your bank",
+            "§8/§fbank §7info §8<§fbankName§8> §8- §7Show bank profile",
+            "§8/§fbank §7reserve §8- §7Show your bank reserve state",
+            "§8/§fbank §7dashboard §8- §7Show compact bank dashboard",
+            "§8/§fbank §7accounts §8- §7List account holders in your bank",
+            "§8/§fbank §7cds §8- §7Show certificate schedule",
+            "§8/§fbank §7limit set §8<§ftype§8> <§famount§8> §8- §7Set bank limit",
+            "§8/§fbank §7limit view §8- §7View active custom limits",
+            "§8/§fbank §7role assign §8<§fplayer§8> <§frole§8> §8- §7Assign role",
+            "§8/§fbank §7role revoke §8<§fplayer§8> §8- §7Revoke role",
+            "§8/§fbank §7role list §8- §7List assigned roles",
+            "§8/§fbank §7shares §8- §7List ownership shares",
+            "§8/§fbank §7shares set §8<§fplayer§8> <§fpercent§8> §8- §7Set share %",
+            "§8/§fbank §7cofounder add §8<§fplayer§8> §8- §7Add cofounder",
+            "§8/§fbank §7cofounder list §8- §7List cofounders",
+            "§8/§fbank §7hire §8<§fplayer§8> <§frole§8> <§fsalary§8> §8- §7Hire employee",
+            "§8/§fbank §7fire §8<§fplayer§8> §8- §7Fire employee",
+            "§8/§fbank §7employees §8- §7List employees",
+            "§8/§fbank §7quit §8<§fbankName§8> §8- §7Quit your employee role",
+            "§8/§fbank §7borrow §8<§famount§8> §8- §7Borrow from Central Bank",
+            "§8/§fbank §7lend offer §8<§famount§8> <§fannualRate§8> <§ftermTicks§8> §8- §7Post inter-bank offer",
+            "§8/§fbank §7lend market §8- §7View inter-bank offer market",
+            "§8/§fbank §7lend accept §8<§fofferId§8> §8- §7Accept inter-bank offer",
+            "§8/§fbank §7loans §8- §7Show your bank loan summary",
+            "§8/§fbank §7loan create §8<§fname§8> <§fmaxAmount§8> <§finterestRate§8> <§fdurationTicks§8> §8- §7Create consumer loan product",
+            "§8/§fbank §7loan list §8<§fbankName§8> §8- §7List bank loan products",
+            "§8/§fbank §7loan apply §8<§fbankName§8> <§fproduct§8> <§famount§8> §8- §7Apply for loan product",
+            "§8/§fbank §7loan active §8- §7Show active loan obligations",
+            "§8/§fbank §7appeal §8<§fmessage§8> §8- §7Submit compliance appeal",
+            "§8/§fbank §7heist start §8<§fbankName§8> §8- §eComing Soon"
+    );
     private static final ConcurrentHashMap<UUID, LoanService.LoanQuote> PENDING_LOAN_CONFIRMATIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, Boolean> HUD_ENABLED_OVERRIDES = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, UUID> HUD_ACCOUNT_MONITOR_OVERRIDES = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, Long> LAST_BANK_CREATE_ATTEMPT_MILLIS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, CompoundTag> PENDING_CD_BREAK_CONFIRMATIONS = new ConcurrentHashMap<>();
+    private static final List<String> CERTIFICATE_TIER_SUGGESTIONS = List.of(
+            "short",
+            "medium",
+            "long"
+    );
+    private static final List<String> BANK_LIMIT_TYPE_SUGGESTIONS = List.of(
+            "single",
+            "dailyplayer",
+            "dailybank",
+            "teller"
+    );
 
     private record EmployeeSpec(String role, BigDecimal salary) {}
     private record LoanProductSpec(String name, BigDecimal maxAmount, double interestRate, long durationTicks) {}
@@ -88,18 +189,85 @@ public class UBSCommands {
         return ubsMessage(ChatFormatting.GREEN, "§a" + title, moneyLiteral("§a" + message));
     }
 
+    private static int sendAccountHelp(CommandSourceStack source, int requestedPage) {
+        return sendPagedHelp(source, "§eAccount Commands", "account", ACCOUNT_HELP_ENTRIES, requestedPage);
+    }
+
+    private static int sendBankHelp(CommandSourceStack source, int requestedPage) {
+        return sendPagedHelp(source, "§eBank Commands", "bank", BANK_HELP_ENTRIES, requestedPage);
+    }
+
+    private static int sendPagedHelp(CommandSourceStack source,
+                                     String title,
+                                     String rootLiteral,
+                                     List<String> entries,
+                                     int requestedPage) {
+        int totalEntries = entries == null ? 0 : entries.size();
+        int totalPages = Math.max(1, (totalEntries + HELP_ENTRIES_PER_PAGE - 1) / HELP_ENTRIES_PER_PAGE);
+        int page = Math.max(1, Math.min(totalPages, requestedPage));
+
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Page §f" + page + "§7/§f" + totalPages + "\n"));
+
+        if (totalEntries == 0) {
+            body.append(moneyLiteral("§8No commands available."));
+            source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, title, body));
+            return 1;
+        }
+
+        int start = (page - 1) * HELP_ENTRIES_PER_PAGE;
+        int end = Math.min(totalEntries, start + HELP_ENTRIES_PER_PAGE);
+        for (int i = start; i < end; i++) {
+            body.append(moneyLiteral(entries.get(i))).append(moneyLiteral("\n"));
+        }
+
+        if (totalPages > 1) {
+            body.append(moneyLiteral("§8────────────────────────\n"));
+            body.append(moneyLiteral("§7Use §f/" + rootLiteral + " help <page> §7or click: "));
+
+            if (page > 1) {
+                body.append(
+                        moneyLiteral("§f§l[§bPrevious§f§l]")
+                                .setStyle(Style.EMPTY.withClickEvent(
+                                        new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/" + rootLiteral + " help " + (page - 1))
+                                ))
+                );
+            } else {
+                body.append(moneyLiteral("§8[§7Previous§8]"));
+            }
+
+            body.append(moneyLiteral(" "));
+
+            if (page < totalPages) {
+                body.append(
+                        moneyLiteral("§f§l[§bNext§f§l]")
+                                .setStyle(Style.EMPTY.withClickEvent(
+                                        new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/" + rootLiteral + " help " + (page + 1))
+                                ))
+                );
+            } else {
+                body.append(moneyLiteral("§8[§7Next§8]"));
+            }
+        }
+
+        source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, title, body));
+        return 1;
+    }
+
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(
                 Commands.literal("account")
-                        .executes(context -> {
-                            context.getSource().sendSystemMessage(helpMessage);
-                            return 1;
-                        })
-                        .then(Commands.literal("help").executes(context -> {
-                            context.getSource().sendSystemMessage(helpMessage);
-                            return 1;
-                        }))
+                        .executes(context -> sendAccountHelp(context.getSource(), 1))
+                        .then(Commands.literal("help")
+                                .executes(context -> sendAccountHelp(context.getSource(), 1))
+                                .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                        .executes(context -> sendAccountHelp(
+                                                context.getSource(),
+                                                IntegerArgumentType.getInteger(context, "page")
+                                        ))
+                                )
+                        )
                         .then(Commands.literal("info")
                                 .executes(context -> {
                                     MinecraftServer server = context.getSource().getServer();
@@ -269,61 +437,71 @@ public class UBSCommands {
                                 )
 
                         )
-                        .then(Commands.literal("create")
-                                .then(Commands.argument("Account Type", StringArgumentType.word())
-                                        .suggests((context, builder) -> {
-                                            for (AccountTypes account : AccountTypes.values()) {
-                                                builder.suggest(account.name());
-                                            }
-                                            return builder.buildFuture();
-                                        })
-                                        .then(Commands.argument("Bank Name", StringArgumentType.greedyString())
-                                                .executes(context -> {
-                                                    MinecraftServer server = context.getSource().getServer();
-                                                    CentralBank centralBank = BankManager.getCentralBank(server);
-
-                                                    String BankName = StringArgumentType.getString(context, "Bank Name");
-                                                    Bank BankChoice = centralBank.getBankByName(BankName);
-                                                    String AccountType = StringArgumentType.getString(context, "Account Type");
-
-                                                    if (BankChoice == null) {
-                                                        context.getSource().sendSystemMessage(moneyLiteral("§cThe bank '§e" + BankName + "§c' could not be found."));
-                                                        return 1;
-                                                    }
-
-
-                                                    // Validate/parse the account type once.
-                                                    AccountTypes selectedType = Arrays.stream(AccountTypes.values())
-                                                            .filter(t -> t.name().equalsIgnoreCase(AccountType))
-                                                            .findFirst()
-                                                            .orElse(null);
-
-                                                    if (selectedType == null) {
-                                                        context.getSource().sendSystemMessage(moneyLiteral("§cAccount Type does not exist!"));
-                                                        return 1;
-                                                    }
-
-                                                    if (!BankChoice.AddAccount(new AccountHolder(
-                                                            context.getSource().getPlayer().getUUID(),
-                                                            BigDecimal.ZERO,
-                                                            selectedType,
-                                                            "test",
-                                                            BankChoice.getBankId(),
-                                                            null
-                                                    ))) {
-                                                        context.getSource().sendSystemMessage(moneyLiteral("§cAccount with exact Account Type already exists at this bank!"));
-                                                        return 1;
-                                                    }
-
-                                                    BankManager.markDirty();
-                                                    context.getSource().sendSystemMessage(moneyLiteral("§aSuccessfully created a §e" + selectedType.name() + " §aaccount at §e" + BankChoice.getBankName() + "§a!"));
-
-                                                    return 1;
-                                                })
+                        .then(Commands.literal("open")
+                                .then(Commands.argument("accountType", StringArgumentType.word())
+                                        .suggests(UBSCommands::suggestAccountOpenTypes)
+                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                                .suggests(UBSCommands::suggestBankNames)
+                                                .executes(context -> handleBankOpenAccount(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "bankName"),
+                                                        StringArgumentType.getString(context, "accountType"),
+                                                        ""
+                                                ))
+                                        )
+                                        .then(Commands.argument("certificateTier", StringArgumentType.word())
+                                                .suggests(UBSCommands::suggestCertificateTiersForAccountOpen)
+                                                .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                                        .suggests(UBSCommands::suggestBankNames)
+                                                        .executes(context -> {
+                                                            String accountType = StringArgumentType.getString(context, "accountType");
+                                                            String certificateTier = StringArgumentType.getString(context, "certificateTier");
+                                                            String bankTail = StringArgumentType.getString(context, "bankName");
+                                                            if (parseAccountType(accountType) != AccountTypes.CertificateAccount) {
+                                                                String mergedBankName = normalizeBankName(certificateTier + " " + bankTail);
+                                                                return handleBankOpenAccount(
+                                                                        context.getSource(),
+                                                                        mergedBankName,
+                                                                        accountType,
+                                                                        ""
+                                                                );
+                                                            }
+                                                            return handleBankOpenAccount(
+                                                                    context.getSource(),
+                                                                    bankTail,
+                                                                    accountType,
+                                                                    certificateTier
+                                                            );
+                                                        })
+                                                )
                                         )
                                 )
                         )
+                        .then(Commands.literal("close")
+                                .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                        .executes(context -> handleCloseBankAccount(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "bankName")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("balance")
+                                .executes(context -> handleAccountBalance(context.getSource())))
                         .then(Commands.literal("transfer")
+                                .then(Commands.literal("bank")
+                                        .then(Commands.argument("fromBank", StringArgumentType.word())
+                                                .then(Commands.argument("toBank", StringArgumentType.word())
+                                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                                .executes(context -> handleInterBankSelfTransfer(
+                                                                        context.getSource(),
+                                                                        StringArgumentType.getString(context, "fromBank"),
+                                                                        StringArgumentType.getString(context, "toBank"),
+                                                                        StringArgumentType.getString(context, "amount")
+                                                                ))
+                                                        )
+                                                )
+                                        )
+                                )
                                 .then(Commands.argument("Account ID (sending)", UuidArgument.uuid())
                                         .then(Commands.argument("Account ID (receiving)", UuidArgument.uuid())
                                                 .then(Commands.argument("amount", StringArgumentType.greedyString())
@@ -490,6 +668,46 @@ public class UBSCommands {
                                         )
                                 )
                         )
+                        .then(Commands.literal("payrequest")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handlePayRequestCreate(
+                                                        context.getSource(),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "amount"),
+                                                        null
+                                                ))
+                                                .then(Commands.argument("destinationAccountId", UuidArgument.uuid())
+                                                        .executes(context -> handlePayRequestCreate(
+                                                                context.getSource(),
+                                                                EntityArgument.getPlayer(context, "player"),
+                                                                StringArgumentType.getString(context, "amount"),
+                                                                UuidArgument.getUuid(context, "destinationAccountId")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
+                        .then(Commands.literal("send")
+                                .then(Commands.argument("player", StringArgumentType.word())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handleSendToPlayerAtBank(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "player"),
+                                                        StringArgumentType.getString(context, "amount"),
+                                                        ""
+                                                ))
+                                                .then(Commands.argument("bankName", StringArgumentType.word())
+                                                        .executes(context -> handleSendToPlayerAtBank(
+                                                                context.getSource(),
+                                                                StringArgumentType.getString(context, "player"),
+                                                                StringArgumentType.getString(context, "amount"),
+                                                                StringArgumentType.getString(context, "bankName")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
                         .then(Commands.literal("delete")
                                 .then(Commands.argument("Account ID", StringArgumentType.greedyString())
                                         .executes(context -> {
@@ -509,6 +727,14 @@ public class UBSCommands {
                                 )
                         )
                         .then(Commands.literal("primary")
+                                .then(Commands.literal("bank")
+                                        .then(Commands.argument("Bank Name", StringArgumentType.greedyString())
+                                                .executes(context -> handleSetPrimaryBank(
+                                                        context.getSource(),
+                                                        StringArgumentType.getString(context, "Bank Name")
+                                                ))
+                                        )
+                                )
                                 .then(Commands.literal("set")
                                         .then(Commands.argument("Account ID", StringArgumentType.greedyString())
                                                 .executes(context -> {
@@ -541,6 +767,16 @@ public class UBSCommands {
                                         )
                                 )
                         )
+                        .then(buildAccountCreditCommand())
+                        .then(buildAccountLoanCommand())
+                        .then(buildAccountShopCommand())
+                        .then(buildAccountNoteCommand())
+                        .then(buildAccountChequeCommand())
+                        .then(buildAccountHudCommand())
+                        .then(buildAccountSafeBoxCommand())
+                        .then(buildAccountCdCommand())
+                        .then(buildAccountJointCommand())
+                        .then(buildAccountBusinessCommand())
 
         ); // closes event.getDispatcher().register(Commands.literal("account") ... )
 
@@ -569,11 +805,247 @@ public class UBSCommands {
 
                 );
 
-        event.getDispatcher().register(buildPayRequestCommand());
         event.getDispatcher().register(buildHiddenPayRequestCommand());
         event.getDispatcher().register(buildBankCommand());
         event.getDispatcher().register(buildBankTellerCommand());
 
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountCreditCommand() {
+        return Commands.literal("credit")
+                .executes(context -> handleBankCredit(context.getSource()));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountLoanCommand() {
+        return Commands.literal("loan")
+                .then(Commands.literal("request")
+                        .then(Commands.argument("amount", StringArgumentType.word())
+                                .executes(context -> handleLoanRequest(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "amount")
+                                ))
+                        )
+                )
+                .then(Commands.literal("confirm")
+                        .executes(context -> handleLoanConfirm(context.getSource())))
+                .then(Commands.literal("status")
+                        .executes(context -> handleLoanStatus(context.getSource())));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountShopCommand() {
+        return Commands.literal("shop")
+                .then(Commands.literal("pay")
+                        .then(Commands.argument("amount", StringArgumentType.word())
+                                .executes(context -> handleShopPay(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "amount"),
+                                        "Generic Shop"
+                                ))
+                                .then(Commands.argument("shop", StringArgumentType.greedyString())
+                                        .executes(context -> handleShopPay(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "amount"),
+                                                StringArgumentType.getString(context, "shop")
+                                        ))
+                                )
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountNoteCommand() {
+        return Commands.literal("note")
+                .then(Commands.literal("write")
+                        .then(Commands.argument("amount", StringArgumentType.word())
+                                .executes(context -> handleWithdrawNote(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "amount")
+                                ))
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountChequeCommand() {
+        return Commands.literal("cheque")
+                .then(Commands.literal("write")
+                        .then(Commands.argument("player", StringArgumentType.word())
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleWriteCheque(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "player"),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountHudCommand() {
+        return Commands.literal("hud")
+                .then(Commands.literal("toggle")
+                        .executes(context -> handleHudToggle(context.getSource()))
+                )
+                .then(Commands.literal("primary")
+                        .executes(context -> handleHudMonitorPrimary(context.getSource()))
+                )
+                .then(Commands.literal("account")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .executes(context -> handleHudMonitorAccount(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountSafeBoxCommand() {
+        return Commands.literal("safebox")
+                .then(Commands.literal("list")
+                        .executes(context -> handleSafeBoxList(context.getSource()))
+                )
+                .then(Commands.literal("deposit")
+                        .executes(context -> handleSafeBoxDeposit(context.getSource()))
+                )
+                .then(Commands.literal("withdraw")
+                        .then(Commands.argument("slot", StringArgumentType.word())
+                                .executes(context -> handleSafeBoxWithdraw(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "slot")
+                                ))
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountCdCommand() {
+        return Commands.literal("cd")
+                .then(Commands.literal("break")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .executes(context -> handleCdBreakRequest(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                )
+                .then(Commands.literal("confirm")
+                        .executes(context -> handleBankConfirm(context.getSource()))
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountJointCommand() {
+        return Commands.literal("joint")
+                .then(Commands.literal("create")
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                        .executes(context -> handleJointCreate(
+                                                context.getSource(),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                StringArgumentType.getString(context, "bankName")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("info")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .executes(context -> handleSharedAccountInfo(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                )
+                .then(Commands.literal("deposit")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleSharedAccountDeposit(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId"),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("withdraw")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .then(Commands.argument("amount", StringArgumentType.word())
+                                        .executes(context -> handleSharedAccountWithdraw(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId"),
+                                                StringArgumentType.getString(context, "amount")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("transfer")
+                        .then(Commands.argument("fromAccountId", UuidArgument.uuid())
+                                .then(Commands.argument("toAccountId", UuidArgument.uuid())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
+                                                .executes(context -> handleSharedAccountTransfer(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "fromAccountId"),
+                                                        UuidArgument.getUuid(context, "toAccountId"),
+                                                        StringArgumentType.getString(context, "amount")
+                                                ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("close")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .executes(context -> handleSharedAccountClose(
+                                        context.getSource(),
+                                        UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountBusinessCommand() {
+        return Commands.literal("business")
+                .then(Commands.literal("create")
+                        .then(Commands.argument("label", StringArgumentType.word())
+                                .then(Commands.argument("bankName", StringArgumentType.greedyString())
+                                        .executes(context -> handleBusinessCreate(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "label"),
+                                                StringArgumentType.getString(context, "bankName")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("grant")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("role", StringArgumentType.word())
+                                                .executes(context -> handleBusinessGrant(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "accountId"),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "role")
+                                                ))
+                                        )
+                                )
+                        )
+                )
+                .then(Commands.literal("revoke")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> handleBusinessRevoke(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId"),
+                                                EntityArgument.getPlayer(context, "player")
+                                        ))
+                                )
+                        )
+                )
+                .then(Commands.literal("transferowner")
+                        .then(Commands.argument("accountId", UuidArgument.uuid())
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> handleBusinessTransferOwner(
+                                                context.getSource(),
+                                                UuidArgument.getUuid(context, "accountId"),
+                                                EntityArgument.getPlayer(context, "player")
+                                        ))
+                                )
+                        )
+                );
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildBankTellerCommand() {
@@ -603,34 +1075,27 @@ public class UBSCommands {
                         )
                 )
                 .then(Commands.literal("cancel")
-                        .executes(context -> BankTellerInteractionManager.handleCancel(context.getSource())));
+                        .executes(context -> {
+                            int paymentCancelled = BankTellerPaymentInteractionManager.handleCancel(context.getSource());
+                            if (paymentCancelled > 0) {
+                                return paymentCancelled;
+                            }
+                            return BankTellerInteractionManager.handleCancel(context.getSource());
+                        }));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildBankCommand() {
         return Commands.literal("bank")
-                .executes(context -> {
-                    context.getSource().sendSystemMessage(moneyLiteral(
-                            "§6§lUltimate Banking System §7- §eBank Commands\n"
-                                    + "§8/§fbank §7balance §8- §7Show your primary account balance\n"
-                                    + "§8/§fbank §7list §8- §7List available banks\n"
-                                    + "§8/§fbank §7loan request <amount> §8- §7Preview a loan\n"
-                                    + "§8/§fbank §7loan confirm §8- §7Confirm your last loan request\n"
-                                    + "§8/§fbank §7loan status §8- §7Show active loan balances\n"
-                                    + "§8/§fbank §7credit §8- §7Show your credit score\n"
-                                    + "§8/§fbank §7shop pay <amount> [shop] §8- §7Simulate a shop checkout using bank funds\n"
-                                    + "§8/§fbank §7withdraw note <amount> §8- §7Withdraw a serialized physical bank note\n"
-                                    + "§8/§fbank §7deposit note §8- §7Deposit the held bank note\n"
-                                    + "§8/§fbank §7cheque write <player> <amount> §8- §7Write a cheque item\n"
-                                    + "§8/§fbank §7cheque deposit §8- §7Deposit the held cheque\n"
-                                    + "§8/§fbank §7teller get §8- §7Issue a bank-bound teller spawn egg\n"
-                                    + "§8/§fbank §7teller count §8- §7Show active teller count for your bank\n"
-                                    + "§8/§fbank §7heist start <bankName> §8- §eComing Soon\n"
-                                    + "§8/§fbank §7hud toggle §8- §7Toggle on-screen balance HUD"
-                    ));
-                    return 1;
-                })
-                .then(Commands.literal("balance")
-                        .executes(context -> handleBankBalance(context.getSource())))
+                .executes(context -> sendBankHelp(context.getSource(), 1))
+                .then(Commands.literal("help")
+                        .executes(context -> sendBankHelp(context.getSource(), 1))
+                        .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                .executes(context -> sendBankHelp(
+                                        context.getSource(),
+                                        IntegerArgumentType.getInteger(context, "page")
+                                ))
+                        )
+                )
                 .then(Commands.literal("list")
                         .executes(context -> handleBankList(context.getSource())))
                 .then(Commands.literal("create")
@@ -646,82 +1111,6 @@ public class UBSCommands {
                                                 StringArgumentType.getString(context, "name"),
                                                 StringArgumentType.getString(context, "ownershipModel")
                                         ))
-                                )
-                        )
-                )
-                .then(Commands.literal("open")
-                        .then(Commands.argument("bankName", StringArgumentType.word())
-                                .executes(context -> handleBankOpenAccount(
-                                        context.getSource(),
-                                        StringArgumentType.getString(context, "bankName"),
-                                        "CheckingAccount",
-                                        ""
-                                ))
-                                .then(Commands.argument("accountType", StringArgumentType.word())
-                                        .executes(context -> handleBankOpenAccount(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "bankName"),
-                                                StringArgumentType.getString(context, "accountType"),
-                                                ""
-                                        ))
-                                        .then(Commands.argument("certificateTier", StringArgumentType.word())
-                                                .executes(context -> handleBankOpenAccount(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "bankName"),
-                                                        StringArgumentType.getString(context, "accountType"),
-                                                        StringArgumentType.getString(context, "certificateTier")
-                                                ))
-                                        )
-                                )
-                        )
-                )
-                .then(Commands.literal("primary")
-                        .then(Commands.argument("bankName", StringArgumentType.word())
-                                .executes(context -> handleSetPrimaryBank(
-                                        context.getSource(),
-                                        StringArgumentType.getString(context, "bankName")
-                                ))
-                        )
-                )
-                .then(Commands.literal("close")
-                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                .executes(context -> handleCloseBankAccount(
-                                        context.getSource(),
-                                        StringArgumentType.getString(context, "bankName")
-                                ))
-                        )
-                )
-                .then(Commands.literal("transfer")
-                        .then(Commands.argument("fromBank", StringArgumentType.word())
-                                .then(Commands.argument("toBank", StringArgumentType.word())
-                                        .then(Commands.argument("amount", StringArgumentType.word())
-                                                .executes(context -> handleInterBankSelfTransfer(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "fromBank"),
-                                                        StringArgumentType.getString(context, "toBank"),
-                                                        StringArgumentType.getString(context, "amount")
-                                                ))
-                                        )
-                                )
-                        )
-                )
-                .then(Commands.literal("send")
-                        .then(Commands.argument("player", StringArgumentType.word())
-                                .then(Commands.argument("amount", StringArgumentType.word())
-                                        .executes(context -> handleSendToPlayerAtBank(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "player"),
-                                                StringArgumentType.getString(context, "amount"),
-                                                ""
-                                        ))
-                                        .then(Commands.argument("bankName", StringArgumentType.word())
-                                                .executes(context -> handleSendToPlayerAtBank(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "player"),
-                                                        StringArgumentType.getString(context, "amount"),
-                                                        StringArgumentType.getString(context, "bankName")
-                                                ))
-                                        )
                                 )
                         )
                 )
@@ -766,6 +1155,7 @@ public class UBSCommands {
                 .then(Commands.literal("limit")
                         .then(Commands.literal("set")
                                 .then(Commands.argument("type", StringArgumentType.word())
+                                        .suggests(UBSCommands::suggestBankLimitTypes)
                                         .then(Commands.argument("amount", StringArgumentType.word())
                                                 .executes(context -> handleBankLimitSet(
                                                         context.getSource(),
@@ -904,21 +1294,7 @@ public class UBSCommands {
                                 ))
                         )
                 )
-                .then(Commands.literal("credit")
-                        .executes(context -> handleBankCredit(context.getSource())))
                 .then(Commands.literal("loan")
-                        .then(Commands.literal("request")
-                                .then(Commands.argument("amount", StringArgumentType.word())
-                                        .executes(context -> handleLoanRequest(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "amount")
-                                        ))
-                                )
-                        )
-                        .then(Commands.literal("confirm")
-                                .executes(context -> handleLoanConfirm(context.getSource())))
-                        .then(Commands.literal("status")
-                                .executes(context -> handleLoanStatus(context.getSource())))
                         .then(Commands.literal("create")
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .then(Commands.argument("maxAmount", StringArgumentType.word())
@@ -960,208 +1336,12 @@ public class UBSCommands {
                         )
                         .then(Commands.literal("active")
                                 .executes(context -> handleBankLoanSummary(context.getSource()))))
-                .then(Commands.literal("cd")
-                        .then(Commands.literal("break")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .executes(context -> handleCdBreakRequest(
-                                                context.getSource(),
-                                                UuidArgument.getUuid(context, "accountId")
-                                        ))
-                                )
-                        )
-                )
-                .then(Commands.literal("confirm")
-                        .executes(context -> handleBankConfirm(context.getSource())))
-                .then(Commands.literal("shop")
-                        .then(Commands.literal("pay")
-                                .then(Commands.argument("amount", StringArgumentType.word())
-                                        .executes(context -> handleShopPay(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "amount"),
-                                                "Generic Shop"
-                                        ))
-                                        .then(Commands.argument("shop", StringArgumentType.greedyString())
-                                                .executes(context -> handleShopPay(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "amount"),
-                                                        StringArgumentType.getString(context, "shop")
-                                                ))
-                                        )
-                                )
-                        )
-                )
-                .then(Commands.literal("withdraw")
-                        .then(Commands.literal("note")
-                                .then(Commands.argument("amount", StringArgumentType.word())
-                                        .executes(context -> handleWithdrawNote(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "amount")
-                                        ))
-                                )
-                        )
-                )
-                .then(Commands.literal("deposit")
-                        .then(Commands.literal("note")
-                                .executes(context -> handleDepositNote(context.getSource()))
-                        )
-                )
-                .then(Commands.literal("cheque")
-                        .then(Commands.literal("write")
-                                .then(Commands.argument("player", StringArgumentType.word())
-                                        .then(Commands.argument("amount", StringArgumentType.word())
-                                                .executes(context -> handleWriteCheque(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "player"),
-                                                        StringArgumentType.getString(context, "amount")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("deposit")
-                                .executes(context -> handleDepositCheque(context.getSource()))
-                        )
-                )
-                .then(Commands.literal("hud")
-                        .then(Commands.literal("toggle")
-                                .executes(context -> handleHudToggle(context.getSource()))
-                        )
-                )
-                .then(Commands.literal("safebox")
-                        .then(Commands.literal("list")
-                                .executes(context -> handleSafeBoxList(context.getSource()))
-                        )
-                        .then(Commands.literal("deposit")
-                                .executes(context -> handleSafeBoxDeposit(context.getSource()))
-                        )
-                        .then(Commands.literal("withdraw")
-                                .then(Commands.argument("slot", StringArgumentType.word())
-                                        .executes(context -> handleSafeBoxWithdraw(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "slot")
-                                        ))
-                                )
-                        )
-                )
                 .then(Commands.literal("heist")
                         .executes(context -> handleBankHeistComingSoon(context.getSource()))
                         .then(Commands.literal("start")
                                 .executes(context -> handleBankHeistComingSoon(context.getSource()))
                                 .then(Commands.argument("bankName", StringArgumentType.greedyString())
                                         .executes(context -> handleBankHeistComingSoon(context.getSource()))
-                                )
-                        )
-                )
-                .then(Commands.literal("joint")
-                        .then(Commands.literal("create")
-                                .then(Commands.argument("player", EntityArgument.player())
-                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                                .executes(context -> handleJointCreate(
-                                                        context.getSource(),
-                                                        EntityArgument.getPlayer(context, "player"),
-                                                        StringArgumentType.getString(context, "bankName")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("info")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .executes(context -> handleSharedAccountInfo(
-                                                context.getSource(),
-                                                UuidArgument.getUuid(context, "accountId")
-                                        ))
-                                )
-                        )
-                        .then(Commands.literal("deposit")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .then(Commands.argument("amount", StringArgumentType.word())
-                                                .executes(context -> handleSharedAccountDeposit(
-                                                        context.getSource(),
-                                                        UuidArgument.getUuid(context, "accountId"),
-                                                        StringArgumentType.getString(context, "amount")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("withdraw")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .then(Commands.argument("amount", StringArgumentType.word())
-                                                .executes(context -> handleSharedAccountWithdraw(
-                                                        context.getSource(),
-                                                        UuidArgument.getUuid(context, "accountId"),
-                                                        StringArgumentType.getString(context, "amount")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("transfer")
-                                .then(Commands.argument("fromAccountId", UuidArgument.uuid())
-                                        .then(Commands.argument("toAccountId", UuidArgument.uuid())
-                                                .then(Commands.argument("amount", StringArgumentType.word())
-                                                        .executes(context -> handleSharedAccountTransfer(
-                                                                context.getSource(),
-                                                                UuidArgument.getUuid(context, "fromAccountId"),
-                                                                UuidArgument.getUuid(context, "toAccountId"),
-                                                                StringArgumentType.getString(context, "amount")
-                                                        ))
-                                                )
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("close")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .executes(context -> handleSharedAccountClose(
-                                                context.getSource(),
-                                                UuidArgument.getUuid(context, "accountId")
-                                        ))
-                                )
-                        )
-                )
-                .then(Commands.literal("business")
-                        .then(Commands.literal("create")
-                                .then(Commands.argument("label", StringArgumentType.word())
-                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                                .executes(context -> handleBusinessCreate(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "label"),
-                                                        StringArgumentType.getString(context, "bankName")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("grant")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .then(Commands.argument("player", EntityArgument.player())
-                                                .then(Commands.argument("role", StringArgumentType.word())
-                                                        .executes(context -> handleBusinessGrant(
-                                                                context.getSource(),
-                                                                UuidArgument.getUuid(context, "accountId"),
-                                                                EntityArgument.getPlayer(context, "player"),
-                                                                StringArgumentType.getString(context, "role")
-                                                        ))
-                                                )
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("revoke")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(context -> handleBusinessRevoke(
-                                                        context.getSource(),
-                                                        UuidArgument.getUuid(context, "accountId"),
-                                                        EntityArgument.getPlayer(context, "player")
-                                                ))
-                                        )
-                                )
-                        )
-                        .then(Commands.literal("transferowner")
-                                .then(Commands.argument("accountId", UuidArgument.uuid())
-                                        .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(context -> handleBusinessTransferOwner(
-                                                        context.getSource(),
-                                                        UuidArgument.getUuid(context, "accountId"),
-                                                        EntityArgument.getPlayer(context, "player")
-                                                ))
-                                        )
                                 )
                         )
                 );
@@ -2298,8 +2478,16 @@ public class UBSCommands {
                 }
                 metadata.putString("limitDailyBank", amount.toPlainString());
             }
+            case "teller", "tellercash", "cash", "withdrawal" -> {
+                BigDecimal maxAllowed = BigDecimal.valueOf(Integer.MAX_VALUE / 100L);
+                if (amount.compareTo(maxAllowed) > 0) {
+                    source.sendSystemMessage(moneyLiteral("§cTeller limit cannot exceed $" + maxAllowed.toPlainString()));
+                    return 1;
+                }
+                metadata.putString("limitTeller", amount.toPlainString());
+            }
             default -> {
-                source.sendSystemMessage(moneyLiteral("§cUnknown limit type. Use single, dailyplayer, or dailybank."));
+                source.sendSystemMessage(moneyLiteral("§cUnknown limit type. Use single, dailyplayer, dailybank, or teller."));
                 return 1;
             }
         }
@@ -2334,6 +2522,9 @@ public class UBSCommands {
         BigDecimal dailyBank = metadata.contains("limitDailyBank")
                 ? readBigDecimal(metadata, "limitDailyBank")
                 : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
+        BigDecimal teller = metadata.contains("limitTeller")
+                ? readBigDecimal(metadata, "limitTeller")
+                : new BigDecimal("250000");
 
         source.sendSystemMessage(ubsMessage(
                 ChatFormatting.GOLD,
@@ -2341,7 +2532,8 @@ public class UBSCommands {
                 moneyLiteral("§7Bank: §e" + bank.getBankName() + "\n")
                         .append(moneyLiteral("§7Single Tx Limit: §f$" + single.toPlainString() + "\n"))
                         .append(moneyLiteral("§7Daily Player Limit: §f$" + dailyPlayer.toPlainString() + "\n"))
-                        .append(moneyLiteral("§7Daily Bank Limit: §f$" + dailyBank.toPlainString()))
+                        .append(moneyLiteral("§7Daily Bank Limit: §f$" + dailyBank.toPlainString() + "\n"))
+                        .append(moneyLiteral("§7Teller Cash Limit: §f$" + teller.toPlainString()))
         ));
         return 1;
     }
@@ -3337,6 +3529,59 @@ public class UBSCommands {
         return raw.trim().replaceAll("\\s+", " ");
     }
 
+    private static CompletableFuture<Suggestions> suggestAccountOpenTypes(CommandContext<CommandSourceStack> context,
+                                                                          SuggestionsBuilder builder) {
+        List<String> dynamicTypes = new ArrayList<>();
+        for (AccountTypes type : AccountTypes.values()) {
+            String token = accountTypeSuggestionToken(type);
+            if (token != null && !token.isBlank() && !dynamicTypes.contains(token)) {
+                dynamicTypes.add(token);
+            }
+        }
+        if (dynamicTypes.isEmpty()) {
+            dynamicTypes = List.of("checking", "saving", "moneymarket", "certificate");
+        }
+        return SharedSuggestionProvider.suggest(dynamicTypes, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestCertificateTiers(CommandContext<CommandSourceStack> context,
+                                                                          SuggestionsBuilder builder) {
+        return SharedSuggestionProvider.suggest(CERTIFICATE_TIER_SUGGESTIONS, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestCertificateTiersForAccountOpen(CommandContext<CommandSourceStack> context,
+                                                                                         SuggestionsBuilder builder) {
+        String accountTypeRaw;
+        try {
+            accountTypeRaw = StringArgumentType.getString(context, "accountType");
+        } catch (IllegalArgumentException ignored) {
+            return builder.buildFuture();
+        }
+        if (parseAccountType(accountTypeRaw) != AccountTypes.CertificateAccount) {
+            return builder.buildFuture();
+        }
+        return suggestCertificateTiers(context, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestBankNames(CommandContext<CommandSourceStack> context,
+                                                                   SuggestionsBuilder builder) {
+        CentralBank centralBank = BankManager.getCentralBank(context.getSource().getServer());
+        if (centralBank == null) {
+            return builder.buildFuture();
+        }
+        List<String> names = centralBank.getBanks().values().stream()
+                .map(Bank::getBankName)
+                .filter(name -> name != null && !name.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        return SharedSuggestionProvider.suggest(names, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestBankLimitTypes(CommandContext<CommandSourceStack> context,
+                                                                        SuggestionsBuilder builder) {
+        return SharedSuggestionProvider.suggest(BANK_LIMIT_TYPE_SUGGESTIONS, builder);
+    }
+
     private static String normalizeOwnershipModel(String raw) {
         if (raw == null) {
             return "SOLE";
@@ -3374,6 +3619,19 @@ public class UBSCommands {
             case "certificate", "certificateaccount", "certificateofdeposit", "cd", "cert" ->
                     AccountTypes.CertificateAccount;
             default -> null;
+        };
+    }
+
+    private static String accountTypeSuggestionToken(AccountTypes type) {
+        if (type == null) {
+            return "";
+        }
+        return switch (type) {
+            case CheckingAccount -> "checking";
+            case SavingAccount -> "saving";
+            case MoneyMarketAccount -> "moneymarket";
+            case CertificateAccount -> "certificate";
+            default -> "";
         };
     }
 
@@ -3759,7 +4017,7 @@ public class UBSCommands {
         };
     }
 
-    private static int handleBankBalance(CommandSourceStack source) {
+    private static int handleAccountBalance(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
             source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
@@ -3778,19 +4036,24 @@ public class UBSCommands {
             return 1;
         }
 
-        AccountHolder selected = findPrimaryAccount(centralBank, player.getUUID());
-        if (selected == null) {
-            selected = accounts.values().iterator().next();
+        AccountHolder primary = findPrimaryAccount(centralBank, player.getUUID());
+        if (primary == null) {
+            source.sendSystemMessage(moneyLiteral(
+                    "§cNo primary account set. Use §e/account primary set <Account ID>§c first."
+            ));
+            return 1;
         }
 
-        Bank bank = centralBank.getBank(selected.getBankId());
+        Bank bank = centralBank.getBank(primary.getBankId());
         String bankName = bank == null ? "Unknown" : bank.getBankName();
+        String accountType = primary.getAccountType() == null ? "Unknown" : primary.getAccountType().label;
+        String abbreviatedBalance = MoneyText.abbreviateWithDollar(primary.getBalance());
         source.sendSystemMessage(moneyLiteral(
-                "§6§lUltimate Banking System §7- §eBalance\n"
+                "§6§lUltimate Banking System §7- §eAccount Balance\n"
                         + "§7Bank: §f" + bankName + "\n"
-                        + "§7Type: §f" + selected.getAccountType().label + "\n"
-                        + "§7Account ID: §f" + selected.getAccountUUID() + "\n"
-                        + "§7Balance: §a$" + selected.getBalance().toPlainString()
+                        + "§7Type: §f" + accountType + "\n"
+                        + "§7Account ID: §f" + primary.getAccountUUID() + "\n"
+                        + "§7Balance: §a" + abbreviatedBalance
         ));
         return 1;
     }
@@ -3899,7 +4162,7 @@ public class UBSCommands {
         } else {
             body.append(moneyLiteral("§aEligible for auto-approval after confirmation.\n"));
         }
-        body.append(moneyLiteral("\n§7Run §f/bank loan confirm §7to continue."));
+        body.append(moneyLiteral("\n§7Run §f/account loan confirm §7to continue."));
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, "§eLoan Terms Preview", body));
         return 1;
@@ -3914,7 +4177,7 @@ public class UBSCommands {
 
         LoanService.LoanQuote quote = PENDING_LOAN_CONFIRMATIONS.remove(player.getUUID());
         if (quote == null) {
-            source.sendSystemMessage(moneyLiteral("§cNo pending loan request. Use /bank loan request <amount> first."));
+            source.sendSystemMessage(moneyLiteral("§cNo pending loan request. Use /account loan request <amount> first."));
             return 1;
         }
 
@@ -4076,7 +4339,7 @@ public class UBSCommands {
                         + "§7Principal: §6$" + principal.toPlainString() + "\n"
                         + "§7Penalty: §c$" + penalty.toPlainString() + " §8(" + (int) Math.round(penaltyFactor * 100) + "% of earned interest)\n"
                         + "§7Net payout: §a$" + payout.toPlainString() + "\n"
-                        + "§7Run §f/bank confirm §7within 60 seconds to proceed."
+                        + "§7Run §f/account cd confirm §7within 60 seconds to proceed."
         ));
         return 1;
     }
@@ -4215,10 +4478,27 @@ public class UBSCommands {
             return 1;
         }
 
-        AccountHolder selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
-        if (selected == null) {
-            source.sendSystemMessage(moneyLiteral("§cNo account available."));
-            return 1;
+        AccountHolder selected;
+        boolean usedHeldCard = false;
+
+        var heldCard = CreditCardService.findHeldCard(centralBank, player);
+        if (heldCard.hasCard()) {
+            if (!heldCard.validation().valid()) {
+                source.sendSystemMessage(moneyLiteral("§cCredit card rejected: " + heldCard.validation().message()));
+                return 1;
+            }
+            selected = centralBank.SearchForAccountByAccountId(heldCard.validation().accountId());
+            if (selected == null || !player.getUUID().equals(selected.getPlayerUUID())) {
+                source.sendSystemMessage(moneyLiteral("§cCredit card rejected: linked account is unavailable."));
+                return 1;
+            }
+            usedHeldCard = true;
+        } else {
+            selected = resolveDefaultLoanAccount(centralBank, player.getUUID());
+            if (selected == null) {
+                source.sendSystemMessage(moneyLiteral("§cNo account available."));
+                return 1;
+            }
         }
 
         long amountLong;
@@ -4229,19 +4509,39 @@ public class UBSCommands {
             return 1;
         }
 
-        var result = UltimateBankingApiProvider.get().shopPurchase(
-                selected.getAccountUUID(),
-                amountLong,
-                shopName
-        );
+        var api = UltimateBankingApiProvider.get();
+        UUID merchantAccountId = null;
+        if (shopName != null && !shopName.isBlank()) {
+            try {
+                merchantAccountId = UUID.fromString(shopName.trim());
+            } catch (IllegalArgumentException ignored) {
+                merchantAccountId = null;
+            }
+        }
+
+        var result = merchantAccountId == null
+                ? api.shopPurchase(selected.getAccountUUID(), amountLong, shopName)
+                : api.shopPurchase(
+                        selected.getAccountUUID(),
+                        merchantAccountId,
+                        amountLong,
+                        "Shop Payment",
+                        "command"
+                );
         if (!result.success()) {
             source.sendSystemMessage(moneyLiteral("§cPurchase failed: " + result.reason()));
             return 1;
         }
 
+        String targetLabel = merchantAccountId == null
+                ? (shopName == null || shopName.isBlank() ? "Shop" : shopName)
+                : ("merchant account " + merchantAccountId.toString().substring(0, 8));
         source.sendSystemMessage(moneyLiteral(
-                "§aPaid $" + amount.toPlainString() + " at " + shopName + ". New balance: $" + result.balanceAfter().toPlainString()
+                "§aPaid $" + amount.toPlainString() + " at " + targetLabel + ". New balance: $" + result.balanceAfter().toPlainString()
         ));
+        if (usedHeldCard) {
+            source.sendSystemMessage(moneyLiteral("§bPayment source: held credit card account §f" + shortId(selected.getAccountUUID()) + "§b."));
+        }
         return 1;
     }
 
@@ -4561,9 +4861,68 @@ public class UBSCommands {
             source.sendSystemMessage(moneyLiteral("§aBalance HUD is now §2enabled§a."));
         } else {
             source.sendSystemMessage(moneyLiteral(
-                    "§eBalance HUD is toggled on, but hidden because no primary account is set."
+                    "§eBalance HUD is toggled on, but hidden because no HUD account is available."
             ));
         }
+        return 1;
+    }
+
+    private static int handleHudMonitorPrimary(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
+            return 1;
+        }
+
+        HUD_ACCOUNT_MONITOR_OVERRIDES.remove(player.getUUID());
+        HudStatePayload hudState = buildHudStatePayload(centralBank, player.getUUID());
+        PacketDistributor.sendToPlayer(player, hudState);
+
+        if (hudState.enabled()) {
+            source.sendSystemMessage(moneyLiteral("§aHUD monitor set to your §2primary account§a."));
+        } else {
+            source.sendSystemMessage(moneyLiteral("§eNo primary account is set, so HUD is currently hidden."));
+        }
+        return 1;
+    }
+
+    private static int handleHudMonitorAccount(CommandSourceStack source, UUID accountId) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
+            return 1;
+        }
+        if (accountId == null) {
+            source.sendSystemMessage(moneyLiteral("§cInvalid account id."));
+            return 1;
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
+            return 1;
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !player.getUUID().equals(account.getPlayerUUID())) {
+            source.sendSystemMessage(moneyLiteral("§cThat account does not belong to you."));
+            return 1;
+        }
+
+        HUD_ACCOUNT_MONITOR_OVERRIDES.put(player.getUUID(), accountId);
+        HudStatePayload hudState = buildHudStatePayload(centralBank, player.getUUID());
+        PacketDistributor.sendToPlayer(player, hudState);
+
+        Bank bank = centralBank.getBank(account.getBankId());
+        String bankName = bank == null ? "Unknown Bank" : bank.getBankName();
+        source.sendSystemMessage(moneyLiteral(
+                "§aHUD monitor set to account §f" + shortId(accountId)
+                        + " §7(" + account.getAccountType().label + " @ " + bankName + ")"
+        ));
         return 1;
     }
 
@@ -5097,27 +5456,6 @@ public class UBSCommands {
                 member.sendSystemMessage(moneyLiteral(message));
             }
         }
-    }
-
-    private static LiteralArgumentBuilder<CommandSourceStack> buildPayRequestCommand() {
-        return Commands.literal("payrequest")
-                .then(Commands.argument("player", EntityArgument.player())
-                        .then(Commands.argument("amount", StringArgumentType.word())
-                                .executes(context -> handlePayRequestCreate(
-                                        context.getSource(),
-                                        EntityArgument.getPlayer(context, "player"),
-                                        StringArgumentType.getString(context, "amount"),
-                                        null
-                                ))
-                                .then(Commands.argument("destinationAccountId", UuidArgument.uuid())
-                                        .executes(context -> handlePayRequestCreate(
-                                                context.getSource(),
-                                                EntityArgument.getPlayer(context, "player"),
-                                                StringArgumentType.getString(context, "amount"),
-                                                UuidArgument.getUuid(context, "destinationAccountId")
-                                        ))
-                        ))
-                );
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildHiddenPayRequestCommand() {
@@ -5741,14 +6079,50 @@ public class UBSCommands {
         return HUD_ENABLED_OVERRIDES.getOrDefault(playerId, Config.HUD_ENABLED_BY_DEFAULT.get());
     }
 
+    public static void clearHudMonitorOverride(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        HUD_ACCOUNT_MONITOR_OVERRIDES.remove(playerId);
+    }
+
+    public static void clearHudMonitorOverridesForMissingPlayers(java.util.Set<UUID> onlinePlayers) {
+        if (onlinePlayers == null) {
+            return;
+        }
+        HUD_ACCOUNT_MONITOR_OVERRIDES.keySet().removeIf(id -> !onlinePlayers.contains(id));
+    }
+
+    public static void clearHudStateForMissingPlayers(java.util.Set<UUID> onlinePlayers) {
+        if (onlinePlayers == null) {
+            return;
+        }
+        HUD_ENABLED_OVERRIDES.keySet().removeIf(id -> !onlinePlayers.contains(id));
+    }
+
     public static HudStatePayload buildHudStatePayload(CentralBank centralBank, UUID playerId) {
         if (playerId == null) {
             return new HudStatePayload("", false);
         }
         boolean toggled = isHudEnabled(playerId);
-        AccountHolder primary = centralBank == null ? null : findPrimaryAccount(centralBank, playerId);
-        boolean visible = toggled && primary != null;
-        String balance = primary == null ? "" : primary.getBalance().toPlainString();
+        AccountHolder target = centralBank == null ? null : resolveHudTargetAccount(centralBank, playerId);
+        boolean visible = toggled && target != null;
+        String balance = target == null ? "" : target.getBalance().toPlainString();
         return new HudStatePayload(balance, visible);
+    }
+
+    private static AccountHolder resolveHudTargetAccount(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return null;
+        }
+        UUID overrideId = HUD_ACCOUNT_MONITOR_OVERRIDES.get(playerId);
+        if (overrideId != null) {
+            AccountHolder override = centralBank.SearchForAccountByAccountId(overrideId);
+            if (override != null && playerId.equals(override.getPlayerUUID())) {
+                return override;
+            }
+            HUD_ACCOUNT_MONITOR_OVERRIDES.remove(playerId, overrideId);
+        }
+        return findPrimaryAccount(centralBank, playerId);
     }
 }

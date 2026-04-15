@@ -48,7 +48,8 @@ public final class MoneyText {
             divisor = BigDecimal.valueOf(1_000L);
         }
 
-        BigDecimal shortened = amount.divide(divisor, 2, RoundingMode.HALF_UP);
+        // Truncate to 2 decimals so we never round up displayed money.
+        BigDecimal shortened = amount.divide(divisor, 2, RoundingMode.DOWN);
         return shortened.stripTrailingZeros().toPlainString() + suffix;
     }
 

@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.block.custom;
 
 import com.mojang.serialization.MapCodec;
+import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
 import net.austizz.ultimatebankingsystem.network.OpenBankOwnerPcPayload;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -62,6 +63,20 @@ public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
     @Override
     public @Nullable BlockState getStateForPlacement(BlockPlaceContext context) {
         return this.defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (!level.isClientSide() && !state.is(newState.getBlock())) {
+            BankOwnerPcService.unregisterDesktopMachine(
+                    level.getServer(),
+                    level.dimension().location().toString(),
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ()
+            );
+        }
+        super.onRemove(state, level, pos, newState, isMoving);
     }
 
     @Override

@@ -3,7 +3,7 @@
 ## Getting Started
 
 1. Create an account:
-   - `/account create CheckingAccount Central Bank`
+   - `/account open checking "Central Bank"`
 2. Open an ATM block.
 3. Select an account.
 4. Complete PIN flow:
@@ -14,7 +14,7 @@
 
 - Balance inquiry
 - Cash withdrawal (whole dollars)
-- Cash deposit (whole dollars, exact bill match)
+- Cash deposit (bills + coins, exact inventory match)
 - Transfer funds
 - Transaction history
 - Account settings
@@ -24,7 +24,7 @@
 
 Send request:
 
-- `/payrequest <player> <amount> [destinationAccountId]`
+- `/account payrequest <player> <amount> [destinationAccountId]`
 
 Receive request:
 
@@ -42,13 +42,45 @@ ATM side:
 
 Withdraw:
 
-- UBS dispenses available bill denominations.
+- ATM dispenses bills only (`$1, $2, $5, $10, $20, $50, $100`).
 - Overflow follows normal item-drop behavior.
 
 Deposit:
 
-- UBS scans your inventory for bill items.
-- Deposit requires exact denomination fit.
+- UBS scans inventory/offhand for legal tender cash items (bills + coins).
+- Deposit requires exact denomination fit for requested amount.
+
+Bank Teller:
+
+- Teller cash-out can dispense bills + coins.
+- Teller withdrawal limit can be configured per bank (`teller` limit type in Bank Limits).
+
+Legal tender list with textures:
+
+- [Currency & Legal Tender](Currency-Legal-Tender.md)
+
+## Payment Terminal
+
+- Place `payment_terminal` block for merchant checkout.
+- Right-click to pay.
+- Shift + right-click opens config (owner/OP only).
+- Terminal payment source:
+  - held valid credit card account, else primary account.
+- Result feedback:
+  - success/denied display state with temporary interaction lock.
+- Optional redstone output for success/failure/idle.
+
+Handheld mode:
+
+- Use `handheld_payment_terminal` to charge players directly.
+- While aiming at a player with handheld equipped, HUD panel shows amount + target.
+- Right-click player to charge that player.
+- Shift + right-click to open handheld terminal config.
+- Handheld has no redstone output controls.
+
+Full guide:
+
+- [Payment Terminal Guide](Payment-Terminal-Guide.md)
 
 ## Limits and Security
 

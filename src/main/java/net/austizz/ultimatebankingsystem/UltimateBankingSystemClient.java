@@ -1,7 +1,9 @@
 package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.client.HudClientState;
+import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
@@ -9,8 +11,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.phys.EntityHitResult;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -18,8 +22,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 import java.util.List;
@@ -49,6 +55,24 @@ public class UltimateBankingSystemClient {
         if (mc.player == null || mc.options.hideGui) {
             return;
         }
+
+        GuiGraphics graphics = event.getGuiGraphics();
+        renderBalanceHud(mc, graphics);
+    }
+
+    @SubscribeEvent
+    static void onRenderGuiLayer(RenderGuiLayerEvent.Pre event) {
+        if (!event.getName().equals(VanillaGuiLayers.CHAT)) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.options.hideGui) {
+            return;
+        }
+        renderHandheldTerminalOverlay(mc, event.getGuiGraphics());
+    }
+
+    private static void renderBalanceHud(Minecraft mc, GuiGraphics graphics) {
         if (!HudClientState.isEnabled()) {
             return;
         }
@@ -59,7 +83,6 @@ public class UltimateBankingSystemClient {
         }
 
         String text = "Balance: " + Config.CURRENCY_SYMBOL.get() + MoneyText.abbreviate(balance);
-        GuiGraphics graphics = event.getGuiGraphics();
         int color = Config.HUD_TEXT_COLOR.get();
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
@@ -91,22 +114,60 @@ public class UltimateBankingSystemClient {
         graphics.drawString(mc.font, text, x, y, color, true);
     }
 
+    private static void renderHandheldTerminalOverlay(Minecraft mc, GuiGraphics graphics) {
+        if (!(mc.hitResult instanceof EntityHitResult entityHit)
+                || !(entityHit.getEntity() instanceof Player targetPlayer)) {
+            return;
+        }
+
+        ItemStack terminalStack = HandheldPaymentTerminalItem.findHeldTerminal(targetPlayer);
+        if (terminalStack.isEmpty()) {
+            return;
+        }
+
+        String title = HandheldPaymentTerminalItem.getShopName(terminalStack);
+        String amount = "$" + MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(terminalStack)));
+        String target = targetPlayer.getName().getString();
+
+        String line1 = title + " | " + amount;
+        String line2 = "Merchant: " + target;
+        String line3 = "Right-click to pay";
+
+        int padding = 6;
+        int lineHeight = mc.font.lineHeight;
+        int width = Math.max(mc.font.width(line1), Math.max(mc.font.width(line2), mc.font.width(line3))) + padding * 2;
+        int height = lineHeight * 3 + padding * 2 + 2;
+        int x = (graphics.guiWidth() - width) / 2;
+        int y = graphics.guiHeight() - height - 46;
+
+        graphics.fill(x, y, x + width, y + height, 0xD0262A2F);
+        graphics.drawString(mc.font, line1, x + padding, y + padding, 0xFFFFFFFF, false);
+        graphics.drawString(mc.font, line2, x + padding, y + padding + lineHeight + 1, 0xFFE6ECF3, false);
+        graphics.drawString(mc.font, line3, x + padding, y + padding + (lineHeight + 1) * 2, 0xFFDCE8F7, false);
+    }
+
     @SubscribeEvent
     static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
         if (stack == null || stack.isEmpty()) {
             return;
         }
-        if (stack.getItem() != ModItems.BANK_NOTE.get() && stack.getItem() != ModItems.CHEQUE.get()) {
+        if (stack.getItem() != ModItems.BANK_NOTE.get()
+                && stack.getItem() != ModItems.CHEQUE.get()
+                && stack.getItem() != ModItems.CREDIT_CARD.get()
+                && stack.getItem() != ModItems.HANDHELD_PAYMENT_TERMINAL.get()) {
             return;
         }
 
         CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
-        if (customData == null) {
-            return;
+        CompoundTag tag = customData == null ? new CompoundTag() : customData.copyTag();
+        if (tag == null) {
+            tag = new CompoundTag();
         }
-        CompoundTag tag = customData.copyTag();
-        if (tag == null || tag.isEmpty()) {
+        boolean needsData = stack.getItem() == ModItems.CHEQUE.get()
+                || stack.getItem() == ModItems.BANK_NOTE.get()
+                || stack.getItem() == ModItems.CREDIT_CARD.get();
+        if (needsData && tag.isEmpty()) {
             return;
         }
 
@@ -114,8 +175,12 @@ public class UltimateBankingSystemClient {
         tooltip.add(Component.empty());
         if (stack.getItem() == ModItems.CHEQUE.get()) {
             addChequeTooltip(tooltip, tag);
-        } else {
+        } else if (stack.getItem() == ModItems.BANK_NOTE.get()) {
             addBankNoteTooltip(tooltip, tag);
+        } else if (stack.getItem() == ModItems.CREDIT_CARD.get()) {
+            addCreditCardTooltip(tooltip, tag);
+        } else {
+            addHandheldTerminalTooltip(tooltip, stack);
         }
     }
 
@@ -170,5 +235,71 @@ public class UltimateBankingSystemClient {
                 .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
         tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
+    }
+
+    private static void addCreditCardTooltip(List<Component> tooltip, CompoundTag tag) {
+        String cardNumber = tag.contains(CreditCardService.TAG_CARD_NUMBER)
+                ? tag.getString(CreditCardService.TAG_CARD_NUMBER)
+                : "";
+        String cvc = tag.contains(CreditCardService.TAG_CVC)
+                ? tag.getString(CreditCardService.TAG_CVC)
+                : "---";
+        String accountId = tag.hasUUID(CreditCardService.TAG_ACCOUNT_ID)
+                ? tag.getUUID(CreditCardService.TAG_ACCOUNT_ID).toString()
+                : "Unknown";
+        String bankName = tag.contains(CreditCardService.TAG_BANK_NAME)
+                ? tag.getString(CreditCardService.TAG_BANK_NAME)
+                : "Unknown Bank";
+        long expiry = tag.contains(CreditCardService.TAG_EXPIRY_AT)
+                ? tag.getLong(CreditCardService.TAG_EXPIRY_AT)
+                : 0L;
+        boolean blocked = tag.contains(CreditCardService.TAG_BLOCKED) && tag.getBoolean(CreditCardService.TAG_BLOCKED);
+        boolean expired = expiry > 0L && System.currentTimeMillis() > expiry;
+
+        tooltip.add(Component.literal("Credit Card Details").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        tooltip.add(Component.literal("Card Number: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(CreditCardService.maskCardNumber(cardNumber)).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(Component.literal("CVC: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(cvc).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(Component.literal("Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(bankName).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(Component.literal("Status: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(blocked ? "BLOCKED" : "ACTIVE")
+                        .withStyle(blocked ? ChatFormatting.RED : ChatFormatting.GREEN)));
+        tooltip.add(Component.literal("Linked Account: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(accountId).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(Component.literal("Expiry: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(CreditCardService.formatExpiryMonthYear(expiry))
+                        .withStyle(expired ? ChatFormatting.RED : ChatFormatting.GREEN)));
+        if (expired) {
+            tooltip.add(Component.literal("This card is expired.").withStyle(ChatFormatting.RED));
+        }
+        if (blocked) {
+            tooltip.add(Component.literal("This card is blocked.").withStyle(ChatFormatting.RED));
+        }
+    }
+
+    private static void addHandheldTerminalTooltip(List<Component> tooltip, ItemStack stack) {
+        String shopName = HandheldPaymentTerminalItem.getShopName(stack);
+        String amount = "$" + MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(stack)));
+        int result = HandheldPaymentTerminalItem.getResultState(stack);
+        String state = switch (result) {
+            case HandheldPaymentTerminalItem.RESULT_SUCCESS -> "SUCCESS";
+            case HandheldPaymentTerminalItem.RESULT_DENIED -> "DENIED";
+            default -> "IDLE";
+        };
+        ChatFormatting stateColor = switch (result) {
+            case HandheldPaymentTerminalItem.RESULT_SUCCESS -> ChatFormatting.GREEN;
+            case HandheldPaymentTerminalItem.RESULT_DENIED -> ChatFormatting.RED;
+            default -> ChatFormatting.GRAY;
+        };
+        tooltip.add(Component.literal("Handheld Terminal").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        tooltip.add(Component.literal("Name: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(shopName).withStyle(ChatFormatting.WHITE)));
+        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(amount).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(Component.literal("State: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(state).withStyle(stateColor)));
+        tooltip.add(Component.literal("Use: Hold it while others right-click you to pay").withStyle(ChatFormatting.DARK_GRAY));
     }
 }

@@ -2,7 +2,7 @@
 
 This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
 
-API baseline in this release: `1.1.0`
+API baseline in this release: `1.2.0`
 
 Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
 
@@ -23,10 +23,13 @@ Banking actions:
 - `withdraw(accountId, amount)`
 - `transfer(senderAccountId, receiverAccountId, amount)`
 - `shopPurchase(accountId, amount, shopName)`
+- `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)`
 - `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)`
 - `issueCheque(sourceAccountId, recipientPlayerId, amountDollars, writerPlayerId, writerName, recipientName)`
 - `giveDollarBills(playerId, denomination, billCount)`
 - `takeDollarBills(playerId, denomination, billCount)`
+- `giveCoins(playerId, denominationCents, coinCount)`
+- `takeCoins(playerId, denominationCents, coinCount)`
 
 Service/runtime checks:
 
@@ -34,6 +37,11 @@ Service/runtime checks:
 - `isServerAvailable()`
 - `accountExists(accountId)`
 - `bankExists(bankId)`
+
+`shopPurchase` overload note:
+
+- `shopPurchase(accountId, amount, shopName)` is a simple label-based purchase.
+- `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)` is the terminal-grade path (explicit merchant routing + external reference string).
 
 ## Snapshot API (Typed Data)
 
@@ -94,7 +102,7 @@ These methods expose stable read models for integration UIs, HUDs, dashboards, a
 
 ## Cash & Paper Instruments API
 
-These methods let integrations issue real UBS instruments and physical USD bill items.
+These methods let integrations issue real UBS instruments and physical USD legal tender cash items.
 
 ### Bank notes and cheques
 
@@ -126,6 +134,18 @@ Behavior:
 
 `denomination` values are face-value dollars: `1, 2, 5, 10, 20, 50, 100`.
 `billCount` means count of bill items, not dollar amount.
+
+### Coins (denomination in cents + coin count)
+
+- `giveCoins(playerId, denominationCents, coinCount)` -> `ApiCashResult`
+- `takeCoins(playerId, denominationCents, coinCount)` -> `ApiCashResult`
+- `getSupportedCoinDenominations()` -> `List<Integer>`
+- `createCoinStacks(denominationCents, coinCount)` -> `List<ItemStack>`
+- `getPlayerCoinCount(playerId, denominationCents)` -> `int`
+- `getPlayerCashOnHand(playerId)` -> `int` (bills + coins)
+
+`denominationCents` values: `1, 5, 10, 25, 50`.
+`coinCount` means count of coin items, not cent total.
 
 `ApiCashResult` fields:
 
@@ -237,6 +257,17 @@ ApiCashResult result = api.giveDollarBills(player.getUUID(), 20, 6); // six $20 
 
 if (!result.success()) {
     System.out.println("Failed to give bills: " + result.reason());
+}
+```
+
+## Example: Give Coins
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+ApiCashResult result = api.giveCoins(player.getUUID(), 25, 12); // twelve quarters
+
+if (!result.success()) {
+    System.out.println("Failed to give coins: " + result.reason());
 }
 ```
 

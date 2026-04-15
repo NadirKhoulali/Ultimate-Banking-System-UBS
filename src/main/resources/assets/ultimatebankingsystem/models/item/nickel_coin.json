@@ -1,0 +1,52 @@
+{
+  "textures": {
+    "front": "ultimatebankingsystem:item/nickel_american_front",
+    "back": "ultimatebankingsystem:item/nickel_american_back"
+  },
+  "elements": [
+    {
+      "from": [5.5, 5.5, 8],
+      "to": [10.5, 10.5, 8],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#front" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#back" }
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [0, 90, -35],
+      "translation": [0, 1, 0],
+      "scale": [1.05, 1.05, 1.05]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [0, -90, 35],
+      "translation": [0, 1, 0],
+      "scale": [1.05, 1.05, 1.05]
+    },
+    "firstperson_righthand": {
+      "rotation": [0, 90, -25],
+      "translation": [1, 2, 0],
+      "scale": [1.15, 1.15, 1.15]
+    },
+    "firstperson_lefthand": {
+      "rotation": [0, -90, 25],
+      "translation": [1, 2, 0],
+      "scale": [1.15, 1.15, 1.15]
+    },
+    "gui": {
+      "rotation": [30, 225, 0],
+      "translation": [0, 0, 0],
+      "scale": [1.9, 1.9, 1.9]
+    },
+    "ground": {
+      "translation": [0, 3, 0],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "fixed": {
+      "rotation": [0, 0, 0],
+      "translation": [0, 0, 0],
+      "scale": [1.4, 1.4, 1.4]
+    }
+  }
+}

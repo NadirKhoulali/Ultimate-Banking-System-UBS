@@ -17,6 +17,10 @@ public class Config {
             .comment("The Amount of transactions possible per player per minute")
             .defineInRange("TransactionsPerMinute", 10, 1, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.IntValue PAYMENT_TERMINAL_FEEDBACK_TICKS = BUILDER
+            .comment("Legacy terminal feedback setting. Terminal payment lock/feedback is currently fixed to 2 seconds.")
+            .defineInRange("PaymentTerminalFeedbackTicks", 40, 20, 20 * 30);
+
     public static final ModConfigSpec.IntValue DEFAULT_ATM_WITHDRAWAL_LIMIT = BUILDER
             .comment("Default maximum amount (in whole dollars) a player can withdraw from an ATM per transaction.")
             .defineInRange("DefaultATMWithdrawalLimit", 500, 1, Integer.MAX_VALUE);

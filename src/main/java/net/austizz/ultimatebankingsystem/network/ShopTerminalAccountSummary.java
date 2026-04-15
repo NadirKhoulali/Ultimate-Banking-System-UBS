@@ -1,0 +1,42 @@
+package net.austizz.ultimatebankingsystem.network;
+
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+
+import java.util.UUID;
+
+public record ShopTerminalAccountSummary(
+        UUID accountId,
+        String accountType,
+        String bankName,
+        String balance,
+        boolean primary
+) {
+    private static final StreamCodec<RegistryFriendlyByteBuf, UUID> UUID_CODEC =
+            StreamCodec.of(
+                    (buf, uuid) -> {
+                        buf.writeLong(uuid.getMostSignificantBits());
+                        buf.writeLong(uuid.getLeastSignificantBits());
+                    },
+                    buf -> new UUID(buf.readLong(), buf.readLong())
+            );
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, ShopTerminalAccountSummary> STREAM_CODEC =
+            StreamCodec.of(
+                    (buf, payload) -> {
+                        UUID_CODEC.encode(buf, payload.accountId());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.accountType());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankName());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.balance());
+                        ByteBufCodecs.BOOL.encode(buf, payload.primary());
+                    },
+                    buf -> new ShopTerminalAccountSummary(
+                            UUID_CODEC.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.BOOL.decode(buf)
+                    )
+            );
+}

@@ -1,0 +1,7 @@
+{
+  "parent": "ultimatebankingsystem:block/payment_terminal_handheld",
+  "textures": {
+    "terminal": "ultimatebankingsystem:block/payment_terminal_denied",
+    "particle": "ultimatebankingsystem:block/payment_terminal_denied"
+  }
+}

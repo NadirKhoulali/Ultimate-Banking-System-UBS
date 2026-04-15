@@ -26,6 +26,8 @@ public record OwnerPcBankDataPayload(
         String dailyCap,
         String dailyUsed,
         String dailyRemaining,
+        String cardIssueFee,
+        String cardReplacementFee,
         String federalFundsRate,
         boolean ownerView,
         List<String> roles,
@@ -69,6 +71,8 @@ public record OwnerPcBankDataPayload(
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyCap());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyUsed());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyRemaining());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardIssueFee());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardReplacementFee());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.federalFundsRate());
                         ByteBufCodecs.BOOL.encode(buf, payload.ownerView());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).encode(buf, payload.roles());
@@ -83,6 +87,8 @@ public record OwnerPcBankDataPayload(
                     },
                     buf -> new OwnerPcBankDataPayload(
                             UUID_CODEC.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),

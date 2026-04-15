@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.custom.ATMBlock;
 import net.austizz.ultimatebankingsystem.block.custom.BankOwnerPcBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ColorButtonBlock;
+import net.austizz.ultimatebankingsystem.block.custom.ShopTerminalBlock;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -39,6 +40,12 @@ public class ModBlocks {
                     .sound(SoundType.STONE)
 
 
+            ));
+    public static final DeferredBlock<Block> PAYMENT_TERMINAL = registerBlock("payment_terminal",
+            () -> new ShopTerminalBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(3.0f)
+                    .sound(SoundType.METAL)
             ));
 
 

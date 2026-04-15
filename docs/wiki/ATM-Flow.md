@@ -30,6 +30,7 @@ Validation path:
 - per-transaction ATM limit
 - daily ATM limit
 - balance availability
+- whole-dollar amount requirement (ATM withdraw is bills only)
 - bill dispense feasibility
 
 Success result:
@@ -45,12 +46,12 @@ Validation path:
 
 - account ownership
 - account freeze state
-- required bill denominations in inventory
-- exact amount representation by available bills
+- required legal-tender cash denominations in inventory (bills + coins)
+- exact amount representation by available cash items
 
 Success result:
 
-- bills are removed
+- selected cash items are removed
 - balance increases
 - transaction entry is recorded
 
@@ -76,4 +77,3 @@ Create flow:
 - enter amount
 - choose destination account (primary is default)
 - submit request
-

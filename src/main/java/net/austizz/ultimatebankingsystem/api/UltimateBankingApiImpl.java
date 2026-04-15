@@ -36,10 +36,11 @@ import java.util.regex.Pattern;
 
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
-    private static final String API_VERSION = "1.1.0";
+    private static final String API_VERSION = "1.2.0";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final List<Integer> SUPPORTED_BILL_DENOMINATIONS = List.of(100, 50, 20, 10, 5, 2, 1);
+    private static final List<Integer> SUPPORTED_COIN_DENOMINATIONS_CENTS = List.of(50, 25, 10, 5, 1);
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([A-Za-z0-9_\\-]+)%");
     private static final List<String> SUPPORTED_PLACEHOLDERS = List.of(
             "%ubs_player_total_balance%",
@@ -193,6 +194,93 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public ApiResult shopPurchase(UUID payerAccountId,
+                                  UUID merchantAccountId,
+                                  long amount,
+                                  String shopName,
+                                  String reference) {
+        if (amount <= 0) {
+            return ApiResult.fail("Amount must be greater than zero", BigDecimal.ZERO);
+        }
+        if (merchantAccountId == null) {
+            return ApiResult.fail("Merchant account is required", BigDecimal.ZERO);
+        }
+        if (payerAccountId == null) {
+            return ApiResult.fail("Payer account is required", BigDecimal.ZERO);
+        }
+
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return ApiResult.fail("Server unavailable", BigDecimal.ZERO);
+        }
+
+        AccountHolder payer = resolveAccount(payerAccountId);
+        AccountHolder merchant = resolveAccount(merchantAccountId);
+        if (payer == null || merchant == null) {
+            BigDecimal balance = payer == null ? BigDecimal.ZERO : payer.getBalance();
+            return ApiResult.fail("Payer or merchant account not found", balance);
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return ApiResult.fail("Bank data unavailable", payer.getBalance());
+        }
+        Bank payerBank = centralBank.getBank(payer.getBankId());
+        Bank merchantBank = centralBank.getBank(merchant.getBankId());
+        if (payerBank == null || merchantBank == null) {
+            return ApiResult.fail("Payer or merchant bank is unavailable", payer.getBalance());
+        }
+        String payerStatus = resolveBankStatusForTransactions(centralBank, payerBank);
+        String merchantStatus = resolveBankStatusForTransactions(centralBank, merchantBank);
+        if (blocksTransactions(payerStatus) || blocksTransactions(merchantStatus)) {
+            return ApiResult.fail(
+                    "Payment blocked by bank status. "
+                            + safeBankName(payerBank) + ": " + payerStatus + " | "
+                            + safeBankName(merchantBank) + ": " + merchantStatus + ".",
+                    payer.getBalance()
+            );
+        }
+
+        String merchantLabel = (shopName == null || shopName.isBlank()) ? "Payment Terminal" : shopName.trim();
+        String normalizedReference = (reference == null || reference.isBlank()) ? "" : reference.trim();
+        String description = normalizedReference.isBlank()
+                ? "SHOP_PURCHASE:" + merchantLabel
+                : "SHOP_PURCHASE:" + merchantLabel + "@" + normalizedReference;
+        String selfDescription = normalizedReference.isBlank()
+                ? "SHOP_PURCHASE_SELF:" + merchantLabel
+                : "SHOP_PURCHASE_SELF:" + merchantLabel + "@" + normalizedReference;
+
+        if (payerAccountId.equals(merchantAccountId)) {
+            if (payer.isFrozen()) {
+                return ApiResult.fail("Account is frozen", payer.getBalance());
+            }
+            UserTransaction selfTx = new UserTransaction(
+                    payerAccountId,
+                    merchantAccountId,
+                    BigDecimal.valueOf(amount),
+                    LocalDateTime.now(),
+                    selfDescription
+            );
+            payer.addTransaction(selfTx);
+            BankManager.markDirty();
+            return ApiResult.ok(payer.getBalance());
+        }
+
+        UserTransaction tx = new UserTransaction(
+                payerAccountId,
+                merchantAccountId,
+                BigDecimal.valueOf(amount),
+                LocalDateTime.now(),
+                description
+        );
+        boolean success = tx.makeTransaction(server);
+        if (!success) {
+            return ApiResult.fail("Payment failed", payer.getBalance());
+        }
+        return ApiResult.ok(payer.getBalance());
+    }
+
+    @Override
     public ApiItemResult issueBankNote(UUID sourceAccountId, long amountDollars, UUID issuerPlayerId, String issuerName) {
         if (amountDollars <= 0) {
             return ApiItemResult.fail("Amount must be greater than zero");
@@ -343,8 +431,61 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public ApiCashResult giveCoins(UUID playerId, int denominationCents, int coinCount) {
+        if (coinCount <= 0) {
+            return ApiCashResult.fail("Coin count must be greater than zero", denominationCents, coinCount);
+        }
+        if (!SUPPORTED_COIN_DENOMINATIONS_CENTS.contains(denominationCents)) {
+            return ApiCashResult.fail("Unsupported coin denomination (cents)", denominationCents, coinCount);
+        }
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiCashResult.fail("Player is not online", denominationCents, coinCount);
+        }
+
+        int idx = indexForCashDenominationCents(denominationCents);
+        if (idx < 0) {
+            return ApiCashResult.fail("Unsupported coin denomination (cents)", denominationCents, coinCount);
+        }
+        int[] plan = new int[DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length];
+        plan[idx] = coinCount;
+        DollarBills.giveCash(player, plan);
+        return ApiCashResult.ok(denominationCents, coinCount);
+    }
+
+    @Override
+    public ApiCashResult takeCoins(UUID playerId, int denominationCents, int coinCount) {
+        if (coinCount <= 0) {
+            return ApiCashResult.fail("Coin count must be greater than zero", denominationCents, coinCount);
+        }
+        if (!SUPPORTED_COIN_DENOMINATIONS_CENTS.contains(denominationCents)) {
+            return ApiCashResult.fail("Unsupported coin denomination (cents)", denominationCents, coinCount);
+        }
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiCashResult.fail("Player is not online", denominationCents, coinCount);
+        }
+
+        Item coinItem = DollarBills.getCashItemForDenominationCents(denominationCents);
+        if (coinItem == null) {
+            return ApiCashResult.fail("Unsupported coin denomination (cents)", denominationCents, coinCount);
+        }
+        int available = countItem(player, coinItem);
+        if (available < coinCount) {
+            return ApiCashResult.fail("Not enough matching coins in inventory", denominationCents, coinCount);
+        }
+        removeItem(player, coinItem, coinCount);
+        return ApiCashResult.ok(denominationCents, coinCount);
+    }
+
+    @Override
     public List<Integer> getSupportedBillDenominations() {
         return SUPPORTED_BILL_DENOMINATIONS;
+    }
+
+    @Override
+    public List<Integer> getSupportedCoinDenominations() {
+        return SUPPORTED_COIN_DENOMINATIONS_CENTS;
     }
 
     @Override
@@ -368,6 +509,26 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public List<ItemStack> createCoinStacks(int denominationCents, int coinCount) {
+        if (coinCount <= 0 || !SUPPORTED_COIN_DENOMINATIONS_CENTS.contains(denominationCents)) {
+            return List.of();
+        }
+        Item coinItem = DollarBills.getCashItemForDenominationCents(denominationCents);
+        if (coinItem == null) {
+            return List.of();
+        }
+        int maxStack = coinItem.getDefaultMaxStackSize();
+        int remaining = coinCount;
+        List<ItemStack> stacks = new ArrayList<>();
+        while (remaining > 0) {
+            int next = Math.min(maxStack, remaining);
+            stacks.add(new ItemStack(coinItem, next));
+            remaining -= next;
+        }
+        return List.copyOf(stacks);
+    }
+
+    @Override
     public int getPlayerBillCount(UUID playerId, int denomination) {
         if (!SUPPORTED_BILL_DENOMINATIONS.contains(denomination)) {
             return 0;
@@ -380,12 +541,26 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public int getPlayerCoinCount(UUID playerId, int denominationCents) {
+        if (!SUPPORTED_COIN_DENOMINATIONS_CENTS.contains(denominationCents)) {
+            return 0;
+        }
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return 0;
+        }
+        Item coinItem = DollarBills.getCashItemForDenominationCents(denominationCents);
+        return coinItem == null ? 0 : countItem(player, coinItem);
+    }
+
+    @Override
     public int getPlayerCashOnHand(UUID playerId) {
         ServerPlayer player = resolveOnlinePlayer(playerId);
         if (player == null) {
             return 0;
         }
-        return DollarBills.totalValue(DollarBills.getAvailableBillCounts(player));
+        int totalCents = DollarBills.totalCashValueCents(DollarBills.getAvailableCashCounts(player));
+        return totalCents / 100;
     }
 
     @Override
@@ -697,7 +872,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (bank == null) {
             return "";
         }
-        return resolveBankStatus(centralBank, bankId);
+        return resolveBankStatusForTransactions(centralBank, bank);
     }
 
     @Override
@@ -856,28 +1031,21 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         return -1;
     }
 
+    private int indexForCashDenominationCents(int denominationCents) {
+        for (int i = 0; i < DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length; i++) {
+            if (DollarBills.CASH_DENOMINATIONS_CENTS_DESC[i] == denominationCents) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private int countBills(ServerPlayer player, int denomination) {
         if (player == null) {
             return 0;
         }
-        int total = 0;
-        for (ItemStack stack : player.getInventory().items) {
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            if (DollarBills.getItemForDenomination(denomination) == stack.getItem()) {
-                total += stack.getCount();
-            }
-        }
-        for (ItemStack stack : player.getInventory().offhand) {
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            if (DollarBills.getItemForDenomination(denomination) == stack.getItem()) {
-                total += stack.getCount();
-            }
-        }
-        return total;
+        Item target = DollarBills.getItemForDenomination(denomination);
+        return target == null ? 0 : countItem(player, target);
     }
 
     private void removeBillsByDenomination(ServerPlayer player, int denomination, int billCount) {
@@ -888,7 +1056,38 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (target == null) {
             return;
         }
-        int remaining = billCount;
+        removeItem(player, target, billCount);
+    }
+
+    private int countItem(ServerPlayer player, Item target) {
+        if (player == null || target == null) {
+            return 0;
+        }
+        int total = 0;
+        for (ItemStack stack : player.getInventory().items) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            if (stack.getItem() == target) {
+                total += stack.getCount();
+            }
+        }
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            if (stack.getItem() == target) {
+                total += stack.getCount();
+            }
+        }
+        return total;
+    }
+
+    private void removeItem(ServerPlayer player, Item target, int amount) {
+        if (player == null || target == null || amount <= 0) {
+            return;
+        }
+        int remaining = amount;
         for (ItemStack stack : player.getInventory().items) {
             if (remaining <= 0) {
                 break;
@@ -1008,6 +1207,34 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             status = "ACTIVE";
         }
         return status.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveBankStatusForTransactions(CentralBank centralBank, Bank bank) {
+        if (centralBank == null || bank == null) {
+            return "UNKNOWN";
+        }
+        if (centralBank.getBankId() != null && centralBank.getBankId().equals(bank.getBankId())) {
+            return "ACTIVE";
+        }
+        String status = resolveBankStatus(centralBank, bank.getBankId());
+        return status == null || status.isBlank() ? "ACTIVE" : status;
+    }
+
+    private static boolean blocksTransactions(String status) {
+        if (status == null) {
+            return false;
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        return "SUSPENDED".equals(normalized)
+                || "REVOKED".equals(normalized)
+                || "LOCKDOWN".equals(normalized);
+    }
+
+    private static String safeBankName(Bank bank) {
+        if (bank == null || bank.getBankName() == null || bank.getBankName().isBlank()) {
+            return "Unknown Bank";
+        }
+        return bank.getBankName().trim();
     }
 
     private AccountHolder resolveAccount(UUID accountId) {

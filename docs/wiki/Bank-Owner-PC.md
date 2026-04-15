@@ -48,6 +48,7 @@ Limits now use explicit type selectors (instead of free-text guessing):
 - `Single`
 - `Daily Player`
 - `Daily Bank`
+- `Teller Cash`
 
 Then enter amount and apply.
 
@@ -56,6 +57,7 @@ Type behavior is functional server-side:
 - `single` -> transaction cap
 - `dailyplayer` -> per-player daily cap
 - `dailybank` -> bank-wide daily cap
+- `teller` -> max cash amount per teller withdrawal action (high-value teller counter limit)
 
 ## Governance
 

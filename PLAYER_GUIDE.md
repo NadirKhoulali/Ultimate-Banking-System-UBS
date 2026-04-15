@@ -5,28 +5,37 @@ This file explains the current playable features of UBS in a user-friendly way f
 ## What UBS Adds
 
 - `ATM Machine` block: `ultimatebankingsystem:atm_machine`
-- Bill items:
-- `$1` bill: `ultimatebankingsystem:one_dollar_bill`
-- `$2` bill: `ultimatebankingsystem:two_dollar_bill`
-- `$5` bill: `ultimatebankingsystem:five_dollar_bill`
-- `$10` bill: `ultimatebankingsystem:ten_dollar_bill`
-- `$20` bill: `ultimatebankingsystem:twenty_dollar_bill`
-- `$50` bill: `ultimatebankingsystem:fifty_dollar_bill`
-- `$100` bill: `ultimatebankingsystem:hundred_dollar_bill`
-- Legacy item: `ultimatebankingsystem:cash`
-- Full account system with:
-- Balance storage
-- Transfer support
-- PIN changes
-- Primary account flag
-- Transaction history
+- `Payment Terminal` block: `ultimatebankingsystem:payment_terminal`
+- Legal tender bills:
+  - `$1`: `ultimatebankingsystem:one_dollar_bill`
+  - `$2`: `ultimatebankingsystem:two_dollar_bill`
+  - `$5`: `ultimatebankingsystem:five_dollar_bill`
+  - `$10`: `ultimatebankingsystem:ten_dollar_bill`
+  - `$20`: `ultimatebankingsystem:twenty_dollar_bill`
+  - `$50`: `ultimatebankingsystem:fifty_dollar_bill`
+  - `$100`: `ultimatebankingsystem:hundred_dollar_bill`
+- Legal tender coins:
+  - `$0.01`: `ultimatebankingsystem:penny_coin`
+  - `$0.05`: `ultimatebankingsystem:nickel_coin`
+  - `$0.10`: `ultimatebankingsystem:dime_coin`
+  - `$0.25`: `ultimatebankingsystem:quarter_coin`
+  - `$0.50`: `ultimatebankingsystem:half_dollar_coin`
+- Credit card item: `ultimatebankingsystem:credit_card`
+- Bank note + cheque instruments:
+  - `ultimatebankingsystem:bank_note`
+  - `ultimatebankingsystem:cheque`
+- Full account system with balance storage, transfers, PIN security, primary account flag, and transaction history.
+
+Visual references:
+- Currency texture catalog: `docs/wiki/Currency-Legal-Tender.md`
+- Payment terminal guide: `docs/wiki/Payment-Terminal-Guide.md`
 
 ## Quick Start (Players)
 
 1. Place an ATM or find one in the world.
 2. Right-click the ATM to open UBS.
 3. If you do not have an account yet, create one with:
-`/account create CheckingAccount Central Bank`
+`/account open checking "Central Bank"`
 4. Open ATM again, choose your account, then use ATM actions.
 
 ## First-Time Important Notes
@@ -34,7 +43,8 @@ This file explains the current playable features of UBS in a user-friendly way f
 - New accounts no longer use a default PIN.
 - On first ATM login, you are prompted to create a 4-digit PIN.
 - Most ATM actions are disabled until an account is selected.
-- ATM withdraw/deposit uses real bill items (physical currency).
+- ATM withdraw uses real bill items (physical currency).
+- ATM deposit accepts legal tender bills + coins.
 - Frozen accounts cannot withdraw, deposit, or transfer.
 - Daily ATM withdrawal limits apply per account.
 
@@ -50,7 +60,7 @@ This file explains the current playable features of UBS in a user-friendly way f
 
 - Quick amount buttons: `$20`, `$50`, `$100`, `$200`, `$500`.
 - Custom amount input is supported.
-- Whole-dollar amounts only.
+- Whole-dollar amounts only (`ATM dispenses bills only`).
 - Success result:
 - Balance decreases
 - Bill items are given
@@ -60,11 +70,11 @@ This file explains the current playable features of UBS in a user-friendly way f
 ### Deposit Cash
 
 - Enter amount and confirm.
-- Whole-dollar amounts only.
-- ATM checks your inventory and offhand for bill items.
-- Deposit only succeeds if exact amount can be built from bills you carry.
+- Supports up to 2 decimal places.
+- ATM checks your inventory and offhand for legal tender cash items (bills + coins).
+- Deposit only succeeds if exact amount can be built from cash you carry.
 - Success result:
-- Required bill items are removed
+- Required cash items are removed
 - Balance increases
 - Transaction log entry: `ATM Cash Deposit`
 
@@ -112,9 +122,29 @@ Shows:
 - Confirm new PIN
 - Confirmation dialog before applying PIN change
 
-## How Bills Work
+## Payment Terminal
 
-### Withdraw bill breakdown
+`Payment Terminal` block enables in-world merchant checkout.
+
+Basic use:
+- Right-click terminal to pay configured price.
+- Shift + right-click terminal to configure it (owner or OP only).
+
+Payment source:
+- If you hold a valid UBS credit card, payment uses the card-linked account.
+- Otherwise payment uses your primary account.
+
+Terminal feedback:
+- Terminal shows success/denied state for 2 seconds.
+- During that period, interaction is blocked for all players.
+
+Redstone:
+- Terminal can output configurable success/failure signal strength.
+- Optional idle signal can remain active continuously while terminal is idle.
+
+## How Physical Cash Works
+
+### ATM withdraw bill breakdown
 
 ATM uses denominations in this order:
 `$100, $50, $20, $10, $5, $2, $1`
@@ -122,14 +152,19 @@ ATM uses denominations in this order:
 Example:
 - Withdraw `137` -> `$100 x1, $20 x1, $10 x1, $5 x1, $2 x1`
 
-### Deposit bill matching
+### ATM deposit cash matching
 
-ATM attempts to build your exact requested amount from your current bills.
+ATM attempts to build your exact requested amount from your current legal tender cash.
 
 Example:
-- Deposit `37` can work with `20 + 10 + 5 + 2`.
+- Deposit `37.41` can work with `20 + 10 + 5 + 2 + 0.25 + 0.10 + 0.05 + 0.01`.
 
 If exact combination is impossible, deposit is rejected.
+
+### Bank Teller cash-out
+
+Bank Teller cash payout can dispense bills and coins.
+Server owners can set a higher teller counter limit from bank limits (`teller` type).
 
 ## Player Commands (`/account`)
 
@@ -154,13 +189,13 @@ Shows specific account details.
 
 ### Account creation
 
-- `/account create <AccountType> <Bank Name>`
+- `/account open <accountType> [certificateTier] <bankName>`
 
 Valid account types:
-- `CheckingAccount`
-- `SavingAccount`
-- `MoneyMarketAccount`
-- `CertificateAccount`
+- `checking`
+- `saving`
+- `moneymarket`
+- `certificate`
 
 ### Transfers
 
@@ -265,9 +300,9 @@ Recipient of successful ATM transfer receives a positive balance-change chat mes
 
 ## Current Known Behavior / Limitations
 
-- ATM withdraw/deposit supports whole-dollar amounts only.
-- ATM physical cash flow only works with UBS bill items.
-- No crafting recipes are currently present in this codebase for ATM or bills.
+- ATM withdraw supports whole-dollar amounts only (bills only).
+- ATM deposit supports up to 2 decimals and uses UBS bills + coins.
+- No crafting recipes are currently present in this codebase for ATM, terminal, or cash items.
 - If no account exists, ATM actions remain unavailable.
 - Account creation requires existing bank name.
 - Default bank is `Central Bank` unless renamed by admin.
@@ -277,11 +312,11 @@ Recipient of successful ATM transfer receives a positive balance-change chat mes
 ### "No accounts found"
 
 Create one account first:
-`/account create CheckingAccount Central Bank`
+`/account open checking "Central Bank"`
 
 ### "Not enough cash on hand"
 
-You do not carry enough bill items for requested deposit.
+You do not carry enough legal tender cash items for requested deposit.
 
 ### "Cannot form that exact amount"
 
@@ -297,6 +332,6 @@ Possible causes:
 ## Suggested Setup Flow (Server Owners)
 
 1. Place ATM machines in spawn/city/bank areas.
-2. Tell players to create accounts with `/account create ...`.
+2. Tell players to create/open accounts with `/account open ...`.
 3. Tell players to set a 4-digit PIN on first ATM use.
 4. Adjust config and admin rates as needed.

@@ -5,6 +5,8 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
+import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
+import net.austizz.ultimatebankingsystem.npc.BankTellerService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -29,6 +31,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -142,22 +145,22 @@ public class BankTellerEntity extends PathfinderMob {
             return handleRemovalClick(serverPlayer);
         }
 
+        if (BankTellerPaymentInteractionManager.handleInteract(serverPlayer, this, hand)) {
+            return InteractionResult.CONSUME;
+        }
+
         sendBankMottoMessage(serverPlayer);
-
-        ItemStack held = serverPlayer.getItemInHand(hand);
-        if (!held.isEmpty() && held.is(ModItems.CHEQUE.get())) {
-            BankTellerInteractionManager.beginChequeSession(serverPlayer, this, hand);
+        MinecraftServer server = serverPlayer.getServer();
+        if (server == null) {
+            serverPlayer.sendSystemMessage(Component.literal("§cBank teller service is unavailable."));
             return InteractionResult.CONSUME;
         }
-
-        InteractionHand otherHand = hand == InteractionHand.MAIN_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-        ItemStack otherHeld = serverPlayer.getItemInHand(otherHand);
-        if (!otherHeld.isEmpty() && otherHeld.is(ModItems.CHEQUE.get())) {
-            BankTellerInteractionManager.beginChequeSession(serverPlayer, this, otherHand);
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            serverPlayer.sendSystemMessage(Component.literal("§cBank data is unavailable right now."));
             return InteractionResult.CONSUME;
         }
-
-        serverPlayer.sendSystemMessage(Component.literal("§b" + getChatPrefix(serverPlayer) + " §7Hold a §aCheque§7 and right-click me to cash it."));
+        PacketDistributor.sendToPlayer(serverPlayer, BankTellerService.buildOpenPayload(server, centralBank, serverPlayer, this));
         return InteractionResult.CONSUME;
     }
 
@@ -178,6 +181,7 @@ public class BankTellerEntity extends PathfinderMob {
                 player.drop(egg, false);
             }
             BankTellerInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
+            BankTellerPaymentInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             this.discard();
             player.sendSystemMessage(Component.literal("§aBank Teller removed and spawn egg returned."));
             return InteractionResult.CONSUME;

@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 public class DesktopButton extends AbstractButton {
 
     private final Consumer<DesktopButton> onPress;
-    private final int accentColor;
+    private int accentColor;
     private int labelOffsetX;
     private int labelOffsetY;
     private int iconOffsetX;
@@ -49,6 +49,11 @@ public class DesktopButton extends AbstractButton {
     public DesktopButton setIconOffset(int x, int y) {
         this.iconOffsetX = x;
         this.iconOffsetY = y;
+        return this;
+    }
+
+    public DesktopButton setAccentColor(int color) {
+        this.accentColor = color;
         return this;
     }
 

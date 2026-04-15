@@ -18,8 +18,15 @@ public class ModItems {
     public static final DeferredItem<Item> TWENTY_DOLLAR_BILL = ITEMS.register("twenty_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> FIFTY_DOLLAR_BILL = ITEMS.register("fifty_dollar_bill", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> HUNDRED_DOLLAR_BILL = ITEMS.register("hundred_dollar_bill", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> PENNY_COIN = ITEMS.register("penny_coin", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> NICKEL_COIN = ITEMS.register("nickel_coin", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> DIME_COIN = ITEMS.register("dime_coin", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> QUARTER_COIN = ITEMS.register("quarter_coin", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> HALF_DOLLAR_COIN = ITEMS.register("half_dollar_coin", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> BANK_NOTE = ITEMS.register("bank_note", () -> new Item(new Item.Properties().stacksTo(1)));
     public static final DeferredItem<Item> CHEQUE = ITEMS.register("cheque", () -> new Item(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> CREDIT_CARD = ITEMS.register("credit_card", () -> new Item(new Item.Properties().stacksTo(1)));
+    public static final DeferredItem<Item> HANDHELD_PAYMENT_TERMINAL = ITEMS.register("handheld_payment_terminal", HandheldPaymentTerminalItem::new);
     public static final DeferredItem<Item> BANK_TELLER_SPAWN_EGG = ITEMS.register("bank_teller_spawn_egg", BankTellerSpawnEggItem::new);
 
     public static final List<DeferredItem<Item>> USD_BILLS = List.of(
@@ -30,6 +37,14 @@ public class ModItems {
             FIVE_DOLLAR_BILL,
             TWO_DOLLAR_BILL,
             ONE_DOLLAR_BILL
+    );
+
+    public static final List<DeferredItem<Item>> USD_COINS = List.of(
+            HALF_DOLLAR_COIN,
+            QUARTER_COIN,
+            DIME_COIN,
+            NICKEL_COIN,
+            PENNY_COIN
     );
 
     public static void register(IEventBus eventBus) {

@@ -493,19 +493,21 @@ public class AccountHolder {
     }
 
     public BigDecimal getConfiguredWithdrawalLimit() {
-        if (this.AccountType == AccountTypes.CheckingAccount) {
-            return BigDecimal.valueOf(Integer.MAX_VALUE);
-        }
-        return BigDecimal.valueOf(Config.DEFAULT_ATM_WITHDRAWAL_LIMIT.get());
+        int configured = Math.max(1, Config.DEFAULT_ATM_WITHDRAWAL_LIMIT.get());
+        return BigDecimal.valueOf(configured);
     }
 
     public BigDecimal getConfiguredDailyWithdrawalLimit() {
-        return switch (this.AccountType) {
-            case CheckingAccount -> BigDecimal.valueOf(Integer.MAX_VALUE);
-            case SavingAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_SAVING.get());
-            case MoneyMarketAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_MONEY_MARKET.get());
-            case CertificateAccount -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT_CERTIFICATE.get());
-            default -> BigDecimal.valueOf(Config.DAILY_WITHDRAWAL_LIMIT.get());
+        AccountTypes type = this.AccountType;
+        if (type == null) {
+            return BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT.get()));
+        }
+        return switch (type) {
+            case CheckingAccount -> BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT_CHECKING.get()));
+            case SavingAccount -> BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT_SAVING.get()));
+            case MoneyMarketAccount -> BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT_MONEY_MARKET.get()));
+            case CertificateAccount -> BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT_CERTIFICATE.get()));
+            default -> BigDecimal.valueOf(Math.max(1, Config.DAILY_WITHDRAWAL_LIMIT.get()));
         };
     }
 

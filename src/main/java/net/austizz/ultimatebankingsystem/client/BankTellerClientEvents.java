@@ -18,4 +18,3 @@ public final class BankTellerClientEvents {
         event.registerEntityRenderer(ModEntities.BANK_TELLER.get(), BankTellerRenderer::new);
     }
 }
-

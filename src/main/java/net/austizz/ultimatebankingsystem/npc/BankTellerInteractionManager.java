@@ -336,7 +336,7 @@ public final class BankTellerInteractionManager {
         MutableComponent choices = Component.literal("")
                 .append(actionButton("Return To Bank", "/bankteller choose bank", ChatFormatting.GREEN, "Deposit to one of your bank accounts"))
                 .append(Component.literal("  "))
-                .append(actionButton("Hand In Cash", "/bankteller choose cash", ChatFormatting.GOLD, "Receive physical USD bills"))
+                .append(actionButton("Hand In Cash", "/bankteller choose cash", ChatFormatting.GOLD, "Receive physical USD cash"))
                 .append(Component.literal("  "))
                 .append(actionButton("Cancel", "/bankteller cancel", ChatFormatting.RED, "Cancel teller interaction"));
         player.sendSystemMessage(choices);
@@ -391,27 +391,23 @@ public final class BankTellerInteractionManager {
             return;
         }
 
-        BigDecimal normalized = session.cheque.amount.stripTrailingZeros();
-        if (normalized.scale() > 0) {
-            player.sendSystemMessage(Component.literal("§cCheque amount must be whole dollars for cash payout."));
-            return;
-        }
-
-        int value;
+        int valueCents;
         try {
-            value = normalized.intValueExact();
+            valueCents = session.cheque.amount.setScale(2, java.math.RoundingMode.UNNECESSARY)
+                    .movePointRight(2)
+                    .intValueExact();
         } catch (ArithmeticException ex) {
             player.sendSystemMessage(Component.literal("§cCheque value is too large for cash payout."));
             return;
         }
-        if (value <= 0) {
+        if (valueCents <= 0) {
             player.sendSystemMessage(Component.literal("§cCheque amount is invalid."));
             return;
         }
 
-        int[] plan = DollarBills.buildWithdrawPlan(value);
+        int[] plan = DollarBills.buildCashWithdrawPlan(valueCents);
         if (plan == null) {
-            player.sendSystemMessage(Component.literal("§cUnable to prepare bill payout for this amount."));
+            player.sendSystemMessage(Component.literal("§cUnable to prepare cash payout for this amount."));
             return;
         }
         if (!consumeChequeStack(player, session.cheque.chequeId)) {
@@ -421,9 +417,9 @@ public final class BankTellerInteractionManager {
 
         centralBank.markChequeRedeemed(session.cheque.chequeId);
         BankManager.markDirty();
-        DollarBills.giveBills(player, plan);
+        DollarBills.giveCash(player, plan);
         SESSIONS.remove(player.getUUID());
-        player.sendSystemMessage(Component.literal("§aCheque cashed out as bills: §f" + DollarBills.formatPlan(plan)));
+        player.sendSystemMessage(Component.literal("§aCheque cashed out as cash: §f" + DollarBills.formatCashPlan(plan)));
         sendGoodbye(player);
     }
 

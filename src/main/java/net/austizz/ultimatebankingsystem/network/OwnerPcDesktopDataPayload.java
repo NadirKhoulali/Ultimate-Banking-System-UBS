@@ -11,9 +11,12 @@ import java.util.List;
 
 public record OwnerPcDesktopDataPayload(
         String computerLabel,
+        String computerId,
         int maxStorageBytes,
         int usedStorageBytes,
         boolean pinSet,
+        boolean poweredOn,
+        boolean sessionUnlocked,
         List<OwnerPcFileEntry> files,
         List<String> hiddenAppIds
 ) implements CustomPacketPayload {
@@ -25,16 +28,22 @@ public record OwnerPcDesktopDataPayload(
             StreamCodec.of(
                     (buf, payload) -> {
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.computerLabel());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.computerId());
                         ByteBufCodecs.VAR_INT.encode(buf, payload.maxStorageBytes());
                         ByteBufCodecs.VAR_INT.encode(buf, payload.usedStorageBytes());
                         ByteBufCodecs.BOOL.encode(buf, payload.pinSet());
+                        ByteBufCodecs.BOOL.encode(buf, payload.poweredOn());
+                        ByteBufCodecs.BOOL.encode(buf, payload.sessionUnlocked());
                         OwnerPcFileEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.files());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.hiddenAppIds());
                     },
                     buf -> new OwnerPcDesktopDataPayload(
                             ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.VAR_INT.decode(buf),
                             ByteBufCodecs.VAR_INT.decode(buf),
+                            ByteBufCodecs.BOOL.decode(buf),
+                            ByteBufCodecs.BOOL.decode(buf),
                             ByteBufCodecs.BOOL.decode(buf),
                             OwnerPcFileEntry.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf)

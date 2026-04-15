@@ -290,6 +290,9 @@ public class BankOwnerPcScreen extends Screen {
     private AuthStage authStage = AuthStage.LOADING;
     private boolean taskbarMenuOpen;
     private boolean discardCachedScreenOnClose;
+    private String boundDesktopComputerId = "";
+    private Integer previousGuiScale;
+    private boolean forcedGuiScaleActive;
 
     private final int[] paintPixels = new int[48 * 32];
     private int paintSelectedColor = 0xFF111111;
@@ -305,11 +308,27 @@ public class BankOwnerPcScreen extends Screen {
         this.paintSavedSnapshotHash = Arrays.hashCode(this.paintPixels);
     }
 
+    public void relayoutForCurrentWindow() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) {
+            return;
+        }
+        applyForcedGuiScale();
+        this.resize(mc, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+    }
+
     @Override
     protected void init() {
+        applyForcedGuiScale();
         configureVirtualScale();
         initializeAuthStateIfNeeded();
         rebuildWidgets();
+    }
+
+    @Override
+    public void removed() {
+        restoreForcedGuiScale();
+        super.removed();
     }
 
     @Override
@@ -326,16 +345,6 @@ public class BankOwnerPcScreen extends Screen {
         this.taskbarMenuHitbox = null;
         this.taskbarLogoutHitbox = null;
         this.taskbarTurnOffHitbox = null;
-
-        int closeW = 28;
-        addPcButton(
-                this.width - PAD - closeW - 4,
-                PAD + 2,
-                closeW,
-                20,
-                "Close",
-                btn -> this.onClose()
-        );
 
         if (!desktopAuthenticated) {
             initAuthWidgets();
@@ -356,6 +365,7 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void initializeAuthStateIfNeeded() {
+        syncBoundDesktopContextIfNeeded();
         if (authInitialized) {
             return;
         }
@@ -373,6 +383,7 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void syncAuthStateFromDesktopData() {
+        syncBoundDesktopContextIfNeeded();
         if (ClientOwnerPcData.isDesktopSessionUnlocked()) {
             desktopAuthenticated = true;
             return;
@@ -390,6 +401,71 @@ public class BankOwnerPcScreen extends Screen {
         } else if (authStage == AuthStage.LOADING || authStage == AuthStage.SETUP) {
             authStage = AuthStage.LOGIN;
         }
+    }
+
+    private void syncBoundDesktopContextIfNeeded() {
+        String incomingId = ClientOwnerPcData.getDesktopComputerId();
+        if (incomingId == null) {
+            incomingId = "";
+        }
+        if (incomingId.equals(boundDesktopComputerId)) {
+            return;
+        }
+        resetForDesktopContextSwitch();
+        boundDesktopComputerId = incomingId;
+    }
+
+    private void resetForDesktopContextSwitch() {
+        bankWindows.clear();
+        bankWindowOrder.clear();
+        utilityWindowOrder.clear();
+        bankWindowOpen = false;
+        createWindowOpen = false;
+        activeBankId = null;
+        activeUtilityApp = null;
+        activeWindow = WindowMode.DESKTOP;
+        activeSection = Section.OVERVIEW;
+        outputScroll = 0;
+        sectionScroll = 0;
+        navScroll = 0;
+        sectionMaxScroll = 0;
+        navMaxScroll = 0;
+        taskbarScroll = 0;
+        taskbarMaxScroll = 0;
+        overviewDetailOpen = false;
+        overviewDetailAction = "SHOW_INFO";
+        selectedAccountCard = null;
+        accountProfileOpen = false;
+        lendingMarketOpen = false;
+        pendingMarketAccept = null;
+        refreshMarketAfterNextResponse = false;
+        marketOfferCache.clear();
+        formValues.clear();
+        activeFormInputs.clear();
+        selectedOwnershipModel = OWNERSHIP_MODELS.getFirst();
+        selectedExplorerFileName = "";
+        explorerFilesScroll = 0;
+        systemMonitorScroll = 0;
+        systemHideAppsScroll = 0;
+        paintControlsScroll = 0;
+        notepadFocused = false;
+        notepadScroll = 0;
+        notepadCursorIndex = 0;
+        notepadSaveModalOpen = false;
+        paintSaveModalOpen = false;
+        unsavedClosePromptOpen = false;
+        unsavedCloseTarget = null;
+        pendingCloseAfterSaveTarget = null;
+        taskbarMenuOpen = false;
+        systemHideAppsMenuOpen = false;
+        calculatorExpression = "";
+        calculatorDisplay = "0";
+        calculatorStatus = "Ready";
+        notepadText.setLength(0);
+        notepadSavedSnapshot = "";
+        Arrays.fill(this.paintPixels, 0xFFFFFFFF);
+        this.paintSavedSnapshotHash = Arrays.hashCode(this.paintPixels);
+        ClientOwnerPcData.clearActionOutput();
     }
 
     private void initAuthWidgets() {
@@ -1378,55 +1454,10 @@ public class BankOwnerPcScreen extends Screen {
         int gap = 6;
         int tabWidth = Math.max(122, Math.min(200, availableWidth / Math.max(1, Math.min(totalWindowTabs, 4))));
         int contentWidth = (totalWindowTabs * tabWidth) + (gap * Math.max(0, totalWindowTabs - 1));
-
-        int arrowW = 20;
-        int arrowGap = 4;
-        boolean needsScroll = contentWidth > availableWidth;
         int viewportX = x;
         int viewportW = availableWidth;
-        if (!needsScroll) {
-            taskbarScroll = 0;
-        }
-        if (needsScroll) {
-            viewportX = x + arrowW + arrowGap;
-            viewportW = Math.max(60, availableWidth - ((arrowW + arrowGap) * 2));
-            int maxScroll = Math.max(0, contentWidth - viewportW);
-            taskbarMaxScroll = maxScroll;
-            taskbarScroll = Math.max(0, Math.min(taskbarScroll, maxScroll));
-
-            DesktopButton leftScroll = addPcButton(
-                    x,
-                    barY,
-                    arrowW,
-                    20,
-                    "<",
-                    btn -> {
-                        if (taskbarScroll <= 0) {
-                            return;
-                        }
-                        taskbarScroll = Math.max(0, taskbarScroll - (tabWidth + gap));
-                        rebuildWidgets();
-                    }
-            );
-            leftScroll.active = taskbarScroll > 0;
-
-            DesktopButton rightScroll = addPcButton(
-                    rightBound - arrowW,
-                    barY,
-                    arrowW,
-                    20,
-                    ">",
-                    btn -> {
-                        if (taskbarScroll >= taskbarMaxScroll) {
-                            return;
-                        }
-                        taskbarScroll = Math.min(taskbarMaxScroll, taskbarScroll + (tabWidth + gap));
-                        rebuildWidgets();
-                    }
-            );
-            rightScroll.active = taskbarScroll < taskbarMaxScroll;
-        }
-
+        taskbarMaxScroll = Math.max(0, contentWidth - viewportW);
+        taskbarScroll = Math.max(0, Math.min(taskbarScroll, taskbarMaxScroll));
         taskbarViewportX = viewportX;
         taskbarViewportY = barY;
         taskbarViewportW = viewportW;
@@ -1434,71 +1465,80 @@ public class BankOwnerPcScreen extends Screen {
         int tabX = viewportX - taskbarScroll;
         for (UUID bankId : bankWindowOrder) {
             String label = resolveBankWindowTitle(bankId);
-            DesktopButton tab = addPcButton(
-                    tabX,
-                    barY,
-                    tabWidth,
-                    20,
-                    fitToWidth(label, tabWidth - 10),
-                    btn -> {
-                        activateBankWindow(bankId, true);
-                        activeWindow = WindowMode.BANK_APP;
-                        rebuildWidgets();
-                    }
-            );
             boolean isActiveBankTab = activeWindow == WindowMode.BANK_APP
                     && activeBankId != null
                     && activeBankId.equals(bankId);
-            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
-            tab.visible = visible;
-            tab.active = visible && !isActiveBankTab;
+            int clippedX = Math.max(tabX, viewportX);
+            int clippedRight = Math.min(tabX + tabWidth, viewportX + viewportW);
+            int clippedW = clippedRight - clippedX;
+            if (clippedW > 6) {
+                DesktopButton tab = addPcButton(
+                        clippedX,
+                        barY,
+                        clippedW,
+                        20,
+                        fitToWidth(label, Math.max(10, clippedW - 10)),
+                        btn -> {
+                            activateBankWindow(bankId, true);
+                            activeWindow = WindowMode.BANK_APP;
+                            rebuildWidgets();
+                        }
+                );
+                tab.active = !isActiveBankTab;
+            }
             tabX += tabWidth + gap;
         }
 
         if (createWindowOpen) {
-            DesktopButton createTab = addPcButton(
-                    tabX,
-                    barY,
-                    tabWidth,
-                    20,
-                    fitToWidth("Create Bank", tabWidth - 10),
-                    btn -> {
-                        if (activeWindow == WindowMode.BANK_APP) {
-                            saveActiveBankWindowState();
+            int clippedX = Math.max(tabX, viewportX);
+            int clippedRight = Math.min(tabX + tabWidth, viewportX + viewportW);
+            int clippedW = clippedRight - clippedX;
+            if (clippedW > 6) {
+                DesktopButton createTab = addPcButton(
+                        clippedX,
+                        barY,
+                        clippedW,
+                        20,
+                        fitToWidth("Create Bank", Math.max(10, clippedW - 10)),
+                        btn -> {
+                            if (activeWindow == WindowMode.BANK_APP) {
+                                saveActiveBankWindowState();
+                            }
+                            activeWindow = WindowMode.CREATE_BANK;
+                            rebuildWidgets();
                         }
-                        activeWindow = WindowMode.CREATE_BANK;
-                        rebuildWidgets();
-                    }
-            );
-            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
-            createTab.visible = visible;
-            createTab.active = visible && activeWindow != WindowMode.CREATE_BANK;
+                );
+                createTab.active = activeWindow != WindowMode.CREATE_BANK;
+            }
             tabX += tabWidth + gap;
         }
 
         for (UtilityApp utilityApp : utilityWindowOrder) {
-            DesktopButton utilityTab = addPcButton(
-                    tabX,
-                    barY,
-                    tabWidth,
-                    20,
-                    fitToWidth(utilityWindowTitle(utilityApp), tabWidth - 10),
-                    btn -> {
-                        if (activeWindow == WindowMode.BANK_APP) {
-                            saveActiveBankWindowState();
-                        }
-                        activeUtilityApp = utilityApp;
-                        notepadFocused = false;
-                        suppressNextNotepadSpaceChar = false;
-                        paintDrawing = false;
-                        activeWindow = WindowMode.UTILITY_APP;
-                        rebuildWidgets();
-                    }
-            );
             boolean activeUtilityTab = activeWindow == WindowMode.UTILITY_APP && activeUtilityApp == utilityApp;
-            boolean visible = (tabX + tabWidth) > viewportX && tabX < (viewportX + viewportW);
-            utilityTab.visible = visible;
-            utilityTab.active = visible && !activeUtilityTab;
+            int clippedX = Math.max(tabX, viewportX);
+            int clippedRight = Math.min(tabX + tabWidth, viewportX + viewportW);
+            int clippedW = clippedRight - clippedX;
+            if (clippedW > 6) {
+                DesktopButton utilityTab = addPcButton(
+                        clippedX,
+                        barY,
+                        clippedW,
+                        20,
+                        fitToWidth(utilityWindowTitle(utilityApp), Math.max(10, clippedW - 10)),
+                        btn -> {
+                            if (activeWindow == WindowMode.BANK_APP) {
+                                saveActiveBankWindowState();
+                            }
+                            activeUtilityApp = utilityApp;
+                            notepadFocused = false;
+                            suppressNextNotepadSpaceChar = false;
+                            paintDrawing = false;
+                            activeWindow = WindowMode.UTILITY_APP;
+                            rebuildWidgets();
+                        }
+                );
+                utilityTab.active = !activeUtilityTab;
+            }
             tabX += tabWidth + gap;
         }
 
@@ -1725,15 +1765,40 @@ public class BankOwnerPcScreen extends Screen {
             }
             case LIMITS -> {
                 int selectorBottom = addLimitTypeSelectors(innerX, y + 8, innerWidth);
+                int currentY = selectorBottom + 4;
+                addSectionFormInput("limits.amount", innerX, currentY, innerWidth, "Amount");
+                currentY += 32;
+
                 if (innerWidth < 260) {
-                    addSectionFormInput("limits.amount", innerX, selectorBottom + 4, innerWidth, "Amount");
-                    addSectionActionButton(innerX, selectorBottom + 36, innerWidth, "Apply Limit", "SET_LIMIT", "@limits.type", "@limits.amount", "", "", ownerView);
-                    addSectionActionButton(innerX, selectorBottom + 68, innerWidth, "Show Limits", "SHOW_LIMITS", "", "", "", "", true);
+                    addSectionActionButton(innerX, currentY, innerWidth, "Apply Limit", "SET_LIMIT", "@limits.type", "@limits.amount", "", "", ownerView);
+                    currentY += 32;
+                    addSectionActionButton(innerX, currentY, innerWidth, "Show Limits", "SHOW_LIMITS", "", "", "", "", true);
                 } else {
-                    addSectionFormInput("limits.amount", innerX, selectorBottom + 4, innerWidth, "Amount");
                     int btnW = (innerWidth - gap) / 2;
-                    addSectionActionButton(innerX, selectorBottom + 36, btnW, "Apply Limit", "SET_LIMIT", "@limits.type", "@limits.amount", "", "", ownerView);
-                    addSectionActionButton(innerX + btnW + gap, selectorBottom + 36, btnW, "Show Limits", "SHOW_LIMITS", "", "", "", "", true);
+                    addSectionActionButton(innerX, currentY, btnW, "Apply Limit", "SET_LIMIT", "@limits.type", "@limits.amount", "", "", ownerView);
+                    addSectionActionButton(innerX + btnW + gap, currentY, btnW, "Show Limits", "SHOW_LIMITS", "", "", "", "", true);
+                }
+
+                currentY += 36;
+                if (data != null) {
+                    formValues.putIfAbsent("limits.cardIssueFee", data.cardIssueFee());
+                    formValues.putIfAbsent("limits.cardReplacementFee", data.cardReplacementFee());
+                }
+
+                if (innerWidth < 390) {
+                    addSectionFormInput("limits.cardIssueFee", innerX, currentY, innerWidth, "Card issue fee");
+                    currentY += 28;
+                    addSectionFormInput("limits.cardReplacementFee", innerX, currentY, innerWidth, "Card replacement fee");
+                    currentY += 32;
+                    addSectionActionButton(innerX, currentY, innerWidth, "Set Card Fees", "SET_CARD_FEES",
+                            "@limits.cardIssueFee", "@limits.cardReplacementFee", "", "", ownerView);
+                } else {
+                    int halfW = (innerWidth - gap) / 2;
+                    addSectionFormInput("limits.cardIssueFee", innerX, currentY, halfW, "Card issue fee");
+                    addSectionFormInput("limits.cardReplacementFee", innerX + halfW + gap, currentY, halfW, "Card replacement fee");
+                    currentY += 32;
+                    addSectionActionButton(innerX, currentY, innerWidth, "Set Card Fees", "SET_CARD_FEES",
+                            "@limits.cardIssueFee", "@limits.cardReplacementFee", "", "", ownerView);
                 }
             }
             case GOVERNANCE -> {
@@ -2113,15 +2178,15 @@ public class BankOwnerPcScreen extends Screen {
 
     private int addLimitTypeSelectors(int x, int y, int width) {
         String selected = formValues.getOrDefault("limits.type", "single").toLowerCase(Locale.ROOT);
-        if (!List.of("single", "dailyplayer", "dailybank").contains(selected)) {
+        if (!List.of("single", "dailyplayer", "dailybank", "teller").contains(selected)) {
             selected = "single";
             formValues.put("limits.type", selected);
         } else {
             formValues.putIfAbsent("limits.type", selected);
         }
 
-        String[] types = {"single", "dailyplayer", "dailybank"};
-        String[] labels = {"Single", "Daily Player", "Daily Bank"};
+        String[] types = {"single", "dailyplayer", "dailybank", "teller"};
+        String[] labels = {"Single", "Daily Player", "Daily Bank", "Teller Cash"};
 
         int rowBottom;
         if (width < 390) {
@@ -2145,7 +2210,7 @@ public class BankOwnerPcScreen extends Screen {
             rowBottom = currentY;
         } else {
             int gap = 8;
-            int buttonW = (width - (gap * 2)) / 3;
+            int buttonW = (width - (gap * 3)) / 4;
             for (int i = 0; i < types.length; i++) {
                 String type = types[i];
                 DesktopButton button = addSectionPcButton(
@@ -3113,7 +3178,7 @@ public class BankOwnerPcScreen extends Screen {
         String info = "UBS Desktop System Info\n"
                 + "Resolution: " + this.width + "x" + this.height + "\n"
                 + "GUI Scale: " + guiScale + "\n"
-                + "PC UI Scale: 2 (forced)\n"
+                + "PC UI Scale: Native\n"
                 + "Virtual Scale Active: " + useVirtualScale + "\n"
                 + "Open Bank Windows: " + bankWindowOrder.size() + "\n"
                 + "Open Utility Windows: " + utilityWindowOrder.size() + "\n"
@@ -3212,29 +3277,47 @@ public class BankOwnerPcScreen extends Screen {
             return;
         }
         String action = payload.action() == null ? "" : payload.action().trim().toUpperCase(Locale.ROOT);
-        if (!action.startsWith("AUTH_")) {
+        boolean authAction = action.startsWith("AUTH_");
+        boolean powerAction = "POWER_OFF".equals(action);
+        if (!authAction && !powerAction) {
             return;
         }
 
         if (payload.success()) {
-            desktopAuthenticated = true;
-            ClientOwnerPcData.markDesktopSessionUnlocked();
+            switch (action) {
+                case "AUTH_SET_PIN", "AUTH_VERIFY_PIN", "AUTH_RECOVER_RESET" -> {
+                    desktopAuthenticated = true;
+                    ClientOwnerPcData.markDesktopSessionUnlocked();
+                    authStage = AuthStage.LOGIN;
+                    formValues.remove("auth.password");
+                    formValues.remove("auth.password_repeat");
+                    formValues.remove("auth.recovery");
+                }
+                case "AUTH_LOGOUT", "POWER_OFF" -> {
+                    desktopAuthenticated = false;
+                    ClientOwnerPcData.clearDesktopSession();
+                    authStage = ClientOwnerPcData.isDesktopPinSet() ? AuthStage.LOGIN : AuthStage.SETUP;
+                    formValues.put("auth.password", "");
+                    formValues.put("auth.password_repeat", "");
+                    formValues.put("auth.recovery", "");
+                    activeWindow = WindowMode.DESKTOP;
+                }
+                default -> {
+                }
+            }
+            return;
+        }
+
+        if ("AUTH_SET_PIN".equals(action) && payload.message() != null
+                && payload.message().toLowerCase(Locale.ROOT).contains("already exists")) {
             authStage = AuthStage.LOGIN;
-            formValues.remove("auth.password");
-            formValues.remove("auth.password_repeat");
-            formValues.remove("auth.recovery");
-        } else {
-            if ("AUTH_SET_PIN".equals(action) && payload.message() != null
-                    && payload.message().toLowerCase(Locale.ROOT).contains("already exists")) {
-                authStage = AuthStage.LOGIN;
-            }
-            if ("AUTH_VERIFY_PIN".equals(action)) {
-                formValues.put("auth.password", "");
-            }
-            if ("AUTH_RECOVER_RESET".equals(action)) {
-                formValues.put("auth.password", "");
-                formValues.put("auth.password_repeat", "");
-            }
+        }
+        if ("AUTH_VERIFY_PIN".equals(action)) {
+            formValues.put("auth.password", "");
+        }
+        if ("AUTH_RECOVER_RESET".equals(action)) {
+            formValues.put("auth.password", "");
+            formValues.put("auth.password_repeat", "");
         }
     }
 
@@ -3682,6 +3765,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         if (button == 0 && taskbarMenuOpen) {
             if (taskbarLogoutHitbox != null && taskbarLogoutHitbox.contains(localMouseX, localMouseY)) {
+                sendDesktopAction("AUTH_LOGOUT", "", "");
                 ClientOwnerPcData.clearDesktopSession();
                 desktopAuthenticated = false;
                 authInitialized = true;
@@ -3695,6 +3779,7 @@ public class BankOwnerPcScreen extends Screen {
             }
             if (taskbarTurnOffHitbox != null && taskbarTurnOffHitbox.contains(localMouseX, localMouseY)) {
                 taskbarMenuOpen = false;
+                sendDesktopAction("POWER_OFF", "", "");
                 ClientOwnerPcData.clearDesktopSession();
                 discardCachedScreenOnClose = true;
                 this.onClose();
@@ -3845,6 +3930,21 @@ public class BankOwnerPcScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
+        if (desktopAuthenticated
+                && taskbarMaxScroll > 0
+                && (button == 0 || button == 1)
+                && localMouseX >= taskbarViewportX && localMouseX <= (taskbarViewportX + taskbarViewportW)
+                && localMouseY >= taskbarViewportY && localMouseY <= (taskbarViewportY + taskbarViewportH)) {
+            int previous = taskbarScroll;
+            int deltaX = (int) Math.round(toLocalDeltaX(dragX));
+            if (deltaX != 0) {
+                taskbarScroll = Math.max(0, Math.min(taskbarMaxScroll, taskbarScroll - deltaX));
+                if (taskbarScroll != previous) {
+                    rebuildWidgets();
+                }
+            }
+            return true;
+        }
         if (activeWindow == WindowMode.UTILITY_APP
                 && activeUtilityApp == UtilityApp.PAINT
                 && paintDrawing
@@ -3865,12 +3965,14 @@ public class BankOwnerPcScreen extends Screen {
 
     @Override
     public void onClose() {
+        restoreForcedGuiScale();
         if (!discardCachedScreenOnClose) {
-            // Preserve open windows and app state so reopening behaves like returning to the PC.
             taskbarMenuOpen = false;
             paintDrawing = false;
             notepadFocused = false;
             suppressNextNotepadSpaceChar = false;
+            ClientOwnerPcData.clearForUiClose();
+            OwnerPcScreenHelper.invalidateCachedScreen(this);
             super.onClose();
             return;
         }
@@ -3932,8 +4034,51 @@ public class BankOwnerPcScreen extends Screen {
         super.onClose();
     }
 
+    private void applyForcedGuiScale() {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc == null || mc.options == null || mc.options.guiScale() == null) {
+            return;
+        }
+        Integer current = mc.options.guiScale().get();
+        if (current == null) {
+            return;
+        }
+        if (!forcedGuiScaleActive) {
+            previousGuiScale = current;
+            forcedGuiScaleActive = true;
+        }
+        if (current != 2) {
+            mc.options.guiScale().set(2);
+        }
+    }
+
+    private void restoreForcedGuiScale() {
+        if (!forcedGuiScaleActive) {
+            return;
+        }
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc != null && mc.options != null && mc.options.guiScale() != null && previousGuiScale != null) {
+            Integer current = mc.options.guiScale().get();
+            if (current == null || !current.equals(previousGuiScale)) {
+                mc.options.guiScale().set(previousGuiScale);
+            }
+        }
+        forcedGuiScaleActive = false;
+        previousGuiScale = null;
+    }
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        applyForcedGuiScale();
+        if (mc != null && mc.getWindow() != null) {
+            int scaledW = mc.getWindow().getGuiScaledWidth();
+            int scaledH = mc.getWindow().getGuiScaledHeight();
+            if (scaledW > 0 && scaledH > 0 && (this.width != scaledW || this.height != scaledH)) {
+                this.resize(mc, scaledW, scaledH);
+            }
+        }
+
         int localMouseX = (int) toLocalX(mouseX);
         int localMouseY = (int) toLocalY(mouseY);
         if (useVirtualScale) {
@@ -5292,13 +5437,23 @@ public class BankOwnerPcScreen extends Screen {
             );
             case "limits.type" -> new InputHelp(
                     "Limit Type",
-                    "Use only: single, dailyplayer, or dailybank. Each type updates a different rule.",
-                    "Example: dailyplayer"
+                    "Use: single, dailyplayer, dailybank, or teller. Each type updates a different rule.",
+                    "Example: teller"
             );
             case "limits.amount" -> new InputHelp(
                     "Limit Amount",
                     "Positive whole number used by the selected limit type.",
                     "Example: 25000"
+            );
+            case "limits.cardIssueFee" -> new InputHelp(
+                    "Card Issue Fee",
+                    "Fee charged when a customer requests a new credit card from this bank.",
+                    "Example: 25"
+            );
+            case "limits.cardReplacementFee" -> new InputHelp(
+                    "Card Replacement Fee",
+                    "Fee charged when replacing a lost/stolen card. Old cards are blocked.",
+                    "Example: 50"
             );
             default -> null;
         };
@@ -5772,7 +5927,7 @@ public class BankOwnerPcScreen extends Screen {
         List<String[]> entries = List.of(
                 new String[]{"Resolution", this.width + "x" + this.height},
                 new String[]{"GUI Scale", String.valueOf(guiScale)},
-                new String[]{"PC UI Scale", "2 (forced)"},
+                new String[]{"PC UI Scale", "Native"},
                 new String[]{"Virtual Scale", String.valueOf(useVirtualScale)},
                 new String[]{"Bank Windows", String.valueOf(bankWindowOrder.size())},
                 new String[]{"Utility Windows", String.valueOf(utilityWindowOrder.size())},
@@ -6134,42 +6289,11 @@ public class BankOwnerPcScreen extends Screen {
             this.height = mc.getWindow().getGuiScaledHeight();
         }
 
+        // Keep the PC UI bound to the actual GUI viewport dimensions.
+        // Virtual scaling caused partial-width rendering on some client setups.
         useVirtualScale = false;
         virtualScaleX = 1.0F;
         virtualScaleY = 1.0F;
-
-        if (mc == null || mc.options == null || mc.options.guiScale() == null || mc.options.guiScale().get() == null) {
-            return;
-        }
-
-        int targetScale = 2;
-        int actualWidth = this.width;
-        int actualHeight = this.height;
-        int rawWidth = mc.getWindow().getWidth();
-        int rawHeight = mc.getWindow().getHeight();
-
-        if (rawWidth <= 0 || rawHeight <= 0) {
-            double fallbackScale = mc.getWindow().getGuiScale();
-            Integer configuredScale = mc.options.guiScale().get();
-            if (fallbackScale <= 0.0D) {
-                fallbackScale = (configuredScale != null && configuredScale > 0) ? configuredScale : 1.0D;
-            }
-            rawWidth = Math.max(actualWidth, (int) Math.round(actualWidth * fallbackScale));
-            rawHeight = Math.max(actualHeight, (int) Math.round(actualHeight * fallbackScale));
-        }
-
-        int virtualWidth = Math.max(1, rawWidth / targetScale);
-        int virtualHeight = Math.max(1, rawHeight / targetScale);
-
-        if (virtualWidth == actualWidth && virtualHeight == actualHeight) {
-            return;
-        }
-
-        this.width = virtualWidth;
-        this.height = virtualHeight;
-        this.virtualScaleX = actualWidth / (float) virtualWidth;
-        this.virtualScaleY = actualHeight / (float) virtualHeight;
-        this.useVirtualScale = true;
     }
 
     private double toLocalX(double x) {

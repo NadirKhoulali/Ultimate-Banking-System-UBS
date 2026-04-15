@@ -128,7 +128,13 @@ public class UserTransaction {
         String receiverStatus = getBankStatus(centralBank, receiverBank);
         if (blocksTransactions(senderStatus) || blocksTransactions(receiverStatus)) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cTransfer blocked because one of the banks is not operational."));
+                String senderBankLabel = safeBankName(senderBank);
+                String receiverBankLabel = safeBankName(receiverBank);
+                senderPlayer.sendSystemMessage(Component.literal(
+                        "§cTransfer blocked due to bank status. "
+                                + senderBankLabel + ": " + senderStatus + " | "
+                                + receiverBankLabel + ": " + receiverStatus + "."
+                ));
             }
             flagSuspicious(centralBank, sender, receiver, amount, "FLAG_BANK_STATUS_BLOCK");
             return false;
@@ -212,6 +218,10 @@ public class UserTransaction {
         if (centralBank == null || bank == null) {
             return "UNKNOWN";
         }
+        if (centralBank.getBankId() != null && centralBank.getBankId().equals(bank.getBankId())) {
+            // Central Bank should always remain operational for core payment/account flows.
+            return "ACTIVE";
+        }
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         String status = metadata.getString("status");
         if (status == null || status.isBlank()) {
@@ -222,6 +232,13 @@ public class UserTransaction {
 
     private static boolean blocksTransactions(String status) {
         return "SUSPENDED".equals(status) || "REVOKED".equals(status) || "LOCKDOWN".equals(status);
+    }
+
+    private static String safeBankName(Bank bank) {
+        if (bank == null || bank.getBankName() == null || bank.getBankName().isBlank()) {
+            return "Unknown Bank";
+        }
+        return bank.getBankName().trim();
     }
 
     private static BigDecimal computeSenderDailyOutgoing(AccountHolder sender) {

@@ -231,21 +231,22 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
+        int panelHeight = bankScreen.getPanelHeight();
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
-        int quickTop = panelTop + 58;
         int customTop = panelTop + 122;
+        int fieldY = customTop + 20;
 
         drawCenteredFittedString(graphics, "Withdraw Cash",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         graphics.drawString(font, "Custom Amount", contentLeft + 6, customTop + 6, COLOR_LABEL);
         drawFittedString(graphics,
-                "Default ATM limit: $" + MoneyText.abbreviate(defaultWithdrawalLimit)
-                        + "   Active ATM limit: $" + MoneyText.abbreviate(effectiveWithdrawalLimit),
+                "Per-withdrawal limit: $" + MoneyText.abbreviate(defaultWithdrawalLimit)
+                        + "   Active withdrawal limit: $" + MoneyText.abbreviate(effectiveWithdrawalLimit),
                 contentLeft + 6, panelTop + 46, contentWidth - 10, COLOR_LABEL);
         drawFittedString(graphics,
-                "Daily limit: $" + MoneyText.abbreviate(dailyWithdrawalLimit)
+                "Daily withdrawal limit: $" + MoneyText.abbreviate(dailyWithdrawalLimit)
                         + "   Used today: $" + MoneyText.abbreviate(dailyWithdrawnToday)
                         + "   Remaining: $" + MoneyText.abbreviate(dailyRemaining),
                 contentLeft + 6, panelTop + 58, contentWidth - 10, COLOR_LABEL);
@@ -254,7 +255,11 @@ public class WithdrawLayer extends AbstractScreenLayer {
                 contentLeft + 6, panelTop + 70, contentWidth - 10, COLOR_MUTED);
 
         if (resultMessage != null) {
-            int resultY = panelTop + 44;
+            int resultY = fieldY + 28;
+            int maxResultY = panelTop + panelHeight - 50;
+            if (resultY > maxResultY) {
+                resultY = maxResultY;
+            }
             int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
             drawCenteredFittedString(graphics, resultMessage, panelLeft + panelWidth / 2, resultY, contentWidth, color);
         }

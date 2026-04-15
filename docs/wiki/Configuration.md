@@ -7,10 +7,12 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `TransactionsPerMinute`
 - `DefaultATMWithdrawalLimit`
 - `DailyWithdrawalLimit`
+- `GlobalMaxSingleTransaction` (also caps handheld terminal max save value; default `50000`)
 - `DailyWithdrawalLimitChecking`
 - `DailyWithdrawalLimitSaving`
 - `DailyWithdrawalLimitMoneyMarket`
 - `DailyWithdrawalLimitCertificate`
+- `PaymentTerminalFeedbackTicks` (legacy key, terminal feedback lock is currently fixed to 2 seconds)
 
 ## Scheduling
 

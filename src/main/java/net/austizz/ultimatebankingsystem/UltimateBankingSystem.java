@@ -6,16 +6,20 @@ import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.entity.ModEntities;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
+import net.austizz.ultimatebankingsystem.item.ModCreativeTabs;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
+import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
+import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -24,7 +28,6 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -33,6 +36,11 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Mod(UltimateBankingSystem.MODID)
 public class UltimateBankingSystem {
     public static final String MODID = "ultimatebankingsystem";
@@ -40,37 +48,21 @@ public class UltimateBankingSystem {
 
     private long lastAutosaveTick = -1L;
     private long lastInterestTick = -1L;
+    private long lastHudSyncTick = -1L;
+    private final ConcurrentHashMap<UUID, String> hudStateCache = new ConcurrentHashMap<>();
 
     public UltimateBankingSystem(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
         NeoForge.EVENT_BUS.register(this);
         ModItems.register(modEventBus);
         ModBlocks.register(modEventBus);
+        ModBlockEntities.register(modEventBus);
         ModEntities.register(modEventBus);
-        modEventBus.addListener(this::addCreative);
+        ModCreativeTabs.register(modEventBus);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
-    }
-
-    private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
-            for (var bill : ModItems.USD_BILLS) {
-                event.accept(bill);
-            }
-            event.accept(ModItems.BANK_NOTE);
-            event.accept(ModItems.CHEQUE);
-            event.accept(ModItems.BANK_TELLER_SPAWN_EGG);
-        }
-        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
-            event.accept(ModBlocks.ATM_MACHINE);
-            event.accept(ModBlocks.BANK_OWNER_PC);
-            event.accept(ModBlocks.COLOR_BUTTON_BLOCK);
-        }
-        if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
-            event.accept(ModItems.BANK_TELLER_SPAWN_EGG);
-        }
     }
 
     @SubscribeEvent
@@ -78,6 +70,8 @@ public class UltimateBankingSystem {
         BankManager.init(event.getServer());
         lastAutosaveTick = -1L;
         lastInterestTick = -1L;
+        lastHudSyncTick = -1L;
+        hudStateCache.clear();
     }
 
     @SubscribeEvent
@@ -87,6 +81,7 @@ public class UltimateBankingSystem {
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
+        hudStateCache.clear();
         BankManager.shutdown();
     }
 
@@ -107,6 +102,7 @@ public class UltimateBankingSystem {
         ScheduledPaymentService.process(server, gameTime);
         BankRegulationService.process(server, gameTime);
         BankTellerInteractionManager.tick(server);
+        BankTellerPaymentInteractionManager.tick(server);
 
         long autosaveIntervalTicks = Math.max(1, Config.AUTOSAVE_INTERVAL_MINUTES.get()) * 60L * 20L;
         if (gameTime % autosaveIntervalTicks == 0L && gameTime != lastAutosaveTick) {
@@ -114,12 +110,17 @@ public class UltimateBankingSystem {
             lastAutosaveTick = gameTime;
         }
 
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (gameTime % 20L == 0L && gameTime != lastHudSyncTick) {
+            syncHudStates(server, centralBank);
+            lastHudSyncTick = gameTime;
+        }
+
         long interestIntervalTicks = Math.max(20, Config.SAVINGS_INTEREST_INTERVAL_TICKS.get());
         if (gameTime % interestIntervalTicks != 0L || gameTime == lastInterestTick) {
             return;
         }
 
-        CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
             return;
         }
@@ -146,6 +147,31 @@ public class UltimateBankingSystem {
         }
         targetPlayer.sendSystemMessage(Component.literal(MoneyText.abbreviateCurrencyTokens(message)));
         CentralBank centralBank = BankManager.getCentralBank(server);
-        PacketDistributor.sendToPlayer(targetPlayer, UBSCommands.buildHudStatePayload(centralBank, targetPlayer.getUUID()));
+        HudStatePayload payload = UBSCommands.buildHudStatePayload(centralBank, targetPlayer.getUUID());
+        PacketDistributor.sendToPlayer(targetPlayer, payload);
+        hudStateCache.put(targetPlayer.getUUID(), payload.enabled() + "|" + payload.balance());
+    }
+
+    private void syncHudStates(net.minecraft.server.MinecraftServer server, CentralBank centralBank) {
+        if (server == null || server.getPlayerList() == null) {
+            return;
+        }
+        Set<UUID> online = new HashSet<>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player == null) {
+                continue;
+            }
+            UUID playerId = player.getUUID();
+            online.add(playerId);
+            HudStatePayload payload = UBSCommands.buildHudStatePayload(centralBank, playerId);
+            String signature = payload.enabled() + "|" + payload.balance();
+            String previous = hudStateCache.put(playerId, signature);
+            if (!signature.equals(previous)) {
+                PacketDistributor.sendToPlayer(player, payload);
+            }
+        }
+        hudStateCache.keySet().removeIf(id -> !online.contains(id));
+        UBSCommands.clearHudMonitorOverridesForMissingPlayers(online);
+        UBSCommands.clearHudStateForMissingPlayers(online);
     }
 }

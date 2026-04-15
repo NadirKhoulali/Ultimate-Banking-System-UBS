@@ -23,10 +23,11 @@ public final class ClientOwnerPcData {
     private static int desktopMaxStorageBytes;
     private static int desktopUsedStorageBytes;
     private static String desktopComputerLabel = "Unknown PC";
+    private static String desktopComputerId = "";
     private static boolean desktopPinSet;
+    private static boolean desktopPoweredOn = true;
     private static boolean desktopDataLoaded;
     private static boolean desktopSessionUnlocked;
-    private static String desktopSessionComputerLabel = "";
     private static int preferredPcUiScaleMode;
 
     private static OwnerPcBankDataPayload currentBankData;
@@ -103,10 +104,13 @@ public final class ClientOwnerPcData {
         DESKTOP_FILES.clear();
         HIDDEN_APP_IDS.clear();
         desktopComputerLabel = "Unknown PC";
+        desktopComputerId = "";
         desktopMaxStorageBytes = 0;
         desktopUsedStorageBytes = 0;
         desktopPinSet = false;
+        desktopPoweredOn = true;
         desktopDataLoaded = false;
+        desktopSessionUnlocked = false;
 
         if (payload == null) {
             return;
@@ -116,13 +120,12 @@ public final class ClientOwnerPcData {
         desktopComputerLabel = payload.computerLabel() == null || payload.computerLabel().isBlank()
                 ? "Unknown PC"
                 : payload.computerLabel();
-        if (desktopSessionUnlocked && !desktopComputerLabel.equals(desktopSessionComputerLabel)) {
-            desktopSessionUnlocked = false;
-            desktopSessionComputerLabel = "";
-        }
+        desktopComputerId = payload.computerId() == null ? "" : payload.computerId().trim().toLowerCase(java.util.Locale.ROOT);
         desktopMaxStorageBytes = Math.max(0, payload.maxStorageBytes());
         desktopUsedStorageBytes = Math.max(0, payload.usedStorageBytes());
         desktopPinSet = payload.pinSet();
+        desktopPoweredOn = payload.poweredOn();
+        desktopSessionUnlocked = payload.sessionUnlocked();
         if (payload.files() != null) {
             DESKTOP_FILES.addAll(payload.files());
         }
@@ -159,8 +162,16 @@ public final class ClientOwnerPcData {
         return desktopComputerLabel;
     }
 
+    public static String getDesktopComputerId() {
+        return desktopComputerId;
+    }
+
     public static boolean isDesktopPinSet() {
         return desktopPinSet;
+    }
+
+    public static boolean isDesktopPoweredOn() {
+        return desktopPoweredOn;
     }
 
     public static boolean hasDesktopDataLoaded() {
@@ -168,19 +179,16 @@ public final class ClientOwnerPcData {
     }
 
     public static boolean isDesktopSessionUnlocked() {
-        return desktopSessionUnlocked
-                && desktopComputerLabel != null
-                && desktopComputerLabel.equals(desktopSessionComputerLabel);
+        return desktopSessionUnlocked;
     }
 
     public static void markDesktopSessionUnlocked() {
         desktopSessionUnlocked = true;
-        desktopSessionComputerLabel = desktopComputerLabel == null ? "" : desktopComputerLabel;
+        desktopPoweredOn = true;
     }
 
     public static void clearDesktopSession() {
         desktopSessionUnlocked = false;
-        desktopSessionComputerLabel = "";
     }
 
     public static int getPreferredPcUiScaleMode() {
@@ -238,10 +246,11 @@ public final class ClientOwnerPcData {
         desktopMaxStorageBytes = 0;
         desktopUsedStorageBytes = 0;
         desktopComputerLabel = "Unknown PC";
+        desktopComputerId = "";
         desktopPinSet = false;
+        desktopPoweredOn = true;
         desktopDataLoaded = false;
         desktopSessionUnlocked = false;
-        desktopSessionComputerLabel = "";
         currentBankData = null;
         toastMessage = "";
         toastUntilMillis = 0L;
@@ -249,12 +258,8 @@ public final class ClientOwnerPcData {
     }
 
     public static void clearForUiClose() {
-        boolean keepSessionUnlocked = desktopSessionUnlocked;
-        String keepSessionComputer = desktopSessionComputerLabel;
         int keepScale = preferredPcUiScaleMode;
         clear();
-        desktopSessionUnlocked = keepSessionUnlocked;
-        desktopSessionComputerLabel = keepSessionComputer == null ? "" : keepSessionComputer;
         preferredPcUiScaleMode = keepScale;
     }
 }

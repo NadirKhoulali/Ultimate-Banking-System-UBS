@@ -1,0 +1,17 @@
+{
+  "parent": "ultimatebankingsystem:block/payment_terminal_handheld",
+  "overrides": [
+    {
+      "predicate": {
+        "custom_model_data": 1
+      },
+      "model": "ultimatebankingsystem:block/payment_terminal_handheld_success"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 2
+      },
+      "model": "ultimatebankingsystem:block/payment_terminal_handheld_denied"
+    }
+  ]
+}

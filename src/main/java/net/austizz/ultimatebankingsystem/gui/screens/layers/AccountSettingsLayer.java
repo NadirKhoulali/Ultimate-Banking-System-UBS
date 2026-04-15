@@ -638,9 +638,9 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 graphics.drawString(font, "Confirm PIN", contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
         } else {
-            graphics.drawString(font, "Default ATM limit: " + MoneyText.abbreviateWithDollar(defaultWithdrawalLimit), contentLeft + 6, sectionTop + 8, COLOR_LABEL);
-            graphics.drawString(font, "Active ATM limit: " + MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit), contentLeft + 152, sectionTop + 8, COLOR_VALUE);
-            graphics.drawString(font, "Daily limit: " + MoneyText.abbreviateWithDollar(dailyWithdrawalLimit), contentLeft + 6, sectionTop + 22, COLOR_LABEL);
+            graphics.drawString(font, "Per-withdrawal limit: " + MoneyText.abbreviateWithDollar(defaultWithdrawalLimit), contentLeft + 6, sectionTop + 8, COLOR_LABEL);
+            graphics.drawString(font, "Active withdrawal limit: " + MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit), contentLeft + 152, sectionTop + 8, COLOR_VALUE);
+            graphics.drawString(font, "Daily withdrawal limit: " + MoneyText.abbreviateWithDollar(dailyWithdrawalLimit), contentLeft + 6, sectionTop + 22, COLOR_LABEL);
             graphics.drawString(font, "Used today: " + MoneyText.abbreviateWithDollar(dailyWithdrawnToday), contentLeft + 152, sectionTop + 22, COLOR_VALUE);
             graphics.drawString(font, "Remaining today: " + MoneyText.abbreviateWithDollar(dailyWithdrawalRemaining), contentLeft + 6, sectionTop + 36, COLOR_VALUE);
             drawFittedString(graphics, "Resets: " + formatResetTime(dailyResetEpochMillis), contentLeft + 152, sectionTop + 36, contentWidth - 156, COLOR_MUTED);

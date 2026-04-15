@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @ApiStatus.NonExtendable
-@ApiStatus.AvailableSince("1.1.0")
+@ApiStatus.AvailableSince("1.2.0")
 public interface UltimateBankingApi {
     String getApiVersion();
 
@@ -24,6 +24,7 @@ public interface UltimateBankingApi {
     ApiResult transfer(UUID senderAccountId, UUID receiverAccountId, long amount);
 
     ApiResult shopPurchase(UUID accountId, long amount, String shopName);
+    ApiResult shopPurchase(UUID payerAccountId, UUID merchantAccountId, long amount, String shopName, String reference);
 
     ApiItemResult issueBankNote(UUID sourceAccountId, long amountDollars, UUID issuerPlayerId, String issuerName);
 
@@ -38,11 +39,21 @@ public interface UltimateBankingApi {
 
     ApiCashResult takeDollarBills(UUID playerId, int denomination, int billCount);
 
+    ApiCashResult giveCoins(UUID playerId, int denominationCents, int coinCount);
+
+    ApiCashResult takeCoins(UUID playerId, int denominationCents, int coinCount);
+
     List<Integer> getSupportedBillDenominations();
+
+    List<Integer> getSupportedCoinDenominations();
 
     List<ItemStack> createDollarBillStacks(int denomination, int billCount);
 
+    List<ItemStack> createCoinStacks(int denominationCents, int coinCount);
+
     int getPlayerBillCount(UUID playerId, int denomination);
+
+    int getPlayerCoinCount(UUID playerId, int denominationCents);
 
     int getPlayerCashOnHand(UUID playerId);
 

@@ -10,6 +10,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
@@ -71,9 +72,13 @@ public final class BankOwnerPcService {
         }
     }
 
-    private record DesktopContext(String dimensionId, int x, int y, int z) {
-        private String storageKey() {
+    private record DesktopContext(String dimensionId, int x, int y, int z, String machineId) {
+        private String coordinateKey() {
             return normalizeDim(dimensionId) + "|" + x + "|" + y + "|" + z;
+        }
+
+        private String storageKey() {
+            return machineId == null || machineId.isBlank() ? coordinateKey() : machineId;
         }
 
         private String label() {
@@ -83,7 +88,10 @@ public final class BankOwnerPcService {
 
     private static final ConcurrentHashMap<UUID, Long> LAST_BANK_CREATE_ATTEMPT_MILLIS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, DesktopContext> ACTIVE_DESKTOP_CONTEXT = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Set<UUID>> DESKTOP_UNLOCKED_SESSIONS = new ConcurrentHashMap<>();
     private static final String DESKTOP_STORAGE_TAG = "ownerPcDesktopStorage";
+    private static final String DESKTOP_MACHINE_INDEX_TAG = "ownerPcDesktopMachineIndex";
+    private static final String DESKTOP_POWER_STATE_TAG = "poweredOn";
     private static final int NBT_COMPOUND = 10;
     private static final int NBT_STRING = 8;
     private static final int DESKTOP_STORAGE_MAX_BYTES = 48 * 1024;
@@ -93,6 +101,8 @@ public final class BankOwnerPcService {
     private static final String DESKTOP_PIN_HASH_TAG = "desktopPinHash";
     private static final String DESKTOP_PIN_SALT_TAG = "desktopPinSalt";
     private static final String DESKTOP_RECOVERY_HASH_TAG = "desktopRecoveryHash";
+    private static final BigDecimal DEFAULT_TELLER_WITHDRAWAL_LIMIT = new BigDecimal("250000");
+    private static final BigDecimal MAX_TELLER_WITHDRAWAL_LIMIT = BigDecimal.valueOf(Integer.MAX_VALUE / 100L);
 
     private BankOwnerPcService() {}
 
@@ -173,31 +183,88 @@ public final class BankOwnerPcService {
         return count;
     }
 
-    public static void rememberDesktopContext(UUID playerId, String dimensionId, int x, int y, int z) {
-        if (playerId == null || dimensionId == null || dimensionId.isBlank()) {
+    public static void rememberDesktopContext(CentralBank centralBank, UUID playerId, String dimensionId, int x, int y, int z) {
+        if (centralBank == null || playerId == null || dimensionId == null || dimensionId.isBlank()) {
             return;
         }
-        ACTIVE_DESKTOP_CONTEXT.put(playerId, new DesktopContext(dimensionId.trim(), x, y, z));
+        String normalizedDim = normalizeDim(dimensionId);
+        String machineId = resolveOrCreateDesktopMachineId(centralBank, normalizedDim, x, y, z, true);
+        ACTIVE_DESKTOP_CONTEXT.put(playerId, new DesktopContext(normalizedDim, x, y, z, machineId));
+    }
+
+    public static void unregisterDesktopMachine(MinecraftServer server, String dimensionId, int x, int y, int z) {
+        if (server == null || dimensionId == null || dimensionId.isBlank()) {
+            return;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return;
+        }
+
+        String normalizedDim = normalizeDim(dimensionId);
+        String contextKey = buildDesktopCoordinateKey(normalizedDim, x, y, z);
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag indexTag = getDesktopMachineIndexTag(centralMeta);
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
+
+        String machineId = indexTag.contains(contextKey, NBT_STRING) ? indexTag.getString(contextKey) : "";
+        boolean changed = false;
+        if (!machineId.isBlank() && storageRoot.contains(machineId, NBT_COMPOUND)) {
+            storageRoot.remove(machineId);
+            clearDesktopSessionsForMachine(machineId);
+            changed = true;
+        }
+        if (storageRoot.contains(contextKey, NBT_COMPOUND)) {
+            storageRoot.remove(contextKey);
+            changed = true;
+        }
+        if (indexTag.contains(contextKey, NBT_STRING)) {
+            indexTag.remove(contextKey);
+            changed = true;
+        }
+
+        if (changed) {
+            centralMeta.put(DESKTOP_MACHINE_INDEX_TAG, indexTag);
+            centralMeta.put(DESKTOP_STORAGE_TAG, storageRoot);
+            centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+        }
+
+        ACTIVE_DESKTOP_CONTEXT.entrySet().removeIf(entry -> {
+            DesktopContext ctx = entry.getValue();
+            return ctx != null && contextKey.equals(ctx.coordinateKey());
+        });
     }
 
     public static OwnerPcDesktopDataPayload buildDesktopData(CentralBank centralBank, UUID playerId) {
         if (centralBank == null || playerId == null) {
-            return new OwnerPcDesktopDataPayload("Unknown PC", DESKTOP_STORAGE_MAX_BYTES, 0, false, List.of(), List.of());
+            return new OwnerPcDesktopDataPayload("Unknown PC", "", DESKTOP_STORAGE_MAX_BYTES, 0, false, true, false, List.of(), List.of());
         }
         DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(playerId);
         if (context == null) {
-            return new OwnerPcDesktopDataPayload("Unknown PC", DESKTOP_STORAGE_MAX_BYTES, 0, false, List.of(), List.of());
+            return new OwnerPcDesktopDataPayload("Unknown PC", "", DESKTOP_STORAGE_MAX_BYTES, 0, false, true, false, List.of(), List.of());
         }
-        CompoundTag userTag = getDesktopUserTag(centralBank, context, playerId, false);
+        String machineId = resolveOrCreateDesktopMachineId(centralBank, context.dimensionId(), context.x(), context.y(), context.z(), true);
+        if (machineId.isBlank()) {
+            return new OwnerPcDesktopDataPayload(context.label(), "", DESKTOP_STORAGE_MAX_BYTES, 0, false, true, false, List.of(), List.of());
+        }
+        DesktopContext resolvedContext = new DesktopContext(context.dimensionId(), context.x(), context.y(), context.z(), machineId);
+        ACTIVE_DESKTOP_CONTEXT.put(playerId, resolvedContext);
+        CompoundTag userTag = getDesktopUserTag(centralBank, resolvedContext, playerId, false);
         List<OwnerPcFileEntry> files = readDesktopFiles(userTag);
         Set<String> hiddenApps = readHiddenApps(userTag);
         int used = computeStorageBytes(files);
         boolean pinSet = isDesktopPinConfigured(userTag);
+        CompoundTag pcTag = getDesktopPcTag(centralBank, resolvedContext, false);
+        boolean poweredOn = isDesktopPoweredOn(pcTag);
+        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(machineId, playerId);
         return new OwnerPcDesktopDataPayload(
-                context.label(),
+                resolvedContext.label(),
+                machineId,
                 DESKTOP_STORAGE_MAX_BYTES,
                 used,
                 pinSet,
+                poweredOn,
+                sessionUnlocked,
                 files,
                 hiddenApps.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList()
         );
@@ -215,16 +282,30 @@ public final class BankOwnerPcService {
         if (context == null) {
             return fail("DESKTOP", "Open a bank owner PC block first.");
         }
+        String machineId = resolveOrCreateDesktopMachineId(centralBank, context.dimensionId(), context.x(), context.y(), context.z(), true);
+        if (machineId == null || machineId.isBlank()) {
+            return fail("DESKTOP", "Unable to resolve this PC. Re-open the block and try again.");
+        }
+        context = new DesktopContext(context.dimensionId(), context.x(), context.y(), context.z(), machineId);
+        ACTIVE_DESKTOP_CONTEXT.put(playerId, context);
 
         String normalizedAction = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
         if ("REFRESH".equals(normalizedAction)) {
             return ok("REFRESH", "Desktop refreshed.");
         }
 
+        CompoundTag pcTag = getDesktopPcTag(centralBank, context, true);
         CompoundTag userTag = getDesktopUserTag(centralBank, context, playerId, true);
         List<OwnerPcFileEntry> files = readDesktopFiles(userTag);
         Set<String> hiddenApps = readHiddenApps(userTag);
         long now = System.currentTimeMillis();
+        boolean poweredOn = isDesktopPoweredOn(pcTag);
+        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(machineId, playerId);
+        boolean authOrPowerAction = normalizedAction.startsWith("AUTH_") || "POWER_OFF".equals(normalizedAction);
+
+        if (!authOrPowerAction && !sessionUnlocked) {
+            return fail(normalizedAction, "This PC is locked. Enter your password first.");
+        }
 
         return switch (normalizedAction) {
             case "FILE_SAVE", "FILE_SAVE_TEXT", "FILE_SAVE_CANVAS" -> {
@@ -369,6 +450,8 @@ public final class BankOwnerPcService {
                 writeDesktopFiles(userTag, files);
                 writeHiddenApps(userTag, hiddenApps);
                 commitDesktopUserTag(centralBank, context, playerId, userTag);
+                setDesktopPowerState(centralBank, context, true);
+                markDesktopSessionUnlocked(machineId, playerId);
                 yield ok(normalizedAction, "PC password has been set.");
             }
             case "AUTH_VERIFY_PIN" -> {
@@ -385,6 +468,8 @@ public final class BankOwnerPcService {
                 if (expectedHash == null || expectedHash.isBlank() || !expectedHash.equals(actualHash)) {
                     yield fail(normalizedAction, "Incorrect password.");
                 }
+                setDesktopPowerState(centralBank, context, true);
+                markDesktopSessionUnlocked(machineId, playerId);
                 yield ok(normalizedAction, "Password verified.");
             }
             case "AUTH_RECOVER_RESET" -> {
@@ -406,7 +491,18 @@ public final class BankOwnerPcService {
                 writeDesktopFiles(userTag, files);
                 writeHiddenApps(userTag, hiddenApps);
                 commitDesktopUserTag(centralBank, context, playerId, userTag);
+                setDesktopPowerState(centralBank, context, true);
+                markDesktopSessionUnlocked(machineId, playerId);
                 yield ok(normalizedAction, "Password has been reset.");
+            }
+            case "AUTH_LOGOUT" -> {
+                clearDesktopSession(machineId, playerId);
+                yield ok(normalizedAction, "Logged out of this PC.");
+            }
+            case "POWER_OFF" -> {
+                clearDesktopSessionsForMachine(machineId);
+                setDesktopPowerState(centralBank, context, false);
+                yield ok(normalizedAction, "PC turned off.");
             }
             default -> fail(normalizedAction, "Unknown desktop action: " + normalizedAction);
         };
@@ -587,6 +683,8 @@ public final class BankOwnerPcService {
                 dailyCap.toPlainString(),
                 dailyUsed.toPlainString(),
                 dailyRemaining.toPlainString(),
+                CreditCardService.getIssueFee(centralBank, bankId).toPlainString(),
+                CreditCardService.getReplacementFee(centralBank, bankId).toPlainString(),
                 BigDecimal.valueOf(centralBank.getFederalFundsRate()).setScale(2, RoundingMode.HALF_EVEN).toPlainString(),
                 ownerView,
                 roles,
@@ -634,6 +732,7 @@ public final class BankOwnerPcService {
             case "SET_MOTTO" -> handleSetMotto(centralBank, bank, owner, arg1);
             case "SET_COLOR" -> handleSetColor(centralBank, bank, owner, arg1);
             case "SET_LIMIT" -> handleSetLimit(centralBank, bank, owner, arg1, arg2);
+            case "SET_CARD_FEES" -> handleSetCardFees(centralBank, bank, owner, arg1, arg2);
             case "ROLE_ASSIGN" -> handleRoleAssign(server, centralBank, bank, owner, arg1, arg2);
             case "ROLE_REVOKE" -> handleRoleRevoke(server, centralBank, bank, owner, arg1);
             case "SHARES_SET" -> handleSharesSet(server, centralBank, bank, owner, arg1, arg2);
@@ -674,7 +773,9 @@ public final class BankOwnerPcService {
                     "Reserve: $" + data.reserve(),
                     "Deposits: $" + data.deposits(),
                     "Reserve Ratio: " + data.reserveRatio() + "%",
-                    "Minimum Reserve: $" + data.minReserve()
+                    "Minimum Reserve: $" + data.minReserve(),
+                    "Card Issue Fee: $" + data.cardIssueFee(),
+                    "Card Replacement Fee: $" + data.cardReplacementFee()
             );
             case "SHOW_RESERVE" -> body = joinLines(
                     "Reserve: $" + data.reserve(),
@@ -712,12 +813,38 @@ public final class BankOwnerPcService {
             }
             case "SHOW_ACCOUNTS" -> body = formatList("Account Roster (" + data.accountRoster().size() + ")", data.accountRoster());
             case "SHOW_CDS" -> body = formatList("Certificates (" + data.certificateSchedule().size() + ")", data.certificateSchedule());
-            case "SHOW_LIMITS" -> body = joinLines(
-                    "Daily Cap: $" + data.dailyCap(),
-                    "Daily Used: $" + data.dailyUsed(),
-                    "Daily Remaining: $" + data.dailyRemaining(),
-                    "Minimum Reserve: $" + data.minReserve()
-            );
+            case "SHOW_LIMITS" -> {
+                CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+                BigDecimal singleLimit = metadata.contains("limitSingle")
+                        ? readBigDecimal(metadata, "limitSingle")
+                        : BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get());
+                BigDecimal dailyPlayerLimit = metadata.contains("limitDailyPlayer")
+                        ? readBigDecimal(metadata, "limitDailyPlayer")
+                        : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get());
+                BigDecimal dailyBankLimit = metadata.contains("limitDailyBank")
+                        ? readBigDecimal(metadata, "limitDailyBank")
+                        : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
+                BigDecimal tellerLimit = metadata.contains("limitTeller")
+                        ? readBigDecimal(metadata, "limitTeller")
+                        : DEFAULT_TELLER_WITHDRAWAL_LIMIT;
+                if (tellerLimit.compareTo(BigDecimal.ZERO) <= 0) {
+                    tellerLimit = DEFAULT_TELLER_WITHDRAWAL_LIMIT;
+                } else if (tellerLimit.compareTo(MAX_TELLER_WITHDRAWAL_LIMIT) > 0) {
+                    tellerLimit = MAX_TELLER_WITHDRAWAL_LIMIT;
+                }
+                body = joinLines(
+                        "Single Tx Limit: $" + singleLimit.toPlainString(),
+                        "Daily Player Limit: $" + dailyPlayerLimit.toPlainString(),
+                        "Daily Bank Limit: $" + dailyBankLimit.toPlainString(),
+                        "Teller Cash Limit: $" + tellerLimit.toPlainString(),
+                        "Daily Cap: $" + data.dailyCap(),
+                        "Daily Used: $" + data.dailyUsed(),
+                        "Daily Remaining: $" + data.dailyRemaining(),
+                        "Minimum Reserve: $" + data.minReserve(),
+                        "Card Issue Fee: $" + data.cardIssueFee(),
+                        "Card Replacement Fee: $" + data.cardReplacementFee()
+                );
+            }
             case "SHOW_ROLES" -> body = formatList("Roles (" + data.roles().size() + ")", data.roles());
             case "SHOW_SHARES" -> body = formatList("Shares (" + data.shares().size() + ")", data.shares());
             case "SHOW_COFOUNDERS" -> body = formatList("Cofounders (" + data.cofounders().size() + ")", data.cofounders());
@@ -944,13 +1071,46 @@ public final class BankOwnerPcService {
                 }
                 metadata.putString("limitDailyBank", amount.toPlainString());
             }
+            case "teller", "tellercash", "cash", "withdrawal" -> {
+                BigDecimal maxAllowed = MAX_TELLER_WITHDRAWAL_LIMIT;
+                if (amount.compareTo(maxAllowed) > 0) {
+                    return new ActionResult(false, "Teller limit cannot exceed $" + maxAllowed.toPlainString() + ".");
+                }
+                metadata.putString("limitTeller", amount.toPlainString());
+            }
             default -> {
-                return new ActionResult(false, "Unknown limit type. Use single, dailyplayer, or dailybank.");
+                return new ActionResult(false, "Unknown limit type. Use single, dailyplayer, dailybank, or teller.");
             }
         }
 
         centralBank.putBankMetadata(bank.getBankId(), metadata);
         return new ActionResult(true, "Limit updated.");
+    }
+
+    private static ActionResult handleSetCardFees(CentralBank centralBank,
+                                                  Bank bank,
+                                                  boolean owner,
+                                                  String issueFeeRaw,
+                                                  String replacementFeeRaw) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can update card fees.");
+        }
+
+        BigDecimal issueFee = parseNonNegativeWholeAmount(issueFeeRaw);
+        if (issueFee == null) {
+            return new ActionResult(false, "Issue fee must be a non-negative whole number.");
+        }
+        BigDecimal replacementFee = parseNonNegativeWholeAmount(replacementFeeRaw);
+        if (replacementFee == null) {
+            return new ActionResult(false, "Replacement fee must be a non-negative whole number.");
+        }
+
+        boolean applied = CreditCardService.setFees(centralBank, bank.getBankId(), issueFee, replacementFee);
+        if (!applied) {
+            return new ActionResult(false, "Could not update card fees.");
+        }
+        return new ActionResult(true, "Card fees updated (issue $" + issueFee.toPlainString()
+                + ", replacement $" + replacementFee.toPlainString() + ").");
     }
 
     private static ActionResult handleRoleAssign(MinecraftServer server,
@@ -1589,6 +1749,8 @@ public final class BankOwnerPcService {
         metadata.putString("dailyCapOverride", "");
         metadata.putString("employees", "");
         metadata.putString("loanProducts", "");
+        metadata.putString("cardIssueFee", "25");
+        metadata.putString("cardReplacementFee", "50");
 
         if ("ROLE_BASED".equalsIgnoreCase(ownershipModel)) {
             HashMap<UUID, String> roles = new HashMap<>();
@@ -1688,6 +1850,25 @@ public final class BankOwnerPcService {
             return null;
         }
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        if (amount.stripTrailingZeros().scale() > 0) {
+            return null;
+        }
+        return amount;
+    }
+
+    private static BigDecimal parseNonNegativeWholeAmount(String amountRaw) {
+        if (amountRaw == null || amountRaw.isBlank()) {
+            return null;
+        }
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(amountRaw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (amount.compareTo(BigDecimal.ZERO) < 0) {
             return null;
         }
         if (amount.stripTrailingZeros().scale() > 0) {
@@ -1859,6 +2040,90 @@ public final class BankOwnerPcService {
         }
     }
 
+    private static CompoundTag getDesktopMachineIndexTag(CompoundTag centralMeta) {
+        if (centralMeta == null || !centralMeta.contains(DESKTOP_MACHINE_INDEX_TAG, NBT_COMPOUND)) {
+            return new CompoundTag();
+        }
+        return centralMeta.getCompound(DESKTOP_MACHINE_INDEX_TAG);
+    }
+
+    private static CompoundTag getDesktopStorageRoot(CompoundTag centralMeta) {
+        if (centralMeta == null || !centralMeta.contains(DESKTOP_STORAGE_TAG, NBT_COMPOUND)) {
+            return new CompoundTag();
+        }
+        return centralMeta.getCompound(DESKTOP_STORAGE_TAG);
+    }
+
+    private static String buildDesktopCoordinateKey(String dimensionId, int x, int y, int z) {
+        return normalizeDim(dimensionId) + "|" + x + "|" + y + "|" + z;
+    }
+
+    private static String resolveOrCreateDesktopMachineId(CentralBank centralBank,
+                                                           String dimensionId,
+                                                           int x,
+                                                           int y,
+                                                           int z,
+                                                           boolean create) {
+        if (centralBank == null || dimensionId == null || dimensionId.isBlank()) {
+            return "";
+        }
+        String contextKey = buildDesktopCoordinateKey(dimensionId, x, y, z);
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag indexTag = getDesktopMachineIndexTag(centralMeta);
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
+        boolean changed = false;
+
+        String machineId = indexTag.contains(contextKey, NBT_STRING)
+                ? indexTag.getString(contextKey).trim().toLowerCase(Locale.ROOT)
+                : "";
+        if (machineId.isBlank() && storageRoot.contains(contextKey, NBT_COMPOUND)) {
+            machineId = UUID.randomUUID().toString();
+            while (storageRoot.contains(machineId, NBT_COMPOUND)) {
+                machineId = UUID.randomUUID().toString();
+            }
+            storageRoot.put(machineId, storageRoot.getCompound(contextKey));
+            storageRoot.remove(contextKey);
+            indexTag.putString(contextKey, machineId);
+            changed = true;
+        }
+        if (machineId.isBlank() && create) {
+            machineId = UUID.randomUUID().toString();
+            while (storageRoot.contains(machineId, NBT_COMPOUND)) {
+                machineId = UUID.randomUUID().toString();
+            }
+            indexTag.putString(contextKey, machineId);
+            changed = true;
+        }
+        if (!machineId.isBlank() && !indexTag.contains(contextKey, NBT_STRING)) {
+            indexTag.putString(contextKey, machineId);
+            changed = true;
+        }
+        if (changed) {
+            centralMeta.put(DESKTOP_MACHINE_INDEX_TAG, indexTag);
+            centralMeta.put(DESKTOP_STORAGE_TAG, storageRoot);
+            centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+        }
+        return machineId;
+    }
+
+    private static CompoundTag getDesktopPcTag(CentralBank centralBank,
+                                               DesktopContext context,
+                                               boolean create) {
+        if (centralBank == null || context == null) {
+            return new CompoundTag();
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
+        String storageKey = context.storageKey();
+        if (storageKey.isBlank()) {
+            return new CompoundTag();
+        }
+        if (storageRoot.contains(storageKey, NBT_COMPOUND)) {
+            return storageRoot.getCompound(storageKey);
+        }
+        return create ? new CompoundTag() : new CompoundTag();
+    }
+
     private static CompoundTag getDesktopUserTag(CentralBank centralBank,
                                                  DesktopContext context,
                                                  UUID playerId,
@@ -1866,13 +2131,7 @@ public final class BankOwnerPcService {
         if (centralBank == null || context == null || playerId == null) {
             return new CompoundTag();
         }
-        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
-        CompoundTag storageRoot = centralMeta.contains(DESKTOP_STORAGE_TAG, NBT_COMPOUND)
-                ? centralMeta.getCompound(DESKTOP_STORAGE_TAG)
-                : new CompoundTag();
-        CompoundTag pcTag = storageRoot.contains(context.storageKey(), NBT_COMPOUND)
-                ? storageRoot.getCompound(context.storageKey())
-                : new CompoundTag();
+        CompoundTag pcTag = getDesktopPcTag(centralBank, context, create);
         CompoundTag usersTag = pcTag.contains("users", NBT_COMPOUND)
                 ? pcTag.getCompound("users")
                 : new CompoundTag();
@@ -1891,9 +2150,7 @@ public final class BankOwnerPcService {
             return;
         }
         CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
-        CompoundTag storageRoot = centralMeta.contains(DESKTOP_STORAGE_TAG, NBT_COMPOUND)
-                ? centralMeta.getCompound(DESKTOP_STORAGE_TAG)
-                : new CompoundTag();
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
         CompoundTag pcTag = storageRoot.contains(context.storageKey(), NBT_COMPOUND)
                 ? storageRoot.getCompound(context.storageKey())
                 : new CompoundTag();
@@ -1906,6 +2163,68 @@ public final class BankOwnerPcService {
         storageRoot.put(context.storageKey(), pcTag);
         centralMeta.put(DESKTOP_STORAGE_TAG, storageRoot);
         centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+    }
+
+    private static boolean isDesktopPoweredOn(CompoundTag pcTag) {
+        if (pcTag == null || !pcTag.contains(DESKTOP_POWER_STATE_TAG)) {
+            return true;
+        }
+        return pcTag.getBoolean(DESKTOP_POWER_STATE_TAG);
+    }
+
+    private static void setDesktopPowerState(CentralBank centralBank,
+                                             DesktopContext context,
+                                             boolean poweredOn) {
+        if (centralBank == null || context == null) {
+            return;
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
+        CompoundTag pcTag = storageRoot.contains(context.storageKey(), NBT_COMPOUND)
+                ? storageRoot.getCompound(context.storageKey())
+                : new CompoundTag();
+        pcTag.putBoolean(DESKTOP_POWER_STATE_TAG, poweredOn);
+        storageRoot.put(context.storageKey(), pcTag);
+        centralMeta.put(DESKTOP_STORAGE_TAG, storageRoot);
+        centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+    }
+
+    private static boolean isDesktopSessionUnlocked(String machineId, UUID playerId) {
+        if (machineId == null || machineId.isBlank() || playerId == null) {
+            return false;
+        }
+        Set<UUID> unlocked = DESKTOP_UNLOCKED_SESSIONS.get(machineId);
+        return unlocked != null && unlocked.contains(playerId);
+    }
+
+    private static void markDesktopSessionUnlocked(String machineId, UUID playerId) {
+        if (machineId == null || machineId.isBlank() || playerId == null) {
+            return;
+        }
+        DESKTOP_UNLOCKED_SESSIONS
+                .computeIfAbsent(machineId, key -> ConcurrentHashMap.newKeySet())
+                .add(playerId);
+    }
+
+    private static void clearDesktopSession(String machineId, UUID playerId) {
+        if (machineId == null || machineId.isBlank() || playerId == null) {
+            return;
+        }
+        Set<UUID> unlocked = DESKTOP_UNLOCKED_SESSIONS.get(machineId);
+        if (unlocked == null) {
+            return;
+        }
+        unlocked.remove(playerId);
+        if (unlocked.isEmpty()) {
+            DESKTOP_UNLOCKED_SESSIONS.remove(machineId, unlocked);
+        }
+    }
+
+    private static void clearDesktopSessionsForMachine(String machineId) {
+        if (machineId == null || machineId.isBlank()) {
+            return;
+        }
+        DESKTOP_UNLOCKED_SESSIONS.remove(machineId);
     }
 
     private static List<OwnerPcFileEntry> readDesktopFiles(CompoundTag userTag) {
