@@ -1,6 +1,6 @@
 # Developer Integration Tutorial
 
-This guide explains exactly how to integrate UBS into another NeoForge mod dev environment.
+This guide explains how to integrate UBS into another mod dev environment for the current Forge 1.20.1 branch.
 
 ## 1. UBS coordinates and mod id
 
@@ -57,9 +57,7 @@ Point the path to your local UBS clone.
 dependencies {
     compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 
-    // Prefer localRuntime for NeoForge dev runs.
-    // If your template does not have localRuntime, use runtimeOnly instead.
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -88,7 +86,7 @@ repositories {
 
 dependencies {
     compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -113,15 +111,13 @@ repositories {
 
 dependencies {
     compileOnly name: "ultimatebankingsystem-1.2.0"
-    localRuntime name: "ultimatebankingsystem-1.2.0"
+    runtimeOnly name: "ultimatebankingsystem-1.2.0"
 }
 ```
 
-If your setup does not have `localRuntime`, use `runtimeOnly`.
+## 7. Declare mod dependency in `mods.toml`
 
-## 7. Declare mod dependency in `neoforge.mods.toml`
-
-In your mod's `src/main/resources/META-INF/neoforge.mods.toml`, replace `<your_modid>` with your mod id.
+In your mod's `src/main/resources/META-INF/mods.toml`, replace `<your_modid>` with your mod id.
 
 ### Required UBS
 
@@ -193,14 +189,34 @@ String apiVersion = api.getApiVersion();
 ### Account read/write
 
 ```java
+import java.math.BigDecimal;
+
 var bal = api.getBalance(accountId);
 if (bal.success()) {
     // bal.balanceAfter()
 }
 
-var tx = api.transfer(senderAccountId, receiverAccountId, 250L);
+var tx = api.transfer(senderAccountId, receiverAccountId, new BigDecimal("250.50"), "EXAMPLE_ORDER:1234");
 if (!tx.success()) {
     // tx.reason()
+}
+```
+
+### Player account checks
+
+```java
+import java.util.List;
+import java.util.UUID;
+
+if (!api.playerHasAnyAccount(playerId)) {
+    // Ask the player to create a UBS account before using this integration.
+}
+
+List<UUID> accountIds = api.getPlayerAccountIds(playerId);
+
+if (api.playerHasAvailablePrimaryAccount(playerId)
+        && api.primaryAccountCanSend(playerId, new BigDecimal("250.50"))) {
+    // The player's primary account exists and can send this payment.
 }
 ```
 

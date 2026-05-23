@@ -20,8 +20,15 @@ Banking actions:
 
 - `getBalance(accountId)`
 - `deposit(accountId, amount)`
+- `deposit(accountId, amount, reference)`
 - `withdraw(accountId, amount)`
+- `withdraw(accountId, amount, reference)`
 - `transfer(senderAccountId, receiverAccountId, amount)`
+- `transfer(senderAccountId, receiverAccountId, amount, reference)`
+- `depositToPrimary(playerId, amount, reference)`
+- `withdrawFromPrimary(playerId, amount, reference)`
+- `transferFromPrimary(senderPlayerId, receiverAccountId, amount, reference)`
+- `transferToPrimary(senderAccountId, receiverPlayerId, amount, reference)`
 - `shopPurchase(accountId, amount, shopName)`
 - `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)`
 - `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)`
@@ -31,17 +38,57 @@ Banking actions:
 - `giveCoins(playerId, denominationCents, coinCount)`
 - `takeCoins(playerId, denominationCents, coinCount)`
 
+`amount` can be a `long` for whole-dollar style integrations. Reference-aware deposit, withdraw, transfer, and primary-account helpers also accept `BigDecimal` for precise prices such as auction bids with cents.
+
 Service/runtime checks:
 
 - `getApiVersion()`
 - `isServerAvailable()`
+- `getPrimaryAccountId(playerId)`
 - `accountExists(accountId)`
 - `bankExists(bankId)`
+- `getAccountStatus(accountId)`
+- `validateAccountCanSend(accountId, amount)`
+- `validateAccountCanReceive(accountId)`
+- `playerHasAnyAccount(playerId)`
+- `playerHasPrimaryAccount(playerId)`
+- `playerHasAvailableAccount(playerId)`
+- `playerHasAvailablePrimaryAccount(playerId)`
+- `playerHasFrozenAccount(playerId)`
+- `playerOwnsAccount(playerId, accountId)`
+- `playerOwnsBank(playerId, bankId)`
+- `accountBelongsToBank(accountId, bankId)`
+- `accountIsFrozen(accountId)`
+- `accountIsPrimary(accountId)`
+- `accountCanSend(accountId, amount)`
+- `accountCanReceive(accountId)`
+- `primaryAccountCanSend(playerId, amount)`
+- `primaryAccountCanReceive(playerId)`
+- `bankAcceptsTransactions(bankId)`
 
 `shopPurchase` overload note:
 
 - `shopPurchase(accountId, amount, shopName)` is a simple label-based purchase.
 - `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)` is the terminal-grade path (explicit merchant routing + external reference string).
+
+Reference-aware transaction methods:
+
+- The overloads with `reference` return `ApiTransactionResult` instead of `ApiResult`.
+- `reference` is stored in the transaction description after a stable operation prefix, making external systems such as auction houses, shops, jobs, and quest rewards auditable in UBS transaction history.
+- `depositToPrimary`, `withdrawFromPrimary`, `transferFromPrimary`, and `transferToPrimary` are convenience helpers for integrations that only know a player UUID.
+- These helpers still validate frozen accounts, bank status, account ownership, balance, and transaction limits server-side.
+- For auction-house settlement, prefer `transferFromPrimary(winningBidderId, sellerAccountId, bidAmount, "YOURMOD_AUCTION:<auction-id>")` over minting money with `depositToPrimary`.
+
+`ApiTransactionResult` fields:
+
+- `success`
+- `reason`
+- `transactionId`
+- `senderAccountId`
+- `receiverAccountId`
+- `amount`
+- `balanceAfter`
+- `description`
 
 ## Snapshot API (Typed Data)
 
@@ -52,6 +99,7 @@ These methods expose stable read models for integration UIs, HUDs, dashboards, a
 - `getAccountSnapshot(accountId)` -> `Optional<ApiAccountSnapshot>`
 - `getPrimaryAccountSnapshot(playerId)` -> `Optional<ApiAccountSnapshot>`
 - `getPlayerAccounts(playerId)` -> `List<ApiAccountSnapshot>`
+- `getPlayerAccountIds(playerId)` -> `List<UUID>`
 - `getBankAccounts(bankId)` -> `List<ApiAccountSnapshot>`
 - `setPrimaryAccount(playerId, accountId)` -> `ApiResult`
 
@@ -66,6 +114,29 @@ These methods expose stable read models for integration UIs, HUDs, dashboards, a
 - `frozen`
 - `frozenReason`
 - `createdAt`
+
+### Account ownership and boolean helpers
+
+Use these helpers when an integration only needs a yes/no answer and should not duplicate UBS account-status rules.
+
+- `getPlayerAccountIds(playerId)` returns the player's account UUIDs, sorted the same way as `getPlayerAccounts`: primary accounts first, then newest accounts.
+- `playerHasAnyAccount(playerId)` returns `true` when UBS has at least one account registered to that player UUID.
+- `playerHasPrimaryAccount(playerId)` returns `true` when the player has a primary account selected.
+- `playerHasAvailableAccount(playerId)` returns `true` when at least one owned account can currently receive normal banking activity.
+- `playerHasAvailablePrimaryAccount(playerId)` returns `true` when the player's primary account exists and has status `AVAILABLE`.
+- `playerHasFrozenAccount(playerId)` returns `true` when any owned account is frozen.
+- `playerOwnsAccount(playerId, accountId)` checks account ownership.
+- `playerOwnsBank(playerId, bankId)` checks bank ownership.
+- `accountBelongsToBank(accountId, bankId)` checks account-to-bank membership.
+- `accountIsFrozen(accountId)` checks whether an account is frozen.
+- `accountIsPrimary(accountId)` checks whether an account is marked as the owner's primary account.
+- `accountCanSend(accountId, amount)` returns `true` only if `validateAccountCanSend` would succeed.
+- `accountCanReceive(accountId)` returns `true` only if `validateAccountCanReceive` would succeed.
+- `primaryAccountCanSend(playerId, amount)` checks the player's primary account and returns `false` if no primary account exists.
+- `primaryAccountCanReceive(playerId)` checks whether the player's primary account can receive funds.
+- `bankAcceptsTransactions(bankId)` returns `false` if the bank is missing or in a transaction-blocking state such as `SUSPENDED`, `REVOKED`, or `LOCKDOWN`.
+
+`amount` accepts `long` or `BigDecimal` for `accountCanSend` and `primaryAccountCanSend`.
 
 ### Bank snapshots
 
@@ -131,6 +202,7 @@ Behavior:
 - `createDollarBillStacks(denomination, billCount)` -> `List<ItemStack>`
 - `getPlayerBillCount(playerId, denomination)` -> `int`
 - `getPlayerCashOnHand(playerId)` -> `int`
+- `getPlayerCashOnHandCents(playerId)` -> `int`
 
 `denomination` values are face-value dollars: `1, 2, 5, 10, 20, 50, 100`.
 `billCount` means count of bill items, not dollar amount.
@@ -143,9 +215,12 @@ Behavior:
 - `createCoinStacks(denominationCents, coinCount)` -> `List<ItemStack>`
 - `getPlayerCoinCount(playerId, denominationCents)` -> `int`
 - `getPlayerCashOnHand(playerId)` -> `int` (bills + coins)
+- `getPlayerCashOnHandCents(playerId)` -> `int` (bills + coins in cents)
 
 `denominationCents` values: `1, 5, 10, 25, 50`.
 `coinCount` means count of coin items, not cent total.
+
+`getPlayerCashOnHand(playerId)` returns whole dollars and truncates leftover cents. Use `getPlayerCashOnHandCents(playerId)` when exact coin-aware value is needed.
 
 `ApiCashResult` fields:
 
@@ -154,6 +229,8 @@ Behavior:
 - `denomination`
 - `billCount`
 - `totalDollarValue`
+
+For coin operations, `denomination` and `totalDollarValue` use the provided cent-denomination value. Treat `totalDollarValue` as a legacy integer total for the returned denomination/count pair, not as a precise cross-denomination wallet value.
 
 ## Aggregated Metrics API
 
@@ -165,6 +242,15 @@ UBS now also exposes aggregate values for leaderboards and HUD overlays:
 - `getBankTotalDeposits(bankId)`
 - `getBankReserve(bankId)`
 - `getBankStatus(bankId)`
+
+## Pickpocket Metrics API
+
+UBS now exposes read methods for pickpocket history checks:
+
+- `hasPlayerEverStolen(playerId)` -> `boolean`
+- `getPlayersStolenFrom(playerId)` -> `List<UUID>`
+
+These methods are intended for moderation dashboards, custom HUD stats, and server-side progression hooks.
 
 ## Placeholder Resolver API
 
