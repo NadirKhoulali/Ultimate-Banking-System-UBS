@@ -8,6 +8,8 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -17,6 +19,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -794,6 +797,72 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             return ApiResult.fail("Account cannot receive while status is " + status, account.getBalance());
         }
         return ApiResult.ok(account.getBalance());
+    }
+
+    @Override
+    public ApiAlertResult sendUiAlert(UUID playerId, String title, String message, ApiAlertTone tone, int durationMs) {
+        ApiAlertTone resolvedTone = tone == null ? ApiAlertTone.INFO : tone;
+        boolean success = resolvedTone != ApiAlertTone.ERROR;
+        return sendUiAlert(playerId, title, message, success, durationMs, resolvedTone.id());
+    }
+
+    @Override
+    public ApiAlertResult sendUiAlert(UUID playerId, String title, String message, boolean success, int durationMs, int toneCode) {
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiAlertResult.fail("Player is not online", playerId);
+        }
+        if (message == null || message.trim().isBlank()) {
+            return ApiAlertResult.fail("Alert message is required", playerId);
+        }
+
+        DeliveryAlertPayload payload = new DeliveryAlertPayload(
+                title,
+                ServerActionAlert.stripLegacyFormatting(message),
+                success,
+                durationMs,
+                ApiAlertTone.fromId(toneCode).id()
+        );
+        PacketDistributor.sendToPlayer(player, payload);
+        return ApiAlertResult.ok(
+                playerId,
+                payload.title(),
+                payload.message(),
+                payload.success(),
+                payload.durationMs(),
+                ApiAlertTone.fromId(payload.toneCode())
+        );
+    }
+
+    @Override
+    public ApiAlertResult sendLegacyUiAlert(UUID playerId, String title, String legacyMessage, int durationMs) {
+        DeliveryAlertPayload.AlertTone tone = ServerActionAlert.inferToneFromLegacy(legacyMessage);
+        return sendUiAlert(playerId, title, legacyMessage, tone != DeliveryAlertPayload.AlertTone.ERROR, durationMs, tone.id());
+    }
+
+    @Override
+    public ApiAlertResult sendSuccessUiAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendUiAlert(playerId, title, message, ApiAlertTone.SUCCESS, durationMs);
+    }
+
+    @Override
+    public ApiAlertResult sendErrorUiAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendUiAlert(playerId, title, message, ApiAlertTone.ERROR, durationMs);
+    }
+
+    @Override
+    public ApiAlertResult sendInfoUiAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendUiAlert(playerId, title, message, ApiAlertTone.INFO, durationMs);
+    }
+
+    @Override
+    public ApiAlertResult sendWarningUiAlert(UUID playerId, String title, String message, int durationMs) {
+        return sendUiAlert(playerId, title, message, ApiAlertTone.WARNING, durationMs);
+    }
+
+    @Override
+    public List<ApiAlertTone> getSupportedUiAlertTones() {
+        return List.of(ApiAlertTone.SUCCESS, ApiAlertTone.ERROR, ApiAlertTone.INFO, ApiAlertTone.WARNING);
     }
 
     @Override

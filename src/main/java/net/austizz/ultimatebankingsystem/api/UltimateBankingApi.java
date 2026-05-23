@@ -62,6 +62,22 @@ public interface UltimateBankingApi {
 
     ApiResult validateAccountCanReceive(UUID accountId);
 
+    ApiAlertResult sendUiAlert(UUID playerId, String title, String message, ApiAlertTone tone, int durationMs);
+
+    ApiAlertResult sendUiAlert(UUID playerId, String title, String message, boolean success, int durationMs, int toneCode);
+
+    ApiAlertResult sendLegacyUiAlert(UUID playerId, String title, String legacyMessage, int durationMs);
+
+    ApiAlertResult sendSuccessUiAlert(UUID playerId, String title, String message, int durationMs);
+
+    ApiAlertResult sendErrorUiAlert(UUID playerId, String title, String message, int durationMs);
+
+    ApiAlertResult sendInfoUiAlert(UUID playerId, String title, String message, int durationMs);
+
+    ApiAlertResult sendWarningUiAlert(UUID playerId, String title, String message, int durationMs);
+
+    List<ApiAlertTone> getSupportedUiAlertTones();
+
     ApiResult shopPurchase(UUID accountId, long amount, String shopName);
     ApiResult shopPurchase(UUID payerAccountId, UUID merchantAccountId, long amount, String shopName, String reference);
 
