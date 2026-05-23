@@ -220,6 +220,29 @@ if (api.playerHasAvailablePrimaryAccount(playerId)
 }
 ```
 
+### UI alerts
+
+```java
+import net.austizz.ultimatebankingsystem.api.ApiAlertTone;
+
+api.sendUiAlert(
+        playerId,
+        "Auction House",
+        "Your bid was accepted.",
+        ApiAlertTone.SUCCESS,
+        4200
+);
+
+api.sendUiAlert(
+        playerId,
+        "Auction House",
+        "Raw payload-style warning.",
+        true,
+        5000,
+        ApiAlertTone.WARNING.id()
+);
+```
+
 ### Cheque / note issue
 
 ```java

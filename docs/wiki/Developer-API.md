@@ -50,6 +50,14 @@ Service/runtime checks:
 - `getAccountStatus(accountId)`
 - `validateAccountCanSend(accountId, amount)`
 - `validateAccountCanReceive(accountId)`
+- `sendUiAlert(playerId, title, message, tone, durationMs)`
+- `sendUiAlert(playerId, title, message, success, durationMs, toneCode)`
+- `sendLegacyUiAlert(playerId, title, legacyMessage, durationMs)`
+- `sendSuccessUiAlert(playerId, title, message, durationMs)`
+- `sendErrorUiAlert(playerId, title, message, durationMs)`
+- `sendInfoUiAlert(playerId, title, message, durationMs)`
+- `sendWarningUiAlert(playerId, title, message, durationMs)`
+- `getSupportedUiAlertTones()`
 - `playerHasAnyAccount(playerId)`
 - `playerHasPrimaryAccount(playerId)`
 - `playerHasAvailableAccount(playerId)`
@@ -137,6 +145,48 @@ Use these helpers when an integration only needs a yes/no answer and should not 
 - `bankAcceptsTransactions(bankId)` returns `false` if the bank is missing or in a transaction-blocking state such as `SUSPENDED`, `REVOKED`, or `LOCKDOWN`.
 
 `amount` accepts `long` or `BigDecimal` for `accountCanSend` and `primaryAccountCanSend`.
+
+## UI Alert API
+
+UBS exposes its client-side action alert card to integrations. Alerts are sent server-side to an online player UUID and render on that player's client using the same queued alert UI as UBS banking, shop, teller, and payment flows.
+
+Methods:
+
+- `sendUiAlert(playerId, title, message, tone, durationMs)` -> `ApiAlertResult`
+- `sendUiAlert(playerId, title, message, success, durationMs, toneCode)` -> `ApiAlertResult`
+- `sendLegacyUiAlert(playerId, title, legacyMessage, durationMs)` -> `ApiAlertResult`
+- `sendSuccessUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
+- `sendErrorUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
+- `sendInfoUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
+- `sendWarningUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
+- `getSupportedUiAlertTones()` -> `List<ApiAlertTone>`
+
+`ApiAlertTone` values:
+
+- `SUCCESS` (`toneCode` 0)
+- `ERROR` (`toneCode` 1)
+- `INFO` (`toneCode` 2)
+- `WARNING` (`toneCode` 3)
+
+`ApiAlertResult` fields:
+
+- `success`
+- `reason`
+- `playerId`
+- `title`
+- `message`
+- `alertSuccess`
+- `durationMs`
+- `tone`
+- `toneCode`
+
+Behavior:
+
+- The target player must be online; offline players return `success=false` with reason `Player is not online`.
+- `message` is required and blank messages are rejected.
+- `durationMs` is clamped by the UBS alert payload to the supported display window.
+- `sendLegacyUiAlert` strips legacy formatting codes and infers tone from color/error wording.
+- The raw overload with `success` and `toneCode` exists for integrations that need every payload parameter. Prefer the `ApiAlertTone` overload for normal use.
 
 ### Bank snapshots
 
