@@ -14,6 +14,7 @@ import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.common.MinecraftForge;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -91,6 +92,21 @@ public class CentralBank extends Bank{
                 .findFirst()
                 .orElse(null);
     }
+
+    /**
+     * Heist tracking is not yet implemented; keep API contract stable with safe defaults.
+     */
+    public boolean hasPlayerEverStolen(UUID playerId) {
+        return false;
+    }
+
+    /**
+     * Heist tracking is not yet implemented; keep API contract stable with safe defaults.
+     */
+    public List<UUID> getPlayersStolenFrom(UUID playerId) {
+        return List.of();
+    }
+
     public ConcurrentHashMap<UUID, AccountHolder> SearchForAccount(UUID playerId) {
         ConcurrentHashMap<UUID, AccountHolder> result = new ConcurrentHashMap<>();
         if (playerId == null) {
