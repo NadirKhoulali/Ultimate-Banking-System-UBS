@@ -110,6 +110,7 @@ These methods expose stable read models for integration UIs, HUDs, dashboards, a
 - `getPlayerAccountIds(playerId)` -> `List<UUID>`
 - `getBankAccounts(bankId)` -> `List<ApiAccountSnapshot>`
 - `setPrimaryAccount(playerId, accountId)` -> `ApiResult`
+- `getPrimaryAccountId(playerId)` and `getPrimaryAccountSnapshot(playerId)` return empty when no owned account is explicitly marked primary.
 
 `ApiAccountSnapshot` fields:
 - `accountId`

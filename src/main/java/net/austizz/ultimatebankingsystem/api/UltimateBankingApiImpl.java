@@ -1823,7 +1823,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
                 return account;
             }
         }
-        return accounts.values().stream().filter(a -> a != null).findFirst().orElse(null);
+        return null;
     }
 
     private UUID parseBankIdSuffix(String normalizedToken, String prefix) {

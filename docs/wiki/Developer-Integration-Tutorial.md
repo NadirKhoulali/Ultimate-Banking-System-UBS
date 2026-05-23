@@ -220,6 +220,8 @@ if (api.playerHasAvailablePrimaryAccount(playerId)
 }
 ```
 
+`playerHasAvailablePrimaryAccount`, `primaryAccountCanSend`, and `primaryAccountCanReceive` require an explicitly selected primary account. Use `playerHasAvailableAccount` when any usable owned account is acceptable.
+
 ### UI alerts
 
 ```java
