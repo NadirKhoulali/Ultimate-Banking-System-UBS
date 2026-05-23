@@ -4,6 +4,7 @@ import org.jetbrains.annotations.ApiStatus;
 
 import net.minecraft.world.item.ItemStack;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,44 @@ public interface UltimateBankingApi {
     ApiResult withdraw(UUID accountId, long amount);
 
     ApiResult transfer(UUID senderAccountId, UUID receiverAccountId, long amount);
+
+    ApiTransactionResult deposit(UUID accountId, long amount, String reference);
+
+    ApiTransactionResult deposit(UUID accountId, BigDecimal amount, String reference);
+
+    ApiTransactionResult withdraw(UUID accountId, long amount, String reference);
+
+    ApiTransactionResult withdraw(UUID accountId, BigDecimal amount, String reference);
+
+    ApiTransactionResult transfer(UUID senderAccountId, UUID receiverAccountId, long amount, String reference);
+
+    ApiTransactionResult transfer(UUID senderAccountId, UUID receiverAccountId, BigDecimal amount, String reference);
+
+    ApiTransactionResult depositToPrimary(UUID playerId, long amount, String reference);
+
+    ApiTransactionResult depositToPrimary(UUID playerId, BigDecimal amount, String reference);
+
+    ApiTransactionResult withdrawFromPrimary(UUID playerId, long amount, String reference);
+
+    ApiTransactionResult withdrawFromPrimary(UUID playerId, BigDecimal amount, String reference);
+
+    ApiTransactionResult transferFromPrimary(UUID senderPlayerId, UUID receiverAccountId, long amount, String reference);
+
+    ApiTransactionResult transferFromPrimary(UUID senderPlayerId, UUID receiverAccountId, BigDecimal amount, String reference);
+
+    ApiTransactionResult transferToPrimary(UUID senderAccountId, UUID receiverPlayerId, long amount, String reference);
+
+    ApiTransactionResult transferToPrimary(UUID senderAccountId, UUID receiverPlayerId, BigDecimal amount, String reference);
+
+    Optional<UUID> getPrimaryAccountId(UUID playerId);
+
+    String getAccountStatus(UUID accountId);
+
+    ApiResult validateAccountCanSend(UUID accountId, long amount);
+
+    ApiResult validateAccountCanSend(UUID accountId, BigDecimal amount);
+
+    ApiResult validateAccountCanReceive(UUID accountId);
 
     ApiResult shopPurchase(UUID accountId, long amount, String shopName);
     ApiResult shopPurchase(UUID payerAccountId, UUID merchantAccountId, long amount, String shopName, String reference);
@@ -57,6 +96,8 @@ public interface UltimateBankingApi {
 
     int getPlayerCashOnHand(UUID playerId);
 
+    int getPlayerCashOnHandCents(UUID playerId);
+
     boolean accountExists(UUID accountId);
 
     boolean bankExists(UUID bankId);
@@ -67,9 +108,45 @@ public interface UltimateBankingApi {
 
     List<ApiAccountSnapshot> getPlayerAccounts(UUID playerId);
 
+    List<UUID> getPlayerAccountIds(UUID playerId);
+
     List<ApiAccountSnapshot> getBankAccounts(UUID bankId);
 
     ApiResult setPrimaryAccount(UUID playerId, UUID accountId);
+
+    boolean playerHasAnyAccount(UUID playerId);
+
+    boolean playerHasPrimaryAccount(UUID playerId);
+
+    boolean playerHasAvailableAccount(UUID playerId);
+
+    boolean playerHasAvailablePrimaryAccount(UUID playerId);
+
+    boolean playerHasFrozenAccount(UUID playerId);
+
+    boolean playerOwnsAccount(UUID playerId, UUID accountId);
+
+    boolean playerOwnsBank(UUID playerId, UUID bankId);
+
+    boolean accountBelongsToBank(UUID accountId, UUID bankId);
+
+    boolean accountIsFrozen(UUID accountId);
+
+    boolean accountIsPrimary(UUID accountId);
+
+    boolean accountCanSend(UUID accountId, long amount);
+
+    boolean accountCanSend(UUID accountId, BigDecimal amount);
+
+    boolean accountCanReceive(UUID accountId);
+
+    boolean primaryAccountCanSend(UUID playerId, long amount);
+
+    boolean primaryAccountCanSend(UUID playerId, BigDecimal amount);
+
+    boolean primaryAccountCanReceive(UUID playerId);
+
+    boolean bankAcceptsTransactions(UUID bankId);
 
     Optional<ApiBankSnapshot> getBankSnapshot(UUID bankId);
 
@@ -80,6 +157,10 @@ public interface UltimateBankingApi {
     List<ApiTransactionSnapshot> getAccountTransactions(UUID accountId, int limit);
 
     List<ApiTransactionSnapshot> getPlayerTransactions(UUID playerId, int limit);
+
+    boolean hasPlayerEverStolen(UUID playerId);
+
+    List<UUID> getPlayersStolenFrom(UUID playerId);
 
     ApiResult getPlayerTotalBalance(UUID playerId);
 

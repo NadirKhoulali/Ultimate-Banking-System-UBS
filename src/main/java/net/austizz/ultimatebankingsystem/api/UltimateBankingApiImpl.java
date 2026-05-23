@@ -8,16 +8,15 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
@@ -36,9 +35,11 @@ import java.util.regex.Pattern;
 
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
+    private static final UUID API_EXTERNAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:api-external".getBytes());
     private static final String API_VERSION = "1.2.0";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
+    private static final int MAX_REFERENCE_LENGTH = 160;
     private static final List<Integer> SUPPORTED_BILL_DENOMINATIONS = List.of(100, 50, 20, 10, 5, 2, 1);
     private static final List<Integer> SUPPORTED_COIN_DENOMINATIONS_CENTS = List.of(50, 25, 10, 5, 1);
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([A-Za-z0-9_\\-]+)%");
@@ -88,83 +89,217 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
 
     @Override
     public ApiResult deposit(UUID accountId, long amount) {
-        if (amount <= 0) {
-            return ApiResult.fail("Amount must be greater than zero", BigDecimal.ZERO);
-        }
-        AccountHolder account = resolveAccount(accountId);
-        if (account == null) {
-            return ApiResult.fail("Account not found", BigDecimal.ZERO);
-        }
-        boolean success = account.AddBalance(BigDecimal.valueOf(amount));
-        if (!success) {
-            return ApiResult.fail("Deposit failed", account.getBalance());
-        }
-        account.addTransaction(new UserTransaction(
-                SHOP_TERMINAL_ID,
-                account.getAccountUUID(),
-                BigDecimal.valueOf(amount),
-                LocalDateTime.now(),
-                "API_DEPOSIT"
-        ));
-        return ApiResult.ok(account.getBalance());
+        return toApiResult(deposit(accountId, BigDecimal.valueOf(amount), null));
     }
 
     @Override
     public ApiResult withdraw(UUID accountId, long amount) {
-        if (amount <= 0) {
-            return ApiResult.fail("Amount must be greater than zero", BigDecimal.ZERO);
-        }
-        AccountHolder account = resolveAccount(accountId);
-        if (account == null) {
-            return ApiResult.fail("Account not found", BigDecimal.ZERO);
-        }
-        boolean success = account.RemoveBalance(BigDecimal.valueOf(amount));
-        if (!success) {
-            return ApiResult.fail("Insufficient funds or account is unavailable", account.getBalance());
-        }
-        account.addTransaction(new UserTransaction(
-                account.getAccountUUID(),
-                SHOP_TERMINAL_ID,
-                BigDecimal.valueOf(amount),
-                LocalDateTime.now(),
-                "API_WITHDRAW"
-        ));
-        return ApiResult.ok(account.getBalance());
+        return toApiResult(withdraw(accountId, BigDecimal.valueOf(amount), null));
     }
 
     @Override
     public ApiResult transfer(UUID senderAccountId, UUID receiverAccountId, long amount) {
-        if (amount <= 0) {
-            return ApiResult.fail("Amount must be greater than zero", BigDecimal.ZERO);
+        return toApiResult(transfer(senderAccountId, receiverAccountId, BigDecimal.valueOf(amount), null));
+    }
+
+    @Override
+    public ApiTransactionResult deposit(UUID accountId, long amount, String reference) {
+        return deposit(accountId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult deposit(UUID accountId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        String description = buildApiDescription("API_DEPOSIT", reference);
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiTransactionResult.fail("Amount must be greater than zero", API_EXTERNAL_ID, accountId, value, BigDecimal.ZERO, description);
+        }
+
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return ApiTransactionResult.fail("Account not found", API_EXTERNAL_ID, accountId, value, BigDecimal.ZERO, description);
+        }
+
+        ApiResult canReceive = validateAccountCanReceive(accountId);
+        if (!canReceive.success()) {
+            return ApiTransactionResult.fail(canReceive.reason(), API_EXTERNAL_ID, accountId, value, account.getBalance(), description);
+        }
+
+        if (!account.AddBalance(value)) {
+            return ApiTransactionResult.fail("Deposit failed", API_EXTERNAL_ID, accountId, value, account.getBalance(), description);
+        }
+
+        UserTransaction tx = new UserTransaction(
+                API_EXTERNAL_ID,
+                account.getAccountUUID(),
+                value,
+                LocalDateTime.now(),
+                description
+        );
+        account.addTransaction(tx);
+        BankManager.markDirty();
+        return ApiTransactionResult.ok(tx.getTransactionUUID(), API_EXTERNAL_ID, account.getAccountUUID(), value, account.getBalance(), description);
+    }
+
+    @Override
+    public ApiTransactionResult withdraw(UUID accountId, long amount, String reference) {
+        return withdraw(accountId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult withdraw(UUID accountId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        String description = buildApiDescription("API_WITHDRAW", reference);
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiTransactionResult.fail("Amount must be greater than zero", accountId, API_EXTERNAL_ID, value, BigDecimal.ZERO, description);
+        }
+
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return ApiTransactionResult.fail("Account not found", accountId, API_EXTERNAL_ID, value, BigDecimal.ZERO, description);
+        }
+
+        ApiResult canSend = validateAccountCanSend(accountId, value);
+        if (!canSend.success()) {
+            return ApiTransactionResult.fail(canSend.reason(), accountId, API_EXTERNAL_ID, value, account.getBalance(), description);
+        }
+
+        if (!account.RemoveBalance(value)) {
+            return ApiTransactionResult.fail("Insufficient funds or account is unavailable", accountId, API_EXTERNAL_ID, value, account.getBalance(), description);
+        }
+
+        UserTransaction tx = new UserTransaction(
+                account.getAccountUUID(),
+                API_EXTERNAL_ID,
+                value,
+                LocalDateTime.now(),
+                description
+        );
+        account.addTransaction(tx);
+        BankManager.markDirty();
+        return ApiTransactionResult.ok(tx.getTransactionUUID(), account.getAccountUUID(), API_EXTERNAL_ID, value, account.getBalance(), description);
+    }
+
+    @Override
+    public ApiTransactionResult transfer(UUID senderAccountId, UUID receiverAccountId, long amount, String reference) {
+        return transfer(senderAccountId, receiverAccountId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult transfer(UUID senderAccountId, UUID receiverAccountId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        String description = buildApiDescription("API_TRANSFER", reference);
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiTransactionResult.fail("Amount must be greater than zero", senderAccountId, receiverAccountId, value, BigDecimal.ZERO, description);
+        }
+        if (senderAccountId == null) {
+            return ApiTransactionResult.fail("Sender account is required", senderAccountId, receiverAccountId, value, BigDecimal.ZERO, description);
+        }
+        if (receiverAccountId == null) {
+            AccountHolder sender = resolveAccount(senderAccountId);
+            BigDecimal balance = sender == null ? BigDecimal.ZERO : sender.getBalance();
+            return ApiTransactionResult.fail("Receiver account is required", senderAccountId, receiverAccountId, value, balance, description);
+        }
+        if (senderAccountId.equals(receiverAccountId)) {
+            AccountHolder sender = resolveAccount(senderAccountId);
+            BigDecimal balance = sender == null ? BigDecimal.ZERO : sender.getBalance();
+            return ApiTransactionResult.fail("Cannot transfer to the same account", senderAccountId, receiverAccountId, value, balance, description);
         }
 
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) {
-            return ApiResult.fail("Server unavailable", BigDecimal.ZERO);
+            return ApiTransactionResult.fail("Server unavailable", senderAccountId, receiverAccountId, value, BigDecimal.ZERO, description);
         }
 
         AccountHolder sender = resolveAccount(senderAccountId);
         AccountHolder receiver = resolveAccount(receiverAccountId);
         if (sender == null || receiver == null) {
-            BigDecimal current = sender == null ? BigDecimal.ZERO : sender.getBalance();
-            return ApiResult.fail("Sender or receiver account not found", current);
+            BigDecimal balance = sender == null ? BigDecimal.ZERO : sender.getBalance();
+            return ApiTransactionResult.fail("Sender or receiver account not found", senderAccountId, receiverAccountId, value, balance, description);
         }
-        if (senderAccountId.equals(receiverAccountId)) {
-            return ApiResult.fail("Cannot transfer to the same account", sender.getBalance());
+
+        ApiResult canSend = validateAccountCanSend(senderAccountId, value);
+        if (!canSend.success()) {
+            return ApiTransactionResult.fail(canSend.reason(), senderAccountId, receiverAccountId, value, sender.getBalance(), description);
+        }
+        ApiResult canReceive = validateAccountCanReceive(receiverAccountId);
+        if (!canReceive.success()) {
+            return ApiTransactionResult.fail(canReceive.reason(), senderAccountId, receiverAccountId, value, sender.getBalance(), description);
         }
 
         UserTransaction tx = new UserTransaction(
                 senderAccountId,
                 receiverAccountId,
-                BigDecimal.valueOf(amount),
+                value,
                 LocalDateTime.now(),
-                "API_TRANSFER"
+                description
         );
-        boolean success = tx.makeTransaction(server);
-        if (!success) {
-            return ApiResult.fail("Transfer failed", sender.getBalance());
+        if (!tx.makeTransaction(server)) {
+            return ApiTransactionResult.fail("Transfer failed", senderAccountId, receiverAccountId, value, sender.getBalance(), description);
         }
-        return ApiResult.ok(sender.getBalance());
+        return ApiTransactionResult.ok(tx.getTransactionUUID(), senderAccountId, receiverAccountId, value, sender.getBalance(), description);
+    }
+
+    @Override
+    public ApiTransactionResult depositToPrimary(UUID playerId, long amount, String reference) {
+        return depositToPrimary(playerId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult depositToPrimary(UUID playerId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        Optional<UUID> accountId = getPrimaryAccountId(playerId);
+        if (accountId.isEmpty()) {
+            return ApiTransactionResult.fail("Primary account not found", API_EXTERNAL_ID, null, value, BigDecimal.ZERO, buildApiDescription("API_DEPOSIT", reference));
+        }
+        return deposit(accountId.get(), value, reference);
+    }
+
+    @Override
+    public ApiTransactionResult withdrawFromPrimary(UUID playerId, long amount, String reference) {
+        return withdrawFromPrimary(playerId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult withdrawFromPrimary(UUID playerId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        Optional<UUID> accountId = getPrimaryAccountId(playerId);
+        if (accountId.isEmpty()) {
+            return ApiTransactionResult.fail("Primary account not found", null, API_EXTERNAL_ID, value, BigDecimal.ZERO, buildApiDescription("API_WITHDRAW", reference));
+        }
+        return withdraw(accountId.get(), value, reference);
+    }
+
+    @Override
+    public ApiTransactionResult transferFromPrimary(UUID senderPlayerId, UUID receiverAccountId, long amount, String reference) {
+        return transferFromPrimary(senderPlayerId, receiverAccountId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult transferFromPrimary(UUID senderPlayerId, UUID receiverAccountId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        Optional<UUID> senderAccountId = getPrimaryAccountId(senderPlayerId);
+        if (senderAccountId.isEmpty()) {
+            return ApiTransactionResult.fail("Sender primary account not found", null, receiverAccountId, value, BigDecimal.ZERO, buildApiDescription("API_TRANSFER", reference));
+        }
+        return transfer(senderAccountId.get(), receiverAccountId, value, reference);
+    }
+
+    @Override
+    public ApiTransactionResult transferToPrimary(UUID senderAccountId, UUID receiverPlayerId, long amount, String reference) {
+        return transferToPrimary(senderAccountId, receiverPlayerId, BigDecimal.valueOf(amount), reference);
+    }
+
+    @Override
+    public ApiTransactionResult transferToPrimary(UUID senderAccountId, UUID receiverPlayerId, BigDecimal amount, String reference) {
+        BigDecimal value = normalizeApiAmount(amount);
+        Optional<UUID> receiverAccountId = getPrimaryAccountId(receiverPlayerId);
+        if (receiverAccountId.isEmpty()) {
+            AccountHolder sender = resolveAccount(senderAccountId);
+            BigDecimal balance = sender == null ? BigDecimal.ZERO : sender.getBalance();
+            return ApiTransactionResult.fail("Receiver primary account not found", senderAccountId, null, value, balance, buildApiDescription("API_TRANSFER", reference));
+        }
+        return transfer(senderAccountId, receiverAccountId.get(), value, reference);
     }
 
     @Override
@@ -314,7 +449,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(note, tag);
-        note.set(DataComponents.CUSTOM_NAME, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        ItemStackDataCompat.setCustomName(note, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),
@@ -374,7 +509,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(cheque, tag);
-        cheque.set(DataComponents.CUSTOM_NAME, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        ItemStackDataCompat.setCustomName(cheque, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),
@@ -497,7 +632,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (billItem == null) {
             return List.of();
         }
-        int maxStack = billItem.getDefaultMaxStackSize();
+        int maxStack = new ItemStack(billItem).getMaxStackSize();
         int remaining = billCount;
         List<ItemStack> stacks = new ArrayList<>();
         while (remaining > 0) {
@@ -517,7 +652,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (coinItem == null) {
             return List.of();
         }
-        int maxStack = coinItem.getDefaultMaxStackSize();
+        int maxStack = new ItemStack(coinItem).getMaxStackSize();
         int remaining = coinCount;
         List<ItemStack> stacks = new ArrayList<>();
         while (remaining > 0) {
@@ -555,12 +690,16 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
 
     @Override
     public int getPlayerCashOnHand(UUID playerId) {
+        return getPlayerCashOnHandCents(playerId) / 100;
+    }
+
+    @Override
+    public int getPlayerCashOnHandCents(UUID playerId) {
         ServerPlayer player = resolveOnlinePlayer(playerId);
         if (player == null) {
             return 0;
         }
-        int totalCents = DollarBills.totalCashValueCents(DollarBills.getAvailableCashCounts(player));
-        return totalCents / 100;
+        return DollarBills.totalCashValueCents(DollarBills.getAvailableCashCounts(player));
     }
 
     @Override
@@ -575,6 +714,86 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         }
         CentralBank centralBank = resolveCentralBank();
         return centralBank != null && centralBank.getBank(bankId) != null;
+    }
+
+    @Override
+    public Optional<UUID> getPrimaryAccountId(UUID playerId) {
+        if (playerId == null) {
+            return Optional.empty();
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return Optional.empty();
+        }
+        AccountHolder primary = findPrimaryAccount(centralBank, playerId);
+        return primary == null ? Optional.empty() : Optional.of(primary.getAccountUUID());
+    }
+
+    @Override
+    public String getAccountStatus(UUID accountId) {
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return "MISSING";
+        }
+        if (account.isFrozen()) {
+            return "FROZEN";
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return "BANK_DATA_UNAVAILABLE";
+        }
+        Bank bank = centralBank.getBank(account.getBankId());
+        if (bank == null) {
+            return "BANK_MISSING";
+        }
+        String bankStatus = resolveBankStatusForTransactions(centralBank, bank);
+        return blocksTransactions(bankStatus) ? "BANK_" + bankStatus : "AVAILABLE";
+    }
+
+    @Override
+    public ApiResult validateAccountCanSend(UUID accountId, long amount) {
+        return validateAccountCanSend(accountId, BigDecimal.valueOf(amount));
+    }
+
+    @Override
+    public ApiResult validateAccountCanSend(UUID accountId, BigDecimal amount) {
+        BigDecimal value = normalizeApiAmount(amount);
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            return ApiResult.fail("Amount must be greater than zero", BigDecimal.ZERO);
+        }
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return ApiResult.fail("Account not found", BigDecimal.ZERO);
+        }
+        if (account.isFrozen()) {
+            String reason = account.getFrozenReason();
+            return ApiResult.fail(reason == null || reason.isBlank() ? "Account is frozen" : "Account is frozen: " + reason, account.getBalance());
+        }
+        if (account.getBalance() == null || account.getBalance().compareTo(value) < 0) {
+            return ApiResult.fail("Insufficient funds", account.getBalance() == null ? BigDecimal.ZERO : account.getBalance());
+        }
+        String status = getAccountStatus(accountId);
+        if (!"AVAILABLE".equals(status)) {
+            return ApiResult.fail("Account cannot send while status is " + status, account.getBalance());
+        }
+        return ApiResult.ok(account.getBalance());
+    }
+
+    @Override
+    public ApiResult validateAccountCanReceive(UUID accountId) {
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return ApiResult.fail("Account not found", BigDecimal.ZERO);
+        }
+        if (account.isFrozen()) {
+            String reason = account.getFrozenReason();
+            return ApiResult.fail(reason == null || reason.isBlank() ? "Account is frozen" : "Account is frozen: " + reason, account.getBalance());
+        }
+        String status = getAccountStatus(accountId);
+        if (!"AVAILABLE".equals(status)) {
+            return ApiResult.fail("Account cannot receive while status is " + status, account.getBalance());
+        }
+        return ApiResult.ok(account.getBalance());
     }
 
     @Override
@@ -616,6 +835,21 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         }
         snapshots.sort(accountSnapshotComparator());
         return List.copyOf(snapshots);
+    }
+
+    @Override
+    public List<UUID> getPlayerAccountIds(UUID playerId) {
+        List<ApiAccountSnapshot> accounts = getPlayerAccounts(playerId);
+        if (accounts.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> ids = new ArrayList<>();
+        for (ApiAccountSnapshot account : accounts) {
+            if (account != null && account.accountId() != null) {
+                ids.add(account.accountId());
+            }
+        }
+        return List.copyOf(ids);
     }
 
     @Override
@@ -667,6 +901,133 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         return ApiResult.ok(selected.getBalance());
+    }
+
+    @Override
+    public boolean playerHasAnyAccount(UUID playerId) {
+        return !getPlayerAccounts(playerId).isEmpty();
+    }
+
+    @Override
+    public boolean playerHasPrimaryAccount(UUID playerId) {
+        return getPrimaryAccountId(playerId).isPresent();
+    }
+
+    @Override
+    public boolean playerHasAvailableAccount(UUID playerId) {
+        for (UUID accountId : getPlayerAccountIds(playerId)) {
+            if ("AVAILABLE".equals(getAccountStatus(accountId))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean playerHasAvailablePrimaryAccount(UUID playerId) {
+        Optional<UUID> primaryAccountId = getPrimaryAccountId(playerId);
+        return primaryAccountId.isPresent() && "AVAILABLE".equals(getAccountStatus(primaryAccountId.get()));
+    }
+
+    @Override
+    public boolean playerHasFrozenAccount(UUID playerId) {
+        for (ApiAccountSnapshot account : getPlayerAccounts(playerId)) {
+            if (account != null && account.frozen()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean playerOwnsAccount(UUID playerId, UUID accountId) {
+        if (playerId == null || accountId == null) {
+            return false;
+        }
+        AccountHolder account = resolveAccount(accountId);
+        return account != null && playerId.equals(account.getPlayerUUID());
+    }
+
+    @Override
+    public boolean playerOwnsBank(UUID playerId, UUID bankId) {
+        if (playerId == null || bankId == null) {
+            return false;
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return false;
+        }
+        Bank bank = centralBank.getBank(bankId);
+        return bank != null && playerId.equals(bank.getBankOwnerId());
+    }
+
+    @Override
+    public boolean accountBelongsToBank(UUID accountId, UUID bankId) {
+        if (accountId == null || bankId == null) {
+            return false;
+        }
+        AccountHolder account = resolveAccount(accountId);
+        return account != null && bankId.equals(account.getBankId());
+    }
+
+    @Override
+    public boolean accountIsFrozen(UUID accountId) {
+        AccountHolder account = resolveAccount(accountId);
+        return account != null && account.isFrozen();
+    }
+
+    @Override
+    public boolean accountIsPrimary(UUID accountId) {
+        AccountHolder account = resolveAccount(accountId);
+        return account != null && account.isPrimaryAccount();
+    }
+
+    @Override
+    public boolean accountCanSend(UUID accountId, long amount) {
+        return validateAccountCanSend(accountId, amount).success();
+    }
+
+    @Override
+    public boolean accountCanSend(UUID accountId, BigDecimal amount) {
+        return validateAccountCanSend(accountId, amount).success();
+    }
+
+    @Override
+    public boolean accountCanReceive(UUID accountId) {
+        return validateAccountCanReceive(accountId).success();
+    }
+
+    @Override
+    public boolean primaryAccountCanSend(UUID playerId, long amount) {
+        return primaryAccountCanSend(playerId, BigDecimal.valueOf(amount));
+    }
+
+    @Override
+    public boolean primaryAccountCanSend(UUID playerId, BigDecimal amount) {
+        Optional<UUID> primaryAccountId = getPrimaryAccountId(playerId);
+        return primaryAccountId.isPresent() && accountCanSend(primaryAccountId.get(), amount);
+    }
+
+    @Override
+    public boolean primaryAccountCanReceive(UUID playerId) {
+        Optional<UUID> primaryAccountId = getPrimaryAccountId(playerId);
+        return primaryAccountId.isPresent() && accountCanReceive(primaryAccountId.get());
+    }
+
+    @Override
+    public boolean bankAcceptsTransactions(UUID bankId) {
+        if (bankId == null) {
+            return false;
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return false;
+        }
+        Bank bank = centralBank.getBank(bankId);
+        if (bank == null) {
+            return false;
+        }
+        return !blocksTransactions(resolveBankStatusForTransactions(centralBank, bank));
     }
 
     @Override
@@ -775,6 +1136,30 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             snapshots = new ArrayList<>(snapshots.subList(0, resolvedLimit));
         }
         return List.copyOf(snapshots);
+    }
+
+    @Override
+    public boolean hasPlayerEverStolen(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return false;
+        }
+        return centralBank.hasPlayerEverStolen(playerId);
+    }
+
+    @Override
+    public List<UUID> getPlayersStolenFrom(UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return List.of();
+        }
+        return centralBank.getPlayersStolenFrom(playerId);
     }
 
     @Override
@@ -1118,7 +1503,42 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (stack == null || stack.isEmpty() || tag == null) {
             return;
         }
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(stack, tag);
+    }
+
+    private ApiResult toApiResult(ApiTransactionResult result) {
+        if (result == null) {
+            return ApiResult.fail("Transaction failed", BigDecimal.ZERO);
+        }
+        return result.success()
+                ? ApiResult.ok(result.balanceAfter())
+                : ApiResult.fail(result.reason(), result.balanceAfter());
+    }
+
+    private BigDecimal normalizeApiAmount(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private String buildApiDescription(String type, String reference) {
+        String resolvedType = type == null || type.isBlank()
+                ? "API_TRANSACTION"
+                : type.trim().toUpperCase(Locale.ROOT);
+        String normalizedReference = normalizeExternalReference(reference);
+        return normalizedReference.isBlank() ? resolvedType : resolvedType + ":" + normalizedReference;
+    }
+
+    private String normalizeExternalReference(String reference) {
+        if (reference == null || reference.isBlank()) {
+            return "";
+        }
+        String normalized = reference
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .trim();
+        if (normalized.length() > MAX_REFERENCE_LENGTH) {
+            return normalized.substring(0, MAX_REFERENCE_LENGTH);
+        }
+        return normalized;
     }
 
     private ApiAccountSnapshot toAccountSnapshot(AccountHolder account) {
