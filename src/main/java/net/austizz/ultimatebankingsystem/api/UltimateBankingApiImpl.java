@@ -9,12 +9,11 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.compat.neoforge.network.PacketDistributor;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
-import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -43,6 +42,8 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final int MAX_REFERENCE_LENGTH = 160;
+    private static final String DELIVERY_ALERT_PAYLOAD_CLASS =
+            "net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload";
     private static final List<Integer> SUPPORTED_BILL_DENOMINATIONS = List.of(100, 50, 20, 10, 5, 2, 1);
     private static final List<Integer> SUPPORTED_COIN_DENOMINATIONS_CENTS = List.of(50, 25, 10, 5, 1);
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([A-Za-z0-9_\\-]+)%");
@@ -812,32 +813,44 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (player == null) {
             return ApiAlertResult.fail("Player is not online", playerId);
         }
-        if (message == null || message.trim().isBlank()) {
+        String normalizedMessage = stripLegacyFormatting(message);
+        if (normalizedMessage.isBlank()) {
             return ApiAlertResult.fail("Alert message is required", playerId);
         }
 
-        DeliveryAlertPayload payload = new DeliveryAlertPayload(
-                title,
-                ServerActionAlert.stripLegacyFormatting(message),
-                success,
-                durationMs,
-                ApiAlertTone.fromId(toneCode).id()
-        );
-        PacketDistributor.sendToPlayer(player, payload);
-        return ApiAlertResult.ok(
-                playerId,
-                payload.title(),
-                payload.message(),
-                payload.success(),
-                payload.durationMs(),
-                ApiAlertTone.fromId(payload.toneCode())
-        );
+        String normalizedTitle = title == null ? "" : title.trim();
+        int normalizedDurationMs = clampAlertDuration(durationMs);
+        ApiAlertTone normalizedTone = ApiAlertTone.fromId(toneCode);
+
+        try {
+            Object payload = createDeliveryAlertPayload(
+                    normalizedTitle,
+                    normalizedMessage,
+                    success,
+                    normalizedDurationMs,
+                    normalizedTone.id()
+            );
+            if (!(payload instanceof CustomPacketPayload customPayload)) {
+                return ApiAlertResult.fail("UBS UI alert payload is unavailable", playerId);
+            }
+            PacketDistributor.sendToPlayer(player, customPayload);
+            return ApiAlertResult.ok(
+                    playerId,
+                    normalizedTitle,
+                    normalizedMessage,
+                    success,
+                    normalizedDurationMs,
+                    normalizedTone
+            );
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException ex) {
+            return ApiAlertResult.fail("UBS UI alert system is unavailable", playerId);
+        }
     }
 
     @Override
     public ApiAlertResult sendLegacyUiAlert(UUID playerId, String title, String legacyMessage, int durationMs) {
-        DeliveryAlertPayload.AlertTone tone = ServerActionAlert.inferToneFromLegacy(legacyMessage);
-        return sendUiAlert(playerId, title, legacyMessage, tone != DeliveryAlertPayload.AlertTone.ERROR, durationMs, tone.id());
+        ApiAlertTone tone = inferAlertToneFromLegacy(legacyMessage);
+        return sendUiAlert(playerId, title, legacyMessage, tone != ApiAlertTone.ERROR, durationMs, tone.id());
     }
 
     @Override
@@ -1463,6 +1476,58 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     @Override
     public List<String> getSupportedPlaceholders() {
         return SUPPORTED_PLACEHOLDERS;
+    }
+
+    private Object createDeliveryAlertPayload(String title,
+                                              String message,
+                                              boolean success,
+                                              int durationMs,
+                                              int toneCode) throws ReflectiveOperationException {
+        Class<?> payloadClass = Class.forName(DELIVERY_ALERT_PAYLOAD_CLASS);
+        return payloadClass
+                .getConstructor(String.class, String.class, boolean.class, int.class, int.class)
+                .newInstance(title, message, success, durationMs, toneCode);
+    }
+
+    private int clampAlertDuration(int durationMs) {
+        return Math.max(1200, Math.min(12000, durationMs));
+    }
+
+    private ApiAlertTone inferAlertToneFromLegacy(String legacyMessage) {
+        if (legacyMessage == null) {
+            return ApiAlertTone.INFO;
+        }
+        String raw = legacyMessage.trim();
+        if (raw.isEmpty()) {
+            return ApiAlertTone.INFO;
+        }
+        String lowered = stripLegacyFormatting(raw).toLowerCase(Locale.ROOT);
+        if (raw.contains("§c")
+                || lowered.contains("error")
+                || lowered.contains("failed")
+                || lowered.contains("invalid")
+                || lowered.contains("blocked")
+                || lowered.contains("insufficient")) {
+            return ApiAlertTone.ERROR;
+        }
+        if (raw.contains("§e")
+                || lowered.contains("warning")
+                || lowered.contains("timed out")
+                || lowered.contains("cancelled")
+                || lowered.contains("canceled")) {
+            return ApiAlertTone.WARNING;
+        }
+        if (raw.contains("§a") || lowered.contains("success") || lowered.contains("complete")) {
+            return ApiAlertTone.SUCCESS;
+        }
+        return ApiAlertTone.INFO;
+    }
+
+    private String stripLegacyFormatting(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        return raw.replaceAll("(?i)§[0-9A-FK-OR]", "").trim();
     }
 
     private ServerPlayer resolveOnlinePlayer(UUID playerId) {
