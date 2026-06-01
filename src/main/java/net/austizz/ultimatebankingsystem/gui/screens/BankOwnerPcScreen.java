@@ -654,7 +654,7 @@ public class BankOwnerPcScreen extends Screen {
                     y,
                     buttonWidth,
                     buttonHeight,
-                    fitToWidth(label, buttonWidth - 10),
+                    label,
                     btn -> openOrActivateBankWindow(app.bankId())
             );
             idx++;
@@ -673,7 +673,7 @@ public class BankOwnerPcScreen extends Screen {
                     y,
                     buttonWidth,
                     buttonHeight,
-                    fitToWidth(utilityDesktopLabel(utilityApp), buttonWidth - 10),
+                    utilityDesktopLabel(utilityApp),
                     btn -> openUtilityAppWindow(utilityApp)
             );
             idx++;
@@ -1178,7 +1178,7 @@ public class BankOwnerPcScreen extends Screen {
                     rowY,
                     selectW,
                     rowH,
-                    fitToWidth(explorerCardLabel(file, approxBytes, selected), Math.max(80, selectW - 10)),
+                    explorerCardLabel(file, approxBytes, selected),
                     btn -> {
                         selectedExplorerFileName = fileName;
                         formValues.put("explorer.filename", fileName);
@@ -1193,7 +1193,7 @@ public class BankOwnerPcScreen extends Screen {
                     openBtnY,
                     openBtnW,
                     openBtnH,
-                    fitToWidth(explorerOpenLabel(file), Math.max(56, openBtnW - 10)),
+                    explorerOpenLabel(file),
                     btn -> {
                         selectedExplorerFileName = fileName;
                         formValues.put("explorer.filename", fileName);
@@ -1360,7 +1360,7 @@ public class BankOwnerPcScreen extends Screen {
                     y,
                     cardW,
                     cardH,
-                    fitToWidth(app.label(), cardW - 10),
+                    app.label(),
                     accent,
                     btn -> {
                         if (app.lockHide() && !app.hidden()) {
@@ -1479,7 +1479,7 @@ public class BankOwnerPcScreen extends Screen {
                         barY,
                         clippedW,
                         20,
-                        fitToWidth(label, Math.max(10, clippedW - 10)),
+                        label,
                         btn -> {
                             activateBankWindow(bankId, true);
                             activeWindow = WindowMode.BANK_APP;
@@ -1501,7 +1501,7 @@ public class BankOwnerPcScreen extends Screen {
                         barY,
                         clippedW,
                         20,
-                        fitToWidth("Create Bank", Math.max(10, clippedW - 10)),
+                        "Create Bank",
                         btn -> {
                             if (activeWindow == WindowMode.BANK_APP) {
                                 saveActiveBankWindowState();
@@ -1526,7 +1526,7 @@ public class BankOwnerPcScreen extends Screen {
                         barY,
                         clippedW,
                         20,
-                        fitToWidth(utilityWindowTitle(utilityApp), Math.max(10, clippedW - 10)),
+                        utilityWindowTitle(utilityApp),
                         btn -> {
                             if (activeWindow == WindowMode.BANK_APP) {
                                 saveActiveBankWindowState();
@@ -2350,7 +2350,7 @@ public class BankOwnerPcScreen extends Screen {
                 y,
                 width,
                 24,
-                fitToWidth(label, width - 12),
+                label,
                 btn -> openOverviewDetail(action)
         );
         button.setLabelOffset(4, 1).setIconOffset(0, 1);
@@ -2372,7 +2372,7 @@ public class BankOwnerPcScreen extends Screen {
                 y,
                 width,
                 24,
-                fitToWidth(label, width - 10),
+                label,
                 btn -> {
                     sendOwnerPcAction(
                             action,
@@ -4126,8 +4126,8 @@ public class BankOwnerPcScreen extends Screen {
         graphics.drawString(this.font, UbsClientTranslations.resolve("UBS Desktop"), left + 10, top + 9, 0xFF1E324E, false);
         int desktopAppCount = ClientOwnerPcData.getApps().size() + DESKTOP_UTILITY_APPS.size();
         graphics.drawString(this.font,
-                "Apps: " + desktopAppCount + "   Owned: "
-                        + ClientOwnerPcData.getOwnedCount() + "/" + ClientOwnerPcData.getMaxBanks(),
+                UbsClientTranslations.resolve("Apps: " + desktopAppCount + "   Owned: "
+                        + ClientOwnerPcData.getOwnedCount() + "/" + ClientOwnerPcData.getMaxBanks()),
                 left + 130,
                 top + 9,
                 0xFF2C4770,
@@ -4758,7 +4758,7 @@ public class BankOwnerPcScreen extends Screen {
                 : "Min $" + compactCurrency(data.minReserve());
         String secondBarTitle = "SHOW_DASHBOARD".equals(normalizedAction) ? "Liquidity Headroom" : "Daily Utilization";
         String secondBarSubtitle = "SHOW_DASHBOARD".equals(normalizedAction)
-                ? "$" + compactCurrency(data.dailyRemaining()) + " available"
+                ? "$" + compactCurrency(data.dailyRemaining()) + " " + UbsClientTranslations.resolve("available")
                 : "$" + compactCurrency(data.dailyUsed()) + " / $" + compactCurrency(data.dailyCap());
         float secondBarValue = "SHOW_DASHBOARD".equals(normalizedAction) ? liquidityHeadroom : dailyUsedPct;
 
@@ -5787,8 +5787,8 @@ public class BankOwnerPcScreen extends Screen {
 
         int used = ClientOwnerPcData.getDesktopUsedStorageBytes();
         int max = Math.max(1, ClientOwnerPcData.getDesktopMaxStorageBytes());
-        String storageText = "PC " + fitToWidth(ClientOwnerPcData.getDesktopComputerLabel(), Math.max(80, innerW / 2))
-                + "  |  Storage " + used + " / " + max + " bytes";
+        String storageText = UbsClientTranslations.resolve("PC ") + fitToWidth(ClientOwnerPcData.getDesktopComputerLabel(), Math.max(80, innerW / 2))
+                + "  |  " + UbsClientTranslations.resolve("Storage ") + used + " / " + max + " " + UbsClientTranslations.resolve("bytes");
         graphics.drawString(this.font, fitToWidth(storageText, innerW - 8), innerX, infoY, 0xFFD6EBFF, false);
 
         graphics.drawString(
@@ -6232,6 +6232,7 @@ public class BankOwnerPcScreen extends Screen {
         if (message.isBlank()) {
             return;
         }
+        message = UbsClientTranslations.resolve(message);
         int color = ClientOwnerPcData.isToastSuccess() ? 0xD7489458 : 0xD79B3A43;
 
         int boxWidth = Math.min(this.width - 40, this.font.width(message) + 18);
