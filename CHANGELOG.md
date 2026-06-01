@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.1] - 2026-06-01
+
+### Added
+- French (`fr_fr`) in-game translation coverage for UBS blocks, items, and configuration labels/descriptions.
+- New UI alert helper APIs in the public developer API.
+- Additional account helper APIs for safer account access and balance checks.
+
+### Changed
+- Decoupled UI alert API calls from alert internals to keep external integrations stable.
+
+### Fixed
+- Primary account helper behavior in API utility methods.
+
 ## [1.2.0] - 2026-04-15
 
 ### Added
