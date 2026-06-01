@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.command;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.authlib.GameProfile;
@@ -72,7 +73,7 @@ public class UBSAdminCommands {
     }
 
     private static MutableComponent moneyLiteral(String text) {
-        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+        return UbsTranslations.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
     }
 
     private static Component ubsPanel(ChatFormatting accentColor, String title, Component body) {

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
@@ -62,7 +63,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 createWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Create Pay Request").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Create Pay Request").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.pushLayer(new CreatePayRequestLayer(minecraft))
         ));
 
@@ -72,7 +73,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 actionWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Accept").withStyle(ChatFormatting.GREEN),
+                UbsTranslations.literal("Accept").withStyle(ChatFormatting.GREEN),
                 btn -> acceptWithPrimary()
         ));
 
@@ -82,7 +83,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 actionWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Decline").withStyle(ChatFormatting.RED),
+                UbsTranslations.literal("Decline").withStyle(ChatFormatting.RED),
                 btn -> declineSelected()
         ));
 
@@ -92,7 +93,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 actionWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Choose Account").withStyle(ChatFormatting.AQUA),
+                UbsTranslations.literal("Choose Account").withStyle(ChatFormatting.AQUA),
                 btn -> chooseAccountForSelected()
         ));
 
@@ -102,7 +103,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -112,7 +113,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
                 64, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Refresh").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Refresh").withStyle(ChatFormatting.WHITE),
                 btn -> requestInbox()
         ));
 

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.payments;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -527,10 +528,10 @@ public final class CreditCardService {
             masked = maskCardNumber(masked);
         }
         if (blocked) {
-            return Component.literal("Credit Card • BLOCKED • " + safeBankName + " • " + masked)
+            return UbsTranslations.literal("Credit Card • BLOCKED • " + safeBankName + " • " + masked)
                     .withStyle(ChatFormatting.RED);
         }
-        return Component.literal("Credit Card • " + safeBankName + " • " + masked)
+        return UbsTranslations.literal("Credit Card • " + safeBankName + " • " + masked)
                 .withStyle(ChatFormatting.AQUA);
     }
 

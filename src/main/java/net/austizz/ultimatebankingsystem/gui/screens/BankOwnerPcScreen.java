@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopButton;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopEditBox;
 import net.austizz.ultimatebankingsystem.network.OpenBankOwnerPcPayload;
@@ -2247,10 +2249,10 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private DesktopEditBox addFormInput(String key, int x, int y, int width, String placeholder) {
-        DesktopEditBox input = new DesktopEditBox(this.font, x, y, width, 20, Component.literal(placeholder));
+        DesktopEditBox input = new DesktopEditBox(this.font, x, y, width, 20, UbsTranslations.literal(placeholder));
         input.setValue(formValues.getOrDefault(key, ""));
         input.setResponder(value -> formValues.put(key, value == null ? "" : value));
-        input.setHint(Component.literal(placeholder));
+        input.setHint(UbsTranslations.literal(placeholder));
         input.setTextColor(0xFFFFFFFF);
         input.setTextColorUneditable(0xFFCFD8E3);
         DesktopEditBox widget = addRenderableWidget(input);
@@ -2304,7 +2306,7 @@ public class BankOwnerPcScreen extends Screen {
                 y,
                 width,
                 height,
-                Component.literal(label),
+                UbsTranslations.literal(label),
                 accentColor,
                 onPress
         ));
@@ -4138,7 +4140,7 @@ public class BankOwnerPcScreen extends Screen {
             graphics.fill(left, y, right, y + 1, row);
         }
 
-        graphics.drawString(this.font, "UBS Desktop", left + 10, top + 9, 0xFF1E324E, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("UBS Desktop"), left + 10, top + 9, 0xFF1E324E, false);
         int desktopAppCount = ClientOwnerPcData.getApps().size() + DESKTOP_UTILITY_APPS.size();
         graphics.drawString(this.font,
                 "Apps: " + desktopAppCount + "   Owned: "
@@ -4314,11 +4316,11 @@ public class BankOwnerPcScreen extends Screen {
     private void drawDesktopHints(GuiGraphics graphics) {
         int x = PAD + 20;
         int y = PAD + TOPBAR_HEIGHT + 6;
-        graphics.drawString(this.font, "Desktop Apps", x, y, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Desktop Apps"), x, y, 0xFFFFFFFF, false);
 
         if (ClientOwnerPcData.getApps().isEmpty()) {
             graphics.drawString(this.font,
-                    "No bank apps available. Create a bank or obtain a bank role.",
+                    UbsClientTranslations.resolve("No bank apps available. Create a bank or obtain a bank role."),
                     x,
                     y + 16,
                     0xFFE8F3FF,
@@ -4792,7 +4794,7 @@ public class BankOwnerPcScreen extends Screen {
             int rowY = listTop + 6;
             if ("SHOW_RESERVE".equals(normalizedAction)) {
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Reserve Audit", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Reserve Audit"), x + 8, rowY, 0xFFE6F3FF, false);
                     graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
@@ -4807,7 +4809,7 @@ public class BankOwnerPcScreen extends Screen {
                 }
             } else if ("SHOW_DASHBOARD".equals(normalizedAction)) {
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Operations Snapshot", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Operations Snapshot"), x + 8, rowY, 0xFFE6F3FF, false);
                     graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
@@ -4822,7 +4824,7 @@ public class BankOwnerPcScreen extends Screen {
                 }
             } else {
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Bank Profile", x + 8, rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Bank Profile"), x + 8, rowY, 0xFFE6F3FF, false);
                     graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
@@ -4851,9 +4853,9 @@ public class BankOwnerPcScreen extends Screen {
             String query = formValues.getOrDefault("overview.accounts.search", "").trim();
             if ("SHOW_ACCOUNTS".equalsIgnoreCase(action) && !query.isBlank()) {
                 graphics.drawString(this.font, "No accounts match \"" + fitToWidth(query, 40) + "\".", x + 6, y + 8, 0xFFE6F3FF, false);
-                graphics.drawString(this.font, "Try player name, type, or account id.", x + 6, y + 20, 0xFFBFD7EE, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("Try player name, type, or account id."), x + 6, y + 20, 0xFFBFD7EE, false);
             } else {
-                graphics.drawString(this.font, "No entries available.", x + 6, y + 8, 0xFFE6F3FF, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("No entries available."), x + 6, y + 8, 0xFFE6F3FF, false);
             }
             return;
         }
@@ -4956,7 +4958,7 @@ public class BankOwnerPcScreen extends Screen {
             graphics.drawString(this.font, fitToWidth(player, width - 30), textX, y + 7, 0xFFFFFFFF, false);
             graphics.drawString(this.font, fitToWidth(type + "  " + balance, width - 30), textX, y + 20, 0xFFD4E8FF, false);
             graphics.drawString(this.font, fitToWidth(id, width - 88), textX, y + 32, 0xFFB7CBE3, false);
-            graphics.drawString(this.font, "Open", x + width - 28, y + 32, 0xFF9EC9F0, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Open"), x + width - 28, y + 32, 0xFF9EC9F0, false);
         } else if ("SHOW_CDS".equals(normalizedAction) && text.contains("|")) {
             String[] parts = text.split("\\|");
             String id = parts.length > 0 ? parts[0].trim() : "CD";
@@ -4967,7 +4969,7 @@ public class BankOwnerPcScreen extends Screen {
             int chipX = x + 6;
             int chipY = y + 8;
             graphics.fill(chipX, chipY, chipX + 26, chipY + 14, 0xFF4E9FE0);
-            graphics.drawCenteredString(this.font, "CD", chipX + 13, chipY + 3, 0xFFFFFFFF);
+            graphics.drawCenteredString(this.font, UbsClientTranslations.resolve("CD"), chipX + 13, chipY + 3, 0xFFFFFFFF);
 
             int textX = chipX + 32;
             graphics.drawString(this.font, fitToWidth(id, width - 40), textX, y + 7, 0xFFFFFFFF, false);
@@ -5035,7 +5037,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(x, y, x + width, y + height, 0x5A1D3550);
         graphics.fill(x, y, x + width, y + headerH, 0xB2234B73);
         graphics.fill(x, y + headerH, x + width, y + headerH + 1, 0x889CC8EE);
-        graphics.drawString(this.font, "Account Profile", x + 8, y + 10, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Account Profile"), x + 8, y + 10, 0xFFFFFFFF, false);
         int profileTextX = x + 118;
         int profileTextW = Math.max(52, width - 126);
         graphics.drawString(this.font, fitToWidth(account.player(), profileTextW), profileTextX, y + 9, 0xFFE2F1FF, false);
@@ -5057,13 +5059,13 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(contentX - 1, balanceCardY - 1, contentX + contentW + 1, balanceCardY + balanceCardH + 1, 0xFF2E4D6D);
         graphics.fill(contentX, balanceCardY, contentX + contentW, balanceCardY + balanceCardH, 0x8A1A304A);
         graphics.fill(contentX, balanceCardY, contentX + contentW, balanceCardY + 2, 0xFF67C789);
-        graphics.drawString(this.font, "Balance", contentX + 8, balanceCardY + 7, 0xFFC6DEF7, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Balance"), contentX + 8, balanceCardY + 7, 0xFFC6DEF7, false);
         graphics.drawString(this.font, fitToWidth(fullBalance, contentW - 90), contentX + 74, balanceCardY + 7, 0xFFFFFFFF, false);
 
         graphics.fill(contentX - 1, idCardY - 1, contentX + contentW + 1, idCardY + idCardH + 1, 0xFF2E4D6D);
         graphics.fill(contentX, idCardY, contentX + contentW, idCardY + idCardH, 0x8A1A304A);
         graphics.fill(contentX, idCardY, contentX + contentW, idCardY + 2, 0xFF70B9F2);
-        graphics.drawString(this.font, "Account ID", contentX + 6, idCardY + 7, 0xFFC6DEF7, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Account ID"), contentX + 6, idCardY + 7, 0xFFC6DEF7, false);
 
         int copyW = Math.min(88, Math.max(72, contentW / 4));
         int copyH = 16;
@@ -5092,14 +5094,14 @@ public class BankOwnerPcScreen extends Screen {
             int rowW = Math.max(40, contentX + contentW - rowX - 8);
             int rowY = detailsTop + 8;
             int rowStep = 12;
-            graphics.drawString(this.font, "Player", rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Player"), rowX, rowY, 0xFFBFDFFF, false);
             graphics.drawString(this.font, fitToWidth(account.player(), rowW - 62), rowX + 56, rowY, 0xFFFFFFFF, false);
             rowY += rowStep;
-            graphics.drawString(this.font, "Type", rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Type"), rowX, rowY, 0xFFBFDFFF, false);
             graphics.drawString(this.font, fitToWidth(account.type(), rowW - 62), rowX + 56, rowY, 0xFFFFFFFF, false);
             rowY += rowStep;
-            graphics.drawString(this.font, "Status", rowX, rowY, 0xFFBFDFFF, false);
-            graphics.drawString(this.font, "Active", rowX + 56, rowY, 0xFF8BE3A8, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Status"), rowX, rowY, 0xFFBFDFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Active"), rowX + 56, rowY, 0xFF8BE3A8, false);
         }
     }
 
@@ -5128,11 +5130,11 @@ public class BankOwnerPcScreen extends Screen {
         if (offers.isEmpty()) {
             graphics.fill(listX, listY, listX + listW, listY + listH, 0x55203A57);
             if (waitingForMarket) {
-                graphics.drawString(this.font, "Loading market offers...", listX + 8, listY + 8, 0xFFD3E8FF, false);
-                graphics.drawString(this.font, "Please wait or press Refresh Market.", listX + 8, listY + 20, 0xFFAACAE9, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("Loading market offers..."), listX + 8, listY + 8, 0xFFD3E8FF, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("Please wait or press Refresh Market."), listX + 8, listY + 20, 0xFFAACAE9, false);
             } else {
-                graphics.drawString(this.font, "No open market offers right now.", listX + 8, listY + 8, 0xFFD3E8FF, false);
-                graphics.drawString(this.font, "Use Refresh Market to check again.", listX + 8, listY + 20, 0xFFAACAE9, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("No open market offers right now."), listX + 8, listY + 8, 0xFFD3E8FF, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("Use Refresh Market to check again."), listX + 8, listY + 20, 0xFFAACAE9, false);
             }
         } else {
             int cols = listW >= 640 ? 2 : 1;
@@ -5242,7 +5244,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(modalX, modalY, modalX + modalW, modalY + 24, 0xC0254D76);
         graphics.fill(modalX, modalY + 24, modalX + modalW, modalY + 25, 0x88A8CDEE);
 
-        graphics.drawString(this.font, "Confirm Offer Acceptance", modalX + 8, modalY + 7, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Confirm Offer Acceptance"), modalX + 8, modalY + 7, 0xFFFFFFFF, false);
         graphics.drawString(this.font, fitToWidth("Offer " + offer.id() + " from " + offer.lender(), modalW - 16), modalX + 8, modalY + 34, 0xFFD6E9FF, false);
         graphics.drawString(this.font, fitToWidth("Amount " + offer.amountText() + " at " + offer.aprText(), modalW - 16), modalX + 8, modalY + 46, 0xFFD6E9FF, false);
         graphics.drawString(this.font, fitToWidth("Term: " + offer.termText(), modalW - 16), modalX + 8, modalY + 58, 0xFFC4DBF7, false);
@@ -5465,7 +5467,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(x, y, x + width, y + height, 0x4E18324C);
         graphics.fill(x, y, x + width, y + 26, 0xB0214A73);
         graphics.fill(x, y + 26, x + width, y + 27, 0x88A8CDEE);
-        graphics.drawString(this.font, "Input Assistant", x + 8, y + 9, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Input Assistant"), x + 8, y + 9, 0xFFFFFFFF, false);
 
         int titleY = y + 36;
         graphics.drawString(this.font, fitToWidth(help.title(), width - 16), x + 8, titleY, 0xFFE6F3FF, false);
@@ -5622,7 +5624,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(left, top, right, bottom, 0xFFE8EEF6);
         graphics.fill(left, top, right, top + 28, 0xFF6C93C8);
 
-        graphics.drawString(this.font, "Create New Player Bank", left + 8, top + 10, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Create New Player Bank"), left + 8, top + 10, 0xFFFFFFFF, false);
         graphics.drawString(this.font,
                 "Owned: " + ClientOwnerPcData.getOwnedCount() + " / " + ClientOwnerPcData.getMaxBanks(),
                 left + 230,
@@ -5630,7 +5632,7 @@ public class BankOwnerPcScreen extends Screen {
                 0xFFE8F2FF,
                 false);
 
-        graphics.drawString(this.font, "Ownership Type", left + 8, top + 56, 0xFF1D2F4A, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("Ownership Type"), left + 8, top + 56, 0xFF1D2F4A, false);
         graphics.drawString(this.font,
                 "Selected: " + prettifyOwnership(selectedOwnershipModel),
                 left + 8,
@@ -5680,7 +5682,7 @@ public class BankOwnerPcScreen extends Screen {
             graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
-            graphics.drawString(this.font, "Unsaved changes", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Unsaved changes"), modalX + 8, modalY + 6, 0xFFFFFFFF, false);
             String label = unsavedCloseTarget == UtilityApp.PAINT ? "Paint" : "Notepad";
             graphics.drawString(this.font, "Save " + label + " before closing?", modalX + 8, modalY + 30, 0xFFD5E9FF, false);
         }
@@ -5767,8 +5769,8 @@ public class BankOwnerPcScreen extends Screen {
             graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
-            graphics.drawString(this.font, "Save Notepad", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, "Enter a file name:", modalX + 10, modalY + 26, 0xFFD5E9FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Save Notepad"), modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Enter a file name:"), modalX + 10, modalY + 26, 0xFFD5E9FF, false);
         }
     }
 
@@ -5785,7 +5787,7 @@ public class BankOwnerPcScreen extends Screen {
 
         graphics.drawString(
                 this.font,
-                "Click a file card to open it.",
+                UbsClientTranslations.resolve("Click a file card to open it."),
                 innerX,
                 infoY + 11,
                 0xFF9EF0B6,
@@ -5805,7 +5807,7 @@ public class BankOwnerPcScreen extends Screen {
 
         List<OwnerPcFileEntry> files = ClientOwnerPcData.getDesktopFiles();
         if (files.isEmpty()) {
-            graphics.drawString(this.font, "No files saved on this PC yet.", explorerFileListX + 8, explorerFileListY + 8, 0xFF9FC2E6, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("No files saved on this PC yet."), explorerFileListX + 8, explorerFileListY + 8, 0xFF9FC2E6, false);
         }
     }
 
@@ -5877,8 +5879,8 @@ public class BankOwnerPcScreen extends Screen {
             graphics.fill(modalX - 1, modalY - 1, modalX + modalW + 1, modalY + modalH + 1, 0xFF2D4B6D);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF01A3049);
             graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
-            graphics.drawString(this.font, "Save Canvas", modalX + 8, modalY + 6, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, "Enter a file name:", modalX + 10, modalY + 26, 0xFFD5E9FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Save Canvas"), modalX + 8, modalY + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Enter a file name:"), modalX + 10, modalY + 26, 0xFFD5E9FF, false);
         }
     }
 
@@ -5890,8 +5892,8 @@ public class BankOwnerPcScreen extends Screen {
             int panelH = systemHideAppsH > 0 ? systemHideAppsH : Math.max(80, utilityContentH - 36);
             graphics.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xFF2D4B6D);
             graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xC8192F47);
-            graphics.drawString(this.font, "App Visibility", panelX + 8, panelY + 8, 0xFFE4F2FF, false);
-            graphics.drawString(this.font, "Click a card to toggle hidden/visible.", panelX + 8, panelY + 19, 0xFFBFD6EE, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("App Visibility"), panelX + 8, panelY + 8, 0xFFE4F2FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Click a card to toggle hidden/visible."), panelX + 8, panelY + 19, 0xFFBFD6EE, false);
 
             for (AppVisibilityCard card : visibleSystemAppCards) {
                 boolean hidden = card.app().hidden();
@@ -6340,6 +6342,7 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private String fitToWidth(String text, int maxWidth) {
+        text = UbsClientTranslations.resolve(text);
         if (text == null || text.isEmpty() || maxWidth <= 0) {
             return "";
         }

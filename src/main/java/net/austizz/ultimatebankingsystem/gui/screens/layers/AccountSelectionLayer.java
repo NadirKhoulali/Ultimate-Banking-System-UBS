@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -67,7 +68,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                     listWidth - 8, ROW_HEIGHT,
                     ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                     4, 4, 4, 4,
-                    Component.literal(""),
+                    UbsTranslations.literal(""),
                     btn -> selectAccountAtSlot(slot)
             ));
             rowButtons.add(rowButton);
@@ -80,7 +81,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -90,7 +91,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
                 54, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Use").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Use").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -118,11 +119,11 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             NineSliceTexturedButton button = rowButtons.get(i);
             int index = scrollIndex + i;
             if (index >= 0 && index < accounts.size()) {
-                button.setMessage(Component.literal(""));
+                button.setMessage(UbsTranslations.literal(""));
                 button.active = true;
                 button.visible = true;
             } else {
-                button.setMessage(Component.literal(""));
+                button.setMessage(UbsTranslations.literal(""));
                 button.active = false;
                 button.visible = false;
             }
@@ -159,7 +160,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
 
         graphics.drawCenteredString(
                 font,
-                Component.literal("Select Account").withStyle(ChatFormatting.AQUA),
+                UbsTranslations.literal("Select Account").withStyle(ChatFormatting.AQUA),
                 panelLeft + panelWidth / 2,
                 panelTop + 31,
                 0xFFFFFFFF
@@ -177,7 +178,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
         if (accounts.isEmpty()) {
             graphics.drawCenteredString(
                     font,
-                    Component.literal("No accounts available.").withStyle(ChatFormatting.GRAY),
+                    UbsTranslations.literal("No accounts available.").withStyle(ChatFormatting.GRAY),
                     panelLeft + panelWidth / 2,
                     listTop + (listBottom - listTop) / 2 - 4,
                     COLOR_MUTED
@@ -187,7 +188,7 @@ public class AccountSelectionLayer extends AbstractScreenLayer {
             int to = Math.min(scrollIndex + VISIBLE_ROWS, accounts.size());
             graphics.drawCenteredString(
                     font,
-                    Component.literal("Showing " + from + "-" + to + " of " + accounts.size())
+                    UbsTranslations.literal("Showing " + from + "-" + to + " of " + accounts.size())
                             .withStyle(ChatFormatting.DARK_AQUA),
                     panelLeft + panelWidth / 2,
                     listBottom + 7,

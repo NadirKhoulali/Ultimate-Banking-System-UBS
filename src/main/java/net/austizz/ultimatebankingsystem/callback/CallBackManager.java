@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.callback;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import org.checkerframework.checker.units.qual.C;
@@ -28,7 +29,7 @@ public class CallBackManager {
     public static void execute(UUID id, ServerPlayer player) {
         Consumer<ServerPlayer> action = CALLBACKS.remove(id); // remove() voert het uit én verwijdert het direct
         if (action == null) {
-            player.sendSystemMessage(Component.literal("Action either expired or cancelled, please try again!"));
+            player.sendSystemMessage(UbsTranslations.literal("Action either expired or cancelled, please try again!"));
             return;
         }
         action.accept(player);

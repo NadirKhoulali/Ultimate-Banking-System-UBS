@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.bank;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
@@ -278,7 +279,7 @@ public class Bank {
                 if (Math.abs(previousRate - annualRate) > 0.0001D && previousRate >= 0.0D) {
                     ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
                     if (holder != null) {
-                        holder.sendSystemMessage(Component.literal(
+                        holder.sendSystemMessage(UbsTranslations.literal(
                                 "§eMoney Market rate changed: §f" + previousRate + "% §7-> §f" + annualRate + "%"
                         ));
                     }
@@ -289,7 +290,7 @@ public class Bank {
             if (server != null) {
                 ServerPlayer holder = server.getPlayerList().getPlayer(account.getPlayerUUID());
                 if (holder != null) {
-                    holder.sendSystemMessage(Component.literal(
+                    holder.sendSystemMessage(UbsTranslations.literal(
                             "§aInterest paid: §6" + MoneyText.abbreviateWithDollar(payoutAmount)
                                     + " §a(" + annualRate + "% APR) New balance: §f"
                                     + MoneyText.abbreviateWithDollar(account.getBalance())
@@ -357,7 +358,7 @@ public class Bank {
         account.setCertificateMaturitySettled(true);
         ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
         if (holder != null) {
-            holder.sendSystemMessage(Component.literal(
+            holder.sendSystemMessage(UbsTranslations.literal(
                     "§aYour CD matured. Interest credited: §6" + MoneyText.abbreviateWithDollar(interest)
                             + " §a(new balance: §f" + MoneyText.abbreviateWithDollar(account.getBalance()) + "§a)."
             ));

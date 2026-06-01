@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.npc;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -91,22 +92,22 @@ public final class BankTellerInteractionManager {
 
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         if (centralBank == null) {
-            player.sendSystemMessage(Component.literal("§cBank data is unavailable right now."));
+            player.sendSystemMessage(UbsTranslations.literal("§cBank data is unavailable right now."));
             return;
         }
 
         ItemStack stack = player.getItemInHand(hand);
         ChequeData cheque = readChequeData(stack);
         if (cheque == null) {
-            player.sendSystemMessage(Component.literal("§cInvalid cheque."));
+            player.sendSystemMessage(UbsTranslations.literal("§cInvalid cheque."));
             return;
         }
         if (!player.getUUID().equals(cheque.recipientId)) {
-            player.sendSystemMessage(Component.literal("§cThis cheque is not payable to you."));
+            player.sendSystemMessage(UbsTranslations.literal("§cThis cheque is not payable to you."));
             return;
         }
         if (centralBank.isChequeRedeemed(cheque.chequeId)) {
-            player.sendSystemMessage(Component.literal("§cThis cheque has already been redeemed."));
+            player.sendSystemMessage(UbsTranslations.literal("§cThis cheque has already been redeemed."));
             return;
         }
 
@@ -124,13 +125,13 @@ public final class BankTellerInteractionManager {
     public static int handleChoose(CommandSourceStack source, String rawChoice) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can do this."));
+            source.sendSystemMessage(UbsTranslations.literal("§cOnly players can do this."));
             return 0;
         }
 
         Session session = SESSIONS.get(player.getUUID());
         if (session == null) {
-            player.sendSystemMessage(Component.literal("§7No active teller interaction."));
+            player.sendSystemMessage(UbsTranslations.literal("§7No active teller interaction."));
             return 0;
         }
 
@@ -146,19 +147,19 @@ public final class BankTellerInteractionManager {
             return 1;
         }
 
-        player.sendSystemMessage(Component.literal("§cUnknown option. Use bank, cash, or cancel."));
+        player.sendSystemMessage(UbsTranslations.literal("§cUnknown option. Use bank, cash, or cancel."));
         return 0;
     }
 
     public static int handlePage(CommandSourceStack source, String direction) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can do this."));
+            source.sendSystemMessage(UbsTranslations.literal("§cOnly players can do this."));
             return 0;
         }
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.stage != Stage.ACCOUNT_PICK) {
-            player.sendSystemMessage(Component.literal("§7No active account picker."));
+            player.sendSystemMessage(UbsTranslations.literal("§7No active account picker."));
             return 0;
         }
 
@@ -177,17 +178,17 @@ public final class BankTellerInteractionManager {
     public static int handleAccountPick(CommandSourceStack source, UUID accountId) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can do this."));
+            source.sendSystemMessage(UbsTranslations.literal("§cOnly players can do this."));
             return 0;
         }
         if (accountId == null) {
-            player.sendSystemMessage(Component.literal("§cInvalid account."));
+            player.sendSystemMessage(UbsTranslations.literal("§cInvalid account."));
             return 0;
         }
 
         Session session = SESSIONS.get(player.getUUID());
         if (session == null || session.stage != Stage.ACCOUNT_PICK) {
-            player.sendSystemMessage(Component.literal("§7No active account picker."));
+            player.sendSystemMessage(UbsTranslations.literal("§7No active account picker."));
             return 0;
         }
 
@@ -199,7 +200,7 @@ public final class BankTellerInteractionManager {
             }
         }
         if (selected == null) {
-            player.sendSystemMessage(Component.literal("§cThat account is not available."));
+            player.sendSystemMessage(UbsTranslations.literal("§cThat account is not available."));
             return 0;
         }
 
@@ -210,7 +211,7 @@ public final class BankTellerInteractionManager {
     public static int handleCancel(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(Component.literal("§cOnly players can do this."));
+            source.sendSystemMessage(UbsTranslations.literal("§cOnly players can do this."));
             return 0;
         }
         return cancel(player, "You cancelled the teller interaction.");
@@ -273,7 +274,7 @@ public final class BankTellerInteractionManager {
             }
             ServerPlayer player = server.getPlayerList().getPlayer(playerId);
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§7" + reason));
+                player.sendSystemMessage(UbsTranslations.literal("§7" + reason));
                 sendGoodbye(player);
             }
         }
@@ -291,9 +292,9 @@ public final class BankTellerInteractionManager {
         int from = session.page * PAGE_SIZE;
         int to = Math.min(accounts.size(), from + PAGE_SIZE);
 
-        player.sendSystemMessage(Component.literal("§b[Bank Teller] §fChoose an account for §a$"
+        player.sendSystemMessage(UbsTranslations.literal("§b[Bank Teller] §fChoose an account for §a$"
                 + MoneyText.abbreviate(session.cheque.amount) + "§f:"));
-        player.sendSystemMessage(Component.literal("§7Page §f" + (session.page + 1) + "§7/§f" + pageCount));
+        player.sendSystemMessage(UbsTranslations.literal("§7Page §f" + (session.page + 1) + "§7/§f" + pageCount));
 
         for (int i = from; i < to; i++) {
             AccountHolder account = accounts.get(i);
@@ -310,36 +311,36 @@ public final class BankTellerInteractionManager {
                     ChatFormatting.GREEN,
                     "Deposit cheque into this account"
             );
-            line.append(Component.literal(" §8(ID: " + shortId(account.getAccountUUID()) + ")"));
+            line.append(UbsTranslations.literal(" §8(ID: " + shortId(account.getAccountUUID()) + ")"));
             player.sendSystemMessage(line);
         }
 
-        MutableComponent nav = Component.literal("");
+        MutableComponent nav = UbsTranslations.literal("");
         if (session.page > 0) {
             nav.append(actionButton("Prev", "/bankteller page prev", ChatFormatting.AQUA, "Previous 5 accounts"));
-            nav.append(Component.literal("  "));
+            nav.append(UbsTranslations.literal("  "));
         }
         if (session.page < pageCount - 1) {
             nav.append(actionButton("Next", "/bankteller page next", ChatFormatting.AQUA, "Next 5 accounts"));
-            nav.append(Component.literal("  "));
+            nav.append(UbsTranslations.literal("  "));
         }
         nav.append(actionButton("Cancel", "/bankteller cancel", ChatFormatting.RED, "Cancel teller interaction"));
         player.sendSystemMessage(nav);
     }
 
     private static void sendChoicePrompt(ServerPlayer player, Session session) {
-        player.sendSystemMessage(Component.literal("§b[Bank Teller] §fHow would you like to handle this cheque?"));
-        player.sendSystemMessage(Component.literal("§7Cheque ID: §f" + session.cheque.chequeId));
-        player.sendSystemMessage(Component.literal("§7Amount: §a$" + MoneyText.abbreviate(session.cheque.amount)));
+        player.sendSystemMessage(UbsTranslations.literal("§b[Bank Teller] §fHow would you like to handle this cheque?"));
+        player.sendSystemMessage(UbsTranslations.literal("§7Cheque ID: §f" + session.cheque.chequeId));
+        player.sendSystemMessage(UbsTranslations.literal("§7Amount: §a$" + MoneyText.abbreviate(session.cheque.amount)));
 
-        MutableComponent choices = Component.literal("")
+        MutableComponent choices = UbsTranslations.literal("")
                 .append(actionButton("Return To Bank", "/bankteller choose bank", ChatFormatting.GREEN, "Deposit to one of your bank accounts"))
-                .append(Component.literal("  "))
+                .append(UbsTranslations.literal("  "))
                 .append(actionButton("Hand In Cash", "/bankteller choose cash", ChatFormatting.GOLD, "Receive physical USD cash"))
-                .append(Component.literal("  "))
+                .append(UbsTranslations.literal("  "))
                 .append(actionButton("Cancel", "/bankteller cancel", ChatFormatting.RED, "Cancel teller interaction"));
         player.sendSystemMessage(choices);
-        player.sendSystemMessage(Component.literal("§8(You can also cancel by walking away from the teller.)"));
+        player.sendSystemMessage(UbsTranslations.literal("§8(You can also cancel by walking away from the teller.)"));
     }
 
     private static void completeToBank(ServerPlayer player, Session session, AccountHolder destination) {
@@ -359,7 +360,7 @@ public final class BankTellerInteractionManager {
         }
 
         if (!destination.AddBalance(session.cheque.amount)) {
-            player.sendSystemMessage(Component.literal("§cCould not deposit to the selected account."));
+            player.sendSystemMessage(UbsTranslations.literal("§cCould not deposit to the selected account."));
             return;
         }
         centralBank.markChequeRedeemed(session.cheque.chequeId);
@@ -374,7 +375,7 @@ public final class BankTellerInteractionManager {
         ));
 
         SESSIONS.remove(player.getUUID());
-        player.sendSystemMessage(Component.literal("§aCheque deposited successfully into account §f"
+        player.sendSystemMessage(UbsTranslations.literal("§aCheque deposited successfully into account §f"
                 + shortId(destination.getAccountUUID()) + "§a."));
         sendGoodbye(player);
     }
@@ -396,17 +397,17 @@ public final class BankTellerInteractionManager {
                     .movePointRight(2)
                     .intValueExact();
         } catch (ArithmeticException ex) {
-            player.sendSystemMessage(Component.literal("§cCheque value is too large for cash payout."));
+            player.sendSystemMessage(UbsTranslations.literal("§cCheque value is too large for cash payout."));
             return;
         }
         if (valueCents <= 0) {
-            player.sendSystemMessage(Component.literal("§cCheque amount is invalid."));
+            player.sendSystemMessage(UbsTranslations.literal("§cCheque amount is invalid."));
             return;
         }
 
         int[] plan = DollarBills.buildCashWithdrawPlan(valueCents);
         if (plan == null) {
-            player.sendSystemMessage(Component.literal("§cUnable to prepare cash payout for this amount."));
+            player.sendSystemMessage(UbsTranslations.literal("§cUnable to prepare cash payout for this amount."));
             return;
         }
         if (!consumeChequeStack(player, session.cheque.chequeId)) {
@@ -418,23 +419,23 @@ public final class BankTellerInteractionManager {
         BankManager.markDirty();
         DollarBills.giveCash(player, plan);
         SESSIONS.remove(player.getUUID());
-        player.sendSystemMessage(Component.literal("§aCheque cashed out as cash: §f" + DollarBills.formatCashPlan(plan)));
+        player.sendSystemMessage(UbsTranslations.literal("§aCheque cashed out as cash: §f" + DollarBills.formatCashPlan(plan)));
         sendGoodbye(player);
     }
 
     private static int cancel(ServerPlayer player, String reason) {
         if (SESSIONS.remove(player.getUUID()) == null) {
-            player.sendSystemMessage(Component.literal("§7No active teller interaction."));
+            player.sendSystemMessage(UbsTranslations.literal("§7No active teller interaction."));
             return 0;
         }
-        player.sendSystemMessage(Component.literal("§e" + reason));
+        player.sendSystemMessage(UbsTranslations.literal("§e" + reason));
         sendGoodbye(player);
         return 1;
     }
 
     private static void sendGoodbye(ServerPlayer player) {
         String msg = GOODBYE_MESSAGES[ThreadLocalRandom.current().nextInt(GOODBYE_MESSAGES.length)];
-        player.sendSystemMessage(Component.literal(msg));
+        player.sendSystemMessage(UbsTranslations.literal(msg));
     }
 
     private static List<AccountHolder> getPlayerAccounts(ServerPlayer player) {
@@ -520,11 +521,11 @@ public final class BankTellerInteractionManager {
     }
 
     private static MutableComponent actionButton(String label, String command, ChatFormatting color, String hover) {
-        return Component.literal("[" + label + "]")
+        return UbsTranslations.literal("[" + label + "]")
                 .withStyle(Style.EMPTY
                         .withColor(color)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(hover))));
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, UbsTranslations.literal(hover))));
     }
 
     private static String shortId(UUID uuid) {

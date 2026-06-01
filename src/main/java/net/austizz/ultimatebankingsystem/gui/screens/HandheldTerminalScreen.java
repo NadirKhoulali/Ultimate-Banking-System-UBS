@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopButton;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopEditBox;
 import net.austizz.ultimatebankingsystem.network.HandheldTerminalOpenPayload;
@@ -45,7 +47,7 @@ public class HandheldTerminalScreen extends Screen {
     private long feedbackUntilMillis = 0L;
 
     public HandheldTerminalScreen(HandheldTerminalOpenPayload payload) {
-        super(Component.literal("Handheld Payment Terminal"));
+        super(UbsTranslations.literal("Handheld Payment Terminal"));
         this.openPayload = payload;
         this.accounts = payload.accounts() == null ? List.of() : new ArrayList<>(payload.accounts());
         this.merchantAccountIdFromServer = payload.parseMerchantAccountId();
@@ -70,14 +72,14 @@ public class HandheldTerminalScreen extends Screen {
         int rowGap = 30;
         int inputHeight = 22;
 
-        shopNameInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, inputHeight, Component.literal("Terminal name"));
+        shopNameInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, inputHeight, UbsTranslations.literal("Terminal name"));
         shopNameInput.setValue(openPayload.shopName());
         shopNameInput.setMaxLength(42);
         addRenderableWidget(shopNameInput);
 
         rowY += rowGap;
         int priceWidth = Math.max(120, contentWidth / 3);
-        priceInput = new DesktopEditBox(font, contentLeft, rowY, priceWidth, inputHeight, Component.literal("Price"));
+        priceInput = new DesktopEditBox(font, contentLeft, rowY, priceWidth, inputHeight, UbsTranslations.literal("Price"));
         priceInput.setValue(String.valueOf(Math.max(1L, openPayload.priceDollars())));
         priceInput.setMaxLength(16);
         addRenderableWidget(priceInput);
@@ -85,7 +87,7 @@ public class HandheldTerminalScreen extends Screen {
         int ownerX = contentLeft + priceWidth + 12;
         int ownerW = Math.max(80, contentRight - ownerX);
         addRenderableWidget(new DesktopButton(ownerX, rowY, ownerW, inputHeight,
-                Component.literal("Owner: " + sanitizeOwnerName(openPayload.ownerName())),
+                UbsTranslations.literal("Owner: " + sanitizeOwnerName(openPayload.ownerName())),
                 0xFF70CBFF,
                 btn -> {}) {{
             active = false;
@@ -98,9 +100,9 @@ public class HandheldTerminalScreen extends Screen {
         int accountDisplayWidth = contentWidth - selectorButtonWidth * 2 - accountMidPadding * 2;
 
         accountPrevButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, selectorButtonWidth, inputHeight,
-                Component.literal("Prev"), 0xFF76B7FF, btn -> stepAccount(-1)));
+                UbsTranslations.literal("Prev"), 0xFF76B7FF, btn -> stepAccount(-1)));
         accountNextButton = addRenderableWidget(new DesktopButton(contentRight - selectorButtonWidth, rowY, selectorButtonWidth, inputHeight,
-                Component.literal("Next"), 0xFF76B7FF, btn -> stepAccount(1)));
+                UbsTranslations.literal("Next"), 0xFF76B7FF, btn -> stepAccount(1)));
         accountSelectButton = addRenderableWidget(new DesktopButton(accountDisplayX, rowY, accountDisplayWidth, inputHeight,
                 selectedAccountCaption(), 0xFF8FD8FF, btn -> stepAccount(1)) {
             @Override
@@ -113,9 +115,9 @@ public class HandheldTerminalScreen extends Screen {
         rowY += rowGap + 8;
         int actionWidth = (contentWidth - 8) / 2;
         saveButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, actionWidth, 24,
-                Component.literal("Save Handheld"), 0xFF62DA8E, btn -> submitSave()));
+                UbsTranslations.literal("Save Handheld"), 0xFF62DA8E, btn -> submitSave()));
         closeButton = addRenderableWidget(new DesktopButton(contentLeft + actionWidth + 8, rowY, actionWidth, 24,
-                Component.literal("Close"), 0xFF8ABAF1, btn -> onClose()));
+                UbsTranslations.literal("Close"), 0xFF8ABAF1, btn -> onClose()));
 
         updateAccountButtonsActive();
     }
@@ -153,8 +155,8 @@ public class HandheldTerminalScreen extends Screen {
         graphics.fill(panelLeft + 1, panelTop + 1, frameRight - 1, panelTop + 28, 0xFF7DA6D7);
         graphics.fill(panelLeft + 10, panelTop + 56, frameRight - 10, frameBottom - 12, 0xFF10263F);
 
-        graphics.drawString(font, "Handheld Payment Terminal", panelLeft + 12, panelTop + 10, 0xFFF6FCFF, false);
-        graphics.drawString(font, "Right-click a player to charge. Shift + right-click to reconfigure.",
+        graphics.drawString(font, UbsClientTranslations.resolve("Handheld Payment Terminal"), panelLeft + 12, panelTop + 10, 0xFFF6FCFF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve("Right-click a player to charge. Shift + right-click to reconfigure."),
                 panelLeft + 14, panelTop + 33, 0xFFA7D4FF, false);
 
         int infoY = panelTop + panelHeight - 26;
@@ -269,10 +271,10 @@ public class HandheldTerminalScreen extends Screen {
     private Component selectedAccountCaption() {
         ShopTerminalAccountSummary selected = getSelectedAccount();
         if (selected == null) {
-            return Component.literal("No Account Available");
+            return UbsTranslations.literal("No Account Available");
         }
         String prefix = selected.primary() ? "[Primary] " : "";
-        return Component.literal(prefix + selected.accountType() + " | $" + MoneyText.abbreviate(BigDecimal.valueOf(parseLongSafe(selected.balance()))));
+        return UbsTranslations.literal(prefix + selected.accountType() + " | $" + MoneyText.abbreviate(BigDecimal.valueOf(parseLongSafe(selected.balance()))));
     }
 
     private int resolveInitialSelectedAccountIndex() {

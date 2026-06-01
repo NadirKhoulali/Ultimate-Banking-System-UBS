@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.item;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -87,13 +88,13 @@ public class HandheldPaymentTerminalItem extends Item {
     private static void openConfig(ServerPlayer player, ItemStack stack) {
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         if (centralBank == null) {
-            player.sendSystemMessage(Component.literal("§cBank data is unavailable right now."));
+            player.sendSystemMessage(UbsTranslations.literal("§cBank data is unavailable right now."));
             return;
         }
 
         UUID terminalId = ensureTerminalId(stack);
         if (!canConfigure(stack, player)) {
-            player.sendSystemMessage(Component.literal("§cOnly the owner or an operator can configure this handheld terminal."));
+            player.sendSystemMessage(UbsTranslations.literal("§cOnly the owner or an operator can configure this handheld terminal."));
             return;
         }
 
@@ -172,14 +173,14 @@ public class HandheldPaymentTerminalItem extends Item {
         String amountText = "$" + MoneyText.abbreviate(BigDecimal.valueOf(price));
         String shop = getShopName(stack);
         if (merchantPlayer.getUUID().equals(payerPlayer.getUUID())) {
-            merchantPlayer.sendSystemMessage(Component.literal(
+            merchantPlayer.sendSystemMessage(UbsTranslations.literal(
                     "§aPaid " + amountText + " §aat §b" + shop + "§a. Balance: §6$" + result.balanceAfter().toPlainString()
             ));
         } else {
-            payerPlayer.sendSystemMessage(Component.literal(
+            payerPlayer.sendSystemMessage(UbsTranslations.literal(
                     "§aPayment complete: §6" + amountText + " §ato §b" + shop + "§a. Balance: §6$" + result.balanceAfter().toPlainString()
             ));
-            merchantPlayer.sendSystemMessage(Component.literal(
+            merchantPlayer.sendSystemMessage(UbsTranslations.literal(
                     "§aPayment received: §6" + amountText + " §afrom §f" + payerPlayer.getName().getString() + " §aat §b" + shop
             ));
         }
@@ -213,13 +214,13 @@ public class HandheldPaymentTerminalItem extends Item {
     private static void sendChargeFailure(ServerPlayer merchant, ServerPlayer payer, String reason) {
         String safeReason = reason == null || reason.isBlank() ? "Unknown error." : reason;
         if (merchant.getUUID().equals(payer.getUUID())) {
-            merchant.sendSystemMessage(Component.literal("§cPayment failed: " + safeReason));
+            merchant.sendSystemMessage(UbsTranslations.literal("§cPayment failed: " + safeReason));
             return;
         }
-        merchant.sendSystemMessage(Component.literal(
+        merchant.sendSystemMessage(UbsTranslations.literal(
                 "§cCharge failed for §f" + payer.getName().getString() + "§c: " + safeReason
         ));
-        payer.sendSystemMessage(Component.literal(
+        payer.sendSystemMessage(UbsTranslations.literal(
                 "§cPayment request from §f" + merchant.getName().getString() + " §cfailed: " + safeReason
         ));
     }

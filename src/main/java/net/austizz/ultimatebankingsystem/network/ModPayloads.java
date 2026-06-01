@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.network;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
@@ -2082,7 +2083,7 @@ public final class ModPayloads {
     }
 
     private static MutableComponent moneyLiteral(String text) {
-        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+        return UbsTranslations.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
     }
 
     private static String accountLabel(AccountHolder account) {

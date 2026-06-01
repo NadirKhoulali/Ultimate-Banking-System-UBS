@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
@@ -114,7 +116,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 tabWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Info"),
+                UbsTranslations.literal("Info"),
                 btn -> switchTab(Tab.INFO)
         ));
         securityTabButton = addWidget(new NineSliceTexturedButton(
@@ -122,7 +124,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 tabWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Security"),
+                UbsTranslations.literal("Security"),
                 btn -> switchTab(Tab.SECURITY)
         ));
         limitsTabButton = addWidget(new NineSliceTexturedButton(
@@ -130,7 +132,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 tabWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Limits"),
+                UbsTranslations.literal("Limits"),
                 btn -> switchTab(Tab.LIMITS)
         ));
 
@@ -150,7 +152,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 copyButtonWidth, copyButtonHeight,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Copy").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Copy").withStyle(ChatFormatting.WHITE),
                 btn -> copyAccountId()
         ));
 
@@ -164,21 +166,21 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 btn -> togglePrimary()
         ));
 
-        currentPinField = new AtmEditBox(font, contentLeft, panelTop + 108, contentWidth, 20, Component.literal(""));
+        currentPinField = new AtmEditBox(font, contentLeft, panelTop + 108, contentWidth, 20, UbsTranslations.literal(""));
         currentPinField.setMaxLength(4);
-        currentPinField.setHint(Component.literal("Current 4-digit PIN...").withStyle(ChatFormatting.WHITE));
+        currentPinField.setHint(UbsTranslations.literal("Current 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(currentPinField);
         addWidget(currentPinField);
 
-        newPinField = new AtmEditBox(font, contentLeft, panelTop + 142, contentWidth, 20, Component.literal(""));
+        newPinField = new AtmEditBox(font, contentLeft, panelTop + 142, contentWidth, 20, UbsTranslations.literal(""));
         newPinField.setMaxLength(4);
-        newPinField.setHint(Component.literal("New 4-digit PIN...").withStyle(ChatFormatting.WHITE));
+        newPinField.setHint(UbsTranslations.literal("New 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(newPinField);
         addWidget(newPinField);
 
-        confirmPinField = new AtmEditBox(font, contentLeft, panelTop + 176, contentWidth, 20, Component.literal(""));
+        confirmPinField = new AtmEditBox(font, contentLeft, panelTop + 176, contentWidth, 20, UbsTranslations.literal(""));
         confirmPinField.setMaxLength(4);
-        confirmPinField.setHint(Component.literal("Repeat new 4-digit PIN...").withStyle(ChatFormatting.WHITE));
+        confirmPinField.setHint(UbsTranslations.literal("Repeat new 4-digit PIN...").withStyle(ChatFormatting.WHITE));
         styleEditBox(confirmPinField);
         addWidget(confirmPinField);
 
@@ -192,7 +194,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 changePinButtonWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Change PIN").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Change PIN").withStyle(ChatFormatting.WHITE),
                 btn -> requestPinChangeConfirmation()
         ));
 
@@ -202,7 +204,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 confirmButtonWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Yes").withStyle(ChatFormatting.GREEN),
+                UbsTranslations.literal("Yes").withStyle(ChatFormatting.GREEN),
                 btn -> sendPinChange()
         ));
         confirmPinCancelButton = addWidget(new NineSliceTexturedButton(
@@ -211,13 +213,13 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 confirmButtonWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Cancel").withStyle(ChatFormatting.RED),
+                UbsTranslations.literal("Cancel").withStyle(ChatFormatting.RED),
                 btn -> cancelPinChangeConfirmation()
         ));
 
-        temporaryLimitField = new AtmEditBox(font, contentLeft, panelTop + 150, contentWidth, 20, Component.literal(""));
+        temporaryLimitField = new AtmEditBox(font, contentLeft, panelTop + 150, contentWidth, 20, UbsTranslations.literal(""));
         temporaryLimitField.setMaxLength(12);
-        temporaryLimitField.setHint(Component.literal("Custom limit (whole dollars)...").withStyle(ChatFormatting.WHITE));
+        temporaryLimitField.setHint(UbsTranslations.literal("Custom limit (whole dollars)...").withStyle(ChatFormatting.WHITE));
         styleEditBox(temporaryLimitField);
         addWidget(temporaryLimitField);
 
@@ -227,7 +229,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Apply Temporary Limit").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Apply Temporary Limit").withStyle(ChatFormatting.WHITE),
                 btn -> applyTemporaryLimit()
         ));
 
@@ -237,7 +239,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -265,9 +267,9 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     }
 
     private void updateTabButtons() {
-        infoTabButton.setMessage(Component.literal(activeTab == Tab.INFO ? "Info *" : "Info"));
-        securityTabButton.setMessage(Component.literal(activeTab == Tab.SECURITY ? "Security *" : "Security"));
-        limitsTabButton.setMessage(Component.literal(activeTab == Tab.LIMITS ? "Limits *" : "Limits"));
+        infoTabButton.setMessage(UbsTranslations.literal(activeTab == Tab.INFO ? "Info *" : "Info"));
+        securityTabButton.setMessage(UbsTranslations.literal(activeTab == Tab.SECURITY ? "Security *" : "Security"));
+        limitsTabButton.setMessage(UbsTranslations.literal(activeTab == Tab.LIMITS ? "Limits *" : "Limits"));
     }
 
     private void updateVisibility() {
@@ -316,7 +318,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         statusSuccess = false;
         bankScreen.pushLayer(new PinEntryLayer(
                 minecraft,
-                Component.literal("Confirm Temporary Limit"),
+                UbsTranslations.literal("Confirm Temporary Limit"),
                 confirmedPin -> sendTemporaryLimitAfterPin(confirmedPin)
         ));
     }
@@ -439,7 +441,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     }
 
     private Component primaryLabel() {
-        return Component.literal("Primary: " + (isPrimary ? "YES" : "NO"))
+        return UbsTranslations.literal("Primary: " + (isPrimary ? "YES" : "NO"))
                 .withStyle(isPrimary ? ChatFormatting.GREEN : ChatFormatting.GRAY);
     }
 
@@ -614,12 +616,12 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (activeTab == Tab.INFO) {
-            graphics.drawString(font, "Account ID:", contentLeft + 8, sectionTop + 8, COLOR_LABEL);
+            graphics.drawString(font, UbsClientTranslations.resolve("Account ID:"), contentLeft + 8, sectionTop + 8, COLOR_LABEL);
             drawFittedString(graphics, accountId, contentLeft + 8, sectionTop + 20, contentWidth - 16, COLOR_VALUE);
             drawFittedString(graphics, "Type: " + accountType, contentLeft + 8, sectionTop + 36, contentWidth - 16, COLOR_VALUE);
             drawFittedString(graphics, "Bank: " + bankName, contentLeft + 8, sectionTop + 48, contentWidth - 16, COLOR_VALUE);
             drawFittedString(graphics, "Created: " + createdDate, contentLeft + 8, sectionTop + 60, contentWidth - 16, COLOR_VALUE);
-            graphics.drawString(font, "Primary Account", contentLeft + 2, panelTop + 168, COLOR_LABEL);
+            graphics.drawString(font, UbsClientTranslations.resolve("Primary Account"), contentLeft + 2, panelTop + 168, COLOR_LABEL);
         } else if (activeTab == Tab.SECURITY) {
             if (showPinConfirmation) {
                 drawWrappedCentered(graphics, "Are you sure you want to change your PIN?",
@@ -633,9 +635,9 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 int confirmTop = confirmPinField.getY();
                 int confirmLabelY = newBottom + Math.max(0, (confirmTop - newBottom - font.lineHeight) / 2);
 
-                graphics.drawString(font, "Current PIN", contentLeft + 6, panelTop + 94, COLOR_LABEL);
-                graphics.drawString(font, "New PIN", contentLeft + 6, newLabelY, COLOR_LABEL);
-                graphics.drawString(font, "Confirm PIN", contentLeft + 6, confirmLabelY, COLOR_LABEL);
+                graphics.drawString(font, UbsClientTranslations.resolve("Current PIN"), contentLeft + 6, panelTop + 94, COLOR_LABEL);
+                graphics.drawString(font, UbsClientTranslations.resolve("New PIN"), contentLeft + 6, newLabelY, COLOR_LABEL);
+                graphics.drawString(font, UbsClientTranslations.resolve("Confirm PIN"), contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
         } else {
             graphics.drawString(font, "Per-withdrawal limit: " + MoneyText.abbreviateWithDollar(defaultWithdrawalLimit), contentLeft + 6, sectionTop + 8, COLOR_LABEL);
@@ -645,7 +647,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             graphics.drawString(font, "Remaining today: " + MoneyText.abbreviateWithDollar(dailyWithdrawalRemaining), contentLeft + 6, sectionTop + 36, COLOR_VALUE);
             drawFittedString(graphics, "Resets: " + formatResetTime(dailyResetEpochMillis), contentLeft + 152, sectionTop + 36, contentWidth - 156, COLOR_MUTED);
 
-            graphics.drawString(font, "Custom limit", contentLeft + 6, panelTop + 136, COLOR_LABEL);
+            graphics.drawString(font, UbsClientTranslations.resolve("Custom limit"), contentLeft + 6, panelTop + 136, COLOR_LABEL);
             drawFittedString(graphics, "Apply will open PIN keypad confirmation.", contentLeft + 6, panelTop + 174, contentWidth - 12, COLOR_MUTED);
         }
 

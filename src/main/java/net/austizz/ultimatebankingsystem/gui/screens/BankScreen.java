@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.PinEntryLayer;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.ScreenLayer;
 import net.minecraft.client.Minecraft;
@@ -227,12 +229,12 @@ public class BankScreen extends Screen {
 
         graphics.drawCenteredString(
             this.font,
-            Component.literal("ATM MACHINE"),
+            UbsTranslations.literal("ATM MACHINE"),
             left + PANEL_WIDTH / 2,
             top + 8,
             0xFFFFFFFF
         );
-        graphics.drawString(this.font, "SECURE TERMINAL", contentLeft + 4, statusTop + 3, 0xFF87BDE9);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("SECURE TERMINAL"), contentLeft + 4, statusTop + 3, 0xFF87BDE9);
 
         super.render(graphics, mouseX, mouseY, partialTicks);
 

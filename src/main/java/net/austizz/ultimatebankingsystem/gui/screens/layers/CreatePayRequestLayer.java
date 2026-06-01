@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
@@ -54,7 +56,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
                 contentLeft, sectionTop + 20, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal(""),
+                UbsTranslations.literal(""),
                 btn -> bankScreen.pushLayer(new PlayerSelectionLayer(
                         minecraft,
                         selectedPlayerName,
@@ -66,9 +68,9 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         ));
         updatePlayerButtonText(false);
 
-        amountField = new AtmEditBox(font, contentLeft, sectionTop + 54, contentWidth, 20, Component.literal(""));
+        amountField = new AtmEditBox(font, contentLeft, sectionTop + 54, contentWidth, 20, UbsTranslations.literal(""));
         amountField.setMaxLength(20);
-        amountField.setHint(Component.literal("Amount (e.g. 25.00)").withStyle(ChatFormatting.WHITE));
+        amountField.setHint(UbsTranslations.literal("Amount (e.g. 25.00)").withStyle(ChatFormatting.WHITE));
         styleEditBox(amountField);
         addWidget(amountField);
 
@@ -76,7 +78,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
                 contentLeft, sectionTop + 88, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal(""),
+                UbsTranslations.literal(""),
                 btn -> bankScreen.pushLayer(new AccountSelectionLayer(minecraft, selected -> {
                     if (selected == null) {
                         return;
@@ -93,7 +95,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
                 sendX, sectionTop + 120, sendWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Send Pay Request").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Send Pay Request").withStyle(ChatFormatting.WHITE),
                 btn -> sendCreateRequest()
         ));
 
@@ -103,7 +105,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
     }
@@ -164,7 +166,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
             label = "Player: " + selectedPlayerName;
         }
         int maxWidth = Math.max(16, playerSelectButton.getWidth() - 12);
-        playerSelectButton.setMessage(Component.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
+        playerSelectButton.setMessage(UbsTranslations.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
     }
 
     private void updateDestinationButtonText() {
@@ -173,7 +175,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         }
         String label = "Destination: " + resolveDestinationLabel(destinationAccountId);
         int maxWidth = Math.max(16, destinationButton.getWidth() - 12);
-        destinationButton.setMessage(Component.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
+        destinationButton.setMessage(UbsTranslations.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
     }
 
     private static UUID resolveDefaultDestinationAccountId() {
@@ -233,8 +235,8 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         int amountBottom = amountField.getY() + amountField.getHeight();
         int destinationLabelY = amountBottom + Math.max(0, (destinationButton.getY() - amountBottom - font.lineHeight) / 2);
 
-        graphics.drawString(font, "Target Player", contentLeft + 6, playerLabelY, COLOR_LABEL);
-        graphics.drawString(font, "Amount", contentLeft + 6, amountLabelY, COLOR_LABEL);
-        graphics.drawString(font, "Receive Into Account", contentLeft + 6, destinationLabelY, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Target Player"), contentLeft + 6, playerLabelY, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Amount"), contentLeft + 6, amountLabelY, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Receive Into Account"), contentLeft + 6, destinationLabelY, COLOR_LABEL);
     }
 }

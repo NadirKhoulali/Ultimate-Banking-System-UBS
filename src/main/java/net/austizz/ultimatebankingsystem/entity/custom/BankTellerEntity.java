@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.entity.custom;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
@@ -151,12 +152,12 @@ public class BankTellerEntity extends PathfinderMob {
         sendBankMottoMessage(serverPlayer);
         MinecraftServer server = serverPlayer.getServer();
         if (server == null) {
-            serverPlayer.sendSystemMessage(Component.literal("§cBank teller service is unavailable."));
+            serverPlayer.sendSystemMessage(UbsTranslations.literal("§cBank teller service is unavailable."));
             return InteractionResult.CONSUME;
         }
         CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
-            serverPlayer.sendSystemMessage(Component.literal("§cBank data is unavailable right now."));
+            serverPlayer.sendSystemMessage(UbsTranslations.literal("§cBank data is unavailable right now."));
             return InteractionResult.CONSUME;
         }
         PacketDistributor.sendToPlayer(serverPlayer, BankTellerService.buildOpenPayload(server, centralBank, serverPlayer, this));
@@ -165,7 +166,7 @@ public class BankTellerEntity extends PathfinderMob {
 
     private InteractionResult handleRemovalClick(ServerPlayer player) {
         if (!canRemove(player)) {
-            player.sendSystemMessage(Component.literal("§cOnly the owner or an operator can remove this teller."));
+            player.sendSystemMessage(UbsTranslations.literal("§cOnly the owner or an operator can remove this teller."));
             return InteractionResult.CONSUME;
         }
 
@@ -182,13 +183,13 @@ public class BankTellerEntity extends PathfinderMob {
             BankTellerInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             BankTellerPaymentInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             this.discard();
-            player.sendSystemMessage(Component.literal("§aBank Teller removed and spawn egg returned."));
+            player.sendSystemMessage(UbsTranslations.literal("§aBank Teller removed and spawn egg returned."));
             return InteractionResult.CONSUME;
         }
 
         pendingRemovePlayer = player.getUUID();
         pendingRemoveUntilTick = now + 100L;
-        player.sendSystemMessage(Component.literal("§eWarning: shift-right-click again within 5 seconds to remove this teller."));
+        player.sendSystemMessage(UbsTranslations.literal("§eWarning: shift-right-click again within 5 seconds to remove this teller."));
         return InteractionResult.CONSUME;
     }
 
@@ -318,7 +319,7 @@ public class BankTellerEntity extends PathfinderMob {
         }
         String bankName = resolveBankName(player.getServer(), bankId);
         String prefix = bankName == null || bankName.isBlank() ? "Bank" : bankName;
-        player.sendSystemMessage(Component.literal("§b[" + prefix + "] §f" + motto));
+        player.sendSystemMessage(UbsTranslations.literal("§b[" + prefix + "] §f" + motto));
     }
 
     private String getChatPrefix(ServerPlayer player) {
@@ -346,7 +347,7 @@ public class BankTellerEntity extends PathfinderMob {
 
         String safeBankName = bankName == null || bankName.isBlank() ? shortId(bankId) : bankName.trim();
         ItemStackDataCompat.setCustomName(egg,
-                Component.literal("[" + safeBankName + "] Teller Spawn Egg").withStyle(ChatFormatting.AQUA));
+                UbsTranslations.literal("[" + safeBankName + "] Teller Spawn Egg").withStyle(ChatFormatting.AQUA));
     }
 
     public static UUID readBoundBankIdFromEgg(ItemStack stack) {
@@ -383,9 +384,9 @@ public class BankTellerEntity extends PathfinderMob {
             String prefix = (bankName == null || bankName.isBlank())
                     ? shortId(bankId)
                     : bankName.trim();
-            this.setCustomName(Component.literal("[" + prefix + "] Bank Teller").withStyle(ChatFormatting.AQUA));
+            this.setCustomName(UbsTranslations.literal("[" + prefix + "] Bank Teller").withStyle(ChatFormatting.AQUA));
         } else {
-            this.setCustomName(Component.literal("Bank Teller").withStyle(ChatFormatting.AQUA));
+            this.setCustomName(UbsTranslations.literal("Bank Teller").withStyle(ChatFormatting.AQUA));
         }
         this.setCustomNameVisible(true);
     }

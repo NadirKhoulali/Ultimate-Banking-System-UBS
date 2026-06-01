@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
@@ -38,7 +39,7 @@ public class TransactionHistoryLayer extends AbstractScreenLayer {
             56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
-            Component.literal("Back").withStyle(ChatFormatting.WHITE),
+            UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
             btn -> bankScreen.popLayer()
         ));
 

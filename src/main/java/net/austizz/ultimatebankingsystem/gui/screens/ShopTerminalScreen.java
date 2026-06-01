@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopButton;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopEditBox;
 import net.austizz.ultimatebankingsystem.network.ShopTerminalAccountSummary;
@@ -54,7 +56,7 @@ public class ShopTerminalScreen extends Screen {
     private long feedbackUntilMillis = 0L;
 
     public ShopTerminalScreen(ShopTerminalOpenPayload payload) {
-        super(Component.literal("Payment Terminal"));
+        super(UbsTranslations.literal("Payment Terminal"));
         this.openPayload = payload;
         this.accounts = payload.accounts() == null ? List.of() : new ArrayList<>(payload.accounts());
         this.merchantAccountIdFromServer = payload.parseMerchantAccountId();
@@ -82,14 +84,14 @@ public class ShopTerminalScreen extends Screen {
         int rowGap = 30;
         int inputHeight = 22;
 
-        shopNameInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, inputHeight, Component.literal("Shop name"));
+        shopNameInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, inputHeight, UbsTranslations.literal("Shop name"));
         shopNameInput.setValue(openPayload.shopName());
         shopNameInput.setMaxLength(42);
         addRenderableWidget(shopNameInput);
 
         rowY += rowGap;
         int priceWidth = Math.max(120, contentWidth / 3);
-        priceInput = new DesktopEditBox(font, contentLeft, rowY, priceWidth, inputHeight, Component.literal("Price"));
+        priceInput = new DesktopEditBox(font, contentLeft, rowY, priceWidth, inputHeight, UbsTranslations.literal("Price"));
         priceInput.setValue(String.valueOf(Math.max(1L, openPayload.priceDollars())));
         priceInput.setMaxLength(16);
         addRenderableWidget(priceInput);
@@ -97,7 +99,7 @@ public class ShopTerminalScreen extends Screen {
         int ownerX = contentLeft + priceWidth + 12;
         int ownerW = Math.max(80, contentRight - ownerX);
         addRenderableWidget(new DesktopButton(ownerX, rowY, ownerW, inputHeight,
-                Component.literal("Owner: " + sanitizeOwnerName(openPayload.ownerName())),
+                UbsTranslations.literal("Owner: " + sanitizeOwnerName(openPayload.ownerName())),
                 0xFF70CBFF,
                 btn -> {}) {{
             active = false;
@@ -110,9 +112,9 @@ public class ShopTerminalScreen extends Screen {
         int accountDisplayWidth = contentWidth - selectorButtonWidth * 2 - accountMidPadding * 2;
 
         accountPrevButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, selectorButtonWidth, inputHeight,
-                Component.literal("Prev Account"), 0xFF76B7FF, btn -> stepAccount(-1)));
+                UbsTranslations.literal("Prev Account"), 0xFF76B7FF, btn -> stepAccount(-1)));
         accountNextButton = addRenderableWidget(new DesktopButton(contentRight - selectorButtonWidth, rowY, selectorButtonWidth, inputHeight,
-                Component.literal("Next Account"), 0xFF76B7FF, btn -> stepAccount(1)));
+                UbsTranslations.literal("Next Account"), 0xFF76B7FF, btn -> stepAccount(1)));
         accountSelectButton = addRenderableWidget(new DesktopButton(accountDisplayX, rowY, accountDisplayWidth, inputHeight,
                 selectedAccountCaption(), 0xFF8FD8FF, btn -> stepAccount(1)) {
             @Override
@@ -126,7 +128,7 @@ public class ShopTerminalScreen extends Screen {
         int thirdWidth = (contentWidth - 12) / 3;
         successPulseToggleButton = addRenderableWidget(new DesktopButton(
                 contentLeft, rowY, thirdWidth, inputHeight,
-                pulseOnSuccess ? Component.literal("Success Pulse: ON") : Component.literal("Success Pulse: OFF"),
+                pulseOnSuccess ? UbsTranslations.literal("Success Pulse: ON") : UbsTranslations.literal("Success Pulse: OFF"),
                 pulseOnSuccess ? 0xFF5AD98E : 0xFFD87E7E,
                 btn -> {
                     pulseOnSuccess = !pulseOnSuccess;
@@ -135,7 +137,7 @@ public class ShopTerminalScreen extends Screen {
         ));
         failurePulseToggleButton = addRenderableWidget(new DesktopButton(
                 contentLeft + thirdWidth + 6, rowY, thirdWidth, inputHeight,
-                pulseOnFailure ? Component.literal("Failure Pulse: ON") : Component.literal("Failure Pulse: OFF"),
+                pulseOnFailure ? UbsTranslations.literal("Failure Pulse: ON") : UbsTranslations.literal("Failure Pulse: OFF"),
                 pulseOnFailure ? 0xFF5AD98E : 0xFFD87E7E,
                 btn -> {
                     pulseOnFailure = !pulseOnFailure;
@@ -144,7 +146,7 @@ public class ShopTerminalScreen extends Screen {
         ));
         idlePulseToggleButton = addRenderableWidget(new DesktopButton(
                 contentLeft + (thirdWidth + 6) * 2, rowY, thirdWidth, inputHeight,
-                pulseOnIdle ? Component.literal("Idle Pulse: ON") : Component.literal("Idle Pulse: OFF"),
+                pulseOnIdle ? UbsTranslations.literal("Idle Pulse: ON") : UbsTranslations.literal("Idle Pulse: OFF"),
                 pulseOnIdle ? 0xFF5AD98E : 0xFFD87E7E,
                 btn -> {
                     pulseOnIdle = !pulseOnIdle;
@@ -153,12 +155,12 @@ public class ShopTerminalScreen extends Screen {
         ));
 
         rowY += rowGap;
-        successPulseTicksInput = new DesktopEditBox(font, contentLeft, rowY, thirdWidth, inputHeight, Component.literal("Success strength (1-15)"));
+        successPulseTicksInput = new DesktopEditBox(font, contentLeft, rowY, thirdWidth, inputHeight, UbsTranslations.literal("Success strength (1-15)"));
         successPulseTicksInput.setValue(String.valueOf(Math.max(1, openPayload.successPulseTicks())));
         successPulseTicksInput.setMaxLength(2);
         addRenderableWidget(successPulseTicksInput);
 
-        failurePulseTicksInput = new DesktopEditBox(font, contentLeft + thirdWidth + 6, rowY, thirdWidth, inputHeight, Component.literal("Failure strength (1-15)"));
+        failurePulseTicksInput = new DesktopEditBox(font, contentLeft + thirdWidth + 6, rowY, thirdWidth, inputHeight, UbsTranslations.literal("Failure strength (1-15)"));
         failurePulseTicksInput.setValue(String.valueOf(Math.max(1, openPayload.failurePulseTicks())));
         failurePulseTicksInput.setMaxLength(2);
         addRenderableWidget(failurePulseTicksInput);
@@ -169,7 +171,7 @@ public class ShopTerminalScreen extends Screen {
                 rowY,
                 thirdWidth,
                 inputHeight,
-                Component.literal("Idle strength (1-15)")
+                UbsTranslations.literal("Idle strength (1-15)")
         );
         idlePulseStrengthInput.setValue(String.valueOf(Math.max(1, openPayload.idlePulseStrength())));
         idlePulseStrengthInput.setMaxLength(2);
@@ -179,9 +181,9 @@ public class ShopTerminalScreen extends Screen {
         rowY += rowGap + 4;
         int actionWidth = (contentWidth - 8) / 2;
         saveButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, actionWidth, 24,
-                Component.literal("Save Terminal"), 0xFF62DA8E, btn -> submitSave()));
+                UbsTranslations.literal("Save Terminal"), 0xFF62DA8E, btn -> submitSave()));
         closeButton = addRenderableWidget(new DesktopButton(contentLeft + actionWidth + 8, rowY, actionWidth, 24,
-                Component.literal("Close"), 0xFF8ABAF1, btn -> onClose()));
+                UbsTranslations.literal("Close"), 0xFF8ABAF1, btn -> onClose()));
 
         refreshPulseButtons();
         updateAccountButtonsActive();
@@ -220,8 +222,8 @@ public class ShopTerminalScreen extends Screen {
         graphics.fill(panelLeft + 1, panelTop + 1, frameRight - 1, panelTop + 28, 0xFF7DA6D7);
         graphics.fill(panelLeft + 10, panelTop + 56, frameRight - 10, frameBottom - 12, 0xFF10263F);
 
-        graphics.drawString(font, "Payment Terminal Configuration", panelLeft + 12, panelTop + 10, 0xFFF6FCFF, false);
-        graphics.drawString(font, "Shift-right-click to reopen this panel from the terminal block.",
+        graphics.drawString(font, UbsClientTranslations.resolve("Payment Terminal Configuration"), panelLeft + 12, panelTop + 10, 0xFFF6FCFF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve("Shift-right-click to reopen this panel from the terminal block."),
                 panelLeft + 14, panelTop + 33, 0xFFA7D4FF, false);
 
         int infoY = panelTop + panelHeight - 26;
@@ -327,20 +329,20 @@ public class ShopTerminalScreen extends Screen {
     private void refreshPulseButtons() {
         if (successPulseToggleButton != null) {
             successPulseToggleButton.setMessage(pulseOnSuccess
-                    ? Component.literal("Success Pulse: ON")
-                    : Component.literal("Success Pulse: OFF"));
+                    ? UbsTranslations.literal("Success Pulse: ON")
+                    : UbsTranslations.literal("Success Pulse: OFF"));
             successPulseToggleButton.setAccentColor(pulseOnSuccess ? 0xFF5AD98E : 0xFFD87E7E);
         }
         if (failurePulseToggleButton != null) {
             failurePulseToggleButton.setMessage(pulseOnFailure
-                    ? Component.literal("Failure Pulse: ON")
-                    : Component.literal("Failure Pulse: OFF"));
+                    ? UbsTranslations.literal("Failure Pulse: ON")
+                    : UbsTranslations.literal("Failure Pulse: OFF"));
             failurePulseToggleButton.setAccentColor(pulseOnFailure ? 0xFF5AD98E : 0xFFD87E7E);
         }
         if (idlePulseToggleButton != null) {
             idlePulseToggleButton.setMessage(pulseOnIdle
-                    ? Component.literal("Idle Pulse: ON")
-                    : Component.literal("Idle Pulse: OFF"));
+                    ? UbsTranslations.literal("Idle Pulse: ON")
+                    : UbsTranslations.literal("Idle Pulse: OFF"));
             idlePulseToggleButton.setAccentColor(pulseOnIdle ? 0xFF5AD98E : 0xFFD87E7E);
         }
     }
@@ -373,10 +375,10 @@ public class ShopTerminalScreen extends Screen {
     private Component selectedAccountCaption() {
         ShopTerminalAccountSummary selected = getSelectedAccount();
         if (selected == null) {
-            return Component.literal("No Account Available");
+            return UbsTranslations.literal("No Account Available");
         }
         String prefix = selected.primary() ? "[Primary] " : "";
-        return Component.literal(prefix + selected.accountType() + " | $" + MoneyText.abbreviate(BigDecimal.valueOf(parseLongSafe(selected.balance()))));
+        return UbsTranslations.literal(prefix + selected.accountType() + " | $" + MoneyText.abbreviate(BigDecimal.valueOf(parseLongSafe(selected.balance()))));
     }
 
     private int resolveInitialSelectedAccountIndex() {

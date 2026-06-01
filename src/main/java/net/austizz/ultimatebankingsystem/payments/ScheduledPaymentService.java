@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.payments;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
@@ -46,7 +47,7 @@ public final class ScheduledPaymentService {
             if (!success) {
                 for (ServerPlayer online : server.getPlayerList().getPlayers()) {
                     if (online.hasPermissions(3)) {
-                        online.sendSystemMessage(Component.literal(
+                        online.sendSystemMessage(UbsTranslations.literal(
                                 "§c[UBS] Scheduled payment failed: " + payment.getPaymentId()
                                         + " (" + MoneyText.abbreviateWithDollar(payment.getAmount()) + ")"
                         ));

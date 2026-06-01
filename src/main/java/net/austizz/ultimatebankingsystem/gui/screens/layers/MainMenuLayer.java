@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.austizz.ultimatebankingsystem.network.AccountSummary;
@@ -54,7 +56,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
                     contentWidth, 22,
                     ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                     4, 4, 4, 4,
-                    Component.literal("Select Account").withStyle(ChatFormatting.WHITE),
+                    UbsTranslations.literal("Select Account").withStyle(ChatFormatting.WHITE),
                     btn -> bankScreen.pushLayer(new AccountSelectionLayer(minecraft))
             ));
         }
@@ -97,7 +99,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
                 x, y, width, height,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal(fitToWidth(label, Math.max(16, width - 12))).withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal(fitToWidth(label, Math.max(16, width - 12))).withStyle(ChatFormatting.WHITE),
                 onPress
         );
         button.active = active;
@@ -118,7 +120,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
         int cardBottom = cardTop + 32;
         drawSectionBox(graphics, contentLeft, cardTop, contentRight, cardBottom);
 
-        graphics.drawString(minecraft.font, "Selected Account", contentLeft + 8, cardTop + 6, COLOR_LABEL);
+        graphics.drawString(minecraft.font, UbsClientTranslations.resolve("Selected Account"), contentLeft + 8, cardTop + 6, COLOR_LABEL);
 
         AccountSummary selected = ClientATMData.getSelectedAccount();
         String selectedLine = selected == null

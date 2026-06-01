@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.loan;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.loan.AccountLoan;
@@ -210,7 +211,7 @@ public final class LoanService {
                             && currentGameTime < nextDue) {
                         ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                         if (borrower != null) {
-                            borrower.sendSystemMessage(Component.literal(
+                            borrower.sendSystemMessage(UbsTranslations.literal(
                                     "§eLoan payment due soon: §6" + MoneyText.abbreviateWithDollar(loan.getPeriodicPayment())
                                             + " §ein " + (nextDue - currentGameTime) + " ticks."
                             ));
@@ -251,7 +252,7 @@ public final class LoanService {
                             toRemove.add(loan.getLoanId());
                             ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                             if (borrower != null) {
-                                borrower.sendSystemMessage(Component.literal("§aLoan fully repaid. Great work."));
+                                borrower.sendSystemMessage(UbsTranslations.literal("§aLoan fully repaid. Great work."));
                             }
                         }
                         BankManager.markDirty();
@@ -267,14 +268,14 @@ public final class LoanService {
 
                     ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                     if (borrower != null) {
-                        borrower.sendSystemMessage(Component.literal(
+                        borrower.sendSystemMessage(UbsTranslations.literal(
                                 "§cLoan defaulted: you missed a payment of " + MoneyText.abbreviateWithDollar(due) + "."
                         ));
                     }
 
                     for (ServerPlayer online : server.getPlayerList().getPlayers()) {
                         if (online.hasPermissions(3)) {
-                            online.sendSystemMessage(Component.literal(
+                            online.sendSystemMessage(UbsTranslations.literal(
                                     "§c[UBS] Loan default: " + account.getPlayerUUID() + " on account " + account.getAccountUUID()
                             ));
                         }
