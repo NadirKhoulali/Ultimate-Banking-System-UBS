@@ -4309,7 +4309,7 @@ public class BankOwnerPcScreen extends Screen {
         int titleY = labelY + 16;
         int subtitleY = titleY + 14;
 
-        graphics.drawCenteredString(this.font, title, centerX, titleY, 0xFFFFFFFF);
+        graphics.drawCenteredString(this.font, UbsClientTranslations.resolve(title), centerX, titleY, 0xFFFFFFFF);
         graphics.drawCenteredString(this.font, fitToWidth(subtitle, panelW - 20), centerX, subtitleY, 0xFFD0E7FF);
     }
 
@@ -4543,7 +4543,7 @@ public class BankOwnerPcScreen extends Screen {
             if (idx >= lines.size()) {
                 break;
             }
-            graphics.drawString(this.font, lines.get(idx), bodyX, lineY, 0xFFE7F3FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve(lines.get(idx)), bodyX, lineY, 0xFFE7F3FF, false);
             lineY += LINE_HEIGHT;
         }
         graphics.disableScissor();
@@ -4795,47 +4795,47 @@ public class BankOwnerPcScreen extends Screen {
             if ("SHOW_RESERVE".equals(normalizedAction)) {
                 if (maxRows-- > 0) {
                     graphics.drawString(this.font, UbsClientTranslations.resolve("Reserve Audit"), x + 8, rowY, 0xFFE6F3FF, false);
-                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Status: " + data.status()), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Declared Reserve: $" + compactCurrency(data.reserve()), x + 8, rowY, 0xFFD3E9FF, false);
-                    graphics.drawString(this.font, "Minimum Reserve: $" + compactCurrency(data.minReserve()), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Declared Reserve: $" + compactCurrency(data.reserve())), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Minimum Reserve: $" + compactCurrency(data.minReserve())), x + (width / 2), rowY, 0xFFD3E9FF, false);
                 }
                 rowY += 12;
                 if (maxRows > 0) {
-                    graphics.drawString(this.font, "Daily Used: $" + compactCurrency(data.dailyUsed()), x + 8, rowY, 0xFFC6DEFA, false);
-                    graphics.drawString(this.font, "Daily Cap: $" + compactCurrency(data.dailyCap()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Daily Used: $" + compactCurrency(data.dailyUsed())), x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Daily Cap: $" + compactCurrency(data.dailyCap())), x + (width / 2), rowY, 0xFFC6DEFA, false);
                 }
             } else if ("SHOW_DASHBOARD".equals(normalizedAction)) {
                 if (maxRows-- > 0) {
                     graphics.drawString(this.font, UbsClientTranslations.resolve("Operations Snapshot"), x + 8, rowY, 0xFFE6F3FF, false);
-                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Status: " + data.status()), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
-                    graphics.drawString(this.font, "Accounts: " + data.accountsCount(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20))), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Accounts: " + data.accountsCount()), x + (width / 2), rowY, 0xFFD3E9FF, false);
                 }
                 rowY += 12;
                 if (maxRows > 0) {
-                    graphics.drawString(this.font, "Fed Funds: " + data.federalFundsRate() + "%", x + 8, rowY, 0xFFC6DEFA, false);
-                    graphics.drawString(this.font, "Remaining Today: $" + compactCurrency(data.dailyRemaining()), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Fed Funds: " + data.federalFundsRate() + "%"), x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Remaining Today: $" + compactCurrency(data.dailyRemaining())), x + (width / 2), rowY, 0xFFC6DEFA, false);
                 }
             } else {
                 if (maxRows-- > 0) {
                     graphics.drawString(this.font, UbsClientTranslations.resolve("Bank Profile"), x + 8, rowY, 0xFFE6F3FF, false);
-                    graphics.drawString(this.font, "Status: " + data.status(), x + (width / 2), rowY, 0xFFE6F3FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Status: " + data.status()), x + (width / 2), rowY, 0xFFE6F3FF, false);
                 }
                 rowY += 12;
                 if (maxRows-- > 0) {
-                    graphics.drawString(this.font, "Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20)), x + 8, rowY, 0xFFD3E9FF, false);
-                    graphics.drawString(this.font, "Model: " + data.ownershipModel(), x + (width / 2), rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Owner: " + fitToWidth(data.ownerName(), Math.max(40, width / 2 - 20))), x + 8, rowY, 0xFFD3E9FF, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Model: " + data.ownershipModel()), x + (width / 2), rowY, 0xFFD3E9FF, false);
                 }
                 rowY += 12;
                 if (maxRows > 0) {
-                    graphics.drawString(this.font, "Color: " + data.color(), x + 8, rowY, 0xFFC6DEFA, false);
-                    graphics.drawString(this.font, "Motto: " + fitToWidth(data.motto().isBlank() ? "-" : data.motto(), Math.max(40, width / 2 - 20)), x + (width / 2), rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Color: " + data.color()), x + 8, rowY, 0xFFC6DEFA, false);
+                    graphics.drawString(this.font, UbsClientTranslations.resolve("Motto: " + fitToWidth(data.motto().isBlank() ? "-" : data.motto(), Math.max(40, width / 2 - 20))), x + (width / 2), rowY, 0xFFC6DEFA, false);
                 }
             }
         }
@@ -4852,7 +4852,7 @@ public class BankOwnerPcScreen extends Screen {
         if (cards.isEmpty()) {
             String query = formValues.getOrDefault("overview.accounts.search", "").trim();
             if ("SHOW_ACCOUNTS".equalsIgnoreCase(action) && !query.isBlank()) {
-                graphics.drawString(this.font, "No accounts match \"" + fitToWidth(query, 40) + "\".", x + 6, y + 8, 0xFFE6F3FF, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve("No accounts match") + " \"" + fitToWidth(query, 40) + "\".", x + 6, y + 8, 0xFFE6F3FF, false);
                 graphics.drawString(this.font, UbsClientTranslations.resolve("Try player name, type, or account id."), x + 6, y + 20, 0xFFBFD7EE, false);
             } else {
                 graphics.drawString(this.font, UbsClientTranslations.resolve("No entries available."), x + 6, y + 8, 0xFFE6F3FF, false);
@@ -5245,8 +5245,10 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(modalX, modalY + 24, modalX + modalW, modalY + 25, 0x88A8CDEE);
 
         graphics.drawString(this.font, UbsClientTranslations.resolve("Confirm Offer Acceptance"), modalX + 8, modalY + 7, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth("Offer " + offer.id() + " from " + offer.lender(), modalW - 16), modalX + 8, modalY + 34, 0xFFD6E9FF, false);
-        graphics.drawString(this.font, fitToWidth("Amount " + offer.amountText() + " at " + offer.aprText(), modalW - 16), modalX + 8, modalY + 46, 0xFFD6E9FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Offer") + " " + offer.id() + " "
+                + UbsClientTranslations.resolve("from") + " " + offer.lender(), modalW - 16), modalX + 8, modalY + 34, 0xFFD6E9FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Amount") + " " + offer.amountText() + " "
+                + UbsClientTranslations.resolve("at") + " " + offer.aprText(), modalW - 16), modalX + 8, modalY + 46, 0xFFD6E9FF, false);
         graphics.drawString(this.font, fitToWidth("Term: " + offer.termText(), modalW - 16), modalX + 8, modalY + 58, 0xFFC4DBF7, false);
 
         int btnY = modalY + modalH - 24;
@@ -5478,12 +5480,12 @@ public class BankOwnerPcScreen extends Screen {
             if (lineY > y + height - 28) {
                 break;
             }
-            graphics.drawString(this.font, line, x + 8, lineY, 0xFFCFE5FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve(line), x + 8, lineY, 0xFFCFE5FF, false);
             lineY += LINE_HEIGHT;
         }
 
         if (lineY <= y + height - 20) {
-            graphics.drawString(this.font, "Example: " + fitToWidth(help.example(), width - 66), x + 8, lineY + 4, 0xFF98E2AF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Example: ") + fitToWidth(help.example(), width - 66), x + 8, lineY + 4, 0xFF98E2AF, false);
         }
     }
 
@@ -5498,7 +5500,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFF2E4D6D);
         graphics.fill(x, y, x + width, y + height, 0x8A1A304A);
         graphics.fill(x, y, x + width, y + 2, accent);
-        graphics.drawString(this.font, label, x + 6, y + 7, 0xFFC6DEF7, false);
+        graphics.drawString(this.font, UbsClientTranslations.resolve(label), x + 6, y + 7, 0xFFC6DEF7, false);
         graphics.drawString(this.font, fitToWidth(value, Math.max(40, width - 12)), x + 6, y + 22, 0xFFFFFFFF, false);
     }
 
@@ -5572,7 +5574,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         List<String> wrapped = new ArrayList<>();
         for (String raw : lines) {
-            String line = raw == null ? "" : raw;
+            String line = raw == null ? "" : UbsClientTranslations.resolve(raw);
             if (line.isEmpty()) {
                 wrapped.add("");
                 continue;
@@ -5626,7 +5628,7 @@ public class BankOwnerPcScreen extends Screen {
 
         graphics.drawString(this.font, UbsClientTranslations.resolve("Create New Player Bank"), left + 8, top + 10, 0xFFFFFFFF, false);
         graphics.drawString(this.font,
-                "Owned: " + ClientOwnerPcData.getOwnedCount() + " / " + ClientOwnerPcData.getMaxBanks(),
+                UbsClientTranslations.resolve("Owned: " + ClientOwnerPcData.getOwnedCount() + " / " + ClientOwnerPcData.getMaxBanks()),
                 left + 230,
                 top + 10,
                 0xFFE8F2FF,
@@ -5634,7 +5636,7 @@ public class BankOwnerPcScreen extends Screen {
 
         graphics.drawString(this.font, UbsClientTranslations.resolve("Ownership Type"), left + 8, top + 56, 0xFF1D2F4A, false);
         graphics.drawString(this.font,
-                "Selected: " + prettifyOwnership(selectedOwnershipModel),
+                UbsClientTranslations.resolve("Selected: " + prettifyOwnership(selectedOwnershipModel)),
                 left + 8,
                 top + 68,
                 0xFF2A496E,
@@ -5684,7 +5686,8 @@ public class BankOwnerPcScreen extends Screen {
             graphics.fill(modalX, modalY, modalX + modalW, modalY + 20, 0xE6285A8B);
             graphics.drawString(this.font, UbsClientTranslations.resolve("Unsaved changes"), modalX + 8, modalY + 6, 0xFFFFFFFF, false);
             String label = unsavedCloseTarget == UtilityApp.PAINT ? "Paint" : "Notepad";
-            graphics.drawString(this.font, "Save " + label + " before closing?", modalX + 8, modalY + 30, 0xFFD5E9FF, false);
+            graphics.drawString(this.font, UbsClientTranslations.resolve("Save") + " " + UbsClientTranslations.resolve(label)
+                    + " " + UbsClientTranslations.resolve("before closing?"), modalX + 8, modalY + 30, 0xFFD5E9FF, false);
         }
     }
 
@@ -5825,7 +5828,7 @@ public class BankOwnerPcScreen extends Screen {
         paintCanvasY = canvasAreaY + Math.max(0, (canvasAreaH - pixelH) / 2);
 
         graphics.drawString(this.font,
-                "Brush: " + paintBrushSize + "   Color: " + paintColorLabel(paintSelectedColor),
+                UbsClientTranslations.resolve("Brush: " + paintBrushSize + "   Color: " + paintColorLabel(paintSelectedColor)),
                 x + 6,
                 y + 10,
                 0xFFE6F3FF,
@@ -5900,7 +5903,7 @@ public class BankOwnerPcScreen extends Screen {
                 int accent = hidden ? 0xFFD95C5C : 0xFF6FD39A;
                 graphics.fill(card.x(), card.y(), card.x() + card.width(), card.y() + 2, accent);
                 String status = hidden ? "Hidden" : "Visible";
-                graphics.drawString(this.font, status, card.x() + 8, card.y() + card.height() - 11, hidden ? 0xFFFFC7C7 : 0xFFC7FFE0, false);
+                graphics.drawString(this.font, UbsClientTranslations.resolve(status), card.x() + 8, card.y() + card.height() - 11, hidden ? 0xFFFFC7C7 : 0xFFC7FFE0, false);
             }
             return;
         }
