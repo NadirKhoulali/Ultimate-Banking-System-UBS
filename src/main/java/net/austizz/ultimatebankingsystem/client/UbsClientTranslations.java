@@ -57,6 +57,11 @@ public final class UbsClientTranslations {
             return byDash;
         }
 
+        String bySpacedColumns = resolveDelimited(text, "   ", depth + 1);
+        if (!bySpacedColumns.equals(text)) {
+            return bySpacedColumns;
+        }
+
         int idx = text.indexOf(": ");
         if (idx > 0) {
             String prefix = text.substring(0, idx + 2);

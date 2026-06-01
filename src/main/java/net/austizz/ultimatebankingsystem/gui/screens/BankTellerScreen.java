@@ -545,7 +545,7 @@ public class BankTellerScreen extends Screen {
         graphics.fill(panelLeft + 12, panelTop + 46, right - 12, bottom - 48, 0xFF10263F);
 
         String title = payload == null ? "Bank Teller" : payload.tellerName();
-        graphics.drawString(font, title, panelLeft + 12, panelTop + 10, 0xFFF3F9FF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve(title), panelLeft + 12, panelTop + 10, 0xFFF3F9FF, false);
 
         String subTitle = payload == null
                 ? "No teller data available"
@@ -567,7 +567,7 @@ public class BankTellerScreen extends Screen {
             String issueFee = selected == null ? safe(payload == null ? "0" : payload.cardIssueFee()) : safe(selected.cardIssueFee());
             String replacementFee = selected == null ? safe(payload == null ? "0" : payload.cardReplacementFee()) : safe(selected.cardReplacementFee());
             String feeLine = "Issue Fee: $" + issueFee + " | Replacement Fee: $" + replacementFee;
-            graphics.drawString(font, feeLine, panelLeft + 18, tabInfoY, 0xFFD1E7FF, false);
+            graphics.drawString(font, UbsClientTranslations.resolve(feeLine), panelLeft + 18, tabInfoY, 0xFFD1E7FF, false);
             String status = !tellerBound
                     ? "This teller is unbound. Only Central Bank accounts are eligible for cards."
                     : eligible && hasActiveCard
@@ -578,9 +578,9 @@ public class BankTellerScreen extends Screen {
             graphics.drawString(font, fitToWidth(status, panelWidth - 36), panelLeft + 18, tabInfoY + 14,
                     eligible ? 0xFF8DF0B2 : 0xFFFFB7A3, false);
             graphics.drawString(font,
-                    paymentMode == PaymentMode.ACCOUNT
+                    UbsClientTranslations.resolve(paymentMode == PaymentMode.ACCOUNT
                             ? "Payment mode: Account (fees debit from selected account)"
-                            : "Payment mode: Cash/Card (UI closes, then pay by right-clicking teller)",
+                            : "Payment mode: Cash/Card (UI closes, then pay by right-clicking teller)"),
                     panelLeft + 18,
                     tabInfoY + 28,
                     0xFFB9D8FF,
@@ -590,7 +590,8 @@ public class BankTellerScreen extends Screen {
             String targetBank = bound
                     ? safe(payload == null ? "" : payload.boundBankName())
                     : "Central Bank";
-            String lineOne = "Target Bank: " + targetBank + (bound ? "" : " (Unbound teller fallback)");
+            String lineOne = UbsClientTranslations.resolve("Target Bank: ") + targetBank
+                    + (bound ? "" : UbsClientTranslations.resolve(" (Unbound teller fallback)"));
             graphics.drawString(font, fitToWidth(lineOne, panelWidth - 36), panelLeft + 18, tabInfoY, 0xFFD1E7FF, false);
             String lineTwo = "Opening fee applies. First account at this bank costs extra to generate bank profit.";
             graphics.drawString(font, fitToWidth(lineTwo, panelWidth - 36), panelLeft + 18, tabInfoY + 14, 0xFFB9D8FF, false);
@@ -677,6 +678,7 @@ public class BankTellerScreen extends Screen {
         if (text == null || text.isBlank()) {
             return "";
         }
+        text = UbsClientTranslations.resolve(text);
         var font = net.minecraft.client.Minecraft.getInstance().font;
         if (font.width(text) <= width) {
             return text;

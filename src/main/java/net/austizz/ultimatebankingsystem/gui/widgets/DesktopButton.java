@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.widgets;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -114,7 +115,7 @@ public class DesktopButton extends AbstractButton {
 
         Font font = Minecraft.getInstance().font;
         int labelStart = innerX1 + 19 + labelOffsetX;
-        String label = fitToWidth(font, this.getMessage().getString(), Math.max(0, x2 - labelStart - 4));
+        String label = fitToWidth(font, UbsClientTranslations.resolve(this.getMessage().getString()), Math.max(0, x2 - labelStart - 4));
         int textColor = resolveTextColor(this.getMessage().getStyle().getColor(), this.active);
         graphics.drawString(
                 font,

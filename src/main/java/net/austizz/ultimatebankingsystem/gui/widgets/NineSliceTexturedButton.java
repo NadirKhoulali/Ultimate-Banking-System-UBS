@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.widgets;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
@@ -109,7 +110,7 @@ public class NineSliceTexturedButton extends AbstractButton {
 
         // Optional label
         if (!getMessage().getString().isEmpty()) {
-            String fittedText = fitToWidth(getMessage().getString(), Math.max(0, this.width - 8));
+            String fittedText = fitToWidth(UbsClientTranslations.resolve(getMessage().getString()), Math.max(0, this.width - 8));
             int color = resolveTextColor(getMessage().getStyle().getColor(), this.active);
             graphics.drawCenteredString(
                     Minecraft.getInstance().font,
