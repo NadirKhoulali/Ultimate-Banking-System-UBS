@@ -228,17 +228,17 @@ public class ShopTerminalScreen extends Screen {
 
         int infoY = panelTop + panelHeight - 26;
         String sales = "Sales: $" + MoneyText.abbreviate(BigDecimal.valueOf(totalSalesDollars));
-        graphics.drawString(font, sales, panelLeft + 14, infoY, 0xFFB8E4FF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve(sales), panelLeft + 14, infoY, 0xFFB8E4FF, false);
 
         ShopTerminalAccountSummary selected = getSelectedAccount();
         String accountLine = selected == null
                 ? "Merchant account: Not selected"
                 : "Merchant account: " + shortAccountLine(selected);
-        graphics.drawString(font, accountLine, panelLeft + 14, infoY - 12, 0xFFCFE8FF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve(accountLine), panelLeft + 14, infoY - 12, 0xFFCFE8FF, false);
 
         if (!feedbackMessage.isBlank()) {
             int color = feedbackSuccess ? 0xFF7DFFB0 : 0xFFFFA6A6;
-            graphics.drawString(font, feedbackMessage, panelLeft + 14, panelTop + panelHeight - 56, color, false);
+            graphics.drawString(font, UbsClientTranslations.resolve(feedbackMessage), panelLeft + 14, panelTop + panelHeight - 56, color, false);
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);

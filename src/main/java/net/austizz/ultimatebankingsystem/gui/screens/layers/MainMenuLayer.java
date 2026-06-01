@@ -99,7 +99,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
                 x, y, width, height,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                UbsTranslations.literal(fitToWidth(label, Math.max(16, width - 12))).withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal(label).withStyle(ChatFormatting.WHITE),
                 onPress
         );
         button.active = active;

@@ -165,8 +165,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         } else {
             label = "Player: " + selectedPlayerName;
         }
-        int maxWidth = Math.max(16, playerSelectButton.getWidth() - 12);
-        playerSelectButton.setMessage(UbsTranslations.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
+        playerSelectButton.setMessage(UbsTranslations.literal(label).withStyle(ChatFormatting.WHITE));
     }
 
     private void updateDestinationButtonText() {
@@ -174,8 +173,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
             return;
         }
         String label = "Destination: " + resolveDestinationLabel(destinationAccountId);
-        int maxWidth = Math.max(16, destinationButton.getWidth() - 12);
-        destinationButton.setMessage(UbsTranslations.literal(fitToWidth(label, maxWidth)).withStyle(ChatFormatting.WHITE));
+        destinationButton.setMessage(UbsTranslations.literal(label).withStyle(ChatFormatting.WHITE));
     }
 
     private static UUID resolveDefaultDestinationAccountId() {

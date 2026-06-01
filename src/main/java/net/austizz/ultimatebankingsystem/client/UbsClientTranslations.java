@@ -8,6 +8,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class UbsClientTranslations {
     private static final int MAX_CACHE_SIZE = 4096;
     private static final Map<String, String> CACHE = new ConcurrentHashMap<>();
+    private static final String[] LEADING_PREFIX_KEYS = {
+            "Copied offer id ",
+            "Opened canvas ",
+            "Opened note ",
+            "Submitting accept for offer ",
+            "[Primary] ",
+            "Showing ",
+            "Loading ",
+            "Refresh "
+    };
+    private static volatile String languageCode = "";
 
     private UbsClientTranslations() {
     }
@@ -16,6 +27,7 @@ public final class UbsClientTranslations {
         if (keyOrText == null || keyOrText.isEmpty()) {
             return "";
         }
+        syncLanguageCache();
 
         String cached = CACHE.get(keyOrText);
         if (cached != null) {
@@ -57,9 +69,19 @@ public final class UbsClientTranslations {
             return byDash;
         }
 
+        String byAt = resolveDelimited(text, " @ ", depth + 1);
+        if (!byAt.equals(text)) {
+            return byAt;
+        }
+
         String bySpacedColumns = resolveDelimited(text, "   ", depth + 1);
         if (!bySpacedColumns.equals(text)) {
             return bySpacedColumns;
+        }
+
+        String byOf = resolveDelimited(text, " of ", depth + 1);
+        if (!byOf.equals(text)) {
+            return byOf;
         }
 
         int idx = text.indexOf(": ");
@@ -67,11 +89,32 @@ public final class UbsClientTranslations {
             String prefix = text.substring(0, idx + 2);
             String localizedPrefix = localizePrefix(prefix);
             if (!localizedPrefix.equals(prefix)) {
-                return localizedPrefix + text.substring(idx + 2);
+                return localizedPrefix + resolveInternal(text.substring(idx + 2), depth + 1);
             }
         }
 
+        int parenIdx = text.indexOf(" (");
+        if (parenIdx > 0) {
+            String prefix = text.substring(0, parenIdx);
+            if (I18n.exists(prefix)) {
+                return I18n.get(prefix) + text.substring(parenIdx);
+            }
+        }
+
+        String byLeadingPrefix = resolveLeadingPrefix(text, depth + 1);
+        if (!byLeadingPrefix.equals(text)) {
+            return byLeadingPrefix;
+        }
+
         return text;
+    }
+
+    private static void syncLanguageCache() {
+        String selectedLanguage = I18n.get("language.code");
+        if (!selectedLanguage.equals(languageCode)) {
+            languageCode = selectedLanguage;
+            CACHE.clear();
+        }
     }
 
     private static String resolveDelimited(String text, String delimiter, int depth) {
@@ -93,7 +136,8 @@ public final class UbsClientTranslations {
         if (!changed) {
             return text;
         }
-        return String.join(delimiter, parts);
+        String localizedDelimiter = I18n.exists(delimiter) ? I18n.get(delimiter) : delimiter;
+        return String.join(localizedDelimiter, parts);
     }
 
     private static String localizePrefix(String prefix) {
@@ -114,5 +158,17 @@ public final class UbsClientTranslations {
             }
         }
         return prefix;
+    }
+
+    private static String resolveLeadingPrefix(String text, int depth) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        for (String prefix : LEADING_PREFIX_KEYS) {
+            if (text.startsWith(prefix) && text.length() > prefix.length() && I18n.exists(prefix)) {
+                return I18n.get(prefix) + resolveInternal(text.substring(prefix.length()), depth);
+            }
+        }
+        return text;
     }
 }

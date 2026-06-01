@@ -199,7 +199,9 @@ public class TransferLayer extends AbstractScreenLayer {
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (showConfirmation) {
-            String confirmationText = "Transfer " + MoneyText.abbreviateWithDollar(pendingAmount) + " to account ["
+            String confirmationText = UbsClientTranslations.resolve("Transfer ")
+                    + MoneyText.abbreviateWithDollar(pendingAmount)
+                    + UbsClientTranslations.resolve(" to account [")
                     + pendingRecipient.substring(0, Math.min(8, pendingRecipient.length())) + "...]?";
             drawWrappedCentered(graphics, confirmationText,
                     panelLeft + panelWidth / 2, sectionTop + 28, contentWidth - 10, 0xFFFFFF77, 2);
