@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.command;
 
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -171,7 +172,7 @@ public class UBSCommands {
     private record LoanProductSpec(String name, BigDecimal maxAmount, double interestRate, long durationTicks) {}
 
     private static MutableComponent moneyLiteral(String text) {
-        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+        return UbsTranslations.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
     }
 
     private static Component ubsMessage(ChatFormatting accentColor, String title, Component body) {

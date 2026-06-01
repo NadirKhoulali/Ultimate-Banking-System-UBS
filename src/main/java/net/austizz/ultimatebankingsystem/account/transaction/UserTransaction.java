@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.account.transaction;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -94,7 +95,7 @@ public class UserTransaction {
         if (sender.isFrozen()) {
             if (senderPlayer != null) {
                 String reason = sender.getFrozenReason();
-                senderPlayer.sendSystemMessage(Component.literal(
+                senderPlayer.sendSystemMessage(UbsTranslations.literal(
                         "§cThis account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
                 ));
             }
@@ -103,7 +104,7 @@ public class UserTransaction {
 
         if (receiver.isFrozen()) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cTransfer failed: the destination account is frozen."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cTransfer failed: the destination account is frozen."));
             }
             return false;
         }
@@ -119,7 +120,7 @@ public class UserTransaction {
                 : BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get());
         if (amount.compareTo(bankSingleLimit) > 0) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cTransfer exceeds this bank's single transaction limit."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cTransfer exceeds this bank's single transaction limit."));
             }
             flagSuspicious(centralBank, sender, receiver, amount, "FLAG_BANK_SINGLE_LIMIT");
             return false;
@@ -130,7 +131,7 @@ public class UserTransaction {
             if (senderPlayer != null) {
                 String senderBankLabel = safeBankName(senderBank);
                 String receiverBankLabel = safeBankName(receiverBank);
-                senderPlayer.sendSystemMessage(Component.literal(
+                senderPlayer.sendSystemMessage(UbsTranslations.literal(
                         "§cTransfer blocked due to bank status. "
                                 + senderBankLabel + ": " + senderStatus + " | "
                                 + receiverBankLabel + ": " + receiverStatus + "."
@@ -146,7 +147,7 @@ public class UserTransaction {
                 : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get());
         if (senderDailyVolume.add(amount).compareTo(bankDailyPlayerLimit) > 0) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cDaily player outgoing transaction volume limit reached."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cDaily player outgoing transaction volume limit reached."));
             }
             flagSuspicious(centralBank, sender, receiver, amount, "FLAG_DAILY_PLAYER_VOLUME");
             return false;
@@ -158,7 +159,7 @@ public class UserTransaction {
                 : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
         if (bankDailyVolume.add(amount).compareTo(bankDailyLimit) > 0) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cDaily bank outgoing volume limit reached."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cDaily bank outgoing volume limit reached."));
             }
             flagSuspicious(centralBank, sender, receiver, amount, "FLAG_DAILY_BANK_VOLUME");
             return false;
@@ -169,7 +170,7 @@ public class UserTransaction {
             BigDecimal reserveAfter = senderBank.getDeclaredReserve().subtract(amount);
             if (reserveAfter.compareTo(senderBank.getMinimumRequiredReserve()) < 0) {
                 if (senderPlayer != null) {
-                    senderPlayer.sendSystemMessage(Component.literal("§cTransfer blocked: sender bank reserve requirement would be breached."));
+                    senderPlayer.sendSystemMessage(UbsTranslations.literal("§cTransfer blocked: sender bank reserve requirement would be breached."));
                 }
                 flagSuspicious(centralBank, sender, receiver, amount, "FLAG_RESERVE_REQUIREMENT_BREACH");
                 return false;
@@ -179,7 +180,7 @@ public class UserTransaction {
         // Per-account rate limit (outgoing)
         if (!sender.tryConsumeOutgoingTransaction()) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(Component.literal("§cYou're sending transactions too fast. Please wait a moment."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cYou're sending transactions too fast. Please wait a moment."));
             }
             return false;
         }
@@ -187,13 +188,13 @@ public class UserTransaction {
         Player player = senderPlayer;
 
         if (player != null && sender.getBalance().compareTo(amount) < 0) {
-            player.sendSystemMessage(Component.literal("§cNot enough balance to perform this transaction!"));
+            player.sendSystemMessage(UbsTranslations.literal("§cNot enough balance to perform this transaction!"));
             return false;
         }
 
         if (!sender.RemoveBalance(amount)) {
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§cSomething went wrong, Please try again!"));
+                player.sendSystemMessage(UbsTranslations.literal("§cSomething went wrong, Please try again!"));
             }
             return false;
         }

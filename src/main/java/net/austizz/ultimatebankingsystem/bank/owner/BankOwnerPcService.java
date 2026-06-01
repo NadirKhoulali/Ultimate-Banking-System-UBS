@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.bank.owner;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -981,7 +982,7 @@ public final class BankOwnerPcService {
                 if (!online.hasPermissions(3)) {
                     continue;
                 }
-                online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                online.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                         MoneyText.abbreviateCurrencyTokens(
                                 "§6[UBS] New bank application from "
                                         + player.getName().getString()
@@ -1145,7 +1146,7 @@ public final class BankOwnerPcService {
 
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
-            onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            onlineTarget.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(
                             "§aYou were assigned role §e" + role + " §aat bank " + bank.getBankName()
                     )
@@ -1291,7 +1292,7 @@ public final class BankOwnerPcService {
 
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
-            onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            onlineTarget.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(
                             "§aYou were hired by " + bank.getBankName() + " as " + role + " ($" + salary.toPlainString() + ")."
                     )
@@ -1324,7 +1325,7 @@ public final class BankOwnerPcService {
 
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
-            onlineTarget.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            onlineTarget.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(
                             "§cYou were removed from employment at " + bank.getBankName() + "."
                     )
@@ -1589,7 +1590,7 @@ public final class BankOwnerPcService {
 
         ServerPlayer lenderOwner = server.getPlayerList().getPlayer(lenderBank.getBankOwnerId());
         if (lenderOwner != null) {
-            lenderOwner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            lenderOwner.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(
                             "§aYour inter-bank offer " + shortId(offerId)
                                     + " was accepted by " + borrowerBank.getBankName()
@@ -1642,7 +1643,7 @@ public final class BankOwnerPcService {
             if (!online.hasPermissions(3)) {
                 continue;
             }
-            online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            online.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(
                             "§6[UBS] New bank appeal from " + actor.getName().getString()
                                     + " (ID: " + appealId + ")."
@@ -2569,7 +2570,7 @@ public final class BankOwnerPcService {
         if (owner == null) {
             return;
         }
-        owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+        owner.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                 MoneyText.abbreviateCurrencyTokens(
                         "§6[UBS] Bank status update for " + bank.getBankName() + ": " + oldStatus + " -> " + newStatus
                 )
@@ -2809,3 +2810,4 @@ public final class BankOwnerPcService {
 
     private record LoanProductSpec(String name, BigDecimal maxAmount, double interestRate, long durationTicks) {}
 }
+

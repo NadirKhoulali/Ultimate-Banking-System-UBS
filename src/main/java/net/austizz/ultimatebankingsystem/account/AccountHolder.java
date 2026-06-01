@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.account;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
@@ -180,7 +181,7 @@ public class AccountHolder {
     }
 //    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
 //        if (this.balance.compareTo(amount) <= 0) {
-//            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
+//            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(UbsTranslations.literal("Amount is not valid!"));
 //            return false;
 //        }
 //
@@ -201,34 +202,34 @@ public class AccountHolder {
             Bank bank = centralBank.getBank(this.BankId);
 
             if (bank == null) {
-                p.sendSystemMessage(Component.literal("Bank not found!"));
+                p.sendSystemMessage(UbsTranslations.literal("Bank not found!"));
                 return;
             }
 
             bank.RemoveAccount(this);
 
-            p.sendSystemMessage(Component.literal("Your account has been successfully terminated. Your balance has been transferred to the bank.")
+            p.sendSystemMessage(UbsTranslations.literal("Your account has been successfully terminated. Your balance has been transferred to the bank.")
                     .withStyle(ChatFormatting.DARK_RED));
 
             UltimateBankingSystem.LOGGER.debug("Account terminated for {}", p.getScoreboardName());
         });
 
         // Het bericht opbouwen
-        player.sendSystemMessage(Component.literal("Are you sure you want to terminate your account?\n")
-                .append(Component.literal("By Agreeing to terminate your account, your Balance will \nremain with the bank permanently!\n\n")
+        player.sendSystemMessage(UbsTranslations.literal("Are you sure you want to terminate your account?\n")
+                .append(UbsTranslations.literal("By Agreeing to terminate your account, your Balance will \nremain with the bank permanently!\n\n")
                         .withStyle(ChatFormatting.GRAY))
 
                 // De "JA" knop
-                .append(Component.literal("[Yes, I Agree] ")
+                .append(UbsTranslations.literal("[Yes, I Agree] ")
                         .setStyle(Style.EMPTY
                                 .withBold(true)
                                 .withColor(ChatFormatting.RED)
                                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ubs_action " + yesCallbackId))
-                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to permanently delete"))))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, UbsTranslations.literal("Click to permanently delete"))))
                 )
 
                 // The "NO" button (no callback needed, just dismisses or sends a simple message)
-                .append(Component.literal(" [No, I Disagree]")
+                .append(UbsTranslations.literal(" [No, I Disagree]")
                         .setStyle(Style.EMPTY
                                 .withBold(true)
                                 .withColor(ChatFormatting.GREEN)

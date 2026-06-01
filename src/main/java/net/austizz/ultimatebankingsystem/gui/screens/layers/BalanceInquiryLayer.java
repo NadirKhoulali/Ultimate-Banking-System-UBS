@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
@@ -45,7 +47,7 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
             56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
-            Component.literal("Back").withStyle(ChatFormatting.WHITE),
+            UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
             btn -> bankScreen.popLayer()
         ));
 
@@ -104,23 +106,23 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         int labelColor = COLOR_LABEL;
         int valueColor = COLOR_VALUE;
 
-        graphics.drawString(font, "Account Type:", labelX, y, labelColor);
+        graphics.drawString(font, UbsClientTranslations.resolve("Account Type:"), labelX, y, labelColor);
         drawFittedString(graphics, accountType, valueX, y, valueMaxWidth, valueColor);
         y += lineSpacing;
 
-        graphics.drawString(font, "Bank Name:", labelX, y, labelColor);
+        graphics.drawString(font, UbsClientTranslations.resolve("Bank Name:"), labelX, y, labelColor);
         drawFittedString(graphics, bankName, valueX, y, valueMaxWidth, valueColor);
         y += lineSpacing;
 
-        graphics.drawString(font, "Account ID:", labelX, y, labelColor);
+        graphics.drawString(font, UbsClientTranslations.resolve("Account ID:"), labelX, y, labelColor);
         drawFittedString(graphics, accountId, valueX, y, valueMaxWidth, valueColor);
         y += lineSpacing;
 
-        graphics.drawString(font, "Balance:", labelX, y, labelColor);
+        graphics.drawString(font, UbsClientTranslations.resolve("Balance:"), labelX, y, labelColor);
         drawFittedString(graphics, MoneyText.abbreviateWithDollar(balance), valueX, y, valueMaxWidth, COLOR_SUCCESS);
         y += lineSpacing;
 
-        graphics.drawString(font, "Created:", labelX, y, labelColor);
+        graphics.drawString(font, UbsClientTranslations.resolve("Created:"), labelX, y, labelColor);
         drawFittedString(graphics, createdDate, valueX, y, valueMaxWidth, valueColor);
     }
 }

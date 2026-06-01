@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.item;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.entity.ModEntities;
@@ -53,17 +54,17 @@ public class BankTellerSpawnEggItem extends Item {
         Bank boundBank = null;
         if (boundBankId != null) {
             if (centralBank == null) {
-                player.sendSystemMessage(Component.literal("§cBank data is unavailable right now."));
+                player.sendSystemMessage(UbsTranslations.literal("§cBank data is unavailable right now."));
                 return InteractionResult.FAIL;
             }
             boundBank = centralBank.getBank(boundBankId);
             if (boundBank == null) {
-                player.sendSystemMessage(Component.literal("§cThis teller egg is bound to a bank that no longer exists."));
+                player.sendSystemMessage(UbsTranslations.literal("§cThis teller egg is bound to a bank that no longer exists."));
                 return InteractionResult.FAIL;
             }
             int activeCount = BankTellerEntity.countActiveTellersForBank(serverLevel.getServer(), boundBankId);
             if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
-                player.sendSystemMessage(Component.literal(
+                player.sendSystemMessage(UbsTranslations.literal(
                         "§c" + boundBank.getBankName() + " already has the max "
                                 + BankTellerEntity.MAX_TELLERS_PER_BANK + " active bank tellers."
                 ));
@@ -77,7 +78,7 @@ public class BankTellerSpawnEggItem extends Item {
 
         if (!serverLevel.noCollision(teller)) {
             teller.discard();
-            player.sendSystemMessage(Component.literal("§cNot enough space to place a Bank Teller here."));
+            player.sendSystemMessage(UbsTranslations.literal("§cNot enough space to place a Bank Teller here."));
             return InteractionResult.FAIL;
         }
 
@@ -87,13 +88,13 @@ public class BankTellerSpawnEggItem extends Item {
         }
         if (boundBank != null) {
             int activeCount = BankTellerEntity.countActiveTellersForBank(serverLevel.getServer(), boundBankId);
-            player.sendSystemMessage(Component.literal(
+            player.sendSystemMessage(UbsTranslations.literal(
                     "§aPlaced teller for §e" + boundBank.getBankName()
                             + "§a. Active tellers: §f" + activeCount
                             + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
             ).withStyle(ChatFormatting.GREEN));
         } else {
-            player.sendSystemMessage(Component.literal("§aBank Teller placed.").withStyle(ChatFormatting.GREEN));
+            player.sendSystemMessage(UbsTranslations.literal("§aBank Teller placed.").withStyle(ChatFormatting.GREEN));
         }
         return InteractionResult.CONSUME;
     }

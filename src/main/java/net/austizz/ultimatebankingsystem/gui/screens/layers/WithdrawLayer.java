@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
@@ -79,7 +81,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
                 btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal(MoneyText.abbreviateWithDollar(amt)).withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal(MoneyText.abbreviateWithDollar(amt)).withStyle(ChatFormatting.WHITE),
                 btn -> sendWithdraw(amt)
             ));
             button.active = parseMoneyOrZero(amt).compareTo(effectiveWithdrawalLimit) <= 0;
@@ -89,8 +91,8 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int fieldY = customTop + 20;
         int confirmWidth = 84;
         int fieldWidth = contentWidth - (confirmWidth + 8);
-        amountField = new AtmEditBox(font, contentLeft, fieldY, fieldWidth, 20, Component.literal(""));
-        amountField.setHint(Component.literal("Custom amount...").withStyle(ChatFormatting.WHITE));
+        amountField = new AtmEditBox(font, contentLeft, fieldY, fieldWidth, 20, UbsTranslations.literal(""));
+        amountField.setHint(UbsTranslations.literal("Custom amount...").withStyle(ChatFormatting.WHITE));
         amountField.setMaxLength(15);
         styleEditBox(amountField);
         addWidget(amountField);
@@ -100,7 +102,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
             confirmWidth, 20,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
-            Component.literal("Confirm").withStyle(ChatFormatting.WHITE),
+            UbsTranslations.literal("Confirm").withStyle(ChatFormatting.WHITE),
             btn -> {
                 String value = amountField.getValue().trim();
                 if (!value.isEmpty()) {
@@ -115,7 +117,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
             56, 22,
             ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
             4, 4, 4, 4,
-            Component.literal("Back").withStyle(ChatFormatting.WHITE),
+            UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
             btn -> bankScreen.popLayer()
         ));
     }
@@ -240,7 +242,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
         drawCenteredFittedString(graphics, "Withdraw Cash",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        graphics.drawString(font, "Custom Amount", contentLeft + 6, customTop + 6, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Custom Amount"), contentLeft + 6, customTop + 6, COLOR_LABEL);
         drawFittedString(graphics,
                 "Per-withdrawal limit: $" + MoneyText.abbreviate(defaultWithdrawalLimit)
                         + "   Active withdrawal limit: $" + MoneyText.abbreviate(effectiveWithdrawalLimit),

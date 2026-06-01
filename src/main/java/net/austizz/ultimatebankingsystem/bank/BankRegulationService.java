@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.bank;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -323,7 +324,7 @@ public final class BankRegulationService {
                 notifyOwner(server, bank, "§aPaid salary $" + salary.toPlainString() + " to " + shortId(employeeId) + ".");
                 ServerPlayer onlineEmployee = server.getPlayerList().getPlayer(employeeId);
                 if (onlineEmployee != null) {
-                    onlineEmployee.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    onlineEmployee.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                             MoneyText.abbreviateCurrencyTokens(
                                     "§aSalary received from " + bank.getBankName() + ": $" + salary.toPlainString()
                             )
@@ -668,9 +669,10 @@ public final class BankRegulationService {
         }
         ServerPlayer owner = server.getPlayerList().getPlayer(bank.getBankOwnerId());
         if (owner != null) {
-            owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+            owner.sendSystemMessage(net.austizz.ultimatebankingsystem.i18n.UbsTranslations.literal(
                     MoneyText.abbreviateCurrencyTokens(message == null ? "" : message)
             ));
         }
     }
 }
+

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
 import net.austizz.ultimatebankingsystem.item.ModItems;
@@ -198,19 +199,19 @@ public class UltimateBankingSystemClient {
                 ? tag.getString("ubs_cheque_source_account")
                 : "Unknown";
 
-        tooltip.add(Component.literal("Cheque Details").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
-        tooltip.add(Component.literal("ID: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(id).withStyle(ChatFormatting.AQUA)));
-        tooltip.add(Component.literal("Pay To: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(recipient).withStyle(ChatFormatting.YELLOW)));
-        tooltip.add(Component.literal("From: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(writer).withStyle(ChatFormatting.GOLD)));
-        tooltip.add(Component.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
-        tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
-        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
+        tooltip.add(UbsTranslations.literal("Cheque Details").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
+        tooltip.add(UbsTranslations.literal("ID: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(id).withStyle(ChatFormatting.AQUA)));
+        tooltip.add(UbsTranslations.literal("Pay To: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(recipient).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(UbsTranslations.literal("From: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(writer).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(UbsTranslations.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(UbsTranslations.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(UbsTranslations.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
     }
 
     private static void addBankNoteTooltip(List<Component> tooltip, CompoundTag tag) {
@@ -224,17 +225,17 @@ public class UltimateBankingSystemClient {
                 ? tag.getString("ubs_note_source_account")
                 : (tag.contains("ubs_note_account") ? tag.getUUID("ubs_note_account").toString() : "Unknown");
 
-        tooltip.add(Component.literal("Bank Note Details").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
-        tooltip.add(Component.literal("ID: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(serial).withStyle(ChatFormatting.AQUA)));
-        tooltip.add(Component.literal("Issued By: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(issuer).withStyle(ChatFormatting.YELLOW)));
-        tooltip.add(Component.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
-        tooltip.add(Component.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
-        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
+        tooltip.add(UbsTranslations.literal("Bank Note Details").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+        tooltip.add(UbsTranslations.literal("ID: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(serial).withStyle(ChatFormatting.AQUA)));
+        tooltip.add(UbsTranslations.literal("Issued By: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(issuer).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(UbsTranslations.literal("Source Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(sourceBank).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(UbsTranslations.literal("Source Account: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(sourceAccount).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(UbsTranslations.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(MoneyText.abbreviateWithDollar(amount)).withStyle(ChatFormatting.GREEN)));
     }
 
     private static void addCreditCardTooltip(List<Component> tooltip, CompoundTag tag) {
@@ -256,26 +257,26 @@ public class UltimateBankingSystemClient {
         boolean blocked = tag.contains(CreditCardService.TAG_BLOCKED) && tag.getBoolean(CreditCardService.TAG_BLOCKED);
         boolean expired = expiry > 0L && System.currentTimeMillis() > expiry;
 
-        tooltip.add(Component.literal("Credit Card Details").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
-        tooltip.add(Component.literal("Card Number: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(CreditCardService.maskCardNumber(cardNumber)).withStyle(ChatFormatting.YELLOW)));
-        tooltip.add(Component.literal("CVC: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(cvc).withStyle(ChatFormatting.GOLD)));
-        tooltip.add(Component.literal("Bank: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(bankName).withStyle(ChatFormatting.BLUE)));
-        tooltip.add(Component.literal("Status: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(blocked ? "BLOCKED" : "ACTIVE")
+        tooltip.add(UbsTranslations.literal("Credit Card Details").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        tooltip.add(UbsTranslations.literal("Card Number: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(CreditCardService.maskCardNumber(cardNumber)).withStyle(ChatFormatting.YELLOW)));
+        tooltip.add(UbsTranslations.literal("CVC: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(cvc).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(UbsTranslations.literal("Bank: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(bankName).withStyle(ChatFormatting.BLUE)));
+        tooltip.add(UbsTranslations.literal("Status: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(blocked ? "BLOCKED" : "ACTIVE")
                         .withStyle(blocked ? ChatFormatting.RED : ChatFormatting.GREEN)));
-        tooltip.add(Component.literal("Linked Account: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(accountId).withStyle(ChatFormatting.DARK_AQUA)));
-        tooltip.add(Component.literal("Expiry: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(CreditCardService.formatExpiryMonthYear(expiry))
+        tooltip.add(UbsTranslations.literal("Linked Account: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(accountId).withStyle(ChatFormatting.DARK_AQUA)));
+        tooltip.add(UbsTranslations.literal("Expiry: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(CreditCardService.formatExpiryMonthYear(expiry))
                         .withStyle(expired ? ChatFormatting.RED : ChatFormatting.GREEN)));
         if (expired) {
-            tooltip.add(Component.literal("This card is expired.").withStyle(ChatFormatting.RED));
+            tooltip.add(UbsTranslations.literal("This card is expired.").withStyle(ChatFormatting.RED));
         }
         if (blocked) {
-            tooltip.add(Component.literal("This card is blocked.").withStyle(ChatFormatting.RED));
+            tooltip.add(UbsTranslations.literal("This card is blocked.").withStyle(ChatFormatting.RED));
         }
     }
 
@@ -293,13 +294,13 @@ public class UltimateBankingSystemClient {
             case HandheldPaymentTerminalItem.RESULT_DENIED -> ChatFormatting.RED;
             default -> ChatFormatting.GRAY;
         };
-        tooltip.add(Component.literal("Handheld Terminal").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
-        tooltip.add(Component.literal("Name: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(shopName).withStyle(ChatFormatting.WHITE)));
-        tooltip.add(Component.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(amount).withStyle(ChatFormatting.GOLD)));
-        tooltip.add(Component.literal("State: ").withStyle(ChatFormatting.GRAY)
-                .append(Component.literal(state).withStyle(stateColor)));
-        tooltip.add(Component.literal("Use: Hold it while others right-click you to pay").withStyle(ChatFormatting.DARK_GRAY));
+        tooltip.add(UbsTranslations.literal("Handheld Terminal").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        tooltip.add(UbsTranslations.literal("Name: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(shopName).withStyle(ChatFormatting.WHITE)));
+        tooltip.add(UbsTranslations.literal("Amount: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(amount).withStyle(ChatFormatting.GOLD)));
+        tooltip.add(UbsTranslations.literal("State: ").withStyle(ChatFormatting.GRAY)
+                .append(UbsTranslations.literal(state).withStyle(stateColor)));
+        tooltip.add(UbsTranslations.literal("Use: Hold it while others right-click you to pay").withStyle(ChatFormatting.DARK_GRAY));
     }
 }

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -84,6 +85,7 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
     }
 
     protected String fitToWidth(String text, int maxWidth) {
+        text = UbsClientTranslations.resolve(text);
         if (text == null || text.isEmpty() || maxWidth <= 0) {
             return "";
         }
@@ -105,6 +107,7 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
     }
 
     protected List<String> wrapToWidth(String text, int maxWidth, int maxLines) {
+        text = UbsClientTranslations.resolve(text);
         List<String> lines = new ArrayList<>();
         if (text == null || text.isEmpty() || maxWidth <= 0 || maxLines <= 0) {
             return lines;

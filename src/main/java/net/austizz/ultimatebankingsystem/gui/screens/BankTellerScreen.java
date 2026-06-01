@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopButton;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopEditBox;
 import net.austizz.ultimatebankingsystem.network.BankTellerAccountSummary;
@@ -94,7 +96,7 @@ public class BankTellerScreen extends Screen {
     private static final String[] OPEN_TIER_LABELS = {"Short", "Medium", "Long"};
 
     public BankTellerScreen(BankTellerOpenPayload payload) {
-        super(Component.literal("Bank Teller"));
+        super(UbsTranslations.literal("Bank Teller"));
         this.payload = payload;
         resetAccountsFromPayload();
     }
@@ -154,7 +156,7 @@ public class BankTellerScreen extends Screen {
 
         int closeW = 110;
         addRenderableWidget(new DesktopButton(panelLeft + panelWidth - closeW - 12, panelTop + 14, closeW, 22,
-                Component.literal("Close"), 0xFF85B8E8, btn -> onClose()));
+                UbsTranslations.literal("Close"), 0xFF85B8E8, btn -> onClose()));
 
         int tabW = (contentWidth - (gap * 3)) / 4;
         addTabButton(contentLeft, rowY, tabW, Tab.INSTRUMENTS);
@@ -169,7 +171,7 @@ public class BankTellerScreen extends Screen {
                 rowY,
                 paymentW,
                 22,
-                Component.literal(PaymentMode.CASH_OR_CARD.label),
+                UbsTranslations.literal(PaymentMode.CASH_OR_CARD.label),
                 paymentMode == PaymentMode.CASH_OR_CARD ? 0xFF8DDDB1 : 0xFF6BAEE8,
                 btn -> {
                     paymentMode = PaymentMode.CASH_OR_CARD;
@@ -181,7 +183,7 @@ public class BankTellerScreen extends Screen {
                 rowY,
                 paymentW,
                 22,
-                Component.literal(PaymentMode.ACCOUNT.label),
+                UbsTranslations.literal(PaymentMode.ACCOUNT.label),
                 paymentMode == PaymentMode.ACCOUNT ? 0xFFA4E2FF : 0xFF6BAEE8,
                 btn -> {
                     paymentMode = PaymentMode.ACCOUNT;
@@ -193,11 +195,11 @@ public class BankTellerScreen extends Screen {
         int selectorW = Math.max(88, Math.min(112, contentWidth / 6));
         int selectorMidW = contentWidth - (selectorW * 2) - (gap * 2);
         accountPrevButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, selectorW, 22,
-                Component.literal("Prev"), 0xFF7CB8EE, btn -> stepAccount(-1)));
+                UbsTranslations.literal("Prev"), 0xFF7CB8EE, btn -> stepAccount(-1)));
         accountSelectButton = addRenderableWidget(new DesktopButton(contentLeft + selectorW + gap, rowY, selectorMidW, 22,
                 accountCaption(), 0xFF8FD8FF, btn -> stepAccount(1)));
         accountNextButton = addRenderableWidget(new DesktopButton(contentLeft + selectorW + gap + selectorMidW + gap, rowY, selectorW, 22,
-                Component.literal("Next"), 0xFF7CB8EE, btn -> stepAccount(1)));
+                UbsTranslations.literal("Next"), 0xFF7CB8EE, btn -> stepAccount(1)));
         boolean accountSwitchEnabled = !accounts.isEmpty() && paymentMode == PaymentMode.ACCOUNT;
         accountPrevButton.active = accountSwitchEnabled;
         accountNextButton.active = accountSwitchEnabled;
@@ -207,16 +209,16 @@ public class BankTellerScreen extends Screen {
         tabInfoY = rowY + 62;
 
         if (activeTab == Tab.INSTRUMENTS) {
-            amountInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, 22, Component.literal("Amount"));
-            amountInput.setHint(Component.literal("Amount (dollars.cents)"));
+            amountInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, 22, UbsTranslations.literal("Amount"));
+            amountInput.setHint(UbsTranslations.literal("Amount (dollars.cents)"));
             amountInput.setValue(amountDraft);
             amountInput.setMaxLength(16);
             amountInput.setResponder(value -> amountDraft = value == null ? "" : value);
             addRenderableWidget(amountInput);
             rowY += 30;
 
-            recipientInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, 22, Component.literal("Recipient"));
-            recipientInput.setHint(Component.literal("Cheque recipient player name"));
+            recipientInput = new DesktopEditBox(font, contentLeft, rowY, contentWidth, 22, UbsTranslations.literal("Recipient"));
+            recipientInput.setHint(UbsTranslations.literal("Cheque recipient player name"));
             recipientInput.setValue(recipientDraft);
             recipientInput.setMaxLength(32);
             recipientInput.setResponder(value -> recipientDraft = value == null ? "" : value);
@@ -225,38 +227,38 @@ public class BankTellerScreen extends Screen {
 
             int actionW = (contentWidth - (gap * 2)) / 3;
             addRenderableWidget(new DesktopButton(contentLeft, rowY, actionW, 24,
-                    Component.literal("Issue Cheque"), 0xFF80DFA4, btn ->
+                    UbsTranslations.literal("Issue Cheque"), 0xFF80DFA4, btn ->
                     sendAction("ISSUE_CHEQUE", getSelectedAccountId(), amountDraft, recipientDraft, false)));
             addRenderableWidget(new DesktopButton(contentLeft + actionW + gap, rowY, actionW, 24,
-                    Component.literal("Issue Bank Note"), 0xFFF2C27A, btn ->
+                    UbsTranslations.literal("Issue Bank Note"), 0xFFF2C27A, btn ->
                     sendAction("ISSUE_NOTE", getSelectedAccountId(), amountDraft, "", false)));
             addRenderableWidget(new DesktopButton(contentLeft + (actionW + gap) * 2, rowY, actionW, 24,
-                    Component.literal("Withdraw Cash"), 0xFF9BC8FF, btn ->
+                    UbsTranslations.literal("Withdraw Cash"), 0xFF9BC8FF, btn ->
                     sendAction("WITHDRAW_CASH", getSelectedAccountId(), amountDraft, "", false)));
             tabInfoY = rowY + 34;
         } else if (activeTab == Tab.CHEQUE_REDEEM) {
             int actionW = (contentWidth - gap) / 2;
             addRenderableWidget(new DesktopButton(contentLeft, rowY, actionW, 24,
-                    Component.literal("Deposit Cheque"), 0xFF81DEAD, btn ->
+                    UbsTranslations.literal("Deposit Cheque"), 0xFF81DEAD, btn ->
                     sendAction("CHEQUE_TO_ACCOUNT", getSelectedAccountId(), "", "", false)));
             addRenderableWidget(new DesktopButton(contentLeft + actionW + gap, rowY, actionW, 24,
-                    Component.literal("Cash Out Cheque"), 0xFFE8B977, btn ->
+                    UbsTranslations.literal("Cash Out Cheque"), 0xFFE8B977, btn ->
                     sendAction("CHEQUE_TO_CASH", getSelectedAccountId(), "", "", false)));
             rowY += 32;
             addRenderableWidget(new DesktopButton(contentLeft, rowY, actionW, 24,
-                    Component.literal("Deposit Bank Note"), 0xFF86DBCB, btn ->
+                    UbsTranslations.literal("Deposit Bank Note"), 0xFF86DBCB, btn ->
                     sendAction("NOTE_TO_ACCOUNT", getSelectedAccountId(), "", "", false)));
             addRenderableWidget(new DesktopButton(contentLeft + actionW + gap, rowY, actionW, 24,
-                    Component.literal("Cash Out Bank Note"), 0xFFE9C68E, btn ->
+                    UbsTranslations.literal("Cash Out Bank Note"), 0xFFE9C68E, btn ->
                     sendAction("NOTE_TO_CASH", getSelectedAccountId(), "", "", false)));
             tabInfoY = rowY + 34;
         } else if (activeTab == Tab.CARD) {
             int actionW = (contentWidth - gap) / 2;
             DesktopButton issue = addRenderableWidget(new DesktopButton(contentLeft, rowY, actionW, 24,
-                    Component.literal("Issue Credit Card"), 0xFF82C9FF, btn ->
+                    UbsTranslations.literal("Issue Credit Card"), 0xFF82C9FF, btn ->
                     sendAction("ISSUE_CARD", getSelectedAccountId(), "", "", false)));
             DesktopButton replace = addRenderableWidget(new DesktopButton(contentLeft + actionW + gap, rowY, actionW, 24,
-                    Component.literal("Replace Card"), 0xFFE5A17A, btn -> {
+                    UbsTranslations.literal("Replace Card"), 0xFFE5A17A, btn -> {
                         replaceConfirmOpen = true;
                         rebuildWidgets();
                     }));
@@ -271,27 +273,27 @@ public class BankTellerScreen extends Screen {
             int selectorW2 = Math.max(84, Math.min(106, contentWidth / 6));
             int selectorMidW2 = contentWidth - (selectorW2 * 2) - (gap * 2);
             addRenderableWidget(new DesktopButton(contentLeft, rowY, selectorW2, 22,
-                    Component.literal("Prev"), 0xFF7CB8EE, btn -> stepOpenType(-1)));
+                    UbsTranslations.literal("Prev"), 0xFF7CB8EE, btn -> stepOpenType(-1)));
             addRenderableWidget(new DesktopButton(contentLeft + selectorW2 + gap, rowY, selectorMidW2, 22,
-                    Component.literal("Type: " + currentOpenTypeLabel()), 0xFF8FD8FF, btn -> stepOpenType(1)));
+                    UbsTranslations.literal("Type: " + currentOpenTypeLabel()), 0xFF8FD8FF, btn -> stepOpenType(1)));
             addRenderableWidget(new DesktopButton(contentLeft + selectorW2 + gap + selectorMidW2 + gap, rowY, selectorW2, 22,
-                    Component.literal("Next"), 0xFF7CB8EE, btn -> stepOpenType(1)));
+                    UbsTranslations.literal("Next"), 0xFF7CB8EE, btn -> stepOpenType(1)));
             rowY += 30;
 
             boolean certificateSelected = isOpenTypeCertificate();
             DesktopButton tierPrev = addRenderableWidget(new DesktopButton(contentLeft, rowY, selectorW2, 22,
-                    Component.literal("Prev"), 0xFF7CB8EE, btn -> stepOpenTier(-1)));
+                    UbsTranslations.literal("Prev"), 0xFF7CB8EE, btn -> stepOpenTier(-1)));
             DesktopButton tierSelect = addRenderableWidget(new DesktopButton(contentLeft + selectorW2 + gap, rowY, selectorMidW2, 22,
-                    Component.literal("Tier: " + currentOpenTierLabel()), 0xFF8FD8FF, btn -> stepOpenTier(1)));
+                    UbsTranslations.literal("Tier: " + currentOpenTierLabel()), 0xFF8FD8FF, btn -> stepOpenTier(1)));
             DesktopButton tierNext = addRenderableWidget(new DesktopButton(contentLeft + selectorW2 + gap + selectorMidW2 + gap, rowY, selectorW2, 22,
-                    Component.literal("Next"), 0xFF7CB8EE, btn -> stepOpenTier(1)));
+                    UbsTranslations.literal("Next"), 0xFF7CB8EE, btn -> stepOpenTier(1)));
             tierPrev.active = certificateSelected;
             tierSelect.active = certificateSelected;
             tierNext.active = certificateSelected;
             rowY += 34;
 
             DesktopButton openButton = addRenderableWidget(new DesktopButton(contentLeft, rowY, contentWidth, 24,
-                    Component.literal("Open Account At Teller Bank"), 0xFF8AE0B3, btn ->
+                    UbsTranslations.literal("Open Account At Teller Bank"), 0xFF8AE0B3, btn ->
                     sendAction("OPEN_ACCOUNT", getSelectedAccountId(), currentOpenTypeToken(), currentOpenTierToken(), false)));
             openButton.active = getSelectedAccountId() != null;
             tabInfoY = rowY + 34;
@@ -313,7 +315,7 @@ public class BankTellerScreen extends Screen {
                     modalY + modalH - 34,
                     btnW,
                     22,
-                    Component.literal("Accept Replacement"),
+                    UbsTranslations.literal("Accept Replacement"),
                     0xFFD48686,
                     btn -> {
                         replaceConfirmOpen = false;
@@ -326,7 +328,7 @@ public class BankTellerScreen extends Screen {
                     modalY + modalH - 34,
                     btnW,
                     22,
-                    Component.literal("Decline"),
+                    UbsTranslations.literal("Decline"),
                     0xFF8DB8E2,
                     btn -> {
                         replaceConfirmOpen = false;
@@ -344,7 +346,7 @@ public class BankTellerScreen extends Screen {
                 y,
                 width,
                 24,
-                Component.literal(tab.label),
+                UbsTranslations.literal(tab.label),
                 activeTab == tab ? 0xFFA4E2FF : 0xFF6BAEE8,
                 btn -> {
                     activeTab = tab;
@@ -430,11 +432,11 @@ public class BankTellerScreen extends Screen {
     private Component accountCaption() {
         BankTellerAccountSummary selected = getSelectedAccount();
         if (selected == null) {
-            return Component.literal("No account selected");
+            return UbsTranslations.literal("No account selected");
         }
         String primaryPrefix = selected.primary() ? "[Primary] " : "";
         String amount = "$" + MoneyText.abbreviate(parseDecimalSafe(selected.balance()));
-        return Component.literal(primaryPrefix + selected.accountType() + " | " + selected.bankName() + " | " + amount);
+        return UbsTranslations.literal(primaryPrefix + selected.accountType() + " | " + selected.bankName() + " | " + amount);
     }
 
     private void stepOpenType(int direction) {
@@ -552,7 +554,7 @@ public class BankTellerScreen extends Screen {
 
         if (activeTab == Tab.CHEQUE_REDEEM) {
             graphics.drawString(font,
-                    "Hold a cheque or bank note in your hand/inventory, then choose account deposit or cash-out.",
+                    UbsClientTranslations.resolve("Hold a cheque or bank note in your hand/inventory, then choose account deposit or cash-out."),
                     panelLeft + 18,
                     tabInfoY,
                     0xFFD1E7FF,
@@ -598,7 +600,7 @@ public class BankTellerScreen extends Screen {
             graphics.drawString(font, fitToWidth(lineThree, panelWidth - 36), panelLeft + 18, tabInfoY + 28, 0xFFB9D8FF, false);
         } else {
             graphics.drawString(font,
-                    "Cheque uses recipient + amount. Bank note/cash use amount only.",
+                    UbsClientTranslations.resolve("Cheque uses recipient + amount. Bank note/cash use amount only."),
                     panelLeft + 18,
                     tabInfoY,
                     0xFFD1E7FF,
@@ -630,7 +632,7 @@ public class BankTellerScreen extends Screen {
         graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xFF162E49);
         graphics.fill(modalX + 1, modalY + 1, modalX + modalW - 1, modalY + 24, 0xFF7BA5D7);
 
-        graphics.drawString(font, "Replace Credit Card", modalX + 10, modalY + 9, 0xFFFFFFFF, false);
+        graphics.drawString(font, UbsClientTranslations.resolve("Replace Credit Card"), modalX + 10, modalY + 9, 0xFFFFFFFF, false);
         graphics.drawString(font,
                 fitToWidth("This will block all old cards linked to the selected account. Continue?", modalW - 20),
                 modalX + 10,

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
@@ -9,7 +10,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 public class OwnerPcScreenHelper {
     public static void openOwnerPcScreen() {
         Minecraft minecraft = Minecraft.getInstance();
-        BankOwnerPcScreen freshScreen = new BankOwnerPcScreen(Component.literal("Bank Owner PC"));
+        BankOwnerPcScreen freshScreen = new BankOwnerPcScreen(UbsTranslations.literal("Bank Owner PC"));
         minecraft.setScreen(freshScreen);
         freshScreen.relayoutForCurrentWindow();
     }

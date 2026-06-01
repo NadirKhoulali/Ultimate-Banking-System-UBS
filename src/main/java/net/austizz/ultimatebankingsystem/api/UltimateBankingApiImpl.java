@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.api;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -453,7 +454,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(note, tag);
-        ItemStackDataCompat.setCustomName(note, Component.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        ItemStackDataCompat.setCustomName(note, UbsTranslations.literal("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),
@@ -513,7 +514,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
         applyCustomTag(cheque, tag);
-        ItemStackDataCompat.setCustomName(cheque, Component.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        ItemStackDataCompat.setCustomName(cheque, UbsTranslations.literal("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         account.addTransaction(new UserTransaction(
                 account.getAccountUUID(),

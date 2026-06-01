@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
@@ -39,9 +41,9 @@ public class DepositLayer extends AbstractScreenLayer {
         int contentWidth = panelWidth - 28;
         int sectionTop = panelTop + 58;
 
-        amountField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, Component.literal(""));
+        amountField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, UbsTranslations.literal(""));
         amountField.setMaxLength(20);
-        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
+        amountField.setHint(UbsTranslations.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
         styleEditBox(amountField);
         addWidget(amountField);
 
@@ -52,26 +54,26 @@ public class DepositLayer extends AbstractScreenLayer {
         addWidget(new NineSliceTexturedButton(
                 contentLeft, quickBtnY, quickBtnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("$50").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("$50").withStyle(ChatFormatting.WHITE),
                 btn -> amountField.setValue("50")
         ));
         addWidget(new NineSliceTexturedButton(
                 contentLeft + quickBtnWidth + spacing, quickBtnY, quickBtnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("$100").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("$100").withStyle(ChatFormatting.WHITE),
                 btn -> amountField.setValue("100")
         ));
         addWidget(new NineSliceTexturedButton(
                 contentLeft + (quickBtnWidth + spacing) * 2, quickBtnY, quickBtnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("$500").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("$500").withStyle(ChatFormatting.WHITE),
                 btn -> amountField.setValue("500")
         ));
 
         addWidget(new NineSliceTexturedButton(
                 contentLeft, sectionTop + 84, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Confirm Deposit").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Confirm Deposit").withStyle(ChatFormatting.WHITE),
                 btn -> sendDeposit()
         ));
 
@@ -80,7 +82,7 @@ public class DepositLayer extends AbstractScreenLayer {
                 panelTop + panelHeight - 36,
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
     }
@@ -134,7 +136,7 @@ public class DepositLayer extends AbstractScreenLayer {
         drawCenteredFittedString(graphics, "Deposit Funds",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        graphics.drawString(font, "Amount to Deposit", contentLeft + 6, sectionTop + 6, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Amount to Deposit"), contentLeft + 6, sectionTop + 6, COLOR_LABEL);
 
         if (!resultMessage.isEmpty()) {
             int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;

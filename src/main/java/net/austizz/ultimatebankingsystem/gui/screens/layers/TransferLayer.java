@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
@@ -49,22 +51,22 @@ public class TransferLayer extends AbstractScreenLayer {
         int contentWidth = panelWidth - 28;
         int sectionTop = panelTop + 58;
 
-        recipientField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, Component.literal(""));
+        recipientField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, UbsTranslations.literal(""));
         recipientField.setMaxLength(36);
-        recipientField.setHint(Component.literal("Recipient Account UUID...").withStyle(ChatFormatting.WHITE));
+        recipientField.setHint(UbsTranslations.literal("Recipient Account UUID...").withStyle(ChatFormatting.WHITE));
         styleEditBox(recipientField);
         addWidget(recipientField);
 
-        amountField = new AtmEditBox(font, contentLeft, sectionTop + 56, contentWidth, 20, Component.literal(""));
+        amountField = new AtmEditBox(font, contentLeft, sectionTop + 56, contentWidth, 20, UbsTranslations.literal(""));
         amountField.setMaxLength(20);
-        amountField.setHint(Component.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
+        amountField.setHint(UbsTranslations.literal("Enter amount...").withStyle(ChatFormatting.WHITE));
         styleEditBox(amountField);
         addWidget(amountField);
 
         confirmBtn = addWidget(new NineSliceTexturedButton(
                 contentLeft, sectionTop + 86, contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Confirm Transfer").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Confirm Transfer").withStyle(ChatFormatting.WHITE),
                 btn -> showConfirmationDialog()
         ));
 
@@ -73,13 +75,13 @@ public class TransferLayer extends AbstractScreenLayer {
         yesBtn = addWidget(new NineSliceTexturedButton(
                 contentLeft, confirmY, btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Yes").withStyle(ChatFormatting.GREEN),
+                UbsTranslations.literal("Yes").withStyle(ChatFormatting.GREEN),
                 btn -> sendTransfer()
         ));
         cancelBtn = addWidget(new NineSliceTexturedButton(
                 contentLeft + btnWidth + 8, confirmY, btnWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Cancel").withStyle(ChatFormatting.RED),
+                UbsTranslations.literal("Cancel").withStyle(ChatFormatting.RED),
                 btn -> cancelConfirmation()
         ));
 
@@ -88,7 +90,7 @@ public class TransferLayer extends AbstractScreenLayer {
                 panelTop + panelHeight - 36,
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -207,8 +209,8 @@ public class TransferLayer extends AbstractScreenLayer {
             int recipientLabelY = sectionTop + Math.max(0, (recipientField.getY() - sectionTop - font.lineHeight) / 2);
             int recipientBottom = recipientField.getY() + recipientField.getHeight();
             int amountLabelY = recipientBottom + Math.max(0, (amountField.getY() - recipientBottom - font.lineHeight) / 2);
-            graphics.drawString(font, "Recipient Account", contentLeft + 6, recipientLabelY, COLOR_LABEL);
-            graphics.drawString(font, "Amount", contentLeft + 6, amountLabelY, COLOR_LABEL);
+            graphics.drawString(font, UbsClientTranslations.resolve("Recipient Account"), contentLeft + 6, recipientLabelY, COLOR_LABEL);
+            graphics.drawString(font, UbsClientTranslations.resolve("Amount"), contentLeft + 6, amountLabelY, COLOR_LABEL);
         }
 
         if (!resultMessage.isEmpty()) {

@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import com.mojang.logging.LogUtils;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
@@ -145,7 +146,7 @@ public class UltimateBankingSystem {
         if (targetPlayer == null) {
             return;
         }
-        targetPlayer.sendSystemMessage(Component.literal(MoneyText.abbreviateCurrencyTokens(message)));
+        targetPlayer.sendSystemMessage(UbsTranslations.literal(MoneyText.abbreviateCurrencyTokens(message)));
         CentralBank centralBank = BankManager.getCentralBank(server);
         HudStatePayload payload = UBSCommands.buildHudStatePayload(centralBank, targetPlayer.getUUID());
         PacketDistributor.sendToPlayer(targetPlayer, payload);

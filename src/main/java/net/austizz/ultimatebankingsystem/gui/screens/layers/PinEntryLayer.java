@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
@@ -51,14 +52,14 @@ public class PinEntryLayer extends AbstractScreenLayer {
     public PinEntryLayer(Minecraft minecraft) {
         super(minecraft);
         this.confirmationOnly = false;
-        this.confirmationTitle = Component.literal("ATM PIN Access");
+        this.confirmationTitle = UbsTranslations.literal("ATM PIN Access");
         this.onConfirmedPin = null;
     }
 
     public PinEntryLayer(Minecraft minecraft, Component confirmationTitle, Consumer<String> onConfirmedPin) {
         super(minecraft);
         this.confirmationOnly = true;
-        this.confirmationTitle = confirmationTitle == null ? Component.literal("PIN Confirmation") : confirmationTitle;
+        this.confirmationTitle = confirmationTitle == null ? UbsTranslations.literal("PIN Confirmation") : confirmationTitle;
         this.onConfirmedPin = onConfirmedPin;
     }
 
@@ -101,7 +102,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 backWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> {
                     if (confirmationOnly) {
                         bankScreen.popLayer();
@@ -117,7 +118,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 switchWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Switch Account").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Switch Account").withStyle(ChatFormatting.WHITE),
                 btn -> openAccountChooser()
         ));
 
@@ -127,7 +128,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 unlockWidth, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Unlock").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Unlock").withStyle(ChatFormatting.WHITE),
                 btn -> submitCurrentInput()
         ));
 
@@ -216,7 +217,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 width, height,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal(label).withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal(label).withStyle(ChatFormatting.WHITE),
                 btn -> action.run()
         ));
         keypadButtons.add(button);
@@ -422,7 +423,7 @@ public class PinEntryLayer extends AbstractScreenLayer {
                 case SET_PIN -> "Next";
                 case CONFIRM_PIN -> "Set PIN";
             };
-            unlockButton.setMessage(Component.literal(unlockLabel).withStyle(ChatFormatting.WHITE));
+            unlockButton.setMessage(UbsTranslations.literal(unlockLabel).withStyle(ChatFormatting.WHITE));
             unlockButton.active = canType && pinInput.length() == PIN_LENGTH;
         }
     }

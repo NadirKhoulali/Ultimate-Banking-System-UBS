@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.gui.screens.layers;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.gui.widgets.AtmEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.NineSliceTexturedButton;
 import net.minecraft.ChatFormatting;
@@ -55,9 +57,9 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
         int listLeft = getListLeft();
         int listWidth = getListRight() - getListLeft();
 
-        searchField = new AtmEditBox(font, listLeft + 4, panelTop + 58, listWidth - 8, 20, Component.literal(""));
+        searchField = new AtmEditBox(font, listLeft + 4, panelTop + 58, listWidth - 8, 20, UbsTranslations.literal(""));
         searchField.setMaxLength(32);
-        searchField.setHint(Component.literal("Search player...").withStyle(ChatFormatting.WHITE));
+        searchField.setHint(UbsTranslations.literal("Search player...").withStyle(ChatFormatting.WHITE));
         searchField.setResponder(value -> applyFilter(value));
         styleEditBox(searchField);
         addWidget(searchField);
@@ -74,7 +76,7 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
                     listWidth - 8, ROW_HEIGHT,
                     ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                     4, 4, 4, 4,
-                    Component.literal(""),
+                    UbsTranslations.literal(""),
                     btn -> selectPlayerAtSlot(slot)
             ));
             rowButtons.add(rowButton);
@@ -87,7 +89,7 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
                 56, 22,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
-                Component.literal("Back").withStyle(ChatFormatting.WHITE),
+                UbsTranslations.literal("Back").withStyle(ChatFormatting.WHITE),
                 btn -> bankScreen.popLayer()
         ));
 
@@ -147,11 +149,11 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
             NineSliceTexturedButton button = rowButtons.get(i);
             int index = scrollIndex + i;
             if (index >= 0 && index < filteredPlayers.size()) {
-                button.setMessage(Component.literal(""));
+                button.setMessage(UbsTranslations.literal(""));
                 button.active = true;
                 button.visible = true;
             } else {
-                button.setMessage(Component.literal(""));
+                button.setMessage(UbsTranslations.literal(""));
                 button.active = false;
                 button.visible = false;
             }
@@ -188,7 +190,7 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
 
         graphics.drawCenteredString(
                 font,
-                Component.literal("Select Player").withStyle(ChatFormatting.AQUA),
+                UbsTranslations.literal("Select Player").withStyle(ChatFormatting.AQUA),
                 panelLeft + panelWidth / 2,
                 panelTop + 31,
                 0xFFFFFFFF
@@ -201,13 +203,13 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
                 panelWidth - 20,
                 COLOR_MUTED);
 
-        graphics.drawString(font, "Search", listLeft + 6, panelTop + 50, COLOR_LABEL);
+        graphics.drawString(font, UbsClientTranslations.resolve("Search"), listLeft + 6, panelTop + 50, COLOR_LABEL);
         drawSectionBox(graphics, listLeft, listTop, listRight, listBottom);
 
         if (filteredPlayers.isEmpty()) {
             graphics.drawCenteredString(
                     font,
-                    Component.literal("No players found.").withStyle(ChatFormatting.GRAY),
+                    UbsTranslations.literal("No players found.").withStyle(ChatFormatting.GRAY),
                     panelLeft + panelWidth / 2,
                     listTop + (listBottom - listTop) / 2 - 4,
                     COLOR_MUTED
@@ -217,7 +219,7 @@ public class PlayerSelectionLayer extends AbstractScreenLayer {
             int to = Math.min(scrollIndex + VISIBLE_ROWS, filteredPlayers.size());
             graphics.drawCenteredString(
                     font,
-                    Component.literal("Showing " + from + "-" + to + " of " + filteredPlayers.size())
+                    UbsTranslations.literal("Showing " + from + "-" + to + " of " + filteredPlayers.size())
                             .withStyle(ChatFormatting.DARK_AQUA),
                     panelLeft + panelWidth / 2,
                     listBottom + 7,
