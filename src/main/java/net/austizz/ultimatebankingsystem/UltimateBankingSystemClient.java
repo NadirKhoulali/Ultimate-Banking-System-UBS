@@ -282,12 +282,12 @@ public class UltimateBankingSystemClient {
 
     private static void addHandheldTerminalTooltip(List<Component> tooltip, ItemStack stack) {
         String shopName = HandheldPaymentTerminalItem.getShopName(stack);
-        String amount = "$" + MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(stack)));
+        String amount = MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(stack)));
         int result = HandheldPaymentTerminalItem.getResultState(stack);
-        String state = switch (result) {
-            case HandheldPaymentTerminalItem.RESULT_SUCCESS -> "SUCCESS";
-            case HandheldPaymentTerminalItem.RESULT_DENIED -> "DENIED";
-            default -> "IDLE";
+        Component state = switch (result) {
+            case HandheldPaymentTerminalItem.RESULT_SUCCESS -> UbsTranslations.tr("tooltip.ultimatebankingsystem.terminal_state.success");
+            case HandheldPaymentTerminalItem.RESULT_DENIED -> UbsTranslations.tr("tooltip.ultimatebankingsystem.terminal_state.denied");
+            default -> UbsTranslations.tr("tooltip.ultimatebankingsystem.terminal_state.idle");
         };
         ChatFormatting stateColor = switch (result) {
             case HandheldPaymentTerminalItem.RESULT_SUCCESS -> ChatFormatting.GREEN;
@@ -298,9 +298,9 @@ public class UltimateBankingSystemClient {
         tooltip.add(UbsTranslations.literal("Name: ").withStyle(ChatFormatting.GRAY)
                 .append(UbsTranslations.literal(shopName).withStyle(ChatFormatting.WHITE)));
         tooltip.add(UbsTranslations.literal("Amount: ").withStyle(ChatFormatting.GRAY)
-                .append(UbsTranslations.literal(amount).withStyle(ChatFormatting.GOLD)));
+                .append(UbsTranslations.tr("tooltip.ultimatebankingsystem.money", amount).withStyle(ChatFormatting.GOLD)));
         tooltip.add(UbsTranslations.literal("State: ").withStyle(ChatFormatting.GRAY)
-                .append(UbsTranslations.literal(state).withStyle(stateColor)));
+                .append(state.copy().withStyle(stateColor)));
         tooltip.add(UbsTranslations.literal("Use: Hold it while others right-click you to pay").withStyle(ChatFormatting.DARK_GRAY));
     }
 }
