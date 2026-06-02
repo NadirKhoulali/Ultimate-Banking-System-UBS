@@ -5202,8 +5202,8 @@ public class BankOwnerPcScreen extends Screen {
         graphics.drawCenteredString(this.font, fitToWidth(offer.id(), idBadgeW - 8), x + width - (idBadgeW / 2) - 8, y + 9, 0xFFDDF0FF);
 
         graphics.drawString(this.font, fitToWidth(offer.lender(), width - idBadgeW - 24), x + 8, y + 8, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth("Amount: " + offer.amountText(), width - 16), x + 8, y + 22, 0xFFD4E8FF, false);
-        graphics.drawString(this.font, fitToWidth("APR: " + offer.aprText() + "   Term: " + offer.termText(), width - 16), x + 8, y + 34, 0xFFC3DCF7, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Amount: " + offer.amountText()), width - 16), x + 8, y + 22, 0xFFD4E8FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("APR: " + offer.aprText() + "   Term: " + offer.termText()), width - 16), x + 8, y + 34, 0xFFC3DCF7, false);
 
         int btnY = y + height - 21;
         int btnW = Math.max(64, (width - 24) / 2);
@@ -5252,7 +5252,7 @@ public class BankOwnerPcScreen extends Screen {
                 + UbsClientTranslations.resolve("from") + " " + offer.lender(), modalW - 16), modalX + 8, modalY + 34, 0xFFD6E9FF, false);
         graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Amount") + " " + offer.amountText() + " "
                 + UbsClientTranslations.resolve("at") + " " + offer.aprText(), modalW - 16), modalX + 8, modalY + 46, 0xFFD6E9FF, false);
-        graphics.drawString(this.font, fitToWidth("Term: " + offer.termText(), modalW - 16), modalX + 8, modalY + 58, 0xFFC4DBF7, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Term: " + offer.termText()), modalW - 16), modalX + 8, modalY + 58, 0xFFC4DBF7, false);
 
         int btnY = modalY + modalH - 24;
         int btnW = (modalW - 24) / 2;
@@ -5698,9 +5698,9 @@ public class BankOwnerPcScreen extends Screen {
         int displayH = Math.min(48, Math.max(40, height / 4));
         graphics.fill(x, y, x + width, y + displayH, 0x7A162E48);
         graphics.fill(x, y, x + width, y + 1, 0x889FCEEF);
-        graphics.drawString(this.font, fitToWidth("Expression: " + (calculatorExpression.isBlank() ? "-" : calculatorExpression), width - 12), x + 6, y + 8, 0xFFCDE6FF, false);
-        graphics.drawString(this.font, fitToWidth("Result: " + calculatorDisplay, width - 12), x + 6, y + 20, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth("Status: " + calculatorStatus, width - 12), x + 6, y + 32, 0xFF9FD3FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Expression: " + (calculatorExpression.isBlank() ? "-" : calculatorExpression)), width - 12), x + 6, y + 8, 0xFFCDE6FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Result: " + calculatorDisplay), width - 12), x + 6, y + 20, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve("Status: " + calculatorStatus), width - 12), x + 6, y + 32, 0xFF9FD3FF, false);
     }
 
     private void drawNotepadApp(GuiGraphics graphics, int x, int y, int width, int height) {

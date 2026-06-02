@@ -1561,7 +1561,7 @@
   "Use Account": "Use Account",
   "Use Refresh Market to check again.": "Use Refresh Market to check again.",
   "Use the controls above to run a command for this section.": "Use the controls above to run a command for this section.",
-  "Use: Hold it while others right-click you to pay": "Use: Hold it while others right-click you to pay",
+  "Use: Hold it while others right-click you to pay": "Use: Hold it in your hand while another player right-clicks you to pay.",
   "Use: single, dailyplayer, dailybank, or teller. Each type updates a different rule.": "Use: single, dailyplayer, dailybank, or teller. Each type updates a different rule.",
   "Used today: ": "Used today: ",
   "Utilities / ": "Utilities / ",
@@ -1581,5 +1581,7 @@
   "Yes": "Yes",
   "YES": "YES",
   "Your account has been successfully terminated. Your balance has been transferred to the bank.": "Your account has been successfully terminated. Your balance has been transferred to the bank.",
-  "yyyy-MM-dd HH:mm:ss": "yyyy-MM-dd HH:mm:ss"
+  "yyyy-MM-dd HH:mm:ss": "yyyy-MM-dd HH:mm:ss",
+  "Merchant: ": "Merchant: ",
+  "Right-click to pay": "Right-click to pay"
 }

@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
 import net.austizz.ultimatebankingsystem.item.ModItems;
@@ -83,7 +84,7 @@ public class UltimateBankingSystemClient {
             return;
         }
 
-        String text = "Balance: " + Config.CURRENCY_SYMBOL.get() + MoneyText.abbreviate(balance);
+        String text = UbsClientTranslations.resolve("Balance: ") + Config.CURRENCY_SYMBOL.get() + MoneyText.abbreviate(balance);
         int color = Config.HUD_TEXT_COLOR.get();
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
@@ -127,12 +128,13 @@ public class UltimateBankingSystemClient {
         }
 
         String title = HandheldPaymentTerminalItem.getShopName(terminalStack);
-        String amount = "$" + MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(terminalStack)));
+        String amount = UbsClientTranslations.format("tooltip.ultimatebankingsystem.money",
+                MoneyText.abbreviate(String.valueOf(HandheldPaymentTerminalItem.getPriceDollars(terminalStack))));
         String target = targetPlayer.getName().getString();
 
         String line1 = title + " | " + amount;
-        String line2 = "Merchant: " + target;
-        String line3 = "Right-click to pay";
+        String line2 = UbsClientTranslations.resolve("Merchant: ") + target;
+        String line3 = UbsClientTranslations.resolve("Right-click to pay");
 
         int padding = 6;
         int lineHeight = mc.font.lineHeight;
