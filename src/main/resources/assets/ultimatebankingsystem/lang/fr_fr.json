@@ -17,7 +17,7 @@
   " to account [": " vers le compte [",
   " vs min $": " contre min $",
   "[": "[",
-  "[Cancel Payment]": "[Cancel Payment]",
+  "[Cancel Payment]": "[Annuler le paiement]",
   "[Primary] ": "[Principal] ",
   "[Yes, I Agree] ": "[Yes, I Agree]",
   "§7": "§7",
@@ -44,7 +44,7 @@
   "§7Appeals: §b": "§7Appels : §b",
   "§7Application ID: §f": "§7ID de l'application : §f",
   "§7Applications: §b": "§7Applications : §b",
-  "§7APR: §e": "§7APR : §e",
+  "§7APR: §e": "§7TAEG : §e",
   "§7ATM Withdrawn Today: §e$": "§7ATM retiré aujourd'hui : §e$",
   "§7Audited Banks: §b": "§7Banques auditées : §b",
   "§7Avg Reserve Ratio: §e": "§7Ratio de réserve moyen : §e",
@@ -1581,5 +1581,7 @@
   "Yes": "Oui",
   "YES": "OUI",
   "Your account has been successfully terminated. Your balance has been transferred to the bank.": "Votre compte a été résilié avec succès. Votre solde a été transféré à la banque.",
-  "yyyy-MM-dd HH:mm:ss": "yyyy-MM-dd HH:mm:ss"
+  "yyyy-MM-dd HH:mm:ss": "yyyy-MM-dd HH:mm:ss",
+  "Merchant: ": "Commerçant : ",
+  "Right-click to pay": "Clic droit pour payer"
 }

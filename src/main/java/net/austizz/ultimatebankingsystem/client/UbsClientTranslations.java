@@ -42,6 +42,24 @@ public final class UbsClientTranslations {
         return resolved;
     }
 
+    public static String format(String key, Object... args) {
+        if (key == null || key.isEmpty()) {
+            return "";
+        }
+        syncLanguageCache();
+        if (I18n.exists(key)) {
+            return I18n.get(key, args);
+        }
+
+        StringBuilder fallback = new StringBuilder(key);
+        if (args != null) {
+            for (Object arg : args) {
+                fallback.append(' ').append(arg);
+            }
+        }
+        return fallback.toString();
+    }
+
     private static String resolveInternal(String text, int depth) {
         if (text == null || text.isEmpty()) {
             return "";
