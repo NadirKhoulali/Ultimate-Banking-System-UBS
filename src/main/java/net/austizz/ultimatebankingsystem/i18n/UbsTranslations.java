@@ -41,6 +41,8 @@ public final class UbsTranslations {
             "UNKNOWN",
             "ACTIVE",
             "IDLE",
+            "PRIMARY",
+            "BLOCKED",
             "YES",
             "NO"
     };
@@ -367,7 +369,9 @@ public final class UbsTranslations {
             case "TRUE", "YES" -> "ubs.value.yes";
             case "FALSE", "NO" -> "ubs.value.no";
             case "ACTIVE" -> "ubs.value.active";
+            case "PRIMARY" -> "ubs.value.primary";
             case "INACTIVE" -> "ubs.value.inactive";
+            case "BLOCKED" -> "ubs.value.blocked";
             case "IDLE" -> "ubs.value.disconnected";
             case "DISABLED" -> "ubs.value.disabled";
             case "ENABLED" -> "ubs.value.enabled";
