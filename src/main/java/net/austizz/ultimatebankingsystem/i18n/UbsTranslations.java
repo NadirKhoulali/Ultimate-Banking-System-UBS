@@ -44,6 +44,10 @@ public final class UbsTranslations {
             "YES",
             "NO"
     };
+    private static final String[] LEADING_PREFIX_KEYS = {
+            "Click to copy Account ID (",
+            "Pay using "
+    };
 
     private UbsTranslations() {
     }
@@ -109,6 +113,11 @@ public final class UbsTranslations {
             return byEmbeddedValue;
         }
 
+        MutableComponent byLeadingPrefix = splitLeadingPrefix(text, depth);
+        if (byLeadingPrefix != null) {
+            return byLeadingPrefix;
+        }
+
         MutableComponent byStyled = splitStyledMessage(text, depth);
         if (byStyled != null) {
             return byStyled;
@@ -161,6 +170,25 @@ public final class UbsTranslations {
         String prefix = text.substring(0, prefixEnd);
         String value = text.substring(prefixEnd);
         return Component.translatable(prefix).append(resolve(value, depth + 1));
+    }
+
+    private static MutableComponent splitLeadingPrefix(String text, int depth) {
+        for (String prefix : LEADING_PREFIX_KEYS) {
+            if (!text.startsWith(prefix) || text.length() <= prefix.length()) {
+                continue;
+            }
+
+            String rest = text.substring(prefix.length());
+            MutableComponent result = Component.translatable(prefix);
+            if (rest.endsWith(")") && rest.length() > 1 && isRuntimeValue(rest.substring(0, rest.length() - 1))) {
+                result.append(Component.literal(rest.substring(0, rest.length() - 1)));
+                result.append(Component.translatable(")"));
+            } else {
+                result.append(resolve(rest, depth + 1));
+            }
+            return result;
+        }
+        return null;
     }
 
     private static MutableComponent splitEmbeddedValue(String text, int depth) {
@@ -217,6 +245,9 @@ public final class UbsTranslations {
                 result.append(Component.literal(segment.text()));
             } else {
                 MutableComponent value = translateKnownValue(segment.text());
+                if (value == null) {
+                    value = translateStyledStaticSegment(segment.text());
+                }
                 result.append(value == null ? Component.translatable(segment.text()) : value);
             }
         }
@@ -285,6 +316,43 @@ public final class UbsTranslations {
     private static boolean looksLikeSentenceFragment(String text) {
         String trimmed = text.trim();
         return trimmed.contains(" ") || trimmed.endsWith(":") || trimmed.endsWith(".") || trimmed.endsWith("!");
+    }
+
+    private static MutableComponent translateStyledStaticSegment(String text) {
+        String leading = leadingFormatCodes(text);
+        if (leading.isEmpty() || leading.length() >= text.length()) {
+            return null;
+        }
+
+        String content = text.substring(leading.length());
+        int start = 0;
+        int end = content.length();
+        while (start < end && Character.isWhitespace(content.charAt(start))) {
+            start++;
+        }
+        while (end > start && Character.isWhitespace(content.charAt(end - 1))) {
+            end--;
+        }
+        if (start >= end) {
+            return null;
+        }
+
+        MutableComponent result = Component.empty();
+        if (start > 0) {
+            result.append(Component.literal(content.substring(0, start)));
+        }
+
+        MutableComponent translated = Component.translatable(content.substring(start, end));
+        ChatFormatting[] formats = formatsFromCodes(leading);
+        if (formats.length > 0) {
+            translated.withStyle(formats);
+        }
+        result.append(translated);
+
+        if (end < content.length()) {
+            result.append(Component.literal(content.substring(end)));
+        }
+        return result;
     }
 
     private static MutableComponent translateKnownValue(String text) {
