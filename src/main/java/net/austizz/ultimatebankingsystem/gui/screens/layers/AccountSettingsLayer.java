@@ -661,7 +661,6 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
             drawMetricRow(graphics, "Daily reset", formatResetTime(dailyResetEpochMillis),
                     metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_MUTED);
 
-            graphics.drawString(font, UbsClientTranslations.resolve("Custom limit"), contentLeft + 6, panelTop + 152, COLOR_LABEL);
         }
 
         if (!statusMessage.isEmpty()) {
