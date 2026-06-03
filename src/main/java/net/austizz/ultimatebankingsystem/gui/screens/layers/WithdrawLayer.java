@@ -54,14 +54,13 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
 
-        int quickTop = panelTop + 58;
-        int customTop = panelTop + 122;
+        int customTop = panelTop + 154;
         int btnSpacing = 4;
         int btnWidth = (contentWidth - ((PRESET_AMOUNTS.length - 1) * btnSpacing)) / PRESET_AMOUNTS.length;
         btnWidth = Math.max(40, btnWidth);
         int totalBtnWidth = PRESET_AMOUNTS.length * btnWidth + (PRESET_AMOUNTS.length - 1) * btnSpacing;
         int startX = panelLeft + (panelWidth - totalBtnWidth) / 2;
-        int presetY = quickTop + 24;
+        int presetY = panelTop + 126;
 
         var selected = ClientATMData.getSelectedAccount();
         if (selected != null) {
@@ -236,25 +235,30 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int panelHeight = bankScreen.getPanelHeight();
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
-        int customTop = panelTop + 122;
+        int customTop = panelTop + 154;
         int fieldY = customTop + 20;
 
         drawCenteredFittedString(graphics, "Withdraw Cash",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
+        int metricTop = panelTop + 48;
+        int metricGap = 8;
+        int metricWidth = (contentWidth - metricGap) / 2;
+        int metricRowStep = 24;
+        drawMetricCell(graphics, "Per-withdrawal limit", MoneyText.abbreviateWithDollar(defaultWithdrawalLimit),
+                contentLeft + 6, metricTop, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
+        drawMetricCell(graphics, "Active withdrawal limit", MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit),
+                contentLeft + 6 + metricWidth + metricGap, metricTop, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
+        drawMetricCell(graphics, "Daily withdrawal limit", MoneyText.abbreviateWithDollar(dailyWithdrawalLimit),
+                contentLeft + 6, metricTop + metricRowStep, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
+        drawMetricCell(graphics, "Used today", MoneyText.abbreviateWithDollar(dailyWithdrawnToday),
+                contentLeft + 6 + metricWidth + metricGap, metricTop + metricRowStep, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
+        drawMetricCell(graphics, "Remaining today", MoneyText.abbreviateWithDollar(dailyRemaining),
+                contentLeft + 6, metricTop + (metricRowStep * 2), metricWidth - 6, COLOR_LABEL, COLOR_SUCCESS);
+        drawMetricCell(graphics, "Daily reset", formatResetEpoch(dailyResetEpochMillis),
+                contentLeft + 6 + metricWidth + metricGap, metricTop + (metricRowStep * 2), metricWidth - 6, COLOR_LABEL, COLOR_MUTED);
+
         graphics.drawString(font, UbsClientTranslations.resolve("Custom Amount"), contentLeft + 6, customTop + 6, COLOR_LABEL);
-        drawFittedString(graphics,
-                "Per-withdrawal limit: $" + MoneyText.abbreviate(defaultWithdrawalLimit)
-                        + "   Active withdrawal limit: $" + MoneyText.abbreviate(effectiveWithdrawalLimit),
-                contentLeft + 6, panelTop + 46, contentWidth - 10, COLOR_LABEL);
-        drawFittedString(graphics,
-                "Daily withdrawal limit: $" + MoneyText.abbreviate(dailyWithdrawalLimit)
-                        + "   Used today: $" + MoneyText.abbreviate(dailyWithdrawnToday)
-                        + "   Remaining: $" + MoneyText.abbreviate(dailyRemaining),
-                contentLeft + 6, panelTop + 58, contentWidth - 10, COLOR_LABEL);
-        drawFittedString(graphics,
-                "Daily reset: " + formatResetEpoch(dailyResetEpochMillis),
-                contentLeft + 6, panelTop + 70, contentWidth - 10, COLOR_MUTED);
 
         if (resultMessage != null) {
             int resultY = fieldY + 28;

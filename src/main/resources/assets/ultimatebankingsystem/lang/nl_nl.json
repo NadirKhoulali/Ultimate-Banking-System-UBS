@@ -816,9 +816,9 @@
   "Back to Lending": "Terug naar leningen",
   "Back to Login": "Terug naar inloggen",
   "Back to Overview": "Terug naar overzicht",
-  "Balance": "Evenwicht",
+  "Balance": "Saldo",
   "Balance Inquiry": "Saldo bekijken",
-  "Balance:": "Evenwicht:",
+  "Balance:": "Saldo:",
   "Bank": "Bank",
   "Bank ": "Bank ",
   "Bank Limit Reached": "Banklimiet bereikt",
@@ -1599,5 +1599,12 @@
   "Reserve Ratio": "Reserveratio",
   "Deposits": "Stortingen",
   "Remaining": "Resterend",
-  "none": "geen"
+  "none": "geen",
+  "Balance: ": "Saldo: ",
+  "Per-withdrawal limit": "Limiet per opname",
+  "Active withdrawal limit": "Actieve limiet",
+  "Daily withdrawal limit": "Daglimiet",
+  "Used today": "Vandaag gebruikt",
+  "Remaining today": "Vandaag resterend",
+  "Daily reset": "Dagelijkse reset"
 }

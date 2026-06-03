@@ -82,10 +82,11 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         int panelLeft = bankScreen.getPanelLeft();
         int panelTop = bankScreen.getPanelTop();
         int panelWidth = bankScreen.getPanelWidth();
+        int panelHeight = bankScreen.getPanelHeight();
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
         int sectionTop = panelTop + 58;
-        int sectionBottom = sectionTop + 110;
+        int sectionBottom = Math.min(panelTop + panelHeight - 48, sectionTop + 132);
 
         drawCenteredFittedString(graphics, "Balance Inquiry",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
@@ -98,31 +99,39 @@ public class BalanceInquiryLayer extends AbstractScreenLayer {
         }
 
         int labelX = contentLeft + 8;
-        int labelWidth = 98;
+        int rightX = contentLeft + contentWidth - 8;
+        int labelWidth = Math.min(
+                contentWidth - 120,
+                Math.max(
+                        Math.max(font.width(UbsClientTranslations.resolve("Account Type:")), font.width(UbsClientTranslations.resolve("Bank Name:"))),
+                        Math.max(font.width(UbsClientTranslations.resolve("Balance:")), font.width(UbsClientTranslations.resolve("Created:")))
+                ) + 10
+        );
         int valueX = labelX + labelWidth;
-        int valueMaxWidth = Math.max(20, contentLeft + contentWidth - 8 - valueX);
+        int valueMaxWidth = Math.max(20, rightX - valueX);
         int y = sectionTop + 10;
         int lineSpacing = 20;
         int labelColor = COLOR_LABEL;
         int valueColor = COLOR_VALUE;
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Account Type:"), labelX, y, labelColor);
+        drawFittedString(graphics, "Account Type:", labelX, y, labelWidth - 4, labelColor);
         drawFittedString(graphics, accountType, valueX, y, valueMaxWidth, valueColor);
         y += lineSpacing;
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Bank Name:"), labelX, y, labelColor);
+        drawFittedString(graphics, "Bank Name:", labelX, y, labelWidth - 4, labelColor);
         drawFittedString(graphics, bankName, valueX, y, valueMaxWidth, valueColor);
         y += lineSpacing;
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Account ID:"), labelX, y, labelColor);
-        drawFittedString(graphics, accountId, valueX, y, valueMaxWidth, valueColor);
-        y += lineSpacing;
+        drawFittedString(graphics, "Account ID:", labelX, y, contentWidth - 16, labelColor);
+        y += 12;
+        drawFittedString(graphics, accountId, labelX, y, contentWidth - 16, valueColor);
+        y += 18;
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Balance:"), labelX, y, labelColor);
+        drawFittedString(graphics, "Balance:", labelX, y, labelWidth - 4, labelColor);
         drawFittedString(graphics, MoneyText.abbreviateWithDollar(balance), valueX, y, valueMaxWidth, COLOR_SUCCESS);
         y += lineSpacing;
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Created:"), labelX, y, labelColor);
+        drawFittedString(graphics, "Created:", labelX, y, labelWidth - 4, labelColor);
         drawFittedString(graphics, createdDate, valueX, y, valueMaxWidth, valueColor);
     }
 }

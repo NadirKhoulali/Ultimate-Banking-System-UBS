@@ -223,7 +223,7 @@ public class BankScreen extends Screen {
         }
 
         // Footer status stripe
-        int statusTop = bottom - 13;
+        int statusTop = bottom - 16;
         graphics.fill(contentLeft, statusTop, contentRight, statusTop + 1, 0xCC3F628D);
         graphics.fill(contentLeft, statusTop + 1, contentRight, contentBottom, 0xAA11233A);
 
@@ -234,7 +234,7 @@ public class BankScreen extends Screen {
             top + 8,
             0xFFFFFFFF
         );
-        graphics.drawString(this.font, UbsClientTranslations.resolve("SECURE TERMINAL"), contentLeft + 4, statusTop + 3, 0xFF87BDE9);
+        graphics.drawString(this.font, UbsClientTranslations.resolve("SECURE TERMINAL"), contentLeft + 4, statusTop + 2, 0xFF87BDE9);
 
         super.render(graphics, mouseX, mouseY, partialTicks);
 

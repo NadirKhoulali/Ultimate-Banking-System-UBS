@@ -137,14 +137,10 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
         ));
 
         int infoTop = panelTop + 88;
-        int accountIdLabelX = contentLeft;
         int accountIdLabelY = infoTop + 8;
         int copyButtonWidth = 40;
         int copyButtonHeight = 18;
-        int copyButtonX = Math.min(
-                accountIdLabelX + font.width("Account ID:") + 10,
-                panelLeft + panelWidth - 14 - copyButtonWidth
-        );
+        int copyButtonX = contentLeft + contentWidth - copyButtonWidth;
         int copyButtonY = accountIdLabelY - 6;
         copyButton = addWidget(new NineSliceTexturedButton(
                 copyButtonX,
@@ -217,7 +213,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 btn -> cancelPinChangeConfirmation()
         ));
 
-        temporaryLimitField = new AtmEditBox(font, contentLeft, panelTop + 150, contentWidth, 20, UbsTranslations.literal(""));
+        temporaryLimitField = new AtmEditBox(font, contentLeft, panelTop + 164, contentWidth, 20, UbsTranslations.literal(""));
         temporaryLimitField.setMaxLength(12);
         temporaryLimitField.setHint(UbsTranslations.literal("Custom limit (whole dollars)...").withStyle(ChatFormatting.WHITE));
         styleEditBox(temporaryLimitField);
@@ -225,7 +221,7 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
 
         applyLimitButton = addWidget(new NineSliceTexturedButton(
                 contentLeft,
-                panelTop + 188,
+                panelTop + 190,
                 contentWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
                 4, 4, 4, 4,
@@ -616,11 +612,13 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
         if (activeTab == Tab.INFO) {
-            graphics.drawString(font, UbsClientTranslations.resolve("Account ID:"), contentLeft + 8, sectionTop + 8, COLOR_LABEL);
-            drawFittedString(graphics, accountId, contentLeft + 8, sectionTop + 20, contentWidth - 16, COLOR_VALUE);
-            drawFittedString(graphics, "Type: " + accountType, contentLeft + 8, sectionTop + 36, contentWidth - 16, COLOR_VALUE);
-            drawFittedString(graphics, "Bank: " + bankName, contentLeft + 8, sectionTop + 48, contentWidth - 16, COLOR_VALUE);
-            drawFittedString(graphics, "Created: " + createdDate, contentLeft + 8, sectionTop + 60, contentWidth - 16, COLOR_VALUE);
+            int infoX = contentLeft + 8;
+            int copySafeWidth = Math.max(40, copyButton.getX() - infoX - 6);
+            drawFittedString(graphics, "Account ID:", infoX, sectionTop + 8, copySafeWidth, COLOR_LABEL);
+            drawFittedString(graphics, accountId, infoX, sectionTop + 20, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Type: " + accountType, infoX, sectionTop + 40, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Bank: " + bankName, infoX, sectionTop + 54, contentWidth - 16, COLOR_VALUE);
+            drawFittedString(graphics, "Created: " + createdDate, infoX, sectionTop + 68, contentWidth - 16, COLOR_VALUE);
             graphics.drawString(font, UbsClientTranslations.resolve("Primary Account"), contentLeft + 2, panelTop + 168, COLOR_LABEL);
         } else if (activeTab == Tab.SECURITY) {
             if (showPinConfirmation) {
@@ -640,15 +638,30 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
                 graphics.drawString(font, UbsClientTranslations.resolve("Confirm PIN"), contentLeft + 6, confirmLabelY, COLOR_LABEL);
             }
         } else {
-            drawFittedString(graphics, "Per-withdrawal limit: " + MoneyText.abbreviateWithDollar(defaultWithdrawalLimit), contentLeft + 6, sectionTop + 8, 140, COLOR_LABEL);
-            drawFittedString(graphics, "Active withdrawal limit: " + MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit), contentLeft + 152, sectionTop + 8, contentWidth - 156, COLOR_VALUE);
-            drawFittedString(graphics, "Daily withdrawal limit: " + MoneyText.abbreviateWithDollar(dailyWithdrawalLimit), contentLeft + 6, sectionTop + 22, 140, COLOR_LABEL);
-            drawFittedString(graphics, "Used today: " + MoneyText.abbreviateWithDollar(dailyWithdrawnToday), contentLeft + 152, sectionTop + 22, contentWidth - 156, COLOR_VALUE);
-            drawFittedString(graphics, "Remaining today: " + MoneyText.abbreviateWithDollar(dailyWithdrawalRemaining), contentLeft + 6, sectionTop + 36, 140, COLOR_VALUE);
-            drawFittedString(graphics, "Resets: " + formatResetTime(dailyResetEpochMillis), contentLeft + 152, sectionTop + 36, contentWidth - 156, COLOR_MUTED);
+            int metricsX = contentLeft + 6;
+            int metricsWidth = contentWidth - 12;
+            int valueWidth = 112;
+            int rowY = sectionTop + 2;
+            int rowStep = 11;
+            drawMetricRow(graphics, "Per-withdrawal limit", MoneyText.abbreviateWithDollar(defaultWithdrawalLimit),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_VALUE);
+            rowY += rowStep;
+            drawMetricRow(graphics, "Active withdrawal limit", MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_VALUE);
+            rowY += rowStep;
+            drawMetricRow(graphics, "Daily withdrawal limit", MoneyText.abbreviateWithDollar(dailyWithdrawalLimit),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_VALUE);
+            rowY += rowStep;
+            drawMetricRow(graphics, "Used today", MoneyText.abbreviateWithDollar(dailyWithdrawnToday),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_VALUE);
+            rowY += rowStep;
+            drawMetricRow(graphics, "Remaining today", MoneyText.abbreviateWithDollar(dailyWithdrawalRemaining),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_SUCCESS);
+            rowY += rowStep;
+            drawMetricRow(graphics, "Daily reset", formatResetTime(dailyResetEpochMillis),
+                    metricsX, rowY, metricsWidth, valueWidth, COLOR_LABEL, COLOR_MUTED);
 
-            graphics.drawString(font, UbsClientTranslations.resolve("Custom limit"), contentLeft + 6, panelTop + 136, COLOR_LABEL);
-            drawFittedString(graphics, "Apply will open PIN keypad confirmation.", contentLeft + 6, panelTop + 174, contentWidth - 12, COLOR_MUTED);
+            graphics.drawString(font, UbsClientTranslations.resolve("Custom limit"), contentLeft + 6, panelTop + 152, COLOR_LABEL);
         }
 
         if (!statusMessage.isEmpty()) {
