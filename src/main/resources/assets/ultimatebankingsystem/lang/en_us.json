@@ -1583,5 +1583,21 @@
   "Your account has been successfully terminated. Your balance has been transferred to the bank.": "Your account has been successfully terminated. Your balance has been transferred to the bank.",
   "yyyy-MM-dd HH:mm:ss": "yyyy-MM-dd HH:mm:ss",
   "Merchant: ": "Merchant: ",
-  "Right-click to pay": "Right-click to pay"
+  "Right-click to pay": "Right-click to pay",
+  "No Risk": "No Risk",
+  "Medium Risk": "Medium Risk",
+  "High Risk": "High Risk",
+  "Brand color updated to ": "Brand color updated to ",
+  "Motto updated.": "Motto updated.",
+  "Only bank owners can update color.": "Only bank owners can update color.",
+  "Invalid color. Use #RRGGBB or names like blue/red/green.": "Invalid color. Use #RRGGBB or names like blue/red/green.",
+  "Only bank owners can update limits.": "Only bank owners can update limits.",
+  "Unknown Bank": "Unknown Bank",
+  "vs min": "vs min",
+  "Min": "Min",
+  "Daily Remaining": "Daily Remaining",
+  "Reserve Ratio": "Reserve Ratio",
+  "Deposits": "Deposits",
+  "Remaining": "Remaining",
+  "none": "none"
 }

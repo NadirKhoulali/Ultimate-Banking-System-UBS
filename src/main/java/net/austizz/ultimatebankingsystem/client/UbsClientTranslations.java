@@ -16,7 +16,8 @@ public final class UbsClientTranslations {
             "[Primary] ",
             "Showing ",
             "Loading ",
-            "Refresh "
+            "Refresh ",
+            "Brand color updated to "
     };
     private static volatile String languageCode = "";
 
@@ -90,6 +91,11 @@ public final class UbsClientTranslations {
         String byAt = resolveDelimited(text, " @ ", depth + 1);
         if (!byAt.equals(text)) {
             return byAt;
+        }
+
+        String bySlash = resolveDelimited(text, " / ", depth + 1);
+        if (!bySlash.equals(text)) {
+            return bySlash;
         }
 
         String bySpacedColumns = resolveDelimited(text, "   ", depth + 1);
