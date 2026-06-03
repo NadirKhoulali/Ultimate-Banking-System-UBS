@@ -173,6 +173,38 @@ public abstract class AbstractScreenLayer implements ScreenLayer {
         graphics.drawString(font, fitToWidth(text, maxWidth), x, y, color);
     }
 
+    protected void drawRightAlignedFittedString(GuiGraphics graphics, String text, int rightX, int y, int maxWidth, int color) {
+        String fitted = fitToWidth(text, maxWidth);
+        graphics.drawString(font, fitted, rightX - font.width(fitted), y, color);
+    }
+
+    protected void drawMetricRow(GuiGraphics graphics,
+                                 String label,
+                                 String value,
+                                 int x,
+                                 int y,
+                                 int width,
+                                 int valueWidth,
+                                 int labelColor,
+                                 int valueColor) {
+        int safeValueWidth = Math.max(32, Math.min(valueWidth, width - 42));
+        int labelWidth = Math.max(24, width - safeValueWidth - 8);
+        drawFittedString(graphics, label, x, y, labelWidth, labelColor);
+        drawRightAlignedFittedString(graphics, value, x + width, y, safeValueWidth, valueColor);
+    }
+
+    protected void drawMetricCell(GuiGraphics graphics,
+                                  String label,
+                                  String value,
+                                  int x,
+                                  int y,
+                                  int width,
+                                  int labelColor,
+                                  int valueColor) {
+        drawFittedString(graphics, label, x, y, width, labelColor);
+        drawFittedString(graphics, value, x, y + font.lineHeight + 1, width, valueColor);
+    }
+
     protected void drawCenteredFittedString(GuiGraphics graphics, String text, int centerX, int y, int maxWidth, int color) {
         graphics.drawCenteredString(font, fitToWidth(text, maxWidth), centerX, y, color);
     }

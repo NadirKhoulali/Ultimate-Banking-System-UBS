@@ -1599,5 +1599,12 @@
   "Reserve Ratio": "Reserve Ratio",
   "Deposits": "Deposits",
   "Remaining": "Remaining",
-  "none": "none"
+  "none": "none",
+  "Per-withdrawal limit": "Per-withdrawal limit",
+  "Active withdrawal limit": "Active withdrawal limit",
+  "Daily withdrawal limit": "Daily withdrawal limit",
+  "Used today": "Used today",
+  "Remaining today": "Remaining today",
+  "Daily reset": "Daily reset",
+  "Balance: ": "Balance: "
 }
