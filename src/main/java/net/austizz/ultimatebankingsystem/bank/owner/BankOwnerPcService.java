@@ -795,12 +795,12 @@ public final class BankOwnerPcService {
                 String risk;
                 if ("SUSPENDED".equalsIgnoreCase(data.status()) || "REVOKED".equalsIgnoreCase(data.status())
                         || reserve.compareTo(minimum) < 0) {
-                    risk = "RED";
+                    risk = "High Risk";
                 } else if (dailyCap.compareTo(BigDecimal.ZERO) > 0
                         && dailyUsed.divide(dailyCap, 4, RoundingMode.HALF_EVEN).compareTo(BigDecimal.valueOf(0.90)) >= 0) {
-                    risk = "YELLOW";
+                    risk = "Medium Risk";
                 } else {
-                    risk = "GREEN";
+                    risk = "No Risk";
                 }
                 body = joinLines(
                         "Status: " + data.status(),

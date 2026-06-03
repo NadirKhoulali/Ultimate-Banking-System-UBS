@@ -2323,15 +2323,15 @@ public class UBSCommands {
         ChatFormatting riskColor;
         if ("SUSPENDED".equals(status) || "REVOKED".equals(status) || "LOCKDOWN".equals(status)
                 || reserve.compareTo(minReserve) < 0) {
-            risk = "RED";
+            risk = "High Risk";
             riskColor = ChatFormatting.RED;
         } else if (reserveRatio.compareTo(BigDecimal.valueOf(Config.BANK_MIN_RESERVE_RATIO.get() * 100 + 10)) <= 0
                 || dailyCap.compareTo(BigDecimal.ZERO) > 0
                 && dailyUsed.divide(dailyCap, 4, RoundingMode.HALF_EVEN).compareTo(BigDecimal.valueOf(0.90)) >= 0) {
-            risk = "YELLOW";
+            risk = "Medium Risk";
             riskColor = ChatFormatting.YELLOW;
         } else {
-            risk = "GREEN";
+            risk = "No Risk";
             riskColor = ChatFormatting.GREEN;
         }
 

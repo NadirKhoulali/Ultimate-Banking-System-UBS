@@ -4366,7 +4366,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(sectionViewportX - 3, sectionViewportY - 2, sectionViewportX + sectionViewportW + 3, sectionViewportY - 1, 0x889FCBF0);
 
         OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
-        graphics.drawString(this.font, fitToWidth(currentToolTitle(), right - left - 220), left + 8, top + 10, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(currentToolTitle()), right - left - 220), left + 8, top + 10, 0xFFFFFFFF, false);
 
         int outputX = left + 170;
         int outputY = getOutputPanelTop(top);
@@ -4701,12 +4701,12 @@ public class BankOwnerPcScreen extends Screen {
             String risk;
             if ("SUSPENDED".equalsIgnoreCase(data.status()) || "REVOKED".equalsIgnoreCase(data.status())
                     || reserve.compareTo(minReserve) < 0) {
-                risk = "RED";
+                risk = "High Risk";
             } else if (dailyCap.signum() > 0
                     && dailyUsed.divide(dailyCap, 4, RoundingMode.HALF_EVEN).compareTo(BigDecimal.valueOf(0.90)) >= 0) {
-                risk = "YELLOW";
+                risk = "Medium Risk";
             } else {
-                risk = "GREEN";
+                risk = "No Risk";
             }
             cardLabels = new String[]{"Status", "Risk", "Accounts", "Fed Funds"};
             cardValues = new String[]{
@@ -4754,8 +4754,9 @@ public class BankOwnerPcScreen extends Screen {
                 : dailyRemaining.divide(dailyCap.max(BigDecimal.ONE), 4, RoundingMode.HALF_EVEN).floatValue()));
         String firstBarTitle = "SHOW_RESERVE".equals(normalizedAction) ? "Reserve Cushion" : "Reserve Coverage";
         String firstBarSubtitle = "SHOW_RESERVE".equals(normalizedAction)
-                ? "$" + compactCurrency(data.reserve()) + " vs min $" + compactCurrency(data.minReserve())
-                : "Min $" + compactCurrency(data.minReserve());
+                ? "$" + compactCurrency(data.reserve()) + " " + UbsClientTranslations.resolve("vs min")
+                + " $" + compactCurrency(data.minReserve())
+                : UbsClientTranslations.resolve("Min") + " $" + compactCurrency(data.minReserve());
         String secondBarTitle = "SHOW_DASHBOARD".equals(normalizedAction) ? "Liquidity Headroom" : "Daily Utilization";
         String secondBarSubtitle = "SHOW_DASHBOARD".equals(normalizedAction)
                 ? "$" + compactCurrency(data.dailyRemaining()) + " " + UbsClientTranslations.resolve("available")
@@ -4959,7 +4960,7 @@ public class BankOwnerPcScreen extends Screen {
 
             int textX = avatarX + 22;
             graphics.drawString(this.font, fitToWidth(player, width - 30), textX, y + 7, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, fitToWidth(type + "  " + balance, width - 30), textX, y + 20, 0xFFD4E8FF, false);
+            graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(type) + "  " + balance, width - 30), textX, y + 20, 0xFFD4E8FF, false);
             graphics.drawString(this.font, fitToWidth(id, width - 88), textX, y + 32, 0xFFB7CBE3, false);
             graphics.drawString(this.font, UbsClientTranslations.resolve("Open"), x + width - 28, y + 32, 0xFF9EC9F0, false);
         } else if ("SHOW_CDS".equals(normalizedAction) && text.contains("|")) {
@@ -4990,9 +4991,10 @@ public class BankOwnerPcScreen extends Screen {
                     : state.toUpperCase(Locale.ROOT).contains("OVERDUE")
                     ? 0xFFE0A54E
                     : 0xFF8EA8C2;
-            int stateW = Math.min(68, Math.max(40, this.font.width(state) + 8));
+            String stateLabel = UbsClientTranslations.resolve(state);
+            int stateW = Math.min(68, Math.max(40, this.font.width(stateLabel) + 8));
             graphics.fill(x + width - stateW - 6, y + 6, x + width - 6, y + 18, stateColor);
-            graphics.drawCenteredString(this.font, fitToWidth(state, stateW - 6), x + width - stateW / 2 - 6, y + 9, 0xFF0E2238);
+            graphics.drawCenteredString(this.font, fitToWidth(stateLabel, stateW - 6), x + width - stateW / 2 - 6, y + 9, 0xFF0E2238);
 
             graphics.drawString(this.font, fitToWidth(id + "  " + type, width - stateW - 18), x + 6, y + 7, 0xFFFFFFFF, false);
             graphics.drawString(this.font, fitToWidth(remaining, width - 12), x + 6, y + 22, 0xFFD4E8FF, false);
@@ -5227,7 +5229,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(x, y, x + width, y + height, 0xFF2E5277);
         graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xB01D3D5E);
         graphics.fill(x + 1, y + 1, x + 3, y + height - 1, accent);
-        graphics.drawCenteredString(this.font, fitToWidth(label, width - 8), x + (width / 2), y + 4, 0xFFEAF5FF);
+        graphics.drawCenteredString(this.font, fitToWidth(UbsClientTranslations.resolve(label), width - 8), x + (width / 2), y + 4, 0xFFEAF5FF);
     }
 
     private void drawMarketConfirmOverlay(GuiGraphics graphics,
@@ -5475,7 +5477,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.drawString(this.font, UbsClientTranslations.resolve("Input Assistant"), x + 8, y + 9, 0xFFFFFFFF, false);
 
         int titleY = y + 36;
-        graphics.drawString(this.font, fitToWidth(help.title(), width - 16), x + 8, titleY, 0xFFE6F3FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(help.title()), width - 16), x + 8, titleY, 0xFFE6F3FF, false);
 
         List<String> summaryLines = wrapLines(List.of(help.summary()), Math.max(80, width - 16));
         int lineY = titleY + 14;
@@ -5488,7 +5490,10 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         if (lineY <= y + height - 20) {
-            graphics.drawString(this.font, UbsClientTranslations.resolve("Example: ") + fitToWidth(help.example(), width - 66), x + 8, lineY + 4, 0xFF98E2AF, false);
+            String examplePrefix = UbsClientTranslations.resolve("Example: ");
+            String example = UbsClientTranslations.resolve(help.example());
+            String exampleText = example.startsWith(examplePrefix) ? example : examplePrefix + example;
+            graphics.drawString(this.font, fitToWidth(exampleText, width - 16), x + 8, lineY + 4, 0xFF98E2AF, false);
         }
     }
 
@@ -5504,7 +5509,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(x, y, x + width, y + height, 0x8A1A304A);
         graphics.fill(x, y, x + width, y + 2, accent);
         graphics.drawString(this.font, UbsClientTranslations.resolve(label), x + 6, y + 7, 0xFFC6DEF7, false);
-        graphics.drawString(this.font, fitToWidth(value, Math.max(40, width - 12)), x + 6, y + 22, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(value), Math.max(40, width - 12)), x + 6, y + 22, 0xFFFFFFFF, false);
     }
 
     private void drawBarCard(GuiGraphics graphics,
@@ -5519,7 +5524,7 @@ public class BankOwnerPcScreen extends Screen {
         float clamped = Math.max(0.0F, Math.min(1.0F, value));
         graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFF355474);
         graphics.fill(x, y, x + width, y + height, 0x75192D45);
-        graphics.drawString(this.font, fitToWidth(title, width - 10), x + 6, y + 6, 0xFFE5F3FF, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(title), width - 10), x + 6, y + 6, 0xFFE5F3FF, false);
 
         int barX = x + 6;
         int barY = y + 21;
@@ -5530,7 +5535,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(barX, barY, barX + barW, barY + 1, 0x66FFFFFF);
 
         graphics.drawString(this.font, Math.round(clamped * 100.0F) + "%", barX, barY + 18, 0xFFCFE5FF, false);
-        graphics.drawString(this.font, fitToWidth(subtitle, Math.max(20, width - 62)), barX + 40, barY + 18, 0xFFBCD7F3, false);
+        graphics.drawString(this.font, fitToWidth(UbsClientTranslations.resolve(subtitle), Math.max(20, width - 62)), barX + 40, barY + 18, 0xFFBCD7F3, false);
     }
 
     private BigDecimal parseDecimal(String value) {
@@ -5545,7 +5550,14 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private String compactCurrency(String value) {
-        return MoneyText.abbreviate(value);
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.trim();
+        while (normalized.startsWith("$")) {
+            normalized = normalized.substring(1).trim();
+        }
+        return MoneyText.abbreviate(normalized);
     }
 
     private String abbreviateMoneyInLine(String line) {
