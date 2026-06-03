@@ -10,6 +10,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -70,16 +71,34 @@ public class ShopTerminalBlock extends Block implements EntityBlock {
         if (state.hasProperty(RESULT) && state.getValue(RESULT) != 0) {
             return ItemInteractionResult.SUCCESS;
         }
-        if (level.isClientSide()) {
-            PacketDistributor.sendToServer(new ShopTerminalUsePayload(
-                    level.dimension().location().toString(),
-                    pos.getX(),
-                    pos.getY(),
-                    pos.getZ(),
-                    player.isShiftKeyDown()
-            ));
-        }
+        sendTerminalUse(level, pos, player);
         return ItemInteractionResult.SUCCESS;
+    }
+
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state,
+                                               Level level,
+                                               BlockPos pos,
+                                               Player player,
+                                               BlockHitResult hitResult) {
+        if (state.hasProperty(RESULT) && state.getValue(RESULT) != 0) {
+            return InteractionResult.SUCCESS;
+        }
+        sendTerminalUse(level, pos, player);
+        return InteractionResult.SUCCESS;
+    }
+
+    private static void sendTerminalUse(Level level, BlockPos pos, Player player) {
+        if (!level.isClientSide()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new ShopTerminalUsePayload(
+                level.dimension().location().toString(),
+                pos.getX(),
+                pos.getY(),
+                pos.getZ(),
+                player.isShiftKeyDown()
+        ));
     }
 
     @Override
