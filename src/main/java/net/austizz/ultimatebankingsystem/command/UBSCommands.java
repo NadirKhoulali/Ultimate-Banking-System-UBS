@@ -218,7 +218,8 @@ public class UBSCommands {
         int start = (page - 1) * HELP_ENTRIES_PER_PAGE;
         int end = Math.min(totalEntries, start + HELP_ENTRIES_PER_PAGE);
         for (int i = start; i < end; i++) {
-            body.append(moneyLiteral(entries.get(i))).append(moneyLiteral("\n"));
+            appendHelpEntry(body, entries.get(i));
+            body.append(moneyLiteral("\n"));
         }
 
         if (totalPages > 1) {
@@ -252,6 +253,24 @@ public class UBSCommands {
 
         source.sendSystemMessage(ubsMessage(ChatFormatting.GOLD, title, body));
         return 1;
+    }
+
+    private static void appendHelpEntry(MutableComponent body, String entry) {
+        if (entry == null || entry.isEmpty()) {
+            return;
+        }
+
+        String separator = " §8- ";
+        int separatorIndex = entry.indexOf(separator);
+        if (separatorIndex < 0) {
+            body.append(moneyLiteral(entry));
+            return;
+        }
+
+        // Command syntax must stay literal so Minecraft command names and spacing never localize.
+        body.append(Component.literal(entry.substring(0, separatorIndex)));
+        body.append(Component.literal(separator));
+        body.append(moneyLiteral(entry.substring(separatorIndex + separator.length())));
     }
 
     @SubscribeEvent
