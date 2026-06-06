@@ -2,7 +2,7 @@
 
 This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
 
-API baseline in this release: `1.2.0`
+API baseline in this release: `1.2.1`
 
 Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
 
@@ -73,6 +73,12 @@ Service/runtime checks:
 - `primaryAccountCanSend(playerId, amount)`
 - `primaryAccountCanReceive(playerId)`
 - `bankAcceptsTransactions(bankId)`
+
+Formatting helpers:
+
+- `formatMoneyRounded(amount)` -> configured-currency display string
+
+`formatMoneyRounded` accepts `BigDecimal` or `long` amounts and returns a compact display string using the configured UBS currency symbol. It rounds to two decimals and carries rounded suffixes to the next scale, so `999999` can display as `$1M`. Use this for user-facing integration UIs such as auction-house cards, shop screens, and alerts. Keep using raw `BigDecimal` values for storage, sorting, validation, and transactions.
 
 `shopPurchase` overload note:
 
@@ -350,7 +356,15 @@ Explicit bank-id scope:
 ## Formatted vs Raw Values
 
 - Non-raw money placeholders return abbreviated display values (example: `$1.2M`).
+- `formatMoneyRounded(amount)` returns rounded abbreviated display values (example: `$1.23K`) for integration UI text.
 - `_raw` placeholders return plain numeric decimal strings (example: `1234567.89`) suitable for sorting/ranking systems.
+
+## Example: Rounded Money Display
+
+```java
+UltimateBankingApi api = UltimateBankingApiProvider.get();
+String label = api.formatMoneyRounded(new BigDecimal("1234.56")); // "$1.23K" by default
+```
 
 ## Example: Leaderboard Line
 

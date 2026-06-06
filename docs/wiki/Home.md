@@ -2,7 +2,7 @@
 
 This wiki tracks the current UBS feature set and command surface.
 
-Current release target: `1.2.0`
+Current release target: `1.2.4`
 
 ## Start Here
 

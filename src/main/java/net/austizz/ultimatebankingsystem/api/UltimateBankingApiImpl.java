@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
     private static final UUID API_EXTERNAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:api-external".getBytes());
-    private static final String API_VERSION = "1.2.0";
+    private static final String API_VERSION = "1.2.1";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final int MAX_REFERENCE_LENGTH = 160;
@@ -76,6 +76,16 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     @Override
     public String getApiVersion() {
         return API_VERSION;
+    }
+
+    @Override
+    public String formatMoneyRounded(BigDecimal amount) {
+        return formatMoneyRoundedDisplay(amount);
+    }
+
+    @Override
+    public String formatMoneyRounded(long amount) {
+        return formatMoneyRounded(BigDecimal.valueOf(amount));
     }
 
     @Override
@@ -1845,6 +1855,11 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     private String formatMoneyDisplay(BigDecimal value) {
         String symbol = Config.CURRENCY_SYMBOL.get() == null ? "$" : Config.CURRENCY_SYMBOL.get();
         return symbol + MoneyText.abbreviate(value == null ? BigDecimal.ZERO : value);
+    }
+
+    private String formatMoneyRoundedDisplay(BigDecimal value) {
+        String symbol = Config.CURRENCY_SYMBOL.get() == null ? "$" : Config.CURRENCY_SYMBOL.get();
+        return symbol + MoneyText.abbreviateRounded(value == null ? BigDecimal.ZERO : value);
     }
 
     private String formatMoneyRaw(BigDecimal value) {

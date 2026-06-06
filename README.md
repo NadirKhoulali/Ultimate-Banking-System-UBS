@@ -2,7 +2,7 @@
 
 UBS is a NeoForge `1.21.1` banking mod focused on a full in-world economy loop: ATM UI, physical cash (bills + coins), payment terminals, account security, player-owned banks, central-bank regulation, loans, and admin tooling.
 
-Current release target: `1.2.0`
+Current release target: `1.2.4`
 
 ## What UBS Includes
 
@@ -117,6 +117,8 @@ Highlights:
   - `resolvePlaceholder(playerId, token)`
   - `resolvePlaceholders(playerId, text)`
   - `getSupportedPlaceholders()`
+- Money display helper:
+  - `formatMoneyRounded(amount)` returns a configured-currency display string such as `$1.23K`
 
 Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)
 

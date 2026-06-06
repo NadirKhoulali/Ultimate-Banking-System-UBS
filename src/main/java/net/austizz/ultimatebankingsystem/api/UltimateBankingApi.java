@@ -14,6 +14,12 @@ import java.util.UUID;
 public interface UltimateBankingApi {
     String getApiVersion();
 
+    @ApiStatus.AvailableSince("1.2.1")
+    String formatMoneyRounded(BigDecimal amount);
+
+    @ApiStatus.AvailableSince("1.2.1")
+    String formatMoneyRounded(long amount);
+
     boolean isServerAvailable();
 
     ApiResult getBalance(UUID accountId);

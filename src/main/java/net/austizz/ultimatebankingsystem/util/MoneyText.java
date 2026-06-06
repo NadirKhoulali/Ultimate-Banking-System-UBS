@@ -7,6 +7,15 @@ import java.util.regex.Pattern;
 
 public final class MoneyText {
     private static final Pattern DOLLAR_TOKEN = Pattern.compile("\\$([+-]?(?:\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\.\\d+)?)");
+    private static final BigDecimal THOUSAND = BigDecimal.valueOf(1_000L);
+    private static final String[] SCALE_SUFFIXES = {"", "K", "M", "B", "T"};
+    private static final BigDecimal[] SCALE_DIVISORS = {
+            BigDecimal.ONE,
+            BigDecimal.valueOf(1_000L),
+            BigDecimal.valueOf(1_000_000L),
+            BigDecimal.valueOf(1_000_000_000L),
+            BigDecimal.valueOf(1_000_000_000_000L)
+    };
 
     private MoneyText() {}
 
@@ -27,30 +36,49 @@ public final class MoneyText {
     }
 
     public static String abbreviate(BigDecimal amount) {
+        return abbreviate(amount, RoundingMode.DOWN, false);
+    }
+
+    public static String abbreviateRounded(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String value = raw.trim();
+        if (value.isEmpty()) {
+            return "";
+        }
+
+        BigDecimal parsed = parseFlexibleDecimal(value);
+        if (parsed == null) {
+            return value;
+        }
+        return abbreviateRounded(parsed);
+    }
+
+    public static String abbreviateRounded(BigDecimal amount) {
+        return abbreviate(amount, RoundingMode.HALF_UP, true);
+    }
+
+    private static String abbreviate(BigDecimal amount, RoundingMode roundingMode, boolean carryRoundedScale) {
         if (amount == null) {
             return "0";
         }
         BigDecimal abs = amount.abs();
-        String suffix = "";
-        BigDecimal divisor = BigDecimal.ONE;
-
-        if (abs.compareTo(BigDecimal.valueOf(1_000_000_000_000L)) >= 0) {
-            suffix = "T";
-            divisor = BigDecimal.valueOf(1_000_000_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000_000_000L)) >= 0) {
-            suffix = "B";
-            divisor = BigDecimal.valueOf(1_000_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000_000L)) >= 0) {
-            suffix = "M";
-            divisor = BigDecimal.valueOf(1_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000L)) >= 0) {
-            suffix = "K";
-            divisor = BigDecimal.valueOf(1_000L);
+        int scaleIndex = 0;
+        for (int i = SCALE_DIVISORS.length - 1; i >= 1; i--) {
+            if (abs.compareTo(SCALE_DIVISORS[i]) >= 0) {
+                scaleIndex = i;
+                break;
+            }
         }
 
-        // Truncate to 2 decimals so we never round up displayed money.
-        BigDecimal shortened = amount.divide(divisor, 2, RoundingMode.DOWN);
-        return shortened.stripTrailingZeros().toPlainString() + suffix;
+        BigDecimal shortened = amount.divide(SCALE_DIVISORS[scaleIndex], 2, roundingMode);
+        if (carryRoundedScale && scaleIndex < SCALE_SUFFIXES.length - 1 && shortened.abs().compareTo(THOUSAND) >= 0) {
+            scaleIndex++;
+            shortened = amount.divide(SCALE_DIVISORS[scaleIndex], 2, roundingMode);
+        }
+
+        return shortened.stripTrailingZeros().toPlainString() + SCALE_SUFFIXES[scaleIndex];
     }
 
     public static String abbreviateWithDollar(String raw) {
@@ -59,6 +87,14 @@ public final class MoneyText {
 
     public static String abbreviateWithDollar(BigDecimal amount) {
         return "$" + abbreviate(amount);
+    }
+
+    public static String abbreviateRoundedWithDollar(String raw) {
+        return "$" + abbreviateRounded(raw);
+    }
+
+    public static String abbreviateRoundedWithDollar(BigDecimal amount) {
+        return "$" + abbreviateRounded(amount);
     }
 
     public static String abbreviateCurrencyTokens(String text) {

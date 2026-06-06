@@ -9,7 +9,7 @@ Current UBS identity:
 - Maven group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
 - Mod id: `ultimatebankingsystem`
-- Current version in this repo: `1.2.0`
+- Current version in this repo: `1.2.4`
 
 Dependency coordinate format:
 
@@ -55,9 +55,9 @@ Point the path to your local UBS clone.
 
 ```gradle
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 }
 ```
 
@@ -85,8 +85,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 }
 ```
 
@@ -110,8 +110,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-1.2.0"
-    runtimeOnly name: "ultimatebankingsystem-1.2.0"
+    compileOnly name: "ultimatebankingsystem-1.2.4"
+    runtimeOnly name: "ultimatebankingsystem-1.2.4"
 }
 ```
 
@@ -201,6 +201,15 @@ if (!tx.success()) {
     // tx.reason()
 }
 ```
+
+### Money display labels
+
+```java
+String cardPrice = api.formatMoneyRounded(new BigDecimal("1250.75")); // "$1.25K" by default
+String wholeDollarPrice = api.formatMoneyRounded(1250L);
+```
+
+Use `formatMoneyRounded` for player-facing UI labels, alerts, and cards. Keep raw `BigDecimal` values for validation, settlement, sorting, and saved data.
 
 ### Player account checks
 
