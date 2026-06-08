@@ -1,6 +1,5 @@
 package net.austizz.ultimatebankingsystem.block.custom;
 
-import com.mojang.serialization.MapCodec;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEntity;
@@ -38,7 +37,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
 public class ShopTerminalBlock extends Block implements EntityBlock {
-    public static final MapCodec<ShopTerminalBlock> CODEC = simpleCodec(ShopTerminalBlock::new);
     public static final IntegerProperty ROTATION = BlockStateProperties.ROTATION_16;
     public static final IntegerProperty POWER_LEVEL = BlockStateProperties.POWER;
     public static final IntegerProperty RESULT = IntegerProperty.create("result", 0, 2);
@@ -56,18 +54,13 @@ public class ShopTerminalBlock extends Block implements EntityBlock {
     }
 
     @Override
-    protected MapCodec<? extends Block> codec() {
-        return CODEC;
-    }
-
-    @Override
     protected ItemInteractionResult useItemOn(ItemStack stack,
-                                              BlockState state,
-                                              Level level,
-                                              BlockPos pos,
-                                              Player player,
-                                              InteractionHand hand,
-                                              BlockHitResult hitResult) {
+                                         BlockState state,
+                                 Level level,
+                                 BlockPos pos,
+                                 Player player,
+                                 InteractionHand hand,
+                                 BlockHitResult hitResult) {
         if (state.hasProperty(RESULT) && state.getValue(RESULT) != 0) {
             return ItemInteractionResult.SUCCESS;
         }
@@ -139,17 +132,17 @@ public class ShopTerminalBlock extends Block implements EntityBlock {
     }
 
     @Override
-    protected BlockState rotate(BlockState state, Rotation rotation) {
+    public BlockState rotate(BlockState state, Rotation rotation) {
         return state.setValue(ROTATION, rotation.rotate(state.getValue(ROTATION), 16));
     }
 
     @Override
-    protected BlockState mirror(BlockState state, Mirror mirror) {
+    public BlockState mirror(BlockState state, Mirror mirror) {
         return state.setValue(ROTATION, mirror.mirror(state.getValue(ROTATION), 16));
     }
 
     @Override
-    protected RenderShape getRenderShape(BlockState state) {
+    public RenderShape getRenderShape(BlockState state) {
         return RenderShape.MODEL;
     }
 
@@ -176,22 +169,22 @@ public class ShopTerminalBlock extends Block implements EntityBlock {
     }
 
     @Override
-    protected boolean isSignalSource(BlockState state) {
+    public boolean isSignalSource(BlockState state) {
         return true;
     }
 
     @Override
-    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+    public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return state.getValue(POWER_LEVEL);
     }
 
     @Override
-    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+    public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return state.getValue(POWER_LEVEL);
     }
 
     @Override
-    protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         if (state.getValue(POWER_LEVEL) <= 0) {
             return;
         }

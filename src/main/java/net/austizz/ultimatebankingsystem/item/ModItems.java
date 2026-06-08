@@ -3,8 +3,8 @@ package net.austizz.ultimatebankingsystem.item;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.neoforged.neoforge.registries.DeferredItem;
 
 import java.util.List;
 
@@ -28,6 +28,7 @@ public class ModItems {
     public static final DeferredItem<Item> CREDIT_CARD = ITEMS.register("credit_card", () -> new Item(new Item.Properties().stacksTo(1)));
     public static final DeferredItem<Item> HANDHELD_PAYMENT_TERMINAL = ITEMS.register("handheld_payment_terminal", HandheldPaymentTerminalItem::new);
     public static final DeferredItem<Item> BANK_TELLER_SPAWN_EGG = ITEMS.register("bank_teller_spawn_egg", BankTellerSpawnEggItem::new);
+    public static final DeferredItem<Item> CASHIER_SPAWN_EGG = ITEMS.register("cashier_spawn_egg", CashierSpawnEggItem::new);
 
     public static final List<DeferredItem<Item>> USD_BILLS = List.of(
             HUNDRED_DOLLAR_BILL,

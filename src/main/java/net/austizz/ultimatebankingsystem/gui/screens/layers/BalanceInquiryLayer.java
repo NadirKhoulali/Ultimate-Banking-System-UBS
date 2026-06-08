@@ -20,8 +20,7 @@ import java.time.format.DateTimeParseException;
 
 public class BalanceInquiryLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm");
 
     private String accountType = null;

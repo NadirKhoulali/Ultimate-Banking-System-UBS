@@ -132,6 +132,9 @@ dependencies {
     // The group id is ignored when searching -- in this case, it is "blank"
     // implementation "blank:coolmod-${mc_version}:${coolmod_version}"
     implementation 'com.mojang:brigadier:1.0.18'
+    implementation('io.netty:netty-codec-http:4.1.97.Final') {
+        transitive = false
+    }
     jarJar(implementation('com.bucket4j:bucket4j_jdk17-core')) {
         version {
             strictly '[8.17.0, 9.0.0)'
@@ -139,6 +142,8 @@ dependencies {
         }
     }
     additionalRuntimeClasspath 'com.bucket4j:bucket4j_jdk17-core:8.17.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     // Example mod dependency using a file as dependency
     // implementation files("libs/coolmod-${mc_version}-${coolmod_version}.jar")
@@ -180,6 +185,7 @@ publishing {
     publications {
         register('mavenJava', MavenPublication) {
             from components.java
+            artifactId = mod_id
         }
     }
     repositories {
@@ -193,6 +199,19 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
 
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+tasks.register('hologramfixJar', Jar) {
+    group = 'build'
+    description = 'Assembles the UBS jar used by the UAS dev runtime while the default jar may be locked.'
+    archiveClassifier = 'hologramfix'
+    from sourceSets.main.output
+    from layout.buildDirectory.dir('generated/jarJar')
+    dependsOn classes, tasks.named('jarJar')
+}
+
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.
 idea {
     module {
@@ -200,4 +219,3 @@ idea {
         downloadJavadoc = true
     }
 }
-

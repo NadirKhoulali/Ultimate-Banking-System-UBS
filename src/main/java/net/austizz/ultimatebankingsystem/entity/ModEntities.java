@@ -2,15 +2,14 @@ package net.austizz.ultimatebankingsystem.entity;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.minecraft.core.registries.Registries;
+import net.neoforged.neoforge.registries.DeferredHolder;
 
 public final class ModEntities {
-
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(Registries.ENTITY_TYPE, UltimateBankingSystem.MODID);
 
@@ -28,4 +27,3 @@ public final class ModEntities {
         ENTITY_TYPES.register(eventBus);
     }
 }
-

@@ -1,6 +1,6 @@
 package net.austizz.ultimatebankingsystem.network;
 
-import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
@@ -10,6 +10,14 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableLargeBlock;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ItemDisplayTransform;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayType;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfTransformBounds;
+import net.austizz.ultimatebankingsystem.block.entity.custom.GlassCounterDisplayBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ModularWallDisplayBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.ShopSellingTableBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEntity;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
@@ -17,22 +25,31 @@ import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
+import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
+import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
+import net.austizz.ultimatebankingsystem.shelf.ShelfBasketSessionService;
+import net.austizz.ultimatebankingsystem.shelf.ShelfDisplayRules;
+import net.austizz.ultimatebankingsystem.shelf.ShelfPrice;
+import net.austizz.ultimatebankingsystem.shelf.ShelfService;
+import net.austizz.ultimatebankingsystem.shop.ShopService;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.*;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -52,10 +69,9 @@ import java.util.UUID;
 /**
  * Registers all network payloads (custom packets) for the Ultimate Banking System mod.
  *
- * <p>NeoForge auto-discovers this class via {@link EventBusSubscriber} and fires
- * {@link RegisterPayloadHandlersEvent} on the mod event bus during startup.</p>
+ * <p>On Forge 1.20.1 this is invoked explicitly during common setup.</p>
  *
- * <h3>Adding a new payload</h3>
+ * <H2>Adding a new payload</H2>
  * <pre>{@code
  * // 1. Create a record implementing CustomPacketPayload:
  * public record ExamplePayload(String data) implements CustomPacketPayload {
@@ -89,7 +105,6 @@ import java.util.UUID;
  *   <li>{@code playBidirectional} — both directions</li>
  * </ul>
  */
-@EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public final class ModPayloads {
 
     private static final UUID ATM_TERMINAL_ID = UUID.nameUUIDFromBytes(
@@ -97,7 +112,6 @@ public final class ModPayloads {
 
     private ModPayloads() {}
 
-    @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         UltimateBankingSystem.LOGGER.info("[UBS] Registering network payloads");
         final PayloadRegistrar registrar = event.registrar("1");
@@ -113,6 +127,10 @@ public final class ModPayloads {
         registrar.playToClient(ShopTerminalOpenPayload.TYPE, ShopTerminalOpenPayload.STREAM_CODEC, ModPayloads::handleShopTerminalOpen);
         registrar.playToServer(ShopTerminalSavePayload.TYPE, ShopTerminalSavePayload.STREAM_CODEC, ModPayloads::handleShopTerminalSave);
         registrar.playToClient(ShopTerminalSaveResponsePayload.TYPE, ShopTerminalSaveResponsePayload.STREAM_CODEC, ModPayloads::handleShopTerminalSaveResponse);
+        registrar.playToServer(ShelfUsePayload.TYPE, ShelfUsePayload.STREAM_CODEC, ModPayloads::handleShelfUse);
+        registrar.playToClient(ShelfOpenPayload.TYPE, ShelfOpenPayload.STREAM_CODEC, ModPayloads::handleShelfOpen);
+        registrar.playToServer(ShelfActionPayload.TYPE, ShelfActionPayload.STREAM_CODEC, ModPayloads::handleShelfAction);
+        registrar.playToClient(ShelfActionResponsePayload.TYPE, ShelfActionResponsePayload.STREAM_CODEC, ModPayloads::handleShelfActionResponse);
         registrar.playToClient(HandheldTerminalOpenPayload.TYPE, HandheldTerminalOpenPayload.STREAM_CODEC, ModPayloads::handleHandheldTerminalOpen);
         registrar.playToServer(HandheldTerminalSavePayload.TYPE, HandheldTerminalSavePayload.STREAM_CODEC, ModPayloads::handleHandheldTerminalSave);
         registrar.playToClient(HandheldTerminalSaveResponsePayload.TYPE, HandheldTerminalSaveResponsePayload.STREAM_CODEC, ModPayloads::handleHandheldTerminalSaveResponse);
@@ -165,10 +183,62 @@ public final class ModPayloads {
         registrar.playToServer(PayRequestCreatePayload.TYPE, PayRequestCreatePayload.STREAM_CODEC, ModPayloads::handlePayRequestCreate);
         registrar.playToClient(PayRequestCreateResponsePayload.TYPE, PayRequestCreateResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestCreateResponse);
         registrar.playToClient(HudStatePayload.TYPE, HudStatePayload.STREAM_CODEC, ModPayloads::handleHudState);
+        registrar.playToClient(StockroomLocateRenderPayload.TYPE, StockroomLocateRenderPayload.STREAM_CODEC, ModPayloads::handleStockroomLocateRender);
+        registrar.playToClient(DeliveryAlertPayload.TYPE, DeliveryAlertPayload.STREAM_CODEC, ModPayloads::handleDeliveryAlert);
+        registrar.playToClient(ShopSetupObjectivePayload.TYPE, ShopSetupObjectivePayload.STREAM_CODEC, ModPayloads::handleShopSetupObjective);
+        registrar.playToClient(DeliveryInfoBoardPayload.TYPE, DeliveryInfoBoardPayload.STREAM_CODEC, ModPayloads::handleDeliveryInfoBoard);
+        registrar.playToClient(DeliveryPalletLabelsPayload.TYPE, DeliveryPalletLabelsPayload.STREAM_CODEC, ModPayloads::handleDeliveryPalletLabels);
+        registrar.playToServer(PickpocketStartPayload.TYPE, PickpocketStartPayload.STREAM_CODEC, ModPayloads::handlePickpocketStart);
+        registrar.playToServer(PickpocketCancelPayload.TYPE, PickpocketCancelPayload.STREAM_CODEC, ModPayloads::handlePickpocketCancel);
+        registrar.playToClient(PickpocketStatePayload.TYPE, PickpocketStatePayload.STREAM_CODEC, ModPayloads::handlePickpocketState);
     }
 
     private static void handleHudState(HudStatePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleHudState", payload));
+    }
+
+    private static void handleStockroomLocateRender(StockroomLocateRenderPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleStockroomLocateRender", payload));
+    }
+
+    private static void handleDeliveryAlert(DeliveryAlertPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDeliveryAlert", payload));
+    }
+
+    private static void handleShopSetupObjective(ShopSetupObjectivePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShopSetupObjective", payload));
+    }
+
+    private static void handleDeliveryInfoBoard(DeliveryInfoBoardPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDeliveryInfoBoard", payload));
+    }
+
+    private static void handleDeliveryPalletLabels(DeliveryPalletLabelsPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDeliveryPalletLabels", payload));
+    }
+
+    private static void handlePickpocketStart(PickpocketStartPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null || payload.targetPlayerId() == null) {
+                return;
+            }
+            PickpocketService.handleStartRequest(player, payload.targetPlayerId());
+        });
+    }
+
+    private static void handlePickpocketCancel(PickpocketCancelPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null) {
+                return;
+            }
+            PickpocketService.handleCancelRequest(player);
+        });
+    }
+
+    private static void handlePickpocketState(PickpocketStatePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handlePickpocketState", payload));
     }
 
     // ─── OpenATM ────────────────────────────────────────────────────────
@@ -324,17 +394,46 @@ public final class ModPayloads {
             if (!(level.getBlockEntity(pos) instanceof ShopTerminalBlockEntity terminal)) {
                 return;
             }
+            var centralBank = BankManager.getCentralBank(server);
+            if (centralBank != null && ShopService.hasCashierTerminalSelection(player.getUUID())) {
+                ShopService.ShopActionResult selectionResult = payload.configureAction()
+                        ? ShopService.cancelCashierTerminalSelection(player, "Cashier-terminal link mode cancelled.")
+                        : ShopService.applyCashierTerminalSelection(
+                                player,
+                                centralBank,
+                                level,
+                                pos,
+                                terminal
+                        );
+                player.sendSystemMessage(moneyLiteral((selectionResult.success() ? "§a" : "§c") + selectionResult.message()));
+                ServerActionAlert.send(
+                        player,
+                        "Cashier Link",
+                        selectionResult.message(),
+                        selectionResult.success() ? DeliveryAlertPayload.AlertTone.SUCCESS : DeliveryAlertPayload.AlertTone.ERROR,
+                        selectionResult.success() ? 4400 : 5600
+                );
+                return;
+            }
             if (terminal.isFeedbackActive()) {
                 int remainingTicks = terminal.getFeedbackTicksRemaining();
                 int remainingSeconds = Math.max(1, (remainingTicks + 19) / 20);
                 player.sendSystemMessage(moneyLiteral("§eTerminal is busy. Try again in §6" + remainingSeconds + "s§e."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Terminal is busy. Try again in " + remainingSeconds + "s.",
+                        DeliveryAlertPayload.AlertTone.WARNING,
+                        5200);
                 return;
             }
-
-            var centralBank = BankManager.getCentralBank(server);
             if (payload.configureAction()) {
                 if (!terminal.canConfigure(player)) {
                     player.sendSystemMessage(moneyLiteral("§cOnly the shop owner or an operator can configure this terminal."));
+                    ServerActionAlert.send(player,
+                            "Payment Terminal",
+                            "Only the shop owner or an operator can configure this terminal.",
+                            DeliveryAlertPayload.AlertTone.ERROR,
+                            5600);
                     return;
                 }
                 if (terminal.getOwnerUuid() == null) {
@@ -344,49 +443,128 @@ public final class ModPayloads {
                 return;
             }
 
+            if (ShopCashierInteractionManager.handleTerminalCardUse(player, level, pos, terminal)) {
+                return;
+            }
+
+            if (ShopService.isTerminalLinkedToAnyCashier(
+                    centralBank,
+                    level.dimension().location().toString(),
+                    pos
+            )) {
+                player.sendSystemMessage(moneyLiteral(
+                        "§eThis terminal is linked to a cashier. Start checkout at that cashier first."
+                ));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "This terminal is linked to a cashier. Start checkout at that cashier first.",
+                        DeliveryAlertPayload.AlertTone.WARNING,
+                        5200);
+                return;
+            }
+
+            ItemStack basket = ShelfService.findBasketInHands(player);
+            if (!basket.isEmpty() && ShelfCartService.getTotalUnits(basket) > 0) {
+                player.sendSystemMessage(moneyLiteral(
+                        "§eNo active cashier checkout price found for your basket. Start checkout at a cashier first."
+                ));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "No active cashier checkout price found for your basket. Start checkout at a cashier first.",
+                        DeliveryAlertPayload.AlertTone.WARNING,
+                        5200);
+                return;
+            }
+
             if (centralBank == null) {
                 player.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Bank data is unavailable.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
                 terminal.triggerPulse(false);
                 return;
             }
 
             AccountHolder payer;
             var cardLookup = CreditCardService.findHeldCard(centralBank, player);
-            if (cardLookup.hasCard()) {
-                if (!cardLookup.validation().valid()) {
-                    player.sendSystemMessage(moneyLiteral("§cPayment failed: " + cardLookup.validation().message()));
-                    terminal.triggerPulse(false);
-                    return;
-                }
-                payer = centralBank.SearchForAccountByAccountId(cardLookup.validation().accountId());
-                if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
-                    player.sendSystemMessage(moneyLiteral("§cPayment failed: linked card account is unavailable."));
-                    terminal.triggerPulse(false);
-                    return;
-                }
-            } else {
-                payer = findPrimaryAccount(centralBank, player.getUUID());
-                if (payer == null) {
-                    player.sendSystemMessage(moneyLiteral("§cSet a primary account first, then use the terminal again."));
-                    terminal.triggerPulse(false);
-                    return;
-                }
+            if (!cardLookup.hasCard()) {
+                player.sendSystemMessage(moneyLiteral("§cNo credit card in hand. Hold a valid credit card to pay."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "No credit card in hand. Hold a valid credit card to pay.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
+                return;
+            }
+            if (!cardLookup.validation().valid()) {
+                player.sendSystemMessage(moneyLiteral("§cPayment failed: " + cardLookup.validation().message()));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Payment failed: " + cardLookup.validation().message(),
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
+                terminal.triggerPulse(false);
+                return;
+            }
+            payer = centralBank.SearchForAccountByAccountId(cardLookup.validation().accountId());
+            if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
+                player.sendSystemMessage(moneyLiteral("§cPayment failed: linked card account is unavailable."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Payment failed: linked card account is unavailable.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
+                terminal.triggerPulse(false);
+                return;
             }
             UUID merchantAccountId = terminal.getMerchantAccountId();
             if (merchantAccountId == null) {
                 player.sendSystemMessage(moneyLiteral("§cThis terminal is not configured. Ask the owner to set a merchant account."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "This terminal is not configured. Ask the owner to set a merchant account.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
                 terminal.triggerPulse(false);
                 return;
+            }
+            UUID shopOwnerId = terminal.getOwnerUuid();
+            UUID shopId = null;
+            if (shopOwnerId != null) {
+                shopId = ShopService.resolveOwnerShopAtPos(
+                        centralBank,
+                        shopOwnerId,
+                        level.dimension().location().toString(),
+                        pos
+                );
+                merchantAccountId = ShopService.resolveSettlementAccountId(
+                        centralBank,
+                        shopOwnerId,
+                        shopId,
+                        merchantAccountId
+                );
             }
             AccountHolder merchantAccount = centralBank.SearchForAccountByAccountId(merchantAccountId);
             if (merchantAccount == null) {
                 player.sendSystemMessage(moneyLiteral("§cMerchant account is missing. Ask the owner to reconfigure this terminal."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Merchant account is missing. Ask the owner to reconfigure this terminal.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
                 terminal.triggerPulse(false);
                 return;
             }
             long price = terminal.getPriceDollars();
             if (price <= 0L) {
                 player.sendSystemMessage(moneyLiteral("§cThis terminal has an invalid price configured."));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "This terminal has an invalid price configured.",
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
                 terminal.triggerPulse(false);
                 return;
             }
@@ -400,17 +578,42 @@ public final class ModPayloads {
             );
             if (!result.success()) {
                 player.sendSystemMessage(moneyLiteral("§cPayment failed: " + result.reason()));
+                ServerActionAlert.send(player,
+                        "Payment Terminal",
+                        "Payment failed: " + result.reason(),
+                        DeliveryAlertPayload.AlertTone.ERROR,
+                        5600);
                 terminal.triggerPulse(false);
                 return;
             }
 
             terminal.addSale(price);
+            if (shopOwnerId != null) {
+                ShopService.recordSaleForShop(centralBank, shopOwnerId, shopId, price);
+                ShopService.recordPaymentMethod(
+                        centralBank,
+                        shopOwnerId,
+                        shopId,
+                        player.getUUID(),
+                        false,
+                        Math.max(0L, price) * 100L
+                );
+            } else {
+                ShopService.recordSaleForOwner(centralBank, merchantAccount.getPlayerUUID(), price);
+            }
             terminal.triggerPulse(true);
             player.sendSystemMessage(moneyLiteral(
-                    "§aPaid §6$" + MoneyText.abbreviate(BigDecimal.valueOf(price))
-                            + "§a at §b" + terminal.getShopName()
-                            + "§a. Balance: §6$" + result.balanceAfter().toPlainString()
+                    "§aPayment successful at §b" + terminal.getShopName()
+                            + "§a. Charged from account: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(price))
+                            + "§a. New balance: §6$" + result.balanceAfter().toPlainString()
             ));
+            ServerActionAlert.send(player,
+                    "Payment Terminal",
+                    "Payment successful at " + terminal.getShopName()
+                            + ". Charged: $" + MoneyText.abbreviate(BigDecimal.valueOf(price))
+                            + ". New balance: $" + result.balanceAfter().toPlainString(),
+                    DeliveryAlertPayload.AlertTone.SUCCESS,
+                    5000);
 
             var merchantPlayer = server.getPlayerList().getPlayer(merchantAccount.getPlayerUUID());
             if (merchantPlayer != null && !merchantPlayer.getUUID().equals(player.getUUID())) {
@@ -418,6 +621,12 @@ public final class ModPayloads {
                         "§aSale received at §b" + terminal.getShopName()
                                 + "§a: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(price))
                 ));
+                ServerActionAlert.send(merchantPlayer,
+                        "Payment Terminal",
+                        "Sale received at " + terminal.getShopName()
+                                + ": $" + MoneyText.abbreviate(BigDecimal.valueOf(price)),
+                        DeliveryAlertPayload.AlertTone.SUCCESS,
+                        4600);
             }
 
             PacketDistributor.sendToPlayer(player, UBSCommands.buildHudStatePayload(centralBank, player.getUUID()));
@@ -548,6 +757,606 @@ public final class ModPayloads {
 
     private static void handleShopTerminalSaveResponse(ShopTerminalSaveResponsePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShopTerminalSaveResponse", payload));
+    }
+
+    // ─── Shelf / Basket ────────────────────────────────────────────────
+
+    private static void handleShelfUse(ShelfUsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            if (server == null) {
+                return;
+            }
+            if (!payload.mainHand()) {
+                // Ignore off-hand duplicate interactions to avoid duplicated feedback/actions.
+                return;
+            }
+
+            ServerLevel level = resolveServerLevel(server, payload.dimensionId());
+            if (level == null || player.level() != level) {
+                return;
+            }
+
+            BlockPos clickedPos = new BlockPos(payload.x(), payload.y(), payload.z());
+            BlockPos lowerPos = ShelfService.toLowerShelfPos(level, clickedPos);
+            if (!ShelfService.isShelf(level.getBlockState(lowerPos))) {
+                return;
+            }
+            ShelfDisplayBlockEntity shelfEntity = ShelfService.getDisplayEntity(level, lowerPos);
+
+            double distSq = player.position().distanceToSqr(
+                    lowerPos.getX() + 0.5D,
+                    lowerPos.getY() + 0.5D,
+                    lowerPos.getZ() + 0.5D
+            );
+            if (distSq > 100.0D) {
+                return;
+            }
+
+            boolean sessionBasketMode = ShelfBasketSessionService.hasActiveSession(player.getUUID());
+            boolean hasBasket = !ShelfService.findBasketInHands(player).isEmpty();
+            boolean basketMode = sessionBasketMode || hasBasket;
+            boolean shopMode = shelfEntity == null || shelfEntity.isShopMode();
+
+            // Customer shelf shopping is disabled while the linked shop is closed.
+            if (shopMode && basketMode && shelfEntity != null
+                    && !ShelfService.ensureShopOpenForShopping(player, shelfEntity.getShopId())) {
+                return;
+            }
+
+            // Regular displays are always reconfigurable via Shift-right-click, even if a basket is held.
+            if (payload.configureAction() && shelfEntity != null && !shelfEntity.isShopMode()) {
+                if (!ShelfService.canManageShelf(level, lowerPos, player)) {
+                    player.sendSystemMessage(moneyLiteral("§cOnly the shop owner or an operator can configure this shelf."));
+                    return;
+                }
+                String preferredKey = preferredShelfKeyForHit(level, lowerPos, payload.hitX(), payload.hitY(), payload.hitZ());
+                PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, lowerPos, player, preferredKey));
+                return;
+            }
+
+            // Shift-right opens shelf configuration only when the player is not in shopping basket mode.
+            if (payload.configureAction() && !basketMode) {
+                if (!ShelfService.canManageShelf(level, lowerPos, player)) {
+                    player.sendSystemMessage(moneyLiteral("§cOnly the shop owner or an operator can configure this shelf."));
+                    return;
+                }
+                String preferredKey = preferredShelfKeyForHit(level, lowerPos, payload.hitX(), payload.hitY(), payload.hitZ());
+                PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, lowerPos, player, preferredKey));
+                return;
+            }
+
+            if (!shopMode && shelfEntity != null) {
+                if (!ShelfService.canManageShelf(level, lowerPos, player)) {
+                    player.sendSystemMessage(moneyLiteral("§cOnly the shop owner or an operator can edit this display."));
+                    return;
+                }
+                int slot = ShelfService.resolveSlotByHit(level, lowerPos, payload.hitX(), payload.hitY(), payload.hitZ());
+                handleRegularDisplayUse(player, shelfEntity, slot, sessionBasketMode);
+                return;
+            }
+
+            if (!basketMode) {
+                int slot = ShelfService.resolveSlotByHit(level, lowerPos, payload.hitX(), payload.hitY(), payload.hitZ());
+                ShelfDisplayBlockEntity shelf = ShelfService.getDisplayEntity(level, lowerPos);
+                if (shelf != null) {
+                    ItemStack display = shelf.getDisplayItem(slot);
+                    long price = shelf.getSlotPrice(slot);
+                    if (!display.isEmpty() && price >= 0L) {
+                        player.sendSystemMessage(moneyLiteral("§eHold a shopping basket to take items from shelves (Shift + right-click adds a full stack)."));
+                    }
+                }
+                return;
+            }
+
+            int slot = ShelfService.resolveSlotByHit(level, lowerPos, payload.hitX(), payload.hitY(), payload.hitZ());
+            // Shift + right-click with basket adds a full stack from the selected shelf slot.
+            ShelfService.addShelfItemToBasket(player, lowerPos, slot, payload.configureAction());
+        });
+    }
+
+    private static void handleShelfOpen(ShelfOpenPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShelfOpen", payload));
+    }
+
+    private static void handleShelfAction(ShelfActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            if (server == null) {
+                return;
+            }
+
+            ServerLevel level = resolveServerLevel(server, payload.dimensionId());
+            if (level == null || player.level() != level) {
+                return;
+            }
+
+            BlockPos rootPos = ShelfService.toLowerShelfPos(level, new BlockPos(payload.rootX(), payload.rootY(), payload.rootZ()));
+            // Shelf management UI is restricted to the shop owner (or operators).
+            if (!ShelfService.canManageShelf(level, rootPos, player)) {
+                PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(
+                        false,
+                        "Only the shop owner or an operator can open this shelf panel."
+                ));
+                return;
+            }
+            ShelfSelection targetSelection = parseShelfSelection(payload.shelfPosKey());
+            if (targetSelection == null) {
+                PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(false, "Shelf reference is invalid."));
+                PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, rootPos, player, rootPos));
+                return;
+            }
+            BlockPos targetPos = ShelfService.toLowerShelfPos(level, targetSelection.pos());
+
+            List<BlockPos> connected = ShelfService.collectConnectedShelves(level, rootPos);
+            if (!connected.contains(targetPos)) {
+                PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(false, "Selected shelf is no longer connected."));
+                PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, rootPos, player, rootPos));
+                return;
+            }
+
+            ShelfDisplayBlockEntity shelf = ShelfService.getDisplayEntity(level, targetPos);
+            if (shelf == null) {
+                PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(false, "Shelf data is unavailable."));
+                PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, rootPos, player, rootPos));
+                return;
+            }
+
+            boolean canManage = ShelfService.canManageShelf(level, targetPos, player);
+            if (!canManage) {
+                PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(
+                        false,
+                        "Only the shop owner or an operator can open this shelf panel."
+                ));
+                return;
+            }
+            String action = payload.action() == null ? "" : payload.action().trim().toLowerCase();
+            if ("positioner_mode".equals(action)) {
+                String modeRaw = payload.priceInput() == null ? "" : payload.priceInput().trim().toLowerCase();
+                boolean entering = "enter".equals(modeRaw)
+                        || "start".equals(modeRaw)
+                        || "on".equals(modeRaw)
+                        || "1".equals(modeRaw)
+                        || "true".equals(modeRaw);
+                if (entering) {
+                    ShelfService.beginPositionerSpectator(player);
+                } else {
+                    ShelfService.endPositionerSpectator(player);
+                }
+                return;
+            }
+
+            boolean success = false;
+            String message = "Unknown action.";
+            int slot = resolveSelectedSlot(shelf, targetSelection.row(), payload.slotIndex());
+
+            switch (action) {
+                case "set_slot_inventory", "set_slot" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    int inventorySlot = payload.inventorySlot();
+                    if (inventorySlot < 0 || inventorySlot >= player.getInventory().getContainerSize()) {
+                        success = false;
+                        message = "Select a valid inventory item.";
+                        break;
+                    }
+                    ItemStack selected = player.getInventory().getItem(inventorySlot);
+                    if (!ShelfDisplayRules.isAllowedDisplayItem(selected)) {
+                        success = false;
+                        message = ShelfDisplayRules.blockedReason(selected);
+                        break;
+                    }
+                    long price = shelf.isShopMode()
+                            ? parseShelfPrice(payload.priceInput(), shelf.getSlotPrice(slot))
+                            : 0L;
+                    if (shelf.isShopMode() && price < 0L) {
+                        success = false;
+                        message = "Price cannot be negative.";
+                        break;
+                    }
+                    int preservedStock = 0;
+                    if (!shelf.isCreativeShelf()) {
+                        ItemStack existingDisplay = shelf.getDisplayItem(slot);
+                        if (!existingDisplay.isEmpty() && ItemStackDataCompat.sameItemSameComponents(existingDisplay, selected)) {
+                            preservedStock = Math.max(0, Math.min(64, shelf.getSlotStock(slot)));
+                        }
+                    }
+                    shelf.setSlot(slot, selected, price, shelf.isCreativeShelf() ? Integer.MAX_VALUE : preservedStock);
+                    success = true;
+                    message = "Shelf slot " + (slot + 1) + " display set to "
+                            + selected.getHoverName().getString()
+                            + (shelf.isShopMode()
+                            ? (shelf.isCreativeShelf() ? "." : " (no items consumed). Use Set Stock to load stock.")
+                            : " in regular display mode.");
+                }
+                case "save_price" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!shelf.isShopMode()) {
+                        success = false;
+                        message = "Pricing is disabled in regular display mode. Switch to shop mode first.";
+                        break;
+                    }
+                    if (shelf.getDisplayItem(slot).isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    long price = parseShelfPrice(payload.priceInput(), shelf.getSlotPrice(slot));
+                    if (price < 0L) {
+                        success = false;
+                        message = "Price cannot be negative.";
+                        break;
+                    }
+                    shelf.setPriceOnly(slot, price);
+                    success = true;
+                    message = "Price saved for shelf slot " + (slot + 1) + ".";
+                }
+                case "save_transform" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (shelf.getDisplayItem(slot).isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    float[] parsed = parseShelfTransform(payload.priceInput(), shelf.getSlotTransform(slot));
+                    if (parsed == null) {
+                        success = false;
+                        message = "Invalid transform values.";
+                        break;
+                    }
+                    shelf.setSlotTransform(
+                            slot,
+                            parsed[0],
+                            parsed[1],
+                            parsed[2],
+                            parsed[3],
+                            parsed[4],
+                            parsed[5],
+                            parsed[6],
+                            parsed[7],
+                            parsed[8]
+                    );
+                    success = true;
+                    message = "Item position saved for shelf slot " + (slot + 1) + ".";
+                }
+                case "save_stock" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!shelf.isShopMode()) {
+                        success = false;
+                        message = "Stock actions are disabled in regular display mode.";
+                        break;
+                    }
+                    if (shelf.isCreativeShelf()) {
+                        success = false;
+                        message = "Creative shelf has infinite stock.";
+                        break;
+                    }
+                    if (shelf.getDisplayItem(slot).isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    int stock = parseShelfStock(payload.priceInput(), -1);
+                    if (stock < 0) {
+                        success = false;
+                        message = "Stock must be 0 or greater.";
+                        break;
+                    }
+                    stock = Math.min(64, stock);
+                    shelf.setStockOnly(slot, stock);
+                    success = true;
+                    message = "Stock saved for shelf slot " + (slot + 1) + " (max 64).";
+                }
+                case "save_stock_inventory" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!shelf.isShopMode()) {
+                        success = false;
+                        message = "Stock actions are disabled in regular display mode.";
+                        break;
+                    }
+                    if (shelf.isCreativeShelf()) {
+                        success = false;
+                        message = "Creative shelf has infinite stock.";
+                        break;
+                    }
+                    ItemStack configured = shelf.getDisplayItem(slot);
+                    if (configured.isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    int inventorySlot = payload.inventorySlot();
+                    if (inventorySlot < 0 || inventorySlot >= player.getInventory().getContainerSize()) {
+                        success = false;
+                        message = "Select a valid inventory stack.";
+                        break;
+                    }
+                    ItemStack selectedStack = player.getInventory().getItem(inventorySlot);
+                    if (selectedStack.isEmpty()) {
+                        success = false;
+                        message = "Selected inventory slot is empty.";
+                        break;
+                    }
+                    if (!ItemStackDataCompat.sameItemSameComponents(configured, selectedStack)) {
+                        success = false;
+                        message = "Selected stack must match the configured shelf item.";
+                        break;
+                    }
+                    int currentStock = Math.max(0, Math.min(64, shelf.getSlotStock(slot)));
+                    if (currentStock >= 64) {
+                        success = false;
+                        message = "Shelf slot " + (slot + 1) + " is already full (64).";
+                        break;
+                    }
+                    int toAdd = Math.max(0, Math.min(64 - currentStock, selectedStack.getCount()));
+                    if (toAdd <= 0) {
+                        success = false;
+                        message = "Stock must be at least 1.";
+                        break;
+                    }
+                    int newStock = currentStock + toAdd;
+                    shelf.setStockOnly(slot, newStock);
+                    selectedStack.shrink(toAdd);
+                    if (selectedStack.isEmpty()) {
+                        player.getInventory().setItem(inventorySlot, ItemStack.EMPTY);
+                    }
+                    success = true;
+                    message = "Added " + toAdd + " stock to shelf slot " + (slot + 1) + ". Now " + newStock + "/64.";
+                }
+                case "restock_from_stockroom" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!shelf.isShopMode()) {
+                        success = false;
+                        message = "Stock actions are disabled in regular display mode.";
+                        break;
+                    }
+                    if (shelf.isCreativeShelf()) {
+                        success = false;
+                        message = "Creative shelf has infinite stock.";
+                        break;
+                    }
+                    ItemStack configured = shelf.getDisplayItem(slot);
+                    if (configured.isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    UUID shelfShopId = shelf.getShopId();
+                    if (shelfShopId == null) {
+                        success = false;
+                        message = "This shelf is not linked to a shop stockroom.";
+                        break;
+                    }
+                    var centralBank = BankManager.getCentralBank(server);
+                    if (centralBank == null) {
+                        success = false;
+                        message = "Shop stockroom service is unavailable.";
+                        break;
+                    }
+                    String shelfSlotTarget = level.dimension().location()
+                            + ";" + targetPos.getX()
+                            + ";" + targetPos.getY()
+                            + ";" + targetPos.getZ()
+                            + ";" + slot;
+                    ShopService.ShopActionResult restock = ShopService.restockShelfSlot(
+                            server,
+                            centralBank,
+                            player.getUUID(),
+                            shelfShopId,
+                            shelfSlotTarget
+                    );
+                    success = restock.success();
+                    message = restock.message();
+                }
+                case "take_stock_back" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!shelf.isShopMode()) {
+                        success = false;
+                        message = "Stock actions are disabled in regular display mode.";
+                        break;
+                    }
+                    if (shelf.isCreativeShelf()) {
+                        success = false;
+                        message = "Creative shelf has infinite stock.";
+                        break;
+                    }
+                    ItemStack configured = shelf.getDisplayItem(slot);
+                    if (configured.isEmpty()) {
+                        success = false;
+                        message = "Set an item for this slot first.";
+                        break;
+                    }
+                    int currentStock = Math.max(0, Math.min(64, shelf.getSlotStock(slot)));
+                    if (currentStock <= 0) {
+                        success = false;
+                        message = "This slot has no stock to take back.";
+                        break;
+                    }
+
+                    int remaining = currentStock;
+                    int moved = 0;
+                    int maxStack = Math.max(1, configured.getMaxStackSize());
+                    while (remaining > 0) {
+                        int giveCount = Math.min(remaining, maxStack);
+                        ItemStack give = configured.copy();
+                        give.setCount(giveCount);
+                        player.getInventory().add(give);
+                        int inserted = giveCount - give.getCount();
+                        if (inserted <= 0) {
+                            break;
+                        }
+                        moved += inserted;
+                        remaining -= inserted;
+                    }
+
+                    if (moved <= 0) {
+                        success = false;
+                        message = "No inventory space to take stock back.";
+                        break;
+                    }
+
+                    shelf.setStockOnly(slot, remaining);
+                    success = true;
+                    if (remaining > 0) {
+                        message = "Took back " + moved + " item(s). " + remaining + " still on shelf (inventory full).";
+                    } else {
+                        message = "Took back all stock (" + moved + " item(s)).";
+                    }
+                }
+                case "toggle_spin" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!(shelf instanceof ShopSellingTableBlockEntity table)) {
+                        success = false;
+                        message = "Spin is only available on display tables.";
+                        break;
+                    }
+                    if (!table.canSpin()) {
+                        success = false;
+                        message = "Spin is only available on the regular display table.";
+                        break;
+                    }
+                    table.setSpinEnabled(!table.isSpinEnabled());
+                    success = true;
+                    message = table.isSpinEnabled() ? "Display item spinning enabled." : "Display item spinning disabled.";
+                }
+                case "toggle_modular_layout" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    if (!(shelf instanceof ModularWallDisplayBlockEntity modular)) {
+                        success = false;
+                        message = "Layout toggle is only available on modular wall displays.";
+                        break;
+                    }
+                    modular.setFourSlotLayoutEnabled(!modular.isFourSlotLayoutEnabled());
+                    success = true;
+                    message = modular.isFourSlotLayoutEnabled()
+                            ? "Layout set to 4 items (2 per shelf row)."
+                            : "Layout set to 2 items (1 centered item per row).";
+                }
+                case "toggle_shop_mode" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    boolean nextShopMode = !shelf.isShopMode();
+                    shelf.setShopMode(nextShopMode);
+                    if (!nextShopMode) {
+                        // Enforce $0 on every slot when converting to regular display mode.
+                        for (int i = 0; i < Math.max(1, shelf.getSlotCount()); i++) {
+                            shelf.setPriceOnly(i, 0L);
+                        }
+                    }
+                    success = true;
+                    message = nextShopMode
+                            ? "Display switched to shop mode (basket + pricing enabled)."
+                            : "Display switched to regular mode (direct hand pickup enabled, prices reset to $0).";
+                }
+                case "clear_slot" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can edit this shelf.";
+                        break;
+                    }
+                    ItemStack display = shelf.getDisplayItem(slot);
+                    int returnedToInventory = 0;
+                    int droppedOnGround = 0;
+                    if (!display.isEmpty()) {
+                        int toReturn = shelf.isCreativeShelf()
+                                ? 1
+                                : Math.max(1, Math.min(64, shelf.getSlotStock(slot)));
+                        int maxStack = Math.max(1, display.getMaxStackSize());
+                        while (toReturn > 0) {
+                            int amount = Math.min(maxStack, toReturn);
+                            ItemStack give = display.copy();
+                            give.setCount(amount);
+                            int before = give.getCount();
+                            if (!player.getInventory().add(give) && !give.isEmpty()) {
+                                player.drop(give, false);
+                            }
+                            int remaining = Math.max(0, give.getCount());
+                            returnedToInventory += (before - remaining);
+                            droppedOnGround += remaining;
+                            toReturn -= amount;
+                        }
+                    }
+                    shelf.clearSlot(slot);
+                    success = true;
+                    if (returnedToInventory > 0 || droppedOnGround > 0) {
+                        message = "Shelf slot " + (slot + 1) + " cleared. Returned: " + returnedToInventory
+                                + (droppedOnGround > 0 ? " | Dropped: " + droppedOnGround : "") + ".";
+                    } else {
+                        message = "Shelf slot " + (slot + 1) + " cleared.";
+                    }
+                }
+                case "remove_shelf" -> {
+                    if (!canManage) {
+                        success = false;
+                        message = "Only the shop owner or an operator can remove this shelf.";
+                        break;
+                    }
+
+                    for (ItemStack drop : shelf.extractDisplayItemsForDrop()) {
+                        if (drop == null || drop.isEmpty()) {
+                            continue;
+                        }
+                        if (!player.getInventory().add(drop)) {
+                            player.drop(drop, false);
+                        }
+                    }
+                    removeShelfBlock(level, targetPos);
+                    success = true;
+                    message = "Shelf removed.";
+                }
+                default -> {
+                    // Keep default message.
+                }
+            }
+
+            PacketDistributor.sendToPlayer(player, new ShelfActionResponsePayload(success, message));
+            BlockPos refreshRoot = resolveShelfRefreshRoot(level, rootPos, targetPos);
+            PacketDistributor.sendToPlayer(player, buildShelfOpenPayload(level, refreshRoot, player, payload.shelfPosKey()));
+        });
+    }
+
+    private static void handleShelfActionResponse(ShelfActionResponsePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShelfActionResponse", payload));
     }
 
     private static void handleHandheldTerminalOpen(HandheldTerminalOpenPayload payload, IPayloadContext context) {
@@ -701,7 +1510,10 @@ public final class ModPayloads {
             if (hasContextPayload) {
                 ResourceLocation dimLoc = ResourceLocation.tryParse(payload.dimensionId().trim());
                 if (dimLoc != null) {
-                    ResourceKey<Level> levelKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+                    ResourceKey<Level> levelKey = net.austizz.ultimatebankingsystem.util.RegistryKeysCompat.createValueKey(
+                            net.austizz.ultimatebankingsystem.util.RegistryKeysCompat.DIMENSION_REGISTRY_KEY,
+                            dimLoc
+                    );
                     ServerLevel clickedLevel = server.getLevel(levelKey);
                     if (clickedLevel != null) {
                         BlockPos clickedPos = new BlockPos(payload.x(), payload.y(), payload.z());
@@ -764,8 +1576,9 @@ public final class ModPayloads {
             }
 
             BankOwnerPcService.ActionResult result = BankOwnerPcService.executeDesktopAction(
+                    server,
                     centralBank,
-                    player.getUUID(),
+                    player,
                     payload.action(),
                     payload.arg1(),
                     payload.arg2()
@@ -776,6 +1589,15 @@ public final class ModPayloads {
                     result.message()
             ));
             PacketDistributor.sendToPlayer(player, BankOwnerPcService.buildDesktopData(centralBank, player.getUUID()));
+            List<OwnerPcBankAppSummary> apps = BankOwnerPcService.listAccessibleApps(
+                    server,
+                    centralBank,
+                    player.getUUID(),
+                    player.hasPermissions(3)
+            );
+            int ownedCount = BankOwnerPcService.countOwnedBanks(centralBank, player.getUUID());
+            int maxBanks = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
+            PacketDistributor.sendToPlayer(player, new OwnerPcBootstrapPayload(apps, ownedCount, maxBanks));
         });
     }
 
@@ -1828,6 +2650,420 @@ public final class ModPayloads {
         );
     }
 
+    private static ShelfOpenPayload buildShelfOpenPayload(ServerLevel level,
+                                                          BlockPos rootPos,
+                                                          ServerPlayer viewer) {
+        return buildShelfOpenPayload(level, rootPos, viewer, encodeShelfPosKey(rootPos));
+    }
+
+    private static ShelfOpenPayload buildShelfOpenPayload(ServerLevel level,
+                                                          BlockPos rootPos,
+                                                          ServerPlayer viewer,
+                                                          BlockPos preferredSelectedPos) {
+        return buildShelfOpenPayload(level, rootPos, viewer, encodeShelfPosKey(preferredSelectedPos));
+    }
+
+    private static ShelfOpenPayload buildShelfOpenPayload(ServerLevel level,
+                                                          BlockPos rootPos,
+                                                          ServerPlayer viewer,
+                                                          String preferredSelectionKey) {
+        BlockPos resolvedRoot = ShelfService.toLowerShelfPos(level, rootPos);
+        List<BlockPos> connected = ShelfService.collectConnectedShelves(level, resolvedRoot);
+        List<ShelfUnitSummary> shelfUnits = new ArrayList<>();
+
+        for (BlockPos shelfPos : connected) {
+            // Keep management UI scoped to shelves this viewer can actually manage.
+            // This prevents adjacent cross-shop displays from appearing in the owner's panel.
+            if (!ShelfService.canManageShelf(level, shelfPos, viewer)) {
+                continue;
+            }
+            ShelfDisplayBlockEntity shelf = ShelfService.getDisplayEntity(level, shelfPos);
+            if (shelf == null) {
+                continue;
+            }
+
+            String ownerName = shelf.getOwnerName();
+            if (ownerName == null || ownerName.isBlank()) {
+                ownerName = "Unknown";
+            }
+            boolean canManage = true;
+            boolean spinCapable = false;
+            boolean spinEnabled = false;
+            ShelfDisplayType displayType = ShelfTransformBounds.detectType(shelf);
+            if (shelf instanceof ShopSellingTableBlockEntity table) {
+                spinCapable = table.canSpin();
+                spinEnabled = table.isSpinEnabled();
+            }
+            int slotCount = Math.max(1, shelf.getSlotCount());
+            int rowSize = rowSizeForShelf(shelf);
+            if (slotCount > rowSize) {
+                int rows = (slotCount + rowSize - 1) / rowSize;
+                for (int row = 0; row < rows; row++) {
+                    List<ShelfSlotSummary> rowSlots = new ArrayList<>();
+                    for (int col = 0; col < rowSize; col++) {
+                        int slot = row * rowSize + col;
+                        if (slot >= slotCount) {
+                            break;
+                        }
+                        rowSlots.add(buildSlotSummary(shelf, slot, col));
+                    }
+                    shelfUnits.add(new ShelfUnitSummary(
+                            encodeShelfPosKey(shelfPos, row),
+                            ownerName,
+                            canManage,
+                            shelf.isCreativeShelf(),
+                            shelf.isShopMode(),
+                            spinCapable,
+                            spinEnabled,
+                            displayType.id(),
+                            rowSlots
+                    ));
+                }
+            } else {
+                List<ShelfSlotSummary> slots = new ArrayList<>();
+                for (int slot = 0; slot < slotCount; slot++) {
+                    slots.add(buildSlotSummary(shelf, slot, slot));
+                }
+                shelfUnits.add(new ShelfUnitSummary(
+                        encodeShelfPosKey(shelfPos),
+                        ownerName,
+                        canManage,
+                        shelf.isCreativeShelf(),
+                        shelf.isShopMode(),
+                        spinCapable,
+                        spinEnabled,
+                        displayType.id(),
+                        slots
+                ));
+            }
+        }
+
+        int selectedIndex = shelfUnits.isEmpty() ? -1 : 0;
+        String preferredKey = preferredSelectionKey == null || preferredSelectionKey.isBlank()
+                ? encodeShelfPosKey(resolvedRoot)
+                : normalizeShelfSelectionKey(preferredSelectionKey, level);
+        for (int i = 0; i < shelfUnits.size(); i++) {
+            if (preferredKey.equalsIgnoreCase(shelfUnits.get(i).posKey())) {
+                selectedIndex = i;
+                break;
+            }
+        }
+
+        return new ShelfOpenPayload(
+                level.dimension().location().toString(),
+                resolvedRoot.getX(),
+                resolvedRoot.getY(),
+                resolvedRoot.getZ(),
+                selectedIndex,
+                shelfUnits
+        );
+    }
+
+    private static ShelfSlotSummary buildSlotSummary(ShelfDisplayBlockEntity shelf, int absoluteSlot, int visibleSlotIndex) {
+        ItemStack item = shelf.getDisplayItem(absoluteSlot);
+        long price = shelf.getSlotPrice(absoluteSlot);
+        boolean configured = !item.isEmpty() && price >= 0L;
+        String itemName = configured ? item.getHoverName().getString() : "Empty";
+        String itemId = "";
+        if (configured) {
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(item.getItem());
+            itemId = key == null ? "" : key.toString();
+        }
+        int stock = shelf.isCreativeShelf() ? Integer.MAX_VALUE : Math.max(0, shelf.getSlotStock(absoluteSlot));
+        ItemDisplayTransform transform = shelf.getSlotTransform(absoluteSlot);
+        return new ShelfSlotSummary(
+                visibleSlotIndex,
+                absoluteSlot,
+                itemName,
+                itemId,
+                item.copy(),
+                Math.max(0L, price),
+                configured,
+                stock,
+                transform.offsetX(),
+                transform.offsetY(),
+                transform.offsetZ(),
+                transform.rotationX(),
+                transform.rotationY(),
+                transform.rotationZ(),
+                transform.scaleX(),
+                transform.scaleY(),
+                transform.scaleZ()
+        );
+    }
+
+    private static String encodeShelfPosKey(BlockPos pos) {
+        if (pos == null) {
+            return "0,0,0";
+        }
+        return pos.getX() + "," + pos.getY() + "," + pos.getZ();
+    }
+
+    private static String encodeShelfPosKey(BlockPos pos, int coolerRow) {
+        return encodeShelfPosKey(pos) + "|r" + Math.max(0, coolerRow);
+    }
+
+    private static ShelfSelection parseShelfSelection(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String[] parts = value.trim().split("\\|", 2);
+        String[] split = parts[0].split(",");
+        if (split.length != 3) {
+            return null;
+        }
+        try {
+            int x = Integer.parseInt(split[0].trim());
+            int y = Integer.parseInt(split[1].trim());
+            int z = Integer.parseInt(split[2].trim());
+            int row = -1;
+            if (parts.length == 2) {
+                String suffix = parts[1].trim().toLowerCase();
+                if (suffix.startsWith("r")) {
+                    row = Integer.parseInt(suffix.substring(1));
+                }
+            }
+            return new ShelfSelection(new BlockPos(x, y, z), row);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static String normalizeShelfSelectionKey(String raw, ServerLevel level) {
+        ShelfSelection parsed = parseShelfSelection(raw);
+        if (parsed == null) {
+            return raw;
+        }
+        BlockPos lower = ShelfService.toLowerShelfPos(level, parsed.pos());
+        if (parsed.row() < 0) {
+            return encodeShelfPosKey(lower);
+        }
+        return encodeShelfPosKey(lower, parsed.row());
+    }
+
+    private record ShelfSelection(BlockPos pos, int row) {
+    }
+
+    private static BlockPos resolveShelfRefreshRoot(ServerLevel level, BlockPos preferredRoot, BlockPos target) {
+        if (ShelfService.isShelf(level.getBlockState(preferredRoot))) {
+            return ShelfService.toLowerShelfPos(level, preferredRoot);
+        }
+        if (ShelfService.isShelf(level.getBlockState(target))) {
+            return ShelfService.toLowerShelfPos(level, target);
+        }
+        for (var direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            BlockPos next = target.relative(direction);
+            if (ShelfService.isShelf(level.getBlockState(next))) {
+                return ShelfService.toLowerShelfPos(level, next);
+            }
+        }
+        return preferredRoot;
+    }
+
+    private static void removeShelfBlock(ServerLevel level, BlockPos targetPos) {
+        if (level == null || targetPos == null) {
+            return;
+        }
+        BlockState state = level.getBlockState(targetPos);
+        if (!ShelfService.isShelf(state)) {
+            return;
+        }
+
+        if (ShopSellingTableLargeBlock.isLargeTableBlock(state)
+                && state.hasProperty(ShopSellingTableLargeBlock.PART)) {
+            BlockPos master = ShopSellingTableLargeBlock.getMasterPos(state, targetPos);
+            for (BlockPos partPos : ShopSellingTableLargeBlock.footprint(master)) {
+                if (ShopSellingTableLargeBlock.isLargeTableBlock(level.getBlockState(partPos))) {
+                    level.removeBlock(partPos, false);
+                }
+            }
+            return;
+        }
+
+        if (ShelfService.isSellingTable(state)
+                && !ShopSellingTableLargeBlock.isLargeTableBlock(state)) {
+            level.removeBlock(targetPos, false);
+            return;
+        }
+
+        level.removeBlock(targetPos.above(), false);
+        level.removeBlock(targetPos, false);
+    }
+
+    private static void handleRegularDisplayUse(ServerPlayer player,
+                                                ShelfDisplayBlockEntity shelf,
+                                                int slot,
+                                                boolean basketSessionActive) {
+        if (player == null || shelf == null) {
+            return;
+        }
+        int resolvedSlot = Math.max(0, Math.min(Math.max(0, shelf.getSlotCount() - 1), slot));
+        ItemStack held = player.getMainHandItem();
+        if (basketSessionActive || ShelfCartService.isBasketStack(held)) {
+            player.sendSystemMessage(moneyLiteral("§eRegular display mode is active. Basket shopping is disabled on this display."));
+            return;
+        }
+        if (held.isEmpty()) {
+            takeRegularDisplayItem(player, shelf, resolvedSlot);
+            return;
+        }
+        placeRegularDisplayItem(player, shelf, resolvedSlot, held);
+    }
+
+    private static void takeRegularDisplayItem(ServerPlayer player, ShelfDisplayBlockEntity shelf, int slot) {
+        ItemStack display = shelf.getDisplayItem(slot);
+        if (display.isEmpty()) {
+            player.sendSystemMessage(moneyLiteral("§8This display slot is empty."));
+            return;
+        }
+        ItemStack give = display.copy();
+        give.setCount(1);
+        // Regular display mode behaves like an item frame:
+        // taking the item removes the configured display slot entirely.
+        shelf.clearSlot(slot);
+        player.setItemInHand(InteractionHand.MAIN_HAND, give);
+        player.sendSystemMessage(moneyLiteral("Picked up ")
+                .withStyle(ChatFormatting.GREEN)
+                .append(give.getHoverName())
+                .append(moneyLiteral(" from display slot ").withStyle(ChatFormatting.GREEN))
+                .append(Component.literal(String.valueOf(slot + 1)).withStyle(ChatFormatting.GREEN))
+                .append(Component.literal(".").withStyle(ChatFormatting.GREEN)));
+    }
+
+    private static void placeRegularDisplayItem(ServerPlayer player,
+                                                ShelfDisplayBlockEntity shelf,
+                                                int slot,
+                                                ItemStack held) {
+        if (held == null || held.isEmpty()) {
+            return;
+        }
+        if (!ShelfDisplayRules.isAllowedDisplayItem(held)) {
+            String blocked = ShelfDisplayRules.blockedReason(held);
+            player.sendSystemMessage(moneyLiteral(blocked == null ? "This item cannot be displayed." : blocked));
+            return;
+        }
+
+        ItemStack configured = shelf.getDisplayItem(slot);
+        if (configured.isEmpty()) {
+            ItemStack placed = held.copy();
+            placed.setCount(1);
+            // Regular displays keep only a single placed sample item (no stock pooling).
+            shelf.setSlot(slot, held, 0L, 1);
+            held.shrink(1);
+            if (held.isEmpty()) {
+                player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+            }
+            player.sendSystemMessage(moneyLiteral("Placed ")
+                    .withStyle(ChatFormatting.GREEN)
+                    .append(placed.getHoverName())
+                    .append(moneyLiteral(" into display slot ").withStyle(ChatFormatting.GREEN))
+                    .append(Component.literal(String.valueOf(slot + 1)).withStyle(ChatFormatting.GREEN))
+                    .append(Component.literal(".").withStyle(ChatFormatting.GREEN)));
+            return;
+        }
+        player.sendSystemMessage(moneyLiteral("Display slot ")
+                .withStyle(ChatFormatting.YELLOW)
+                .append(Component.literal(String.valueOf(slot + 1)).withStyle(ChatFormatting.YELLOW))
+                .append(moneyLiteral(" already has an item. Take it back first, then place a new one.")
+                        .withStyle(ChatFormatting.YELLOW)));
+    }
+
+    private static long parseShelfPrice(String raw, long fallback) {
+        return ShelfPrice.parseInputToCents(raw, fallback);
+    }
+
+    private static int parseShelfStock(String raw, int fallback) {
+        try {
+            int parsed = Integer.parseInt(raw == null ? "" : raw.trim());
+            return Math.max(0, Math.min(64, parsed));
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
+    private static float[] parseShelfTransform(String raw, ItemDisplayTransform fallback) {
+        if (fallback == null) {
+            fallback = ItemDisplayTransform.DEFAULT;
+        }
+        String input = raw == null ? "" : raw.trim();
+        if (input.isEmpty()) {
+            return new float[]{
+                    fallback.offsetX(),
+                    fallback.offsetY(),
+                    fallback.offsetZ(),
+                    fallback.rotationX(),
+                    fallback.rotationY(),
+                    fallback.rotationZ(),
+                    fallback.scaleX(),
+                    fallback.scaleY(),
+                    fallback.scaleZ()
+            };
+        }
+        String[] parts = input.split("[,;|]");
+        if (parts.length != 5 && parts.length != 9) {
+            return null;
+        }
+        try {
+            float x = Float.parseFloat(parts[0].trim());
+            float y = Float.parseFloat(parts[1].trim());
+            float z = Float.parseFloat(parts[2].trim());
+            if (parts.length == 5) {
+                // Backward compatibility with legacy transform payloads:
+                // x;y;z;rotY;uniformScale
+                float rotY = Float.parseFloat(parts[3].trim());
+                float scale = Float.parseFloat(parts[4].trim());
+                return new float[]{x, y, z, 0.0F, rotY, 0.0F, scale, scale, scale};
+            }
+            float rotX = Float.parseFloat(parts[3].trim());
+            float rotY = Float.parseFloat(parts[4].trim());
+            float rotZ = Float.parseFloat(parts[5].trim());
+            float scaleX = Float.parseFloat(parts[6].trim());
+            float scaleY = Float.parseFloat(parts[7].trim());
+            float scaleZ = Float.parseFloat(parts[8].trim());
+            return new float[]{x, y, z, rotX, rotY, rotZ, scaleX, scaleY, scaleZ};
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static int resolveSelectedSlot(ShelfDisplayBlockEntity shelf, int selectedRow, int uiSlotIndex) {
+        int rowSize = rowSizeForShelf(shelf);
+        int clampedUi = Math.max(0, Math.min(Math.max(0, rowSize - 1), uiSlotIndex));
+        if (selectedRow >= 0 && shelf.getSlotCount() > rowSize) {
+            int row = Math.max(0, selectedRow);
+            int slot = row * rowSize + clampedUi;
+            return Math.max(0, Math.min(Math.max(0, shelf.getSlotCount() - 1), slot));
+        }
+        return Math.max(0, Math.min(Math.max(0, shelf.getSlotCount() - 1), uiSlotIndex));
+    }
+
+    private static String preferredShelfKeyForHit(ServerLevel level,
+                                                  BlockPos lowerPos,
+                                                  double hitX,
+                                                  double hitY,
+                                                  double hitZ) {
+        int slot = ShelfService.resolveSlotByHit(level, lowerPos, hitX, hitY, hitZ);
+        ShelfDisplayBlockEntity shelf = ShelfService.getDisplayEntity(level, lowerPos);
+        if (shelf != null) {
+            int rowSize = rowSizeForShelf(shelf);
+            if (shelf.getSlotCount() > rowSize) {
+                int row = Math.max(0, slot / rowSize);
+                return encodeShelfPosKey(lowerPos, row);
+            }
+        }
+        return encodeShelfPosKey(lowerPos);
+    }
+
+    private static int rowSizeForShelf(ShelfDisplayBlockEntity shelf) {
+        if (shelf instanceof ModularWallDisplayBlockEntity) {
+            return 2;
+        }
+        if (shelf instanceof GlassCounterDisplayBlockEntity) {
+            return GlassCounterDisplayBlockEntity.SHELF_ROWS;
+        }
+        return 3;
+    }
+
     private static HandheldTerminalSaveResponsePayload buildHandheldSaveResponse(ItemStack stack,
                                                                                   boolean success,
                                                                                   String message) {
@@ -1878,7 +3114,10 @@ public final class ModPayloads {
         if (dimLoc == null) {
             return null;
         }
-        ResourceKey<Level> levelKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+        ResourceKey<Level> levelKey = net.austizz.ultimatebankingsystem.util.RegistryKeysCompat.createValueKey(
+                net.austizz.ultimatebankingsystem.util.RegistryKeysCompat.DIMENSION_REGISTRY_KEY,
+                dimLoc
+        );
         return server.getLevel(levelKey);
     }
 

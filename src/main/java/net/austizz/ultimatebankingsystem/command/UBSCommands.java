@@ -24,10 +24,15 @@ import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
+import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -40,9 +45,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.stats.Stats;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -97,6 +100,8 @@ public class UBSCommands {
             "§8/§faccount §7hud toggle §8- §7Toggle account HUD",
             "§8/§faccount §7hud primary §8- §7Monitor primary account on HUD",
             "§8/§faccount §7hud account §8<§faccountId§8> §8- §7Monitor a specific account on HUD",
+            "§8/§faccount §7pickpocket toggle §8- §7Toggle pickpocket immunity and ability",
+            "§8/§faccount §7pickpocket status §8- §7Show your pickpocket status",
             "§8/§faccount §7safebox list §8- §7List your safe box slots",
             "§8/§faccount §7safebox deposit §8- §7Store held item in safe box",
             "§8/§faccount §7safebox withdraw §8<§fslot§8> §8- §7Withdraw safe box slot",
@@ -793,6 +798,7 @@ public class UBSCommands {
                         .then(buildAccountNoteCommand())
                         .then(buildAccountChequeCommand())
                         .then(buildAccountHudCommand())
+                        .then(buildAccountPickpocketCommand())
                         .then(buildAccountSafeBoxCommand())
                         .then(buildAccountCdCommand())
                         .then(buildAccountJointCommand())
@@ -828,6 +834,7 @@ public class UBSCommands {
         event.getDispatcher().register(buildHiddenPayRequestCommand());
         event.getDispatcher().register(buildBankCommand());
         event.getDispatcher().register(buildBankTellerCommand());
+        event.getDispatcher().register(buildCashierCommand());
 
     }
 
@@ -914,6 +921,16 @@ public class UBSCommands {
                                         UuidArgument.getUuid(context, "accountId")
                                 ))
                         )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAccountPickpocketCommand() {
+        return Commands.literal("pickpocket")
+                .then(Commands.literal("toggle")
+                        .executes(context -> handlePickpocketToggle(context.getSource()))
+                )
+                .then(Commands.literal("status")
+                        .executes(context -> handlePickpocketStatus(context.getSource()))
                 );
     }
 
@@ -1100,8 +1117,18 @@ public class UBSCommands {
                             if (paymentCancelled > 0) {
                                 return paymentCancelled;
                             }
+                            int cashierCancelled = ShopCashierInteractionManager.handleCancel(context.getSource());
+                            if (cashierCancelled > 0) {
+                                return cashierCancelled;
+                            }
                             return BankTellerInteractionManager.handleCancel(context.getSource());
                         }));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildCashierCommand() {
+        return Commands.literal("cashier")
+                .then(Commands.literal("cancel")
+                        .executes(context -> ShopCashierInteractionManager.handleCancel(context.getSource())));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildBankCommand() {
@@ -1597,6 +1624,8 @@ public class UBSCommands {
             founderAccount.setPrimaryAccount(true);
         }
 
+        String privateCardMessage = tryIssueFounderPrivateCard(centralBank, founder, founderAccount);
+
         if (charterFee.compareTo(BigDecimal.ZERO) > 0) {
             recordSettlement(
                     centralBank,
@@ -1613,9 +1642,46 @@ public class UBSCommands {
                         + "§7Bank ID: §f" + newBank.getBankId() + "\n"
                         + "§7Owner: §f" + founder.getName().getString() + "\n"
                         + "§7Ownership model: §f" + ownershipModel + "\n"
-                        + "§7Fees paid: §6$" + totalFee.toPlainString()
+                        + "§7Fees paid: §6$" + totalFee.toPlainString() + "\n"
+                        + "§7Private card: §f" + privateCardMessage
         ));
         return 1;
+    }
+
+    /**
+     * Issues a founder private card on successful bank creation when inventory space allows it.
+     */
+    private static String tryIssueFounderPrivateCard(CentralBank centralBank,
+                                                     ServerPlayer founder,
+                                                     AccountHolder founderAccount) {
+        if (centralBank == null || founder == null || founderAccount == null) {
+            return "not issued (missing data)";
+        }
+
+        if (founder.getInventory().getFreeSlot() < 0) {
+            String warning = "Inventory full. Visit your bank teller to issue your private bank card.";
+            founder.sendSystemMessage(moneyLiteral("§e" + warning));
+            ServerActionAlert.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
+            return "pending teller issue (inventory full)";
+        }
+
+        CreditCardService.CardIssueResult issued = CreditCardService.issueCard(
+                centralBank,
+                founderAccount,
+                founder.getName().getString(),
+                false,
+                true
+        );
+        if (!issued.success() || issued.cardStack().isEmpty()) {
+            return "not issued (" + issued.message() + ")";
+        }
+
+        founder.getInventory().add(issued.cardStack().copy());
+        founder.containerMenu.broadcastChanges();
+        String masked = CreditCardService.maskCardNumber(issued.cardNumber());
+        String success = "issued " + masked;
+        ServerActionAlert.send(founder, "Banking", "Private bank card issued: " + masked + ".", DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
+        return success;
     }
 
     private static int handleBankOpenAccount(CommandSourceStack source,
@@ -4607,7 +4673,7 @@ public class UBSCommands {
             tag.putString("ubs_note_source_bank", sourceBank.getBankName());
         }
         applyCustomTag(note, tag);
-        note.set(DataComponents.CUSTOM_NAME, moneyLiteral("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
+        ItemStackDataCompat.setCustomName(note, moneyLiteral("Bank Note - $" + amount.toPlainString()).withStyle(ChatFormatting.GOLD));
 
         if (!player.getInventory().add(note)) {
             player.drop(note, false);
@@ -4646,6 +4712,10 @@ public class UBSCommands {
         }
 
         String serial = tag.getString("ubs_note_serial");
+        if (serial == null || serial.isBlank()) {
+            source.sendSystemMessage(moneyLiteral("§cInvalid bank note serial."));
+            return 1;
+        }
         BigDecimal amount;
         try {
             amount = new BigDecimal(tag.getString("ubs_note_amount"));
@@ -4674,11 +4744,15 @@ public class UBSCommands {
             return 1;
         }
 
+        if (!centralBank.tryRedeemNoteSerial(serial)) {
+            source.sendSystemMessage(moneyLiteral("§cThis bank note serial has already been redeemed."));
+            return 1;
+        }
         if (!account.AddBalance(amount)) {
+            centralBank.rollbackNoteSerialRedemption(serial);
             source.sendSystemMessage(moneyLiteral("§cDeposit failed."));
             return 1;
         }
-        centralBank.markNoteSerialRedeemed(serial);
         held.shrink(1);
         account.addTransaction(new UserTransaction(
                 UUID.nameUUIDFromBytes("ultimatebankingsystem:note-redeem".getBytes()),
@@ -4770,7 +4844,7 @@ public class UBSCommands {
             tag.putString("ubs_cheque_source_bank", chequeSourceBank.getBankName());
         }
         applyCustomTag(cheque, tag);
-        cheque.set(DataComponents.CUSTOM_NAME, moneyLiteral("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
+        ItemStackDataCompat.setCustomName(cheque, moneyLiteral("Cheque - $" + amount.toPlainString()).withStyle(ChatFormatting.GREEN));
 
         if (!writer.getInventory().add(cheque)) {
             writer.drop(cheque, false);
@@ -4809,6 +4883,10 @@ public class UBSCommands {
         }
 
         String chequeId = tag.getString("ubs_cheque_id");
+        if (chequeId == null || chequeId.isBlank()) {
+            source.sendSystemMessage(moneyLiteral("§cInvalid cheque ID."));
+            return 1;
+        }
         UUID recipientId = tag.getUUID("ubs_cheque_recipient");
         if (!player.getUUID().equals(recipientId)) {
             source.sendSystemMessage(moneyLiteral("§cThis cheque is not payable to you."));
@@ -4838,12 +4916,16 @@ public class UBSCommands {
             source.sendSystemMessage(moneyLiteral("§cNo destination account available."));
             return 1;
         }
+        if (!centralBank.tryRedeemChequeId(chequeId)) {
+            source.sendSystemMessage(moneyLiteral("§cThis cheque has already been redeemed."));
+            return 1;
+        }
         if (!account.AddBalance(amount)) {
+            centralBank.rollbackChequeRedemption(chequeId);
             source.sendSystemMessage(moneyLiteral("§cFailed to redeem cheque."));
             return 1;
         }
 
-        centralBank.markChequeRedeemed(chequeId);
         held.shrink(1);
         account.addTransaction(new UserTransaction(
                 UUID.nameUUIDFromBytes("ultimatebankingsystem:cheque-redeem".getBytes()),
@@ -4946,6 +5028,41 @@ public class UBSCommands {
         return 1;
     }
 
+    private static int handlePickpocketStatus(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
+            return 1;
+        }
+        boolean optedOut = PickpocketService.isPlayerOptedOut(source.getServer(), player.getUUID());
+        if (optedOut) {
+            source.sendSystemMessage(moneyLiteral(
+                    "§cPickpocket is disabled for you. You are immune and cannot pickpocket others."
+            ));
+        } else {
+            source.sendSystemMessage(moneyLiteral(
+                    "§aPickpocket is enabled for you. You can pickpocket and be pickpocketed."
+            ));
+        }
+        return 1;
+    }
+
+    private static int handlePickpocketToggle(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
+            return 1;
+        }
+        boolean currentlyOptedOut = PickpocketService.isPlayerOptedOut(source.getServer(), player.getUUID());
+        boolean nextOptOut = !currentlyOptedOut;
+        boolean updated = PickpocketService.setPlayerOptOut(source.getServer(), player.getUUID(), nextOptOut);
+        if (!updated) {
+            source.sendSystemMessage(moneyLiteral("§cCould not update your pickpocket status right now."));
+            return 1;
+        }
+        return handlePickpocketStatus(source);
+    }
+
     private static int handleSafeBoxList(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
@@ -4975,12 +5092,12 @@ public class UBSCommands {
                 body.append(moneyLiteral("§8[" + slot + "] §7(empty)\n"));
                 continue;
             }
-            var parsed = ItemStack.parse(source.getServer().registryAccess(), stackTag);
-            if (parsed.isEmpty() || parsed.get().isEmpty()) {
+            ItemStack parsed = ItemStack.parseOptional(source.registryAccess(), stackTag);
+            if (parsed.isEmpty()) {
                 body.append(moneyLiteral("§8[" + slot + "] §7(invalid item)\n"));
                 continue;
             }
-            ItemStack stack = parsed.get();
+            ItemStack stack = parsed;
             body.append(moneyLiteral(
                     "§8[" + slot + "] §f" + stack.getHoverName().getString()
                             + " §7x" + stack.getCount() + "\n"
@@ -5430,11 +5547,11 @@ public class UBSCommands {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        if (data == null) {
+        CompoundTag data = ItemStackDataCompat.getCustomData(stack);
+        if (data == null || data.isEmpty()) {
             return null;
         }
-        return data.copyTag();
+        return data.copy();
     }
 
     private static void applyCustomTag(ItemStack stack, CompoundTag tag) {
@@ -5444,7 +5561,7 @@ public class UBSCommands {
         if (tag == null) {
             return;
         }
-        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        ItemStackDataCompat.setCustomData(stack, tag);
     }
 
     private static BigDecimal parsePositiveWholeAmount(CommandSourceStack source, String amountRaw) {

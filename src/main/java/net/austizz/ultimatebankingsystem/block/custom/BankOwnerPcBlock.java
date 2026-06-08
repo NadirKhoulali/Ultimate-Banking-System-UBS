@@ -6,6 +6,7 @@ import net.austizz.ultimatebankingsystem.network.OpenBankOwnerPcPayload;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -24,7 +25,14 @@ import org.jetbrains.annotations.Nullable;
 
 public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
     public static final MapCodec<BankOwnerPcBlock> CODEC = simpleCodec(BankOwnerPcBlock::new);
+
     private static final VoxelShape SHAPE = Block.box(0, 0, 0, 16, 16, 16);
+
+
+    @Override
+    protected MapCodec<? extends HorizontalDirectionalBlock> codec() {
+        return CODEC;
+    }
 
     public BankOwnerPcBlock(Properties properties) {
         super(properties);
@@ -32,18 +40,13 @@ public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
-    protected MapCodec<? extends HorizontalDirectionalBlock> codec() {
-        return CODEC;
-    }
-
-    @Override
     protected ItemInteractionResult useItemOn(ItemStack stack,
-                                              BlockState state,
-                                              Level level,
-                                              BlockPos pos,
-                                              Player player,
-                                              InteractionHand hand,
-                                              BlockHitResult hitResult) {
+                                         BlockState state,
+                                 Level level,
+                                 BlockPos pos,
+                                 Player player,
+                                 InteractionHand hand,
+                                 BlockHitResult hitResult) {
         if (level.isClientSide()) {
             PacketDistributor.sendToServer(new OpenBankOwnerPcPayload(
                     level.dimension().location().toString(),
@@ -66,7 +69,7 @@ public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
-    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!level.isClientSide() && !state.is(newState.getBlock())) {
             BankOwnerPcService.unregisterDesktopMachine(
                     level.getServer(),

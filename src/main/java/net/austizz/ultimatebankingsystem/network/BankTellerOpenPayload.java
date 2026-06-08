@@ -18,6 +18,7 @@ public record BankTellerOpenPayload(
         String bankMotto,
         String cardIssueFee,
         String cardReplacementFee,
+        boolean openAccountFree,
         List<BankTellerAccountSummary> accounts
 ) implements CustomPacketPayload {
 
@@ -43,6 +44,7 @@ public record BankTellerOpenPayload(
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankMotto());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardIssueFee());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardReplacementFee());
+                        ByteBufCodecs.BOOL.encode(buf, payload.openAccountFree());
                         BankTellerAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.accounts());
                     },
                     buf -> new BankTellerOpenPayload(
@@ -53,6 +55,7 @@ public record BankTellerOpenPayload(
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.BOOL.decode(buf),
                             BankTellerAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf)
                     )
             );

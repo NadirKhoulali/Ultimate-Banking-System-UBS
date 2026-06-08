@@ -10,6 +10,7 @@ Current release target: `1.2.4`
 - [ATM Flow](ATM-Flow.md)
 - [Currency & Legal Tender](Currency-Legal-Tender.md)
 - [Payment Terminal Guide](Payment-Terminal-Guide.md)
+- [Retail & Shop System](Retail-Shop-System.md)
 - [Bank Owner PC](Bank-Owner-PC.md)
 - [Admin Commands](Admin-Commands.md)
 - [Configuration](Configuration.md)
@@ -31,6 +32,15 @@ UBS provides:
 - pay request workflows in chat and ATM UI
 - payment terminal block for merchant checkout with configurable redstone outputs
 - handheld payment terminal for direct player-to-player checkout
+- retail/shop stack:
+  - shelves, displays, coolers, tables, baskets/bags, pallet logistics, stockroom tooling
+  - cashier NPC workflows and desktop shop management actions
+  - webshop + delivery queue + courier order board support
+- world cash economy:
+  - structure chest cash loot
+  - mob cash drops
+  - configurable death cash drop handling
+- pickpocket subsystem with server-side cooldown/opt-out controls
 - player-owned banks with governance, staffing, products, and reserve controls
 - central-bank policy and settlement controls
 - admin moderation, audit, and import tools

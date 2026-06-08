@@ -1,0 +1,1389 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UBS Admin Dashboard</title>
+    <link rel="stylesheet" href="/ubs-admin/styles.css">
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <p class="brand-eyebrow">Ultimate Banking System</p>
+            <h1>Admin</h1>
+            <p class="brand-subtle" id="server-bind">Server: ...</p>
+        </div>
+        <nav class="nav">
+            <a href="#/dashboard" data-route="dashboard" class="nav-link">Dashboard</a>
+            <a href="#/health" data-route="health" class="nav-link">Server Health</a>
+            <a href="#/banks" data-route="banks" class="nav-link">Banks</a>
+            <a href="#/shops" data-route="shops" class="nav-link">Shops</a>
+            <a href="#/shop-items" data-route="shop-items" class="nav-link">Shop Items</a>
+            <a href="#/users" data-route="users" class="nav-link">Users</a>
+            <a href="#/audit" data-route="audit" class="nav-link">Audit</a>
+        </nav>
+        <div class="sidebar-footer">
+            <button id="refresh-all" class="btn btn-primary" type="button">Refresh</button>
+            <button id="refresh-audit" class="btn btn-secondary" type="button">Refresh Audit</button>
+        </div>
+    </aside>
+
+    <div class="main-shell">
+        <header class="topbar">
+            <div class="topbar-main">
+                <h2 id="page-title">Dashboard</h2>
+                <p id="page-subtitle">Economy health and live operations.</p>
+            </div>
+            <div class="topbar-meta">
+                <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+                    <span class="theme-toggle-track">
+                        <span class="theme-icon sun" aria-hidden="true">&#9728;</span>
+                        <span class="theme-icon moon" aria-hidden="true">&#9790;</span>
+                        <span class="theme-toggle-thumb"></span>
+                    </span>
+                    <span id="theme-toggle-label" class="theme-toggle-label">Light</span>
+                </button>
+                <span class="pill">Session <strong id="session-id">...</strong></span>
+                <span class="pill">WebSocket <strong id="ws-state" data-state="pending">pending</strong></span>
+                <span class="pill">Health <strong id="health-state" data-state="pending">...</strong></span>
+            </div>
+        </header>
+        <div id="global-alerts" class="global-alerts"></div>
+
+        <main class="page-stack">
+            <section id="page-dashboard" class="page active">
+                <div class="kpi-grid" id="dashboard-kpis"></div>
+                <section class="panel slim-panel">
+                    <div class="panel-head">
+                        <h3>Alerts</h3>
+                    </div>
+                    <ul id="dashboard-alerts" class="inline-alerts"></ul>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Economy Trend</h3>
+                        <span class="hint">30-day hourly history</span>
+                    </div>
+                    <svg id="economy-line-chart" class="chart-svg" viewBox="0 0 900 250" preserveAspectRatio="none"></svg>
+                    <div id="economy-trend-info" class="chart-info-grid"></div>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Bank Status</h3>
+                        </div>
+                        <svg id="bank-status-chart" class="chart-svg small" viewBox="0 0 420 230" preserveAspectRatio="none"></svg>
+                        <div id="bank-status-info" class="chart-info-grid"></div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Shop Type Mix</h3>
+                        </div>
+                        <svg id="shop-type-chart" class="chart-svg small" viewBox="0 0 420 230" preserveAspectRatio="none"></svg>
+                        <div id="shop-type-info" class="chart-info-grid"></div>
+                    </article>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Top Banks by Deposits</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>Bank</th>
+                                    <th>Status</th>
+                                    <th>Deposits</th>
+                                    <th>Reserve</th>
+                                </tr>
+                                </thead>
+                                <tbody id="top-banks-body"></tbody>
+                            </table>
+                        </div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Top Shops by Revenue</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>Shop</th>
+                                    <th>Type</th>
+                                    <th>Level</th>
+                                    <th>Revenue</th>
+                                </tr>
+                                </thead>
+                                <tbody id="top-shops-body"></tbody>
+                            </table>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Server Tools</h3>
+                    </div>
+                    <div class="command-row">
+                        <button id="web-status-cmd" class="btn btn-ghost" type="button">/ubs web status</button>
+                        <button id="web-on-cmd" class="btn btn-ghost" type="button">/ubs web on</button>
+                        <button id="web-off-cmd" class="btn btn-ghost" type="button">/ubs web off</button>
+                        <button id="web-link-cmd" class="btn btn-ghost" type="button">/ubs web link</button>
+                    </div>
+                    <div class="command-row">
+                        <input id="server-command" type="text" placeholder="Run server command">
+                        <button id="run-command" class="btn btn-primary" type="button">Execute</button>
+                    </div>
+                    <pre id="command-output" class="output">No command executed yet.</pre>
+                </section>
+            </section>
+
+            <section id="page-health" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Server Health & UBS Impact</h3>
+                        <span class="hint" id="health-sample-note">Awaiting sample...</span>
+                    </div>
+                    <div class="kpi-grid compact-grid" id="health-overview-kpis"></div>
+                    <div class="health-meter-grid" id="health-meter-grid"></div>
+                    <ul id="health-report-lines" class="inline-alerts"></ul>
+                </section>
+            </section>
+
+            <section id="page-entities" class="page">
+                <div class="kpi-grid compact-grid" id="entities-kpis"></div>
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3 id="entity-panel-title">Bank Registry</h3>
+                    </div>
+                    <div class="toolbar-row">
+                        <input id="entity-search" type="text" placeholder="Search entities">
+                        <span id="entity-count" class="hint">0 rows</span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table" id="entity-table">
+                            <thead id="entity-head"></thead>
+                            <tbody id="entity-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <section id="page-shop-items" class="page">
+                <div class="kpi-grid compact-grid" id="shop-items-kpis"></div>
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Global Shop Item Index</h3>
+                        <span id="shop-items-count" class="hint">0 items</span>
+                    </div>
+                    <div class="toolbar-row shop-items-toolbar">
+                        <input id="shop-items-search" type="text" placeholder="Search by item name or id">
+                        <label class="check-chip">
+                            <input id="shop-items-include-normal" type="checkbox" checked>
+                            <span>Include Normal Shops</span>
+                        </label>
+                        <label class="check-chip">
+                            <input id="shop-items-include-creative" type="checkbox" checked>
+                            <span>Include Creative Shops</span>
+                        </label>
+                    </div>
+                    <div id="shop-items-list" class="shop-item-list"></div>
+                </section>
+            </section>
+
+            <section id="page-shop-item" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <button id="shop-item-back" class="btn btn-ghost" type="button">Back to Shop Items</button>
+                            <h3 id="shop-item-title">Item Analytics</h3>
+                            <p class="hint" id="shop-item-subtitle"></p>
+                        </div>
+                        <div class="toolbar-row">
+                            <div id="shop-item-window-segment" class="segment">
+                                <button type="button" class="segment-btn active" data-shop-item-window="30">30D</button>
+                                <button type="button" class="segment-btn" data-shop-item-window="14">14D</button>
+                                <button type="button" class="segment-btn" data-shop-item-window="7">7D</button>
+                            </div>
+                            <label class="check-chip">
+                                <input id="shop-item-include-normal" type="checkbox" checked>
+                                <span>Normal</span>
+                            </label>
+                            <label class="check-chip">
+                                <input id="shop-item-include-creative" type="checkbox" checked>
+                                <span>Creative</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="kpi-grid compact-grid" id="shop-item-kpis"></div>
+                    <ul id="shop-item-alerts" class="inline-alerts"></ul>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Demand & Price Trend</h3>
+                        <span class="hint">Daily sold units, estimated revenue, and weighted price</span>
+                    </div>
+                    <svg id="shop-item-demand-chart" class="chart-svg medium" viewBox="0 0 980 300" preserveAspectRatio="none"></svg>
+                    <div id="shop-item-demand-info" class="chart-info-grid"></div>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Price by Shop</h3>
+                        </div>
+                        <svg id="shop-item-shop-price-chart" class="chart-svg small" viewBox="0 0 520 230" preserveAspectRatio="none"></svg>
+                        <div id="shop-item-shop-price-info" class="chart-info-grid"></div>
+                    </article>
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Price Distribution</h3>
+                        </div>
+                        <svg id="shop-item-distribution-chart" class="chart-svg small" viewBox="0 0 520 230" preserveAspectRatio="none"></svg>
+                        <div id="shop-item-distribution-info" class="chart-info-grid"></div>
+                    </article>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Shop Pricing Matrix</h3>
+                        <span id="shop-item-shops-count" class="hint">0 shops</span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Shop</th>
+                                <th>Type</th>
+                                <th>Listings</th>
+                                <th>Lowest</th>
+                                <th>Average</th>
+                                <th>Highest</th>
+                                <th>Sales / Day</th>
+                                <th>Stock Units</th>
+                                <th>Last Sale</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-item-shops-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Active Slot Listings</h3>
+                        <span id="shop-item-listings-count" class="hint">0 listings</span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Shop</th>
+                                <th>Shelf</th>
+                                <th>Slot</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Target</th>
+                                <th>Stockroom</th>
+                                <th>Sales / Day</th>
+                                <th>Last Sale</th>
+                                <th>Mode</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-item-listings-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <section id="page-bank" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <button id="bank-back" class="btn btn-ghost" type="button">Back to Banks</button>
+                            <h3 id="bank-title">Bank Detail</h3>
+                            <p class="hint" id="bank-subtitle"></p>
+                        </div>
+                    </div>
+                    <div class="kpi-grid compact-grid" id="bank-kpis"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Bank Overview</h3>
+                        <button id="bank-overview-edit-btn" class="btn btn-secondary" type="button">Edit Overview</button>
+                    </div>
+                    <div id="bank-summary-grid" class="kv-grid"></div>
+                    <ul id="bank-risk-lines" class="inline-alerts"></ul>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Bank Accounts</h3>
+                        <span id="bank-accounts-count" class="hint">0 accounts</span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Owner</th>
+                                <th>Account</th>
+                                <th>Type</th>
+                                <th>Balance</th>
+                                <th>Credit</th>
+                                <th>State</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-accounts-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Access Roles</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Role</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-roles-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-role-player-input" type="text" placeholder="Player UUID or name">
+                        <select id="bank-role-select">
+                            <option value="FOUNDER">FOUNDER</option>
+                            <option value="DIRECTOR">DIRECTOR</option>
+                            <option value="TELLER">TELLER</option>
+                            <option value="AUDITOR">AUDITOR</option>
+                        </select>
+                        <button id="bank-role-save-btn" class="btn btn-ghost" type="button">Grant / Update Role</button>
+                        <button id="bank-role-revoke-btn" class="btn btn-ghost" type="button">Revoke Role</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Shareholders</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Share %</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-shares-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-share-player-input" type="text" placeholder="Player UUID or name">
+                        <input id="bank-share-percent-input" type="text" placeholder="Share % (e.g. 25.00)">
+                        <button id="bank-share-set-btn" class="btn btn-ghost" type="button">Set Share</button>
+                        <button id="bank-share-remove-btn" class="btn btn-ghost" type="button">Remove Share</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Cofounders</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-cofounders-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-cofounder-player-input" type="text" placeholder="Player UUID or name">
+                        <button id="bank-cofounder-add-btn" class="btn btn-ghost" type="button">Add Cofounder</button>
+                        <button id="bank-cofounder-remove-btn" class="btn btn-ghost" type="button">Remove Cofounder</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Employees</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Role</th>
+                                <th>Salary</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-employees-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-employee-player-input" type="text" placeholder="Player UUID or name">
+                        <select id="bank-employee-role-select">
+                            <option value="STAFF">STAFF</option>
+                            <option value="TELLER">TELLER</option>
+                            <option value="DIRECTOR">DIRECTOR</option>
+                            <option value="AUDITOR">AUDITOR</option>
+                        </select>
+                        <input id="bank-employee-salary-input" type="text" placeholder="Salary">
+                        <button id="bank-employee-save-btn" class="btn btn-ghost" type="button">Hire / Update</button>
+                        <button id="bank-employee-fire-btn" class="btn btn-ghost" type="button">Fire</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Loan Products</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Max Amount</th>
+                                <th>APR</th>
+                                <th>Duration (Ticks)</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-products-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-product-name-input" type="text" placeholder="Product name">
+                        <input id="bank-product-max-input" type="text" placeholder="Max amount">
+                        <input id="bank-product-apr-input" type="text" placeholder="APR %">
+                        <input id="bank-product-duration-input" type="text" placeholder="Duration ticks">
+                        <button id="bank-product-save-btn" class="btn btn-ghost" type="button">Create / Replace</button>
+                        <button id="bank-product-delete-btn" class="btn btn-ghost" type="button">Delete Product</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Interbank Offers</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Offer</th>
+                                <th>Lender</th>
+                                <th>Accepted By</th>
+                                <th>Amount</th>
+                                <th>APR</th>
+                                <th>Term</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-offers-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-offer-amount-input" type="text" placeholder="Offer amount">
+                        <input id="bank-offer-apr-input" type="text" placeholder="APR %">
+                        <input id="bank-offer-term-input" type="text" placeholder="Term ticks">
+                        <button id="bank-offer-create-btn" class="btn btn-ghost" type="button">Create Offer</button>
+                    </div>
+                    <div class="action-row">
+                        <input id="bank-offer-id-input" type="text" placeholder="Offer UUID for accept">
+                        <button id="bank-offer-accept-btn" class="btn btn-ghost" type="button">Accept Offer</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Interbank Loans</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Loan</th>
+                                <th>Type</th>
+                                <th>Lender</th>
+                                <th>Borrower</th>
+                                <th>Principal</th>
+                                <th>Remaining</th>
+                                <th>APR</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody id="bank-loans-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Bank Policy</h3>
+                    </div>
+                    <div class="action-stack">
+                        <h4 class="action-group-title">Branding</h4>
+                        <div class="action-row">
+                            <input id="bank-motto-input" type="text" placeholder="Motto">
+                            <button id="bank-motto-save-btn" class="btn btn-ghost" type="button">Save Motto</button>
+                            <input id="bank-color-input" type="text" placeholder="Color (#RRGGBB)">
+                            <button id="bank-color-save-btn" class="btn btn-ghost" type="button">Save Color</button>
+                        </div>
+                        <h4 class="action-group-title">Withdrawal Limits</h4>
+                        <div class="action-row">
+                            <select id="bank-limit-type-select">
+                                <option value="single">Single Transaction</option>
+                                <option value="dailyplayer">Daily Player</option>
+                                <option value="dailybank">Daily Bank</option>
+                                <option value="teller">Teller Cash</option>
+                            </select>
+                            <input id="bank-limit-amount-input" type="text" placeholder="Limit amount">
+                            <button id="bank-limit-save-btn" class="btn btn-ghost" type="button">Save Limit</button>
+                        </div>
+                        <h4 class="action-group-title">Card Fees</h4>
+                        <div class="action-row">
+                            <input id="bank-card-issue-fee-input" type="text" placeholder="Issue fee">
+                            <input id="bank-card-replacement-fee-input" type="text" placeholder="Replacement fee">
+                            <button id="bank-card-fees-save-btn" class="btn btn-ghost" type="button">Save Card Fees</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Admin Actions</h3>
+                    </div>
+                    <div class="action-stack">
+                        <h4 class="action-group-title">Liquidity & Market</h4>
+                        <div class="action-row">
+                            <input id="bank-borrow-amount-input" type="text" placeholder="Borrow amount">
+                            <button id="bank-borrow-btn" class="btn btn-ghost" type="button">Borrow From Central Bank</button>
+                            <input id="bank-appeal-message-input" type="text" placeholder="Appeal message">
+                            <button id="bank-appeal-btn" class="btn btn-ghost" type="button">Submit Appeal</button>
+                        </div>
+                        <h4 class="action-group-title">Teller Operations</h4>
+                        <div class="action-row">
+                            <button id="bank-teller-issue-btn" class="btn btn-ghost" type="button">Issue Teller Spawn Egg</button>
+                            <button id="bank-teller-count-btn" class="btn btn-ghost" type="button">Count Active Tellers</button>
+                        </div>
+                    </div>
+                    <pre id="bank-action-output" class="output">No bank action executed yet.</pre>
+                </section>
+            </section>
+
+            <section id="page-shop" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <button id="shop-back" class="btn btn-ghost" type="button">Back to Shops</button>
+                            <h3 id="shop-title">Shop Detail</h3>
+                            <p class="hint" id="shop-subtitle"></p>
+                        </div>
+                    </div>
+                    <div class="kpi-grid compact-grid" id="shop-kpis"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Overview</h3>
+                    </div>
+                    <div id="shop-summary-grid" class="kv-grid"></div>
+                    <div class="action-row">
+                        <input id="shop-name-input" type="text" placeholder="Shop name">
+                        <select id="shop-type-select">
+                            <option value="Retail">Retail</option>
+                            <option value="Franchise">Franchise</option>
+                            <option value="CorporateChain">CorporateChain</option>
+                        </select>
+                        <input id="shop-level-input" type="number" placeholder="Level">
+                        <button id="shop-overview-save-btn" class="btn btn-secondary" type="button">Save Overview</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Permissions</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Role</th>
+                                <th>Online</th>
+                                <th>Owner</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-permissions-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="shop-permission-player-input" type="text" placeholder="Player UUID or name">
+                        <select id="shop-permission-role-select">
+                            <option value="MANAGER">MANAGER</option>
+                            <option value="BUILDER">BUILDER</option>
+                            <option value="STAFF">STAFF</option>
+                        </select>
+                        <button id="shop-permission-set-btn" class="btn btn-ghost" type="button">Grant / Update</button>
+                        <button id="shop-permission-remove-btn" class="btn btn-ghost" type="button">Remove</button>
+                    </div>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Claims</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Dimension</th>
+                                    <th>Min</th>
+                                    <th>Max</th>
+                                    <th>Volume</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody id="shop-claims-body"></tbody>
+                            </table>
+                        </div>
+                        <div class="action-row">
+                            <input id="shop-claim-dim-input" type="text" placeholder="minecraft:overworld">
+                            <input id="shop-claim-minx-input" type="number" placeholder="minX">
+                            <input id="shop-claim-miny-input" type="number" placeholder="minY">
+                            <input id="shop-claim-minz-input" type="number" placeholder="minZ">
+                            <input id="shop-claim-maxx-input" type="number" placeholder="maxX">
+                            <input id="shop-claim-maxy-input" type="number" placeholder="maxY">
+                            <input id="shop-claim-maxz-input" type="number" placeholder="maxZ">
+                        </div>
+                        <div class="action-row">
+                            <button id="shop-claim-add-btn" class="btn btn-ghost" type="button">Add Claim</button>
+                            <button id="shop-claim-remove-btn" class="btn btn-ghost" type="button">Remove Claim</button>
+                        </div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Stockroom Claims</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Dimension</th>
+                                    <th>Min</th>
+                                    <th>Max</th>
+                                    <th>Volume</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody id="shop-stockrooms-body"></tbody>
+                            </table>
+                        </div>
+                        <div class="action-row">
+                            <input id="shop-stockroom-dim-input" type="text" placeholder="minecraft:overworld">
+                            <input id="shop-stockroom-minx-input" type="number" placeholder="minX">
+                            <input id="shop-stockroom-miny-input" type="number" placeholder="minY">
+                            <input id="shop-stockroom-minz-input" type="number" placeholder="minZ">
+                            <input id="shop-stockroom-maxx-input" type="number" placeholder="maxX">
+                            <input id="shop-stockroom-maxy-input" type="number" placeholder="maxY">
+                            <input id="shop-stockroom-maxz-input" type="number" placeholder="maxZ">
+                        </div>
+                        <div class="action-row">
+                            <button id="shop-stockroom-add-btn" class="btn btn-ghost" type="button">Add Stockroom</button>
+                            <button id="shop-stockroom-remove-btn" class="btn btn-ghost" type="button">Remove Stockroom</button>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Hours & Lighting</h3>
+                    </div>
+                    <div id="shop-hours-grid" class="kv-grid"></div>
+                    <div class="action-row">
+                        <input id="shop-hours-open-input" type="text" placeholder="Open (e.g. 09:00)">
+                        <input id="shop-hours-close-input" type="text" placeholder="Close (e.g. 18:00)">
+                        <button id="shop-hours-save-btn" class="btn btn-ghost" type="button">Save Hours</button>
+                    </div>
+                    <div class="action-row">
+                        <select id="shop-closed-deliverer-select">
+                            <option value="false">Closed Deliverer Access: Disabled</option>
+                            <option value="true">Closed Deliverer Access: Enabled</option>
+                        </select>
+                        <button id="shop-closed-deliverer-save-btn" class="btn btn-ghost" type="button">Save Access Rule</button>
+                    </div>
+                    <div class="action-row">
+                        <select id="shop-lighting-enabled-select">
+                            <option value="">Lighting Enabled (leave unchanged)</option>
+                            <option value="true">Enable Lighting Automation</option>
+                            <option value="false">Disable Lighting Automation</option>
+                        </select>
+                        <select id="shop-lighting-main-mode-select">
+                            <option value="">Main Mode (unchanged)</option>
+                            <option value="ALWAYS_ON">ALWAYS_ON</option>
+                            <option value="OPEN_HOURS">OPEN_HOURS</option>
+                            <option value="CLOSED_HOURS">CLOSED_HOURS</option>
+                            <option value="ALWAYS_OFF">ALWAYS_OFF</option>
+                        </select>
+                        <select id="shop-lighting-stockroom-mode-select">
+                            <option value="">Stockroom Mode (unchanged)</option>
+                            <option value="ALWAYS_ON">ALWAYS_ON</option>
+                            <option value="OPEN_HOURS">OPEN_HOURS</option>
+                            <option value="CLOSED_HOURS">CLOSED_HOURS</option>
+                            <option value="ALWAYS_OFF">ALWAYS_OFF</option>
+                        </select>
+                        <select id="shop-lighting-exclude-select">
+                            <option value="">Exclude Stockroom (unchanged)</option>
+                            <option value="true">Exclude Stockroom</option>
+                            <option value="false">Include Stockroom</option>
+                        </select>
+                        <input id="shop-lighting-level-input" type="number" min="1" max="15" placeholder="Light level 1-15">
+                        <button id="shop-lighting-save-btn" class="btn btn-ghost" type="button">Save Lighting</button>
+                    </div>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Finance</h3>
+                        </div>
+                        <div id="shop-finance-grid" class="kv-grid"></div>
+                        <div class="action-row">
+                            <input id="shop-settlement-account-input" type="text" placeholder="Settlement account UUID or PRIMARY">
+                            <button id="shop-settlement-account-save-btn" class="btn btn-ghost" type="button">Set Settlement Account</button>
+                        </div>
+                        <div class="action-row">
+                            <button id="shop-clear-checkout-btn" class="btn btn-ghost" type="button">Clear Checkout Terminal</button>
+                            <button id="shop-clear-cashier-links-btn" class="btn btn-ghost" type="button">Clear Cashier Terminal Links</button>
+                        </div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Cash Vault</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>Denomination</th>
+                                    <th>Count</th>
+                                </tr>
+                                </thead>
+                                <tbody id="shop-vault-body"></tbody>
+                            </table>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Employees</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Label</th>
+                                <th>Employee ID</th>
+                                <th>Cashier ID</th>
+                                <th>Location</th>
+                                <th>Terminal</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-employees-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="shop-employee-selection-input" type="text" placeholder="Employee ID / Cashier ID / index">
+                        <button id="shop-employee-fire-btn" class="btn btn-ghost" type="button">Fire Employee</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Orders</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Order</th>
+                                <th>Item</th>
+                                <th>Qty</th>
+                                <th>Reward</th>
+                                <th>Status</th>
+                                <th>Courier</th>
+                                <th>Remaining</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-orders-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Assigned Delivery Pallets</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Pallet</th>
+                                <th>Location</th>
+                                <th>Active</th>
+                                <th>Full</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-order-pallets-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Shelves</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Shelf</th>
+                                <th>Type</th>
+                                <th>Configured</th>
+                                <th>Stock</th>
+                                <th>Low</th>
+                                <th>Out</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-shelf-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Stockroom Items</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Count</th>
+                                <th>Inventory</th>
+                                <th>Location</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shop-stockroom-items-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Level Roadmap</h3>
+                    </div>
+                    <div id="shop-roadmap-track" class="roadmap-track"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Admin Actions</h3>
+                    </div>
+                    <div class="action-row danger-row">
+                        <input id="shop-delete-confirm-input" type="text" placeholder="Type exact shop name to delete">
+                        <button id="shop-delete-btn" class="btn btn-danger" type="button">Delete Shop</button>
+                    </div>
+                    <pre id="shop-action-output" class="output">No shop action executed yet.</pre>
+                </section>
+            </section>
+
+            <section id="page-users" class="page">
+                <div class="kpi-grid compact-grid" id="users-kpis"></div>
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>User List</h3>
+                    </div>
+                    <div class="toolbar-row">
+                        <input id="users-search" type="text" placeholder="Search users">
+                        <span id="users-count" class="hint">0 users</span>
+                    </div>
+                    <div class="table-wrap tall">
+                        <table class="data-table users-table">
+                            <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Accounts</th>
+                                <th>Balance</th>
+                                <th>Cards</th>
+                                <th>Banks</th>
+                                <th>Shops</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody id="users-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <section id="page-player" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <button id="player-back" class="btn btn-ghost" type="button">Back to Users</button>
+                            <h3 id="player-name">Player Detail</h3>
+                            <p class="hint" id="player-id"></p>
+                        </div>
+                    </div>
+                    <div class="kpi-grid" id="player-kpis"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Balance by Account Type</h3>
+                    </div>
+                    <svg id="player-accounts-chart" class="chart-svg medium" viewBox="0 0 980 320" preserveAspectRatio="none"></svg>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Transaction Activity</h3>
+                    </div>
+                    <svg id="player-transactions-chart" class="chart-svg medium" viewBox="0 0 980 300" preserveAspectRatio="none"></svg>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Accounts</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th>Bank</th>
+                                <th>Type</th>
+                                <th>Balance</th>
+                                <th>Credit</th>
+                                <th>Flags</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="player-accounts-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Credit Cards</h3>
+                        <span id="player-cards-count" class="hint">0 cards</span>
+                    </div>
+                    <div class="card-carousel">
+                        <button id="cards-prev" class="carousel-btn" type="button" aria-label="Scroll cards left">&#8249;</button>
+                        <div id="cards-viewport" class="card-viewport">
+                            <div id="player-cards-track" class="card-track"></div>
+                        </div>
+                        <button id="cards-next" class="carousel-btn" type="button" aria-label="Scroll cards right">&#8250;</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Shop Access</h3>
+                    </div>
+                    <ul id="player-shops-list" class="plain-list"></ul>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Bank Footprint</h3>
+                    </div>
+                    <div id="player-bank-footprint" class="kv-grid"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Recent Transactions</h3>
+                    </div>
+                    <div class="table-wrap tall">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Direction</th>
+                                <th>Amount</th>
+                                <th>Description</th>
+                                <th>Txn ID</th>
+                            </tr>
+                            </thead>
+                            <tbody id="player-transactions-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </section>
+
+            <section id="page-account" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <button id="account-back" class="btn btn-ghost" type="button">Back to Player</button>
+                            <h3 id="account-title">Account Detail</h3>
+                            <p class="hint" id="account-subtitle"></p>
+                            <button id="account-open-player" class="btn btn-secondary" type="button">Open Player Profile</button>
+                        </div>
+                    </div>
+                    <div class="kpi-grid compact-grid" id="account-kpis"></div>
+                </section>
+
+                <section class="split-grid">
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Account Overview</h3>
+                        </div>
+                        <div id="account-summary-grid" class="kv-grid"></div>
+                    </article>
+                    <article class="panel">
+                        <div class="panel-head">
+                            <h3>Limits & Certificate</h3>
+                        </div>
+                        <div id="account-limits-grid" class="kv-grid"></div>
+                    </article>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Access Roles</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Role</th>
+                                <th>Owner</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="account-roles-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="account-role-player-id-input" type="text" placeholder="Player UUID">
+                        <select id="account-role-select">
+                            <option value="VIEW">VIEW</option>
+                            <option value="DEPOSIT">DEPOSIT</option>
+                            <option value="WITHDRAW">WITHDRAW</option>
+                            <option value="MANAGE">MANAGE</option>
+                            <option value="OWNER">OWNER</option>
+                        </select>
+                        <button id="account-role-grant-btn" class="btn btn-ghost" type="button">Grant / Update Role</button>
+                        <button id="account-role-revoke-btn" class="btn btn-ghost" type="button">Revoke Role</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Safe Box Slots</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Slot</th>
+                                <th>Item ID</th>
+                                <th>Count</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="account-safebox-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="account-safebox-slot-input" type="number" placeholder="Slot index">
+                        <input id="account-safebox-item-input" type="text" placeholder="Item ID (e.g. minecraft:diamond)">
+                        <input id="account-safebox-count-input" type="number" placeholder="Count" value="1">
+                        <button id="account-safebox-add-btn" class="btn btn-ghost" type="button">Add Item</button>
+                        <button id="account-safebox-deliver-btn" class="btn btn-ghost" type="button">Deliver Slot To Owner</button>
+                        <button id="account-safebox-delete-btn" class="btn btn-ghost" type="button">Delete Slot</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Linked Credit Cards</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Card</th>
+                                <th>Status</th>
+                                <th>Holder</th>
+                                <th>Issued</th>
+                                <th>Expiry</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="account-cards-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="account-replacement-holder-input" type="text" placeholder="Card holder name (optional)">
+                        <button id="account-create-card-btn" class="btn btn-secondary" type="button">Add New Card</button>
+                        <button id="account-block-cards-btn" class="btn btn-ghost" type="button">Block All Account Cards</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Active Loans</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Loan</th>
+                                <th>Lender</th>
+                                <th>Principal</th>
+                                <th>Remaining</th>
+                                <th>APR</th>
+                                <th>Payments</th>
+                                <th>State</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="account-loans-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-row">
+                        <input id="account-loan-id-input" type="text" placeholder="Loan UUID">
+                        <select id="account-loan-defaulted-select">
+                            <option value="false">Mark Active</option>
+                            <option value="true">Mark Defaulted</option>
+                        </select>
+                        <input id="account-loan-remaining-input" type="text" placeholder="Remaining amount">
+                        <button id="account-loan-defaulted-btn" class="btn btn-ghost" type="button">Set Loan Status</button>
+                        <button id="account-loan-remaining-btn" class="btn btn-ghost" type="button">Set Remaining</button>
+                        <button id="account-loan-delete-btn" class="btn btn-ghost" type="button">Delete Loan</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Recent Account Transactions</h3>
+                    </div>
+                    <div class="table-wrap tall">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Direction</th>
+                                <th>Amount</th>
+                                <th>Description</th>
+                                <th>Sender</th>
+                                <th>Receiver</th>
+                                <th>Txn ID</th>
+                            </tr>
+                            </thead>
+                            <tbody id="account-transactions-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Account Controls</h3>
+                        <span class="hint">Operational controls for account state and owner profile.</span>
+                    </div>
+                    <div class="action-stack">
+                        <h4 class="action-group-title">State</h4>
+                        <div class="action-row">
+                            <input id="account-freeze-reason" type="text" placeholder="Freeze reason">
+                            <button id="account-freeze-btn" class="btn btn-secondary" type="button">Freeze</button>
+                            <button id="account-unfreeze-btn" class="btn btn-ghost" type="button">Unfreeze</button>
+                            <button id="account-set-primary-btn" class="btn btn-ghost" type="button">Set Primary</button>
+                        </div>
+                        <h4 class="action-group-title">Balance Operations</h4>
+                        <div class="action-row">
+                            <input id="account-amount-input" type="text" placeholder="Amount (e.g. 1000)">
+                            <button id="account-deposit-btn" class="btn btn-secondary" type="button">Force Deposit</button>
+                            <button id="account-withdraw-btn" class="btn btn-ghost" type="button">Force Withdraw</button>
+                        </div>
+                        <h4 class="action-group-title">Credit & Risk</h4>
+                        <div class="action-row">
+                            <input id="account-credit-input" type="number" placeholder="Credit score">
+                            <button id="account-credit-set-btn" class="btn btn-ghost" type="button">Set Credit</button>
+                            <input id="account-credit-delta-input" type="number" placeholder="Credit delta (+/-)">
+                            <button id="account-credit-adjust-btn" class="btn btn-ghost" type="button">Adjust Credit</button>
+                        </div>
+                        <div class="action-row">
+                            <select id="account-defaulted-select">
+                                <option value="false">Not Defaulted</option>
+                                <option value="true">Defaulted</option>
+                            </select>
+                            <button id="account-defaulted-set-btn" class="btn btn-ghost" type="button">Set Default State</button>
+                            <input id="account-pin-input" type="text" placeholder="New 4-digit PIN">
+                            <button id="account-pin-set-btn" class="btn btn-ghost" type="button">Set PIN</button>
+                        </div>
+                        <h4 class="action-group-title">Profile</h4>
+                        <div class="action-row">
+                            <select id="account-access-type-select">
+                                <option value="PERSONAL">PERSONAL</option>
+                                <option value="JOINT">JOINT</option>
+                                <option value="BUSINESS">BUSINESS</option>
+                            </select>
+                            <input id="account-business-label-input" type="text" placeholder="Business label">
+                            <button id="account-access-save-btn" class="btn btn-ghost" type="button">Save Access Profile</button>
+                        </div>
+                        <h4 class="action-group-title">Withdrawal Limits</h4>
+                        <div class="action-row">
+                            <input id="account-temp-limit-input" type="text" placeholder="Temp withdrawal limit">
+                            <button id="account-temp-limit-set-btn" class="btn btn-ghost" type="button">Set Temp Limit</button>
+                            <button id="account-temp-limit-clear-btn" class="btn btn-ghost" type="button">Clear Temp Limit</button>
+                            <button id="account-daily-clear-btn" class="btn btn-ghost" type="button">Reset Daily Withdrawal</button>
+                        </div>
+                        <p class="hint">Warning: destructive actions below cannot be undone automatically.</p>
+                        <div class="action-row danger-row">
+                            <input id="account-delete-confirm-input" type="text" placeholder="Type DELETE to confirm">
+                            <button id="account-delete-btn" class="btn btn-danger" type="button">Delete Account</button>
+                        </div>
+                    </div>
+                    <pre id="account-action-output" class="output">No account action executed yet.</pre>
+                </section>
+            </section>
+
+            <section id="page-audit" class="page">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h3>Audit Feed</h3>
+                    </div>
+                    <pre id="audit-output" class="output">No audit entries yet.</pre>
+                </section>
+            </section>
+        </main>
+    </div>
+</div>
+
+<div id="hover-tooltip" class="app-tooltip" role="tooltip" aria-hidden="true"></div>
+
+<div id="bank-overview-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="bank-overview-modal-title">
+        <div class="modal-head">
+            <h3 id="bank-overview-modal-title">Edit Bank Overview</h3>
+            <button id="bank-overview-close-btn" class="modal-close-btn" type="button" aria-label="Close">x</button>
+        </div>
+        <p class="hint">Update the key overview settings from one place.</p>
+        <div id="bank-overview-form" class="modal-form-grid">
+            <label class="modal-field">
+                <span>Bank ID (read only)</span>
+                <input id="bank-overview-bank-id-input" type="text" readonly>
+            </label>
+            <label class="modal-field">
+                <span>Owner (name or UUID)</span>
+                <input id="bank-overview-owner-input" type="text" placeholder="Online name or UUID">
+            </label>
+            <label class="modal-field">
+                <span>Owner UUID</span>
+                <input id="bank-overview-owner-uuid-input" type="text" placeholder="UUID (overrides owner field)">
+            </label>
+            <label class="modal-field">
+                <span>Status</span>
+                <select id="bank-overview-status-input">
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="RESTRICTED">RESTRICTED</option>
+                    <option value="SUSPENDED">SUSPENDED</option>
+                    <option value="REVOKED">REVOKED</option>
+                    <option value="LOCKDOWN">LOCKDOWN</option>
+                </select>
+            </label>
+            <label class="modal-field">
+                <span>Ownership Model</span>
+                <select id="bank-overview-ownership-input">
+                    <option value="SOLE">SOLE</option>
+                    <option value="ROLE_BASED">ROLE_BASED</option>
+                    <option value="PERCENTAGE_SHARES">PERCENTAGE_SHARES</option>
+                    <option value="FIXED_COFOUNDERS">FIXED_COFOUNDERS</option>
+                </select>
+            </label>
+            <label class="modal-field">
+                <span>Brand Color</span>
+                <input id="bank-overview-color-input" type="text" placeholder="#55AAFF">
+            </label>
+            <label class="modal-field modal-field-wide">
+                <span>Motto</span>
+                <input id="bank-overview-motto-input" type="text" placeholder="Bank motto">
+            </label>
+            <label class="modal-field">
+                <span>Federal Funds Rate (%)</span>
+                <input id="bank-overview-federal-rate-input" type="text" placeholder="3.50">
+            </label>
+            <label class="modal-field">
+                <span>Issue Fee</span>
+                <input id="bank-overview-issue-fee-input" type="text" placeholder="25">
+            </label>
+            <label class="modal-field">
+                <span>Replacement Fee</span>
+                <input id="bank-overview-replacement-fee-input" type="text" placeholder="50">
+            </label>
+            <label class="modal-field">
+                <span>Single Tx Limit</span>
+                <input id="bank-overview-single-limit-input" type="text" placeholder="50000">
+            </label>
+            <label class="modal-field">
+                <span>Daily Player Limit</span>
+                <input id="bank-overview-daily-player-limit-input" type="text" placeholder="200000">
+            </label>
+            <label class="modal-field">
+                <span>Daily Bank Limit</span>
+                <input id="bank-overview-daily-bank-limit-input" type="text" placeholder="1000000">
+            </label>
+            <label class="modal-field">
+                <span>Teller Cash Limit</span>
+                <input id="bank-overview-teller-limit-input" type="text" placeholder="250000">
+            </label>
+        </div>
+        <div class="modal-actions">
+            <button id="bank-overview-cancel-btn" class="btn btn-ghost" type="button">Cancel</button>
+            <button id="bank-overview-save-btn" class="btn btn-primary" type="button">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<script src="/ubs-admin/app.js"></script>
+</body>
+</html>

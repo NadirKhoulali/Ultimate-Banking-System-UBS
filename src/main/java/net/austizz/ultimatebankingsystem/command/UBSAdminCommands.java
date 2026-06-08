@@ -1,6 +1,6 @@
 package net.austizz.ultimatebankingsystem.command;
 
-import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.authlib.GameProfile;
@@ -15,6 +15,7 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
+import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.ChatFormatting;
@@ -73,7 +74,7 @@ public class UBSAdminCommands {
     }
 
     private static MutableComponent moneyLiteral(String text) {
-        return UbsTranslations.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
+        return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
     }
 
     private static Component ubsPanel(ChatFormatting accentColor, String title, Component body) {
@@ -157,6 +158,7 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
+                .then(buildWebAdminLiteral())
                 .then(buildAdminLiteral());
     }
 
@@ -217,6 +219,23 @@ public class UBSAdminCommands {
                         .then(Commands.literal("suspense")
                                 .executes(context -> centralBankLedger(context.getSource(), true))
                         )
+                );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildWebAdminLiteral() {
+        return Commands.literal("web")
+                .executes(context -> adminWebStatus(context.getSource()))
+                .then(Commands.literal("status")
+                        .executes(context -> adminWebStatus(context.getSource()))
+                )
+                .then(Commands.literal("on")
+                        .executes(context -> adminWebToggle(context.getSource(), true))
+                )
+                .then(Commands.literal("off")
+                        .executes(context -> adminWebToggle(context.getSource(), false))
+                )
+                .then(Commands.literal("link")
+                        .executes(context -> adminWebLink(context.getSource()))
                 );
     }
 
@@ -564,6 +583,52 @@ public class UBSAdminCommands {
                                 ))
                         )
                 )
+                .then(Commands.literal("shop")
+                        .then(Commands.literal("view")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> adminShopViewPlayer(
+                                                context.getSource(),
+                                                EntityArgument.getPlayer(context, "player")
+                                        ))
+                                )
+                        )
+                        .then(Commands.literal("level")
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("shopId", UuidArgument.uuid())
+                                                .then(Commands.argument("level", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminShopLevelSet(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "shopId"),
+                                                                IntegerArgumentType.getInteger(context, "level")
+                                                        ))
+                                                )
+                                        )
+                                )
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("shopId", UuidArgument.uuid())
+                                                .then(Commands.argument("levels", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminShopLevelAdd(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "shopId"),
+                                                                IntegerArgumentType.getInteger(context, "levels")
+                                                        ))
+                                                )
+                                        )
+                                )
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("shopId", UuidArgument.uuid())
+                                                .then(Commands.argument("levels", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminShopLevelRemove(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "shopId"),
+                                                                IntegerArgumentType.getInteger(context, "levels")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
+                )
+                .then(buildWebAdminLiteral())
                 .then(Commands.literal("flags")
                         .executes(context -> adminListFlags(context.getSource()))
                 );
@@ -1587,6 +1652,257 @@ public class UBSAdminCommands {
             }
         }
         source.sendSystemMessage(ubsPanel(ChatFormatting.RED, "§cFraud / Flag Queue", body));
+        return 1;
+    }
+
+    private static int adminWebToggle(CommandSourceStack source, boolean enable) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        UltimateBankingSystem mod = resolveModInstance(source);
+        if (mod == null) {
+            return 1;
+        }
+
+        boolean running = mod.setWebAdminEnabled(source.getServer(), enable);
+        if (enable && !running) {
+            source.sendSystemMessage(moneyLiteral(
+                    "§cWeb dashboard failed to start. Check latest log for dependency/startup errors."
+            ));
+            return 1;
+        }
+
+        source.sendSystemMessage(moneyLiteral(enable
+                ? "§aWeb dashboard enabled."
+                : "§eWeb dashboard disabled."
+        ));
+        return adminWebStatus(source);
+    }
+
+    private static int adminWebStatus(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        UltimateBankingSystem mod = resolveModInstance(source);
+        if (mod == null) {
+            return 1;
+        }
+
+        boolean enabled = Config.WEB_ADMIN_ENABLED.get();
+        boolean running = mod.isWebAdminRunning();
+        String bindHost = mod.getWebAdminBindHost();
+        int bindPort = mod.getWebAdminBindPort();
+        String dashboardUrl = mod.getWebAdminDisplayUrl();
+
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Configured: " + (enabled ? "§aENABLED" : "§cDISABLED") + "\n"));
+        body.append(moneyLiteral("§7Runtime: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
+        body.append(moneyLiteral("§7Bind: §f" + bindHost + ":" + bindPort + "\n"));
+        body.append(moneyLiteral("§7Dashboard: §b" + dashboardUrl + "\n"));
+        if (isWildcardHost(bindHost)) {
+            body.append(moneyLiteral("§8Note: wildcard bind detected. Replace 127.0.0.1 with your server IP for remote clients.\n"));
+        }
+        body.append(moneyLiteral("\n§7Actions: "));
+        body.append(webActionButton("§aEnable", "/ubs web on", "Enable and start web dashboard"));
+        body.append(moneyLiteral(" "));
+        body.append(webActionButton("§cDisable", "/ubs web off", "Disable and stop web dashboard"));
+        body.append(moneyLiteral(" "));
+        body.append(webActionButton("§bLink", "/ubs web link", "Send clickable dashboard link"));
+
+        source.sendSystemMessage(ubsPanel(
+                running ? ChatFormatting.GREEN : ChatFormatting.YELLOW,
+                running ? "§aWeb Dashboard" : "§eWeb Dashboard",
+                body
+        ));
+        return 1;
+    }
+
+    private static int adminWebLink(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        UltimateBankingSystem mod = resolveModInstance(source);
+        if (mod == null) {
+            return 1;
+        }
+
+        String bindHost = mod.getWebAdminBindHost();
+        String dashboardUrl = mod.getWebAdminDisplayUrl();
+        boolean running = mod.isWebAdminRunning();
+
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Status: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
+        body.append(moneyLiteral("§7URL: §b" + dashboardUrl + "\n\n"));
+        body.append(moneyLiteral("§f§l[§bOpen Dashboard§f§l]")
+                .setStyle(Style.EMPTY
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, dashboardUrl))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Open dashboard in browser")))));
+        body.append(moneyLiteral(" "));
+        body.append(moneyLiteral("§f§l[§aCopy URL§f§l]")
+                .setStyle(Style.EMPTY
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, dashboardUrl))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Copy dashboard URL")))));
+        if (isWildcardHost(bindHost)) {
+            body.append(moneyLiteral("\n§8For remote players, replace 127.0.0.1 with your server IP/domain."));
+        }
+
+        source.sendSystemMessage(ubsPanel(
+                running ? ChatFormatting.AQUA : ChatFormatting.GRAY,
+                "§bWeb Dashboard Link",
+                body
+        ));
+        return 1;
+    }
+
+    private static MutableComponent webActionButton(String label, String command, String hoverText) {
+        return moneyLiteral("§f§l[" + label + "§f§l]")
+                .setStyle(Style.EMPTY
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral(hoverText))));
+    }
+
+    private static UltimateBankingSystem resolveModInstance(CommandSourceStack source) {
+        UltimateBankingSystem mod = UltimateBankingSystem.getInstance();
+        if (mod == null) {
+            source.sendSystemMessage(moneyLiteral("§cUBS mod instance is not available yet."));
+        }
+        return mod;
+    }
+
+    private static boolean isWildcardHost(String host) {
+        if (host == null || host.isBlank()) {
+            return true;
+        }
+        String cleaned = host.trim();
+        return "0.0.0.0".equals(cleaned)
+                || "::".equals(cleaned)
+                || "[::]".equals(cleaned)
+                || "*".equals(cleaned);
+    }
+
+    /**
+     * Admin view for all shops owned by a target player, with basic KPI details
+     * and clickable shop-id copy actions.
+     */
+    private static int adminShopViewPlayer(CommandSourceStack source, ServerPlayer target) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        if (target == null) {
+            source.sendSystemMessage(moneyLiteral("§cPlayer not found."));
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+
+        List<ShopService.ShopSummary> ownedShops = ShopService.listOwnerShopSummaries(centralBank, target.getUUID())
+                .stream()
+                .filter(ShopService.ShopSummary::ownerView)
+                .sorted(Comparator.comparing(ShopService.ShopSummary::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Player: §f" + target.getName().getString() + " §8(" + target.getUUID() + ")\n"));
+        body.append(moneyLiteral("§7Owned Shops: §b" + ownedShops.size() + "\n\n"));
+
+        if (ownedShops.isEmpty()) {
+            body.append(moneyLiteral("§8- none"));
+            source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bAdmin Shop View", body));
+            return 1;
+        }
+
+        long gameTime = source.getServer().overworld() == null ? 0L : source.getServer().overworld().getGameTime();
+        for (ShopService.ShopSummary shop : ownedShops) {
+            UUID shopId = shop.shopId();
+            String shopIdRaw = shopId == null ? "-" : shopId.toString();
+
+            body.append(moneyLiteral("§e" + shop.name() + " §8(" + ShopService.prettyShopType(shop.type()) + ")\n"));
+            body.append(moneyLiteral("§7Shop ID: §f" + shopIdRaw + "\n")
+                    .setStyle(Style.EMPTY
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, shopIdRaw))
+                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Click to copy shop ID")))));
+            body.append(moneyLiteral("§7Level: §b" + shop.level()
+                    + "  §7Revenue: §a$" + MoneyText.abbreviate(BigDecimal.valueOf(shop.revenueDollars()))
+                    + "  §7Next Target: §e$" + MoneyText.abbreviate(BigDecimal.valueOf(shop.nextTargetDollars())) + "\n"));
+            body.append(moneyLiteral("§7Claims: §f" + shop.claimRegions()
+                    + "  §7Used Blocks: §f" + shop.usedClaimBlocks()
+                    + " / " + shop.claimCapacityBlocks()
+                    + "  §7Stockrooms: §f" + shop.stockroomRegions() + "\n"));
+            boolean open = shopId != null && ShopService.isShopOpenForShopping(centralBank, shopId, gameTime);
+            body.append(moneyLiteral("§7Status: " + (open ? "§aOPEN" : "§cCLOSED") + "\n"));
+            body.append(moneyLiteral("§8────────────────────────\n"));
+        }
+
+        source.sendSystemMessage(ubsPanel(ChatFormatting.AQUA, "§bAdmin Shop View", body));
+        return 1;
+    }
+
+    /**
+     * Admin helper for forcing a shop to an explicit level milestone.
+     */
+    private static int adminShopLevelSet(CommandSourceStack source, UUID shopId, int level) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        ShopService.ShopActionResult result = ShopService.adminSetShopLevel(centralBank, shopId, level);
+        if (!result.success()) {
+            source.sendSystemMessage(moneyLiteral("§c" + result.message()));
+            return 1;
+        }
+        BankManager.markDirty();
+        source.sendSystemMessage(moneyLiteral("§a" + result.message()));
+        return 1;
+    }
+
+    /**
+     * Admin helper for incrementing a shop level by a positive amount.
+     */
+    private static int adminShopLevelAdd(CommandSourceStack source, UUID shopId, int levels) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        ShopService.ShopActionResult result = ShopService.adminAdjustShopLevel(centralBank, shopId, levels);
+        if (!result.success()) {
+            source.sendSystemMessage(moneyLiteral("§c" + result.message()));
+            return 1;
+        }
+        BankManager.markDirty();
+        source.sendSystemMessage(moneyLiteral("§a" + result.message()));
+        return 1;
+    }
+
+    /**
+     * Admin helper for decrementing a shop level by a positive amount.
+     */
+    private static int adminShopLevelRemove(CommandSourceStack source, UUID shopId, int levels) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        ShopService.ShopActionResult result = ShopService.adminAdjustShopLevel(centralBank, shopId, -levels);
+        if (!result.success()) {
+            source.sendSystemMessage(moneyLiteral("§c" + result.message()));
+            return 1;
+        }
+        BankManager.markDirty();
+        source.sendSystemMessage(moneyLiteral("§a" + result.message()));
         return 1;
     }
 

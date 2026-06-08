@@ -144,12 +144,12 @@ public class BankScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollDelta) {
         ScreenLayer top = layerStack.peek();
-        if (top != null && top.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
+        if (top != null && top.mouseScrolled(mouseX, mouseY, scrollDelta)) {
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollDelta);
     }
 
     @Override
@@ -247,26 +247,6 @@ public class BankScreen extends Screen {
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // No-op to hard-disable vanilla menu blur/background behavior.
-    }
-
-    @Override
-    public void renderTransparentBackground(GuiGraphics graphics) {
-        // No-op to hard-disable transparent background blur paths.
-    }
-
-    @Override
-    public void renderBlurredBackground(float partialTick) {
-        // No-op to hard-disable blur paths.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics) {
-        // No-op to hard-disable menu background paths.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
-        // No-op to hard-disable menu background paths.
     }
 
     private static int lerpColor(int from, int to, float t) {

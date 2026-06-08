@@ -1,0 +1,9 @@
+{
+  "variants": {
+    "facing=north": { "model": "ultimatebankingsystem:block/shop_selling_table" },
+    "facing=south": { "model": "ultimatebankingsystem:block/shop_selling_table", "y": 180 },
+    "facing=east": { "model": "ultimatebankingsystem:block/shop_selling_table", "y": 90 },
+    "facing=west": { "model": "ultimatebankingsystem:block/shop_selling_table", "y": 270 }
+  }
+}
+

@@ -16,15 +16,14 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.BankTellerAccountSummary;
 import net.austizz.ultimatebankingsystem.network.BankTellerOpenPayload;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -112,6 +111,7 @@ public final class BankTellerService {
                     "",
                     "0",
                     "0",
+                    false,
                     List.of()
             );
         }
@@ -168,6 +168,9 @@ public final class BankTellerService {
             ));
         }
 
+        Bank openTarget = resolveOpenAccountTargetBank(centralBank, teller);
+        boolean openAccountFree = isCentralBankTarget(centralBank, openTarget);
+
         String tellerLabel = teller.getName() == null ? "Bank Teller" : teller.getName().getString();
         return new BankTellerOpenPayload(
                 teller.getUUID(),
@@ -177,6 +180,7 @@ public final class BankTellerService {
                 motto == null ? "" : motto,
                 issueFee,
                 replacementFee,
+                openAccountFree,
                 summaries
         );
     }
@@ -223,6 +227,8 @@ public final class BankTellerService {
             case "ISSUE_CHEQUE" -> handleIssueCheque(server, centralBank, player, accountIdRaw, amountRaw, recipientRaw);
             case "ISSUE_NOTE" -> handleIssueNote(centralBank, player, accountIdRaw, amountRaw);
             case "WITHDRAW_CASH" -> handleWithdrawCash(centralBank, player, accountIdRaw, amountRaw);
+            case "DEPOSIT_CASH" -> handleDepositCash(centralBank, player, accountIdRaw, amountRaw);
+            case "DEPOSIT_ALL_CASH" -> handleDepositAllCash(centralBank, player, accountIdRaw);
             case "CHEQUE_TO_ACCOUNT" -> handleChequeToAccount(centralBank, player, accountIdRaw);
             case "CHEQUE_TO_CASH" -> handleChequeToCash(centralBank, player, accountIdRaw);
             case "NOTE_TO_ACCOUNT" -> handleNoteToAccount(centralBank, player, accountIdRaw);
@@ -385,6 +391,81 @@ public final class BankTellerService {
         return ActionResult.ok("Withdrew $" + amount.toPlainString() + " as cash: " + DollarBills.formatCashPlan(plan));
     }
 
+    private static ActionResult handleDepositCash(CentralBank centralBank,
+                                                  ServerPlayer player,
+                                                  String accountIdRaw,
+                                                  String amountRaw) {
+        AccountHolder destination = resolveOwnedAccount(centralBank, player, accountIdRaw);
+        if (destination == null) {
+            return ActionResult.fail("Select one of your accounts first.");
+        }
+
+        BigDecimal amount = parsePositiveCurrencyAmount(amountRaw);
+        if (amount == null) {
+            return ActionResult.fail("Deposit amount must be a positive value with up to 2 decimals.");
+        }
+
+        int cents = toCents(amount);
+        if (cents <= 0) {
+            return ActionResult.fail("Deposit amount must be at least $0.01.");
+        }
+
+        int[] available = DollarBills.getAvailableCashCounts(player);
+        int[] plan = DollarBills.findCashDepositPlan(cents, available);
+        if (plan == null) {
+            return ActionResult.fail("You do not carry an exact cash combination for $" + amount.toPlainString() + ".");
+        }
+
+        DollarBills.removeCash(player, plan);
+        if (!destination.AddBalance(amount)) {
+            // Safety rollback: if account mutation fails, give tender back immediately.
+            DollarBills.giveCash(player, plan);
+            return ActionResult.fail("Could not deposit into the selected account.");
+        }
+
+        destination.addTransaction(new UserTransaction(
+                BANK_TELLER_TERMINAL_ID,
+                destination.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "TELLER_CASH_DEPOSIT"
+        ));
+        return ActionResult.ok("Deposited $" + amount.toPlainString() + " from carried cash: " + DollarBills.formatCashPlan(plan));
+    }
+
+    private static ActionResult handleDepositAllCash(CentralBank centralBank,
+                                                     ServerPlayer player,
+                                                     String accountIdRaw) {
+        AccountHolder destination = resolveOwnedAccount(centralBank, player, accountIdRaw);
+        if (destination == null) {
+            return ActionResult.fail("Select one of your accounts first.");
+        }
+
+        int[] available = DollarBills.getAvailableCashCounts(player);
+        int totalCents = DollarBills.totalCashValueCents(available);
+        if (totalCents <= 0) {
+            return ActionResult.fail("You are not carrying any cash to deposit.");
+        }
+
+        BigDecimal amount = BigDecimal.valueOf(totalCents, 2).setScale(2, RoundingMode.UNNECESSARY);
+        int[] fullPlan = available.clone();
+
+        DollarBills.removeCash(player, fullPlan);
+        if (!destination.AddBalance(amount)) {
+            DollarBills.giveCash(player, fullPlan);
+            return ActionResult.fail("Could not deposit into the selected account.");
+        }
+
+        destination.addTransaction(new UserTransaction(
+                BANK_TELLER_TERMINAL_ID,
+                destination.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "TELLER_CASH_DEPOSIT_ALL"
+        ));
+        return ActionResult.ok("Deposited all carried cash ($" + amount.toPlainString() + "): " + DollarBills.formatCashPlan(fullPlan));
+    }
+
     private static ActionResult handleChequeToAccount(CentralBank centralBank,
                                                       ServerPlayer player,
                                                       String accountIdRaw) {
@@ -402,19 +483,18 @@ public final class BankTellerService {
         if (!player.getUUID().equals(cheque.recipientId())) {
             return ActionResult.fail("This cheque is not payable to you.");
         }
-        if (centralBank.isChequeRedeemed(cheque.chequeId())) {
+        if (!centralBank.tryRedeemChequeId(cheque.chequeId())) {
             return ActionResult.fail("This cheque has already been redeemed.");
         }
 
         if (!destination.AddBalance(cheque.amount())) {
+            centralBank.rollbackChequeRedemption(cheque.chequeId());
             return ActionResult.fail("Could not deposit into the selected account.");
         }
 
         heldCheque.stack().shrink(1);
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
-
-        centralBank.markChequeRedeemed(cheque.chequeId());
         destination.addTransaction(new UserTransaction(
                 cheque.writerId() == null
                         ? BANK_TELLER_TERMINAL_ID
@@ -439,7 +519,7 @@ public final class BankTellerService {
         if (!player.getUUID().equals(cheque.recipientId())) {
             return ActionResult.fail("This cheque is not payable to you.");
         }
-        if (centralBank.isChequeRedeemed(cheque.chequeId())) {
+        if (!centralBank.tryRedeemChequeId(cheque.chequeId())) {
             return ActionResult.fail("This cheque has already been redeemed.");
         }
 
@@ -451,13 +531,13 @@ public final class BankTellerService {
 
         int[] plan = DollarBills.buildCashWithdrawPlan(cents);
         if (plan == null) {
+            centralBank.rollbackChequeRedemption(cheque.chequeId());
             return ActionResult.fail("Unable to prepare cash payout for this amount.");
         }
 
         heldCheque.stack().shrink(1);
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
-        centralBank.markChequeRedeemed(cheque.chequeId());
         BankManager.markDirty();
         DollarBills.giveCash(player, plan);
         return ActionResult.ok("Cheque cashed out as cash: " + DollarBills.formatCashPlan(plan));
@@ -477,19 +557,18 @@ public final class BankTellerService {
         }
 
         NoteData note = heldNote.note();
-        if (centralBank.isNoteSerialRedeemed(note.serial())) {
+        if (!centralBank.tryRedeemNoteSerial(note.serial())) {
             return ActionResult.fail("This bank note has already been redeemed.");
         }
 
         if (!destination.AddBalance(note.amount())) {
+            centralBank.rollbackNoteSerialRedemption(note.serial());
             return ActionResult.fail("Could not deposit into the selected account.");
         }
 
         heldNote.stack().shrink(1);
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
-
-        centralBank.markNoteSerialRedeemed(note.serial());
         destination.addTransaction(new UserTransaction(
                 BANK_TELLER_TERMINAL_ID,
                 destination.getAccountUUID(),
@@ -509,7 +588,7 @@ public final class BankTellerService {
         }
 
         NoteData note = heldNote.note();
-        if (centralBank.isNoteSerialRedeemed(note.serial())) {
+        if (!centralBank.tryRedeemNoteSerial(note.serial())) {
             return ActionResult.fail("This bank note has already been redeemed.");
         }
 
@@ -521,13 +600,13 @@ public final class BankTellerService {
 
         int[] plan = DollarBills.buildCashWithdrawPlan(cents);
         if (plan == null) {
+            centralBank.rollbackNoteSerialRedemption(note.serial());
             return ActionResult.fail("Unable to prepare cash payout for this amount.");
         }
 
         heldNote.stack().shrink(1);
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
-        centralBank.markNoteSerialRedeemed(note.serial());
         BankManager.markDirty();
         DollarBills.giveCash(player, plan);
         return ActionResult.ok("Bank note cashed out as cash: " + DollarBills.formatCashPlan(plan));
@@ -550,6 +629,7 @@ public final class BankTellerService {
         if (targetBank == null) {
             return ActionResult.fail("This teller is linked to an unavailable bank.");
         }
+        boolean centralTargetBank = isCentralBankTarget(centralBank, targetBank);
 
         String status = readBankStatus(centralBank, targetBank.getBankId());
         if ("SUSPENDED".equals(status) || "REVOKED".equals(status) || "RESTRICTED".equals(status)) {
@@ -561,19 +641,22 @@ public final class BankTellerService {
             return ActionResult.fail("Unknown account type. Use checking, saving, moneymarket, or certificate.");
         }
 
-        AccountHolder fundingAccount = resolveOwnedAccount(centralBank, player, fundingAccountIdRaw);
-        if (fundingAccount == null) {
-            return ActionResult.fail("Select one of your existing accounts to pay the account opening fee.");
-        }
-
         boolean firstAtBank = targetBank.getBankAccounts().values().stream()
                 .noneMatch(acc -> acc != null && player.getUUID().equals(acc.getPlayerUUID()));
-        BigDecimal fee = TELLER_ACCOUNT_OPEN_BASE_FEE;
-        if (firstAtBank) {
-            fee = fee.add(TELLER_ACCOUNT_OPEN_FIRST_ACCOUNT_EXTRA_FEE);
+        BigDecimal fee = BigDecimal.ZERO;
+        if (!centralTargetBank) {
+            fee = TELLER_ACCOUNT_OPEN_BASE_FEE;
+            if (firstAtBank) {
+                fee = fee.add(TELLER_ACCOUNT_OPEN_FIRST_ACCOUNT_EXTRA_FEE);
+            }
         }
 
+        AccountHolder fundingAccount = null;
         if (fee.compareTo(BigDecimal.ZERO) > 0) {
+            fundingAccount = resolveOwnedAccount(centralBank, player, fundingAccountIdRaw);
+            if (fundingAccount == null) {
+                return ActionResult.fail("Select one of your existing accounts to pay the account opening fee.");
+            }
             if (paymentMode == PaymentMode.CASH_OR_CARD) {
                 if (externalFeePayment == null) {
                     return BankTellerPaymentInteractionManager.beginSession(
@@ -610,7 +693,7 @@ public final class BankTellerService {
         if (accountType == AccountTypes.CertificateAccount) {
             String tier = normalizeCertificateTier(certificateTierRaw);
             if (tier.isBlank()) {
-                if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT) {
+                if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT && fundingAccount != null) {
                     fundingAccount.AddBalance(fee);
                 }
                 return ActionResult.fail("Certificate account requires a tier: short, medium, or long.");
@@ -622,7 +705,7 @@ public final class BankTellerService {
                 default -> -1L;
             };
             if (maturityTicks <= 0L) {
-                if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT) {
+                if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT && fundingAccount != null) {
                     fundingAccount.AddBalance(fee);
                 }
                 return ActionResult.fail("Invalid certificate tier configuration.");
@@ -637,7 +720,7 @@ public final class BankTellerService {
         }
 
         if (!targetBank.AddAccount(created)) {
-            if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT) {
+            if (fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT && fundingAccount != null) {
                 fundingAccount.AddBalance(fee);
             }
             return ActionResult.fail("You already have this account type at " + targetBank.getBankName() + ".");
@@ -648,7 +731,7 @@ public final class BankTellerService {
         }
 
         if (fee.compareTo(BigDecimal.ZERO) > 0) {
-            if (paymentMode == PaymentMode.ACCOUNT) {
+            if (paymentMode == PaymentMode.ACCOUNT && fundingAccount != null) {
                 fundingAccount.addTransaction(new UserTransaction(
                         fundingAccount.getAccountUUID(),
                         BANK_TELLER_TERMINAL_ID,
@@ -660,7 +743,7 @@ public final class BankTellerService {
             targetBank.setReserve(targetBank.getDeclaredReserve().add(fee));
         }
 
-        String paymentLine = paymentMode == PaymentMode.CASH_OR_CARD
+        String paymentLine = fee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.CASH_OR_CARD
                 ? " | Paid via " + safePaymentLabel(externalFeePayment)
                 : "";
 
@@ -668,8 +751,10 @@ public final class BankTellerService {
                 + ". Account ID: " + created.getAccountUUID()
                 + ". Opening fee: $" + fee.toPlainString()
                 + paymentLine;
-        if (firstAtBank) {
+        if (firstAtBank && fee.compareTo(BigDecimal.ZERO) > 0) {
             message += " (includes first-account surcharge)";
+        } else if (centralTargetBank) {
+            message += " (Central Bank teller account opening is free).";
         }
         if (accountType == AccountTypes.CertificateAccount) {
             message += " | Tier: " + created.getCertificateTier()
@@ -705,6 +790,9 @@ public final class BankTellerService {
         if (CreditCardService.hasActiveCardForAccount(centralBank, account.getAccountUUID())) {
             return ActionResult.fail("This account already has an active card. Use Replace Card instead.");
         }
+        boolean privateEligible = tellerBankId != null
+                && tellerBankId.equals(accountBankId)
+                && CreditCardService.isPrivateBankCardAccountEligible(centralBank, account, player.getUUID());
 
         UUID feeBankId = centralAccount ? centralBankId : accountBankId;
         BigDecimal issueFee = CreditCardService.getIssueFee(centralBank, feeBankId);
@@ -736,7 +824,8 @@ public final class BankTellerService {
                 centralBank,
                 account,
                 player.getName().getString(),
-                false
+                false,
+                privateEligible
         );
         if (!issueResult.success() || issueResult.cardStack().isEmpty()) {
             if (issueFee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT) {
@@ -756,7 +845,8 @@ public final class BankTellerService {
             ));
         }
         return ActionResult.ok(
-                "Credit card issued. Number: " + CreditCardService.maskCardNumber(issueResult.cardNumber())
+                (privateEligible ? "Private bank card issued. Number: " : "Credit card issued. Number: ")
+                        + CreditCardService.maskCardNumber(issueResult.cardNumber())
                         + " | CVC: " + issueResult.cvc()
                         + " | Expires: " + CreditCardService.formatExpiryMonthYear(issueResult.expiryEpochMillis())
                         + (paymentMode == PaymentMode.CASH_OR_CARD
@@ -796,6 +886,9 @@ public final class BankTellerService {
         if (!CreditCardService.hasActiveCardForAccount(centralBank, account.getAccountUUID())) {
             return ActionResult.fail("No active card found for this account. Issue a card first.");
         }
+        boolean privateEligible = tellerBankId != null
+                && tellerBankId.equals(accountBankId)
+                && CreditCardService.isPrivateBankCardAccountEligible(centralBank, account, player.getUUID());
 
         UUID feeBankId = centralAccount ? centralBankId : accountBankId;
         BigDecimal replacementFee = CreditCardService.getReplacementFee(centralBank, feeBankId);
@@ -827,7 +920,8 @@ public final class BankTellerService {
                 centralBank,
                 account,
                 player.getName().getString(),
-                true
+                true,
+                privateEligible
         );
         if (!issueResult.success() || issueResult.cardStack().isEmpty()) {
             if (replacementFee.compareTo(BigDecimal.ZERO) > 0 && paymentMode == PaymentMode.ACCOUNT) {
@@ -847,7 +941,8 @@ public final class BankTellerService {
             ));
         }
         return ActionResult.ok(
-                "Card replaced. Old card has been blocked. New number: "
+                (privateEligible ? "Private bank card replaced. Old card has been blocked. New number: "
+                        : "Card replaced. Old card has been blocked. New number: ")
                         + CreditCardService.maskCardNumber(issueResult.cardNumber())
                         + " | CVC: " + issueResult.cvc()
                         + " | Expires: " + CreditCardService.formatExpiryMonthYear(issueResult.expiryEpochMillis())
@@ -940,9 +1035,13 @@ public final class BankTellerService {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
+        String chequeId = tag.getString("ubs_cheque_id");
+        if (chequeId == null || chequeId.isBlank()) {
+            return null;
+        }
         UUID recipient = tag.getUUID("ubs_cheque_recipient");
         UUID writer = tag.hasUUID("ubs_cheque_writer") ? tag.getUUID("ubs_cheque_writer") : null;
-        return new ChequeData(tag.getString("ubs_cheque_id"), amount, recipient, writer);
+        return new ChequeData(chequeId, amount, recipient, writer);
     }
 
     private static NoteData readNoteData(ItemStack stack) {
@@ -962,7 +1061,11 @@ public final class BankTellerService {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
-        return new NoteData(tag.getString("ubs_note_serial"), amount);
+        String serial = tag.getString("ubs_note_serial");
+        if (serial == null || serial.isBlank()) {
+            return null;
+        }
+        return new NoteData(serial, amount);
     }
 
     private static RecipientProfile resolveRecipient(MinecraftServer server, String rawName) {
@@ -996,6 +1099,15 @@ public final class BankTellerService {
             return centralBank.getBank(centralBank.getBankId());
         }
         return centralBank.getBank(tellerBankId);
+    }
+
+    private static boolean isCentralBankTarget(CentralBank centralBank, Bank bank) {
+        if (centralBank == null || bank == null) {
+            return false;
+        }
+        UUID centralBankId = centralBank.getBankId();
+        UUID bankId = bank.getBankId();
+        return centralBankId != null && centralBankId.equals(bankId);
     }
 
     private static String readBankStatus(CentralBank centralBank, UUID bankId) {
@@ -1205,8 +1317,8 @@ public final class BankTellerService {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
-        return customData == null ? null : customData.copyTag();
+        CompoundTag customData = ItemStackDataCompat.getCustomData(stack);
+        return customData == null ? null : customData.copy();
     }
 
     private static String shortId(UUID uuid) {

@@ -182,26 +182,6 @@ public class HandheldTerminalScreen extends Screen {
         // No-op to disable blur/background.
     }
 
-    @Override
-    public void renderTransparentBackground(GuiGraphics graphics) {
-        // No-op.
-    }
-
-    @Override
-    public void renderBlurredBackground(float partialTick) {
-        // No-op.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics) {
-        // No-op.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
-        // No-op.
-    }
-
     public void handleSaveResponse(HandheldTerminalSaveResponsePayload payload) {
         this.feedbackSuccess = payload.success();
         this.feedbackMessage = payload.message() == null ? "" : payload.message();

@@ -8,14 +8,12 @@ import java.util.regex.Pattern;
 public final class MoneyText {
     private static final Pattern DOLLAR_TOKEN = Pattern.compile("\\$([+-]?(?:\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\.\\d+)?)");
     private static final BigDecimal THOUSAND = BigDecimal.valueOf(1_000L);
-    private static final String[] SCALE_SUFFIXES = {"", "K", "M", "B", "T"};
-    private static final BigDecimal[] SCALE_DIVISORS = {
-            BigDecimal.ONE,
-            BigDecimal.valueOf(1_000L),
-            BigDecimal.valueOf(1_000_000L),
-            BigDecimal.valueOf(1_000_000_000L),
-            BigDecimal.valueOf(1_000_000_000_000L)
+    private static final String[] SCALE_SUFFIXES = {
+            "", "K", "M", "B", "T",
+            "Qa", "Qi", "Sx", "Sp", "Oc", "No",
+            "Dc", "Ud", "Dd", "Td", "Qad", "Qid", "Sxd", "Spd", "Ocd", "Nod"
     };
+    private static final BigDecimal[] SCALE_DIVISORS = buildScaleDivisors();
 
     private MoneyText() {}
 
@@ -77,7 +75,6 @@ public final class MoneyText {
             scaleIndex++;
             shortened = amount.divide(SCALE_DIVISORS[scaleIndex], 2, roundingMode);
         }
-
         return shortened.stripTrailingZeros().toPlainString() + SCALE_SUFFIXES[scaleIndex];
     }
 
@@ -126,5 +123,16 @@ public final class MoneyText {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static BigDecimal[] buildScaleDivisors() {
+        BigDecimal[] divisors = new BigDecimal[SCALE_SUFFIXES.length];
+        divisors[0] = BigDecimal.ONE;
+        BigDecimal current = BigDecimal.ONE;
+        for (int i = 1; i < SCALE_SUFFIXES.length; i++) {
+            current = current.multiply(BigDecimal.valueOf(1_000L));
+            divisors[i] = current;
+        }
+        return divisors;
     }
 }

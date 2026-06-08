@@ -22,8 +22,7 @@ import java.util.List;
 
 public class WithdrawLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private static final String[] PRESET_AMOUNTS = {"20", "50", "100", "200", "500"};
 

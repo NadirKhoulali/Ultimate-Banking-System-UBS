@@ -249,26 +249,6 @@ public class ShopTerminalScreen extends Screen {
         // No-op to hard-disable vanilla menu blur/background behavior.
     }
 
-    @Override
-    public void renderTransparentBackground(GuiGraphics graphics) {
-        // No-op to hard-disable transparent background blur paths.
-    }
-
-    @Override
-    public void renderBlurredBackground(float partialTick) {
-        // No-op to hard-disable blur paths.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics) {
-        // No-op.
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics graphics, int x, int y, int width, int height) {
-        // No-op.
-    }
-
     public void handleSaveResponse(ShopTerminalSaveResponsePayload payload) {
         this.feedbackSuccess = payload.success();
         this.feedbackMessage = payload.message() == null ? "" : payload.message();

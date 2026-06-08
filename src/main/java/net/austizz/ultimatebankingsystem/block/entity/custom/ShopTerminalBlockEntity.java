@@ -144,7 +144,7 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
                              int newFailurePulseTicks,
                              int newIdlePulseStrength) {
         this.shopName = sanitizeShopName(newShopName);
-        this.priceDollars = Mth.clamp(newPrice, 1L, MAX_PRICE_DOLLARS);
+        this.priceDollars = clampLong(newPrice, 1L, MAX_PRICE_DOLLARS);
         this.merchantAccountId = newMerchantAccountId;
         this.pulseOnSuccess = newPulseOnSuccess;
         this.pulseOnFailure = newPulseOnFailure;
@@ -204,6 +204,21 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
         markUpdated();
     }
 
+    public void clearPaymentResult() {
+        Level level = getLevel();
+        this.displayResult = 0;
+        this.displayResultUntilGameTime = 0L;
+        if (level != null && !level.isClientSide()) {
+            BlockState current = level.getBlockState(worldPosition);
+            if (current.is(ModBlocks.PAYMENT_TERMINAL.get())
+                    && current.hasProperty(ShopTerminalBlock.RESULT)
+                    && current.getValue(ShopTerminalBlock.RESULT) != 0) {
+                level.setBlock(worldPosition, current.setValue(ShopTerminalBlock.RESULT, 0), Block.UPDATE_ALL);
+            }
+        }
+        markUpdated();
+    }
+
     public static void serverTick(Level level, BlockPos pos, BlockState state, ShopTerminalBlockEntity terminal) {
         if (terminal == null || level == null || level.isClientSide()) {
             return;
@@ -233,7 +248,7 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
         this.ownerUuid = tag.contains("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         this.ownerName = tag.getString("owner_name");
         this.shopName = sanitizeShopName(tag.getString("shop_name"));
-        this.priceDollars = Mth.clamp(tag.getLong("price_dollars"), 1L, MAX_PRICE_DOLLARS);
+        this.priceDollars = clampLong(tag.getLong("price_dollars"), 1L, MAX_PRICE_DOLLARS);
         this.merchantAccountId = tag.contains("merchant_account_id") ? tag.getUUID("merchant_account_id") : null;
         this.pulseOnSuccess = !tag.contains("pulse_on_success") || tag.getBoolean("pulse_on_success");
         this.pulseOnFailure = !tag.contains("pulse_on_failure") || tag.getBoolean("pulse_on_failure");
@@ -300,5 +315,9 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
             return normalized.substring(0, 42);
         }
         return normalized;
+    }
+
+    private static long clampLong(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

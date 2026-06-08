@@ -21,8 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class CreatePayRequestLayer extends AbstractScreenLayer {
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private NineSliceTexturedButton playerSelectButton;
     private String selectedPlayerName = "";
@@ -187,7 +186,7 @@ public class CreatePayRequestLayer extends AbstractScreenLayer {
         if (selected != null) {
             return selected.accountId();
         }
-        return accounts.isEmpty() ? null : accounts.getFirst().accountId();
+        return accounts.isEmpty() ? null : accounts.get(0).accountId();
     }
 
     private static String resolveDestinationLabel(UUID accountId) {

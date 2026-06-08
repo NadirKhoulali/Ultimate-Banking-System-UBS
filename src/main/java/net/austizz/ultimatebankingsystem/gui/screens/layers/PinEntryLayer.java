@@ -23,8 +23,7 @@ import java.util.function.Consumer;
 
 public class PinEntryLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int PIN_LENGTH = 4;
 
     private enum PinMode {

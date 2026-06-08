@@ -19,8 +19,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 public class DepositLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private EditBox amountField;
     private String resultMessage = "";

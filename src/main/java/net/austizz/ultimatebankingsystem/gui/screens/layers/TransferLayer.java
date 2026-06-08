@@ -21,8 +21,7 @@ import java.util.UUID;
 
 public class TransferLayer extends AbstractScreenLayer {
 
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
 
     private EditBox recipientField;
     private EditBox amountField;

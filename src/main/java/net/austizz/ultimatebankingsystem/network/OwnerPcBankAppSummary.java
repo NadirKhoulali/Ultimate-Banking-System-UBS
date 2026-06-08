@@ -12,8 +12,32 @@ public record OwnerPcBankAppSummary(
         String color,
         String status,
         boolean owner,
-        String roleLabel
+        String roleLabel,
+        String appType
 ) {
+    public static final String APP_TYPE_BANK = "BANK";
+    public static final String APP_TYPE_SHOP = "SHOP";
+
+    public OwnerPcBankAppSummary {
+        appType = normalizeAppType(appType);
+    }
+
+    public boolean isShopApp() {
+        return APP_TYPE_SHOP.equals(appType);
+    }
+
+    public boolean isBankApp() {
+        return !isShopApp();
+    }
+
+    private static String normalizeAppType(String appType) {
+        if (appType == null || appType.isBlank()) {
+            return APP_TYPE_BANK;
+        }
+        String normalized = appType.trim().toUpperCase(java.util.Locale.ROOT);
+        return APP_TYPE_SHOP.equals(normalized) ? APP_TYPE_SHOP : APP_TYPE_BANK;
+    }
+
     private static final StreamCodec<RegistryFriendlyByteBuf, UUID> UUID_CODEC =
             StreamCodec.of(
                     (buf, uuid) -> {
@@ -24,13 +48,24 @@ public record OwnerPcBankAppSummary(
             );
 
     public static final StreamCodec<RegistryFriendlyByteBuf, OwnerPcBankAppSummary> STREAM_CODEC =
-            StreamCodec.composite(
-                    UUID_CODEC, OwnerPcBankAppSummary::bankId,
-                    ByteBufCodecs.STRING_UTF8, OwnerPcBankAppSummary::bankName,
-                    ByteBufCodecs.STRING_UTF8, OwnerPcBankAppSummary::color,
-                    ByteBufCodecs.STRING_UTF8, OwnerPcBankAppSummary::status,
-                    ByteBufCodecs.BOOL, OwnerPcBankAppSummary::owner,
-                    ByteBufCodecs.STRING_UTF8, OwnerPcBankAppSummary::roleLabel,
-                    OwnerPcBankAppSummary::new
+            StreamCodec.of(
+                    (buf, value) -> {
+                        UUID_CODEC.encode(buf, value.bankId());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, value.bankName());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, value.color());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, value.status());
+                        ByteBufCodecs.BOOL.encode(buf, value.owner());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, value.roleLabel());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, value.appType());
+                    },
+                    buf -> new OwnerPcBankAppSummary(
+                            UUID_CODEC.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.BOOL.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf)
+                    )
             );
 }

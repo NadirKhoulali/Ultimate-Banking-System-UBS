@@ -1,7 +1,4 @@
 package net.austizz.ultimatebankingsystem.account;
-
-import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
-import io.github.bucket4j.Bucket;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.loan.AccountLoan;
@@ -11,6 +8,10 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -27,13 +28,12 @@ import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayDeque;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -136,6 +136,8 @@ public class AccountHolder {
             return false;
         }
         this.balance = this.balance.add(amount);
+        // Global money-in feedback: whenever an account gains funds, surface a unified alert.
+        sendBalanceDeltaAlert(amount, true);
         BankManager.markDirty();
         return true;
     }
@@ -155,6 +157,8 @@ public class AccountHolder {
         }
         this.balance = this.balance.subtract(amount);
         UltimateBankingSystem.LOGGER.debug("[UBS] RemoveBalance: ${} from account {}, new balance: ${}", amount, this.accountUUID, this.balance);
+        // Global money-out feedback: every successful debit should be visible to the account owner.
+        sendBalanceDeltaAlert(amount, false);
         BankManager.markDirty();
         return true;
     }
@@ -175,13 +179,38 @@ public class AccountHolder {
     public boolean forceRemoveBalance(BigDecimal balance) {
         return removeBalanceInternal(balance, true);
     }
+
+    private void sendBalanceDeltaAlert(BigDecimal amount, boolean incoming) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || this.playerUUID == null) {
+            return;
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return;
+        }
+        ServerPlayer owner = server.getPlayerList().getPlayer(this.playerUUID);
+        if (owner == null) {
+            return;
+        }
+        String direction = incoming ? "received" : "spent";
+        String legacyMessage = (incoming ? "§a" : "§e")
+                + "Account " + direction + ": §6"
+                + MoneyText.abbreviateWithDollar(amount)
+                + " §7(new balance: §f"
+                + MoneyText.abbreviateWithDollar(this.balance)
+                + "§7)";
+        DeliveryAlertPayload.AlertTone tone = incoming
+                ? DeliveryAlertPayload.AlertTone.SUCCESS
+                : DeliveryAlertPayload.AlertTone.WARNING;
+        ServerActionAlert.sendLegacy(owner, "Balance", legacyMessage, tone, 3600);
+    }
     public void addTransaction(UserTransaction transaction) {
         this.transactions.put(transaction.getTransactionUUID(), transaction);
         BankManager.markDirty();
     }
 //    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
 //        if (this.balance.compareTo(amount) <= 0) {
-//            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(UbsTranslations.literal("Amount is not valid!"));
+//            ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayer(playerUUID).sendSystemMessage(Component.literal("Amount is not valid!"));
 //            return false;
 //        }
 //
@@ -202,34 +231,34 @@ public class AccountHolder {
             Bank bank = centralBank.getBank(this.BankId);
 
             if (bank == null) {
-                p.sendSystemMessage(UbsTranslations.literal("Bank not found!"));
+                p.sendSystemMessage(Component.literal("Bank not found!"));
                 return;
             }
 
             bank.RemoveAccount(this);
 
-            p.sendSystemMessage(UbsTranslations.literal("Your account has been successfully terminated. Your balance has been transferred to the bank.")
+            p.sendSystemMessage(Component.literal("Your account has been successfully terminated. Your balance has been transferred to the bank.")
                     .withStyle(ChatFormatting.DARK_RED));
 
             UltimateBankingSystem.LOGGER.debug("Account terminated for {}", p.getScoreboardName());
         });
 
         // Het bericht opbouwen
-        player.sendSystemMessage(UbsTranslations.literal("Are you sure you want to terminate your account?\n")
-                .append(UbsTranslations.literal("By Agreeing to terminate your account, your Balance will \nremain with the bank permanently!\n\n")
+        player.sendSystemMessage(Component.literal("Are you sure you want to terminate your account?\n")
+                .append(Component.literal("By Agreeing to terminate your account, your Balance will \nremain with the bank permanently!\n\n")
                         .withStyle(ChatFormatting.GRAY))
 
                 // De "JA" knop
-                .append(UbsTranslations.literal("[Yes, I Agree] ")
+                .append(Component.literal("[Yes, I Agree] ")
                         .setStyle(Style.EMPTY
                                 .withBold(true)
                                 .withColor(ChatFormatting.RED)
                                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ubs_action " + yesCallbackId))
-                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, UbsTranslations.literal("Click to permanently delete"))))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to permanently delete"))))
                 )
 
                 // The "NO" button (no callback needed, just dismisses or sends a simple message)
-                .append(UbsTranslations.literal(" [No, I Disagree]")
+                .append(Component.literal(" [No, I Disagree]")
                         .setStyle(Style.EMPTY
                                 .withBold(true)
                                 .withColor(ChatFormatting.GREEN)
@@ -362,8 +391,7 @@ public class AccountHolder {
             return false;
         }
 
-        CompoundTag stackTag = new CompoundTag();
-        stack.save(registries, stackTag);
+        CompoundTag stackTag = ItemStackDataCompat.saveStack(stack, registries);
         getSafeBoxSlots().put(freeSlot, stackTag);
         BankManager.markDirty();
         return true;
@@ -377,12 +405,12 @@ public class AccountHolder {
         if (stackTag == null) {
             return ItemStack.EMPTY;
         }
-        Optional<ItemStack> parsed = ItemStack.parse(registries, stackTag);
+        ItemStack parsed = ItemStack.parseOptional(registries, stackTag);
         if (parsed.isEmpty()) {
             return ItemStack.EMPTY;
         }
         BankManager.markDirty();
-        return parsed.get();
+        return parsed;
     }
 
     public void configureCertificate(String tier, long maturityGameTime, double rate) {
@@ -875,17 +903,13 @@ public class AccountHolder {
         return account;
     }
 
-    private static final int OUTGOING_TX_CAPACITY = Math.max(1, Config.TRANSACTIONS_PER_MINUTE.get());
-    private static final Duration OUTGOING_TX_REFILL_PERIOD = Duration.ofMinutes(1);
+    private static final long OUTGOING_TX_WINDOW_MS = 60_000L;
 
     /**
-     * Rate limiter for outgoing transactions for this account.
+     * Sliding-window limiter for outgoing transactions for this account.
      * Not persisted; recreated on load (per AccountHolder instance).
      */
-    private final Bucket outgoingTxBucket = Bucket.builder()
-            .addLimit(limit -> limit.capacity(OUTGOING_TX_CAPACITY)
-                    .refillIntervally(OUTGOING_TX_CAPACITY, OUTGOING_TX_REFILL_PERIOD))
-            .build();
+    private final ArrayDeque<Long> outgoingTxTimestamps = new ArrayDeque<>();
 
     /**
      * Try to consume 1 outgoing transaction token.
@@ -893,7 +917,19 @@ public class AccountHolder {
      * @return true if the transaction is allowed right now.
      */
     public boolean tryConsumeOutgoingTransaction() {
-        return outgoingTxBucket.tryConsume(1);
+        long now = System.currentTimeMillis();
+        int capacity = Math.max(1, Config.TRANSACTIONS_PER_MINUTE.get());
+        synchronized (outgoingTxTimestamps) {
+            while (!outgoingTxTimestamps.isEmpty()
+                    && now - outgoingTxTimestamps.peekFirst() >= OUTGOING_TX_WINDOW_MS) {
+                outgoingTxTimestamps.pollFirst();
+            }
+            if (outgoingTxTimestamps.size() >= capacity) {
+                return false;
+            }
+            outgoingTxTimestamps.addLast(now);
+            return true;
+        }
     }
 
     private static boolean isFourDigitPin(String pin) {

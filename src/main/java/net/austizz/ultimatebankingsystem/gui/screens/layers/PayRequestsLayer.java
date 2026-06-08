@@ -19,8 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PayRequestsLayer extends AbstractScreenLayer {
-    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath(
-            "ultimatebankingsystem", "textures/gui/atm_buttons.png");
+    private static final ResourceLocation ATM_BUTTONS = ResourceLocation.fromNamespaceAndPath("ultimatebankingsystem", "textures/gui/atm_buttons.png");
     private static final int ENTRY_HEIGHT = 30;
     private static final int SCROLL_STEP = 18;
 
@@ -229,7 +228,7 @@ public class PayRequestsLayer extends AbstractScreenLayer {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
         if (!loaded || entries.isEmpty()) {
             return false;
         }
@@ -247,9 +246,9 @@ public class PayRequestsLayer extends AbstractScreenLayer {
             return false;
         }
 
-        int delta = (int) Math.round(scrollY * SCROLL_STEP);
+        int delta = (int) Math.round(scrollDelta * SCROLL_STEP);
         if (delta == 0) {
-            delta = scrollY > 0 ? SCROLL_STEP : -SCROLL_STEP;
+            delta = scrollDelta > 0 ? SCROLL_STEP : -SCROLL_STEP;
         }
         scrollOffset = clamp(scrollOffset - delta, 0, maxScroll);
         return true;

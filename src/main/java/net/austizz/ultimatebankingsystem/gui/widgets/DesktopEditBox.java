@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.widgets;
 
+import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -10,8 +11,13 @@ public class DesktopEditBox extends EditBox {
     private static final int TEXT_LEFT_PADDING = 5;
 
     public DesktopEditBox(Font font, int x, int y, int width, int height, Component message) {
-        super(font, x, y, width, height, message);
+        super(font, x, y, width, height, translated(message));
         this.setBordered(false);
+    }
+
+    @Override
+    public void setHint(Component hint) {
+        super.setHint(translated(hint));
     }
 
     @Override
@@ -79,5 +85,12 @@ public class DesktopEditBox extends EditBox {
         int g = (int) (g1 + (g2 - g1) * clamped);
         int b = (int) (b1 + (b2 - b1) * clamped);
         return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static Component translated(Component component) {
+        if (component == null) {
+            return Component.empty();
+        }
+        return Component.literal(UbsClientTranslations.resolve(component.getString())).setStyle(component.getStyle());
     }
 }
