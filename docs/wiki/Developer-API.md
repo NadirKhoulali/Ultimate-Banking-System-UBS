@@ -166,6 +166,15 @@ UBS now also exposes aggregate values for leaderboards and HUD overlays:
 - `getBankReserve(bankId)`
 - `getBankStatus(bankId)`
 
+## Pickpocket Metrics API
+
+UBS now exposes read methods for pickpocket history checks:
+
+- `hasPlayerEverStolen(playerId)` -> `boolean`
+- `getPlayersStolenFrom(playerId)` -> `List<UUID>`
+
+These methods are intended for moderation dashboards, custom HUD stats, and server-side progression hooks.
+
 ## Placeholder Resolver API
 
 Use this when you want token-based text expansion:

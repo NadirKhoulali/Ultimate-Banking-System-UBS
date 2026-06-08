@@ -5,6 +5,8 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
@@ -323,11 +325,17 @@ public final class BankRegulationService {
                 notifyOwner(server, bank, "§aPaid salary $" + salary.toPlainString() + " to " + shortId(employeeId) + ".");
                 ServerPlayer onlineEmployee = server.getPlayerList().getPlayer(employeeId);
                 if (onlineEmployee != null) {
-                    onlineEmployee.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                            MoneyText.abbreviateCurrencyTokens(
-                                    "§aSalary received from " + bank.getBankName() + ": $" + salary.toPlainString()
-                            )
-                    ));
+                    String salaryMessage = MoneyText.abbreviateCurrencyTokens(
+                            "§aSalary received from " + bank.getBankName() + ": $" + salary.toPlainString()
+                    );
+                    onlineEmployee.sendSystemMessage(net.minecraft.network.chat.Component.literal(salaryMessage));
+                    ServerActionAlert.sendLegacy(
+                            onlineEmployee,
+                            "Banking",
+                            salaryMessage,
+                            DeliveryAlertPayload.AlertTone.SUCCESS,
+                            4800
+                    );
                 }
             }
 
@@ -668,9 +676,16 @@ public final class BankRegulationService {
         }
         ServerPlayer owner = server.getPlayerList().getPlayer(bank.getBankOwnerId());
         if (owner != null) {
-            owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    MoneyText.abbreviateCurrencyTokens(message == null ? "" : message)
-            ));
+            String normalized = MoneyText.abbreviateCurrencyTokens(message == null ? "" : message);
+            owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(normalized));
+            // Compliance and regulation feedback should be visible as top alerts, not chat-only.
+            ServerActionAlert.sendLegacy(
+                    owner,
+                    "Bank Regulation",
+                    normalized,
+                    ServerActionAlert.inferToneFromLegacy(normalized),
+                    5200
+            );
         }
     }
 }

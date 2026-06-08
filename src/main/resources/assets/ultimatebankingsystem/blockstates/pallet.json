@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "part_x=0,part_z=0": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=1,part_z=0": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=2,part_z=0": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=0,part_z=1": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=1,part_z=1": { "model": "ultimatebankingsystem:block/pallet" },
+    "part_x=2,part_z=1": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=0,part_z=2": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=1,part_z=2": { "model": "ultimatebankingsystem:block/pallet_part" },
+    "part_x=2,part_z=2": { "model": "ultimatebankingsystem:block/pallet_part" }
+  }
+}

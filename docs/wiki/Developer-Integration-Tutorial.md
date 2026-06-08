@@ -1,6 +1,6 @@
 # Developer Integration Tutorial
 
-This guide explains exactly how to integrate UBS into another NeoForge mod dev environment.
+This guide explains how to integrate UBS into another mod dev environment for the current Forge 1.20.1 branch.
 
 ## 1. UBS coordinates and mod id
 
@@ -57,9 +57,7 @@ Point the path to your local UBS clone.
 dependencies {
     compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 
-    // Prefer localRuntime for NeoForge dev runs.
-    // If your template does not have localRuntime, use runtimeOnly instead.
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -88,7 +86,7 @@ repositories {
 
 dependencies {
     compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
-    localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.0"
 }
 ```
 
@@ -113,15 +111,13 @@ repositories {
 
 dependencies {
     compileOnly name: "ultimatebankingsystem-1.2.0"
-    localRuntime name: "ultimatebankingsystem-1.2.0"
+    runtimeOnly name: "ultimatebankingsystem-1.2.0"
 }
 ```
 
-If your setup does not have `localRuntime`, use `runtimeOnly`.
+## 7. Declare mod dependency in `mods.toml`
 
-## 7. Declare mod dependency in `neoforge.mods.toml`
-
-In your mod's `src/main/resources/META-INF/neoforge.mods.toml`, replace `<your_modid>` with your mod id.
+In your mod's `src/main/resources/META-INF/mods.toml`, replace `<your_modid>` with your mod id.
 
 ### Required UBS
 
@@ -166,7 +162,7 @@ if (!api.isServerAvailable()) {
 Guard integration so your mod does not crash when UBS is missing.
 
 ```java
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 
 boolean hasUbs = ModList.get().isLoaded("ultimatebankingsystem");
 if (!hasUbs) {

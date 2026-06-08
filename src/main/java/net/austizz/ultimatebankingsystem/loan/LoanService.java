@@ -7,6 +7,8 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -210,10 +212,16 @@ public final class LoanService {
                             && currentGameTime < nextDue) {
                         ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                         if (borrower != null) {
-                            borrower.sendSystemMessage(Component.literal(
-                                    "§eLoan payment due soon: §6" + MoneyText.abbreviateWithDollar(loan.getPeriodicPayment())
-                                            + " §ein " + (nextDue - currentGameTime) + " ticks."
-                            ));
+                            String message = "§eLoan payment due soon: §6" + MoneyText.abbreviateWithDollar(loan.getPeriodicPayment())
+                                    + " §ein " + (nextDue - currentGameTime) + " ticks.";
+                            borrower.sendSystemMessage(Component.literal(message));
+                            ServerActionAlert.sendLegacy(
+                                    borrower,
+                                    "Loans",
+                                    message,
+                                    DeliveryAlertPayload.AlertTone.WARNING,
+                                    5200
+                            );
                         }
                         loan.setWarnedThisCycle(true);
                         BankManager.markDirty();
@@ -251,7 +259,15 @@ public final class LoanService {
                             toRemove.add(loan.getLoanId());
                             ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                             if (borrower != null) {
-                                borrower.sendSystemMessage(Component.literal("§aLoan fully repaid. Great work."));
+                                String message = "§aLoan fully repaid. Great work.";
+                                borrower.sendSystemMessage(Component.literal(message));
+                                ServerActionAlert.sendLegacy(
+                                        borrower,
+                                        "Loans",
+                                        message,
+                                        DeliveryAlertPayload.AlertTone.SUCCESS,
+                                        5200
+                                );
                             }
                         }
                         BankManager.markDirty();
@@ -267,16 +283,30 @@ public final class LoanService {
 
                     ServerPlayer borrower = server.getPlayerList().getPlayer(account.getPlayerUUID());
                     if (borrower != null) {
-                        borrower.sendSystemMessage(Component.literal(
-                                "§cLoan defaulted: you missed a payment of " + MoneyText.abbreviateWithDollar(due) + "."
-                        ));
+                        String message = "§cLoan defaulted: you missed a payment of "
+                                + MoneyText.abbreviateWithDollar(due) + ".";
+                        borrower.sendSystemMessage(Component.literal(message));
+                        ServerActionAlert.sendLegacy(
+                                borrower,
+                                "Loans",
+                                message,
+                                DeliveryAlertPayload.AlertTone.ERROR,
+                                5600
+                        );
                     }
 
                     for (ServerPlayer online : server.getPlayerList().getPlayers()) {
                         if (online.hasPermissions(3)) {
-                            online.sendSystemMessage(Component.literal(
-                                    "§c[UBS] Loan default: " + account.getPlayerUUID() + " on account " + account.getAccountUUID()
-                            ));
+                            String adminMessage = "§c[UBS] Loan default: " + account.getPlayerUUID()
+                                    + " on account " + account.getAccountUUID();
+                            online.sendSystemMessage(Component.literal(adminMessage));
+                            ServerActionAlert.sendLegacy(
+                                    online,
+                                    "Loans",
+                                    adminMessage,
+                                    DeliveryAlertPayload.AlertTone.ERROR,
+                                    5200
+                            );
                         }
                     }
                 }

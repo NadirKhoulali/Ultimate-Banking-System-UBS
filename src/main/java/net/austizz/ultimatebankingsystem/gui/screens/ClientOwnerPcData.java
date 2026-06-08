@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
+import net.austizz.ultimatebankingsystem.client.ActionAlertClientState;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
@@ -29,6 +30,8 @@ public final class ClientOwnerPcData {
     private static boolean desktopDataLoaded;
     private static boolean desktopSessionUnlocked;
     private static int preferredPcUiScaleMode;
+    private static boolean suppressNextOwnerPcAutoOpen;
+    private static boolean suppressNextOrderBoardReportToast;
 
     private static OwnerPcBankDataPayload currentBankData;
 
@@ -54,7 +57,6 @@ public final class ClientOwnerPcData {
             selectedBankId = null;
         }
         currentBankData = null;
-        ACTION_OUTPUT_LINES.clear();
     }
 
     public static List<OwnerPcBankAppSummary> getApps() {
@@ -191,6 +193,30 @@ public final class ClientOwnerPcData {
         desktopSessionUnlocked = false;
     }
 
+    public static void suppressNextOwnerPcAutoOpen() {
+        suppressNextOwnerPcAutoOpen = true;
+    }
+
+    public static boolean consumeSuppressNextOwnerPcAutoOpen() {
+        if (!suppressNextOwnerPcAutoOpen) {
+            return false;
+        }
+        suppressNextOwnerPcAutoOpen = false;
+        return true;
+    }
+
+    public static void suppressNextOrderBoardReportToast() {
+        suppressNextOrderBoardReportToast = true;
+    }
+
+    public static boolean consumeSuppressNextOrderBoardReportToast() {
+        if (!suppressNextOrderBoardReportToast) {
+            return false;
+        }
+        suppressNextOrderBoardReportToast = false;
+        return true;
+    }
+
     public static int getPreferredPcUiScaleMode() {
         return preferredPcUiScaleMode;
     }
@@ -219,9 +245,49 @@ public final class ClientOwnerPcData {
     }
 
     public static void setToast(boolean success, String message) {
+        setToast(success, message, 2000);
+    }
+
+    public static void setToast(boolean success, String message, int durationMs) {
         toastSuccess = success;
         toastMessage = message == null ? "" : message;
-        toastUntilMillis = System.currentTimeMillis() + 4500L;
+        int normalizedDuration = Math.max(800, durationMs);
+        toastUntilMillis = System.currentTimeMillis() + normalizedDuration;
+        if (toastMessage.isBlank()) {
+            return;
+        }
+        ActionAlertClientState.Tone tone = inferAlertTone(success, toastMessage);
+        String title = inferAlertTitle(tone);
+        ActionAlertClientState.show(title, toastMessage, tone, normalizedDuration);
+    }
+
+    private static ActionAlertClientState.Tone inferAlertTone(boolean success, String message) {
+        if (!success) {
+            return ActionAlertClientState.Tone.ERROR;
+        }
+        String normalized = message == null ? "" : message.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("warning")
+                || normalized.contains("limit reached")
+                || normalized.contains("full")
+                || normalized.contains("missing")) {
+            return ActionAlertClientState.Tone.WARNING;
+        }
+        if (normalized.startsWith("selected ")
+                || normalized.startsWith("copied ")
+                || normalized.contains("refresh")
+                || normalized.contains("locating ")) {
+            return ActionAlertClientState.Tone.INFO;
+        }
+        return ActionAlertClientState.Tone.SUCCESS;
+    }
+
+    private static String inferAlertTitle(ActionAlertClientState.Tone tone) {
+        return switch (tone) {
+            case ERROR -> "Action Failed";
+            case WARNING -> "Warning";
+            case INFO -> "Info";
+            case SUCCESS -> "Success";
+        };
     }
 
     public static String getToastMessage() {
@@ -251,6 +317,8 @@ public final class ClientOwnerPcData {
         desktopPoweredOn = true;
         desktopDataLoaded = false;
         desktopSessionUnlocked = false;
+        suppressNextOwnerPcAutoOpen = false;
+        suppressNextOrderBoardReportToast = false;
         currentBankData = null;
         toastMessage = "";
         toastUntilMillis = 0L;

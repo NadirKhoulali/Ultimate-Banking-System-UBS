@@ -10,10 +10,10 @@ import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.network.HandheldTerminalOpenPayload;
 import net.austizz.ultimatebankingsystem.network.ShopTerminalAccountSummary;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
-import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -34,6 +34,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 public class HandheldPaymentTerminalItem extends Item {
+    private static final String CUSTOM_MODEL_DATA_KEY = "CustomModelData";
     private static final long RESULT_DISPLAY_MILLIS = 2_000L;
 
     public static final String TAG_TERMINAL_ID = "ubs_hterm_id";
@@ -173,11 +174,15 @@ public class HandheldPaymentTerminalItem extends Item {
         String shop = getShopName(stack);
         if (merchantPlayer.getUUID().equals(payerPlayer.getUUID())) {
             merchantPlayer.sendSystemMessage(Component.literal(
-                    "§aPaid " + amountText + " §aat §b" + shop + "§a. Balance: §6$" + result.balanceAfter().toPlainString()
+                    "§aPayment successful at §b" + shop
+                            + "§a. Charged from account: §6" + amountText
+                            + "§a. New balance: §6$" + result.balanceAfter().toPlainString()
             ));
         } else {
             payerPlayer.sendSystemMessage(Component.literal(
-                    "§aPayment complete: §6" + amountText + " §ato §b" + shop + "§a. Balance: §6$" + result.balanceAfter().toPlainString()
+                    "§aPayment successful at §b" + shop
+                            + "§a. Charged from account: §6" + amountText
+                            + "§a. New balance: §6$" + result.balanceAfter().toPlainString()
             ));
             merchantPlayer.sendSystemMessage(Component.literal(
                     "§aPayment received: §6" + amountText + " §afrom §f" + payerPlayer.getName().getString() + " §aat §b" + shop
@@ -443,27 +448,27 @@ public class HandheldPaymentTerminalItem extends Item {
             tag.putLong(TAG_RESULT_UNTIL, System.currentTimeMillis() + RESULT_DISPLAY_MILLIS);
         }
         writeData(stack, tag);
-        ItemStackDataCompat.setCustomModelData(stack, clamped);
+        setTerminalModelData(stack, clamped);
     }
 
     public static void syncExpiredResultState(ItemStack stack) {
         CompoundTag tag = getOrCreateData(stack);
         int result = tag.contains(TAG_RESULT) ? tag.getInt(TAG_RESULT) : RESULT_IDLE;
         if (result == RESULT_IDLE) {
-            if (!ItemStackDataCompat.hasCustomModelData(stack)) {
-                ItemStackDataCompat.setCustomModelData(stack, RESULT_IDLE);
+            if (!hasTerminalModelData(stack)) {
+                setTerminalModelData(stack, RESULT_IDLE);
             }
             return;
         }
         long until = tag.contains(TAG_RESULT_UNTIL) ? tag.getLong(TAG_RESULT_UNTIL) : 0L;
         if (until > System.currentTimeMillis()) {
-            ItemStackDataCompat.setCustomModelData(stack, Math.max(RESULT_IDLE, Math.min(RESULT_DENIED, result)));
+            setTerminalModelData(stack, Math.max(RESULT_IDLE, Math.min(RESULT_DENIED, result)));
             return;
         }
         tag.putInt(TAG_RESULT, RESULT_IDLE);
         tag.remove(TAG_RESULT_UNTIL);
         writeData(stack, tag);
-        ItemStackDataCompat.setCustomModelData(stack, RESULT_IDLE);
+        setTerminalModelData(stack, RESULT_IDLE);
     }
 
     public static boolean isHandheldTerminal(ItemStack stack) {
@@ -485,15 +490,32 @@ public class HandheldPaymentTerminalItem extends Item {
     }
 
     private static CompoundTag getOrCreateData(ItemStack stack) {
-        CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
-        if (tag == null) {
-            tag = new CompoundTag();
+        if (stack == null || stack.isEmpty()) {
+            return new CompoundTag();
         }
-        return tag;
+        CompoundTag tag = stack.getTag();
+        return tag == null ? new CompoundTag() : tag.copy();
     }
 
     private static void writeData(ItemStack stack, CompoundTag tag) {
-        ItemStackDataCompat.setCustomData(stack, tag == null ? new CompoundTag() : tag);
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        stack.setTag(tag == null ? new CompoundTag() : tag.copy());
+    }
+
+    private static void setTerminalModelData(ItemStack stack, int modelData) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        stack.getOrCreateTag().putInt(CUSTOM_MODEL_DATA_KEY, modelData);
+    }
+
+    private static boolean hasTerminalModelData(ItemStack stack) {
+        return stack != null
+                && !stack.isEmpty()
+                && stack.hasTag()
+                && stack.getTag().contains(CUSTOM_MODEL_DATA_KEY, Tag.TAG_INT);
     }
 
     private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {

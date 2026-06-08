@@ -1,337 +1,225 @@
 # Ultimate Banking System (UBS) - Player Guide
 
-This file explains the current playable features of UBS in a user-friendly way for players and server admins.
+This guide covers the current playable UBS systems and command surface for players and server operators.
 
 ## What UBS Adds
 
-- `ATM Machine` block: `ultimatebankingsystem:atm_machine`
-- `Payment Terminal` block: `ultimatebankingsystem:payment_terminal`
-- Legal tender bills:
-  - `$1`: `ultimatebankingsystem:one_dollar_bill`
-  - `$2`: `ultimatebankingsystem:two_dollar_bill`
-  - `$5`: `ultimatebankingsystem:five_dollar_bill`
-  - `$10`: `ultimatebankingsystem:ten_dollar_bill`
-  - `$20`: `ultimatebankingsystem:twenty_dollar_bill`
-  - `$50`: `ultimatebankingsystem:fifty_dollar_bill`
-  - `$100`: `ultimatebankingsystem:hundred_dollar_bill`
-- Legal tender coins:
-  - `$0.01`: `ultimatebankingsystem:penny_coin`
-  - `$0.05`: `ultimatebankingsystem:nickel_coin`
-  - `$0.10`: `ultimatebankingsystem:dime_coin`
-  - `$0.25`: `ultimatebankingsystem:quarter_coin`
-  - `$0.50`: `ultimatebankingsystem:half_dollar_coin`
-- Credit card item: `ultimatebankingsystem:credit_card`
-- Bank note + cheque instruments:
-  - `ultimatebankingsystem:bank_note`
-  - `ultimatebankingsystem:cheque`
-- Full account system with balance storage, transfers, PIN security, primary account flag, and transaction history.
+- Banking core:
+  - multi-account support (`checking`, `saving`, `moneymarket`, `certificate`)
+  - PIN-protected ATM access
+  - transfers, transaction history, account primary selection
+  - pay requests and account HUD monitoring
+- Physical legal tender:
+  - bills: `$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`
+  - coins: `$0.01`, `$0.05`, `$0.10`, `$0.25`, `$0.50`
+- Instruments and cards:
+  - `bank_note`
+  - `cheque`
+  - `credit_card`
+- Payment systems:
+  - `payment_terminal` block (merchant checkout + redstone output)
+  - `handheld_payment_terminal` (portable player-to-player checkout)
+  - bank teller cash-out (bills + coins)
+- Retail/shop stack:
+  - shelf/display/cooler/table blocks
+  - shopping baskets/bags
+  - cashier NPC flow
+  - stockroom + pallet + order workflows
+  - webshop/courier board support
+- Other gameplay systems:
+  - safe box storage per account type
+  - pickpocket system (player opt-in/out toggle)
+  - world cash economy (structure loot, mob drops, configurable death cash drops)
 
-Visual references:
-- Currency texture catalog: `docs/wiki/Currency-Legal-Tender.md`
-- Payment terminal guide: `docs/wiki/Payment-Terminal-Guide.md`
+## Quick Start
 
-## Quick Start (Players)
-
-1. Place an ATM or find one in the world.
-2. Right-click the ATM to open UBS.
-3. If you do not have an account yet, create one with:
-`/account open checking "Central Bank"`
-4. Open ATM again, choose your account, then use ATM actions.
-
-## First-Time Important Notes
-
-- New accounts no longer use a default PIN.
-- On first ATM login, you are prompted to create a 4-digit PIN.
-- Most ATM actions are disabled until an account is selected.
-- ATM withdraw uses real bill items (physical currency).
-- ATM deposit accepts legal tender bills + coins.
-- Frozen accounts cannot withdraw, deposit, or transfer.
-- Daily ATM withdrawal limits apply per account.
+1. Place an ATM or use one in-world.
+2. Create an account if needed:
+   - `/account open checking "Central Bank"`
+3. Open ATM and select account.
+4. Set/confirm your 4-digit PIN on first login.
+5. Use ATM actions (balance, withdraw, deposit, transfer, history).
 
 ## ATM Features
 
-### Select Account
+- account selection
+- balance inquiry
+- withdraw (whole-dollar amounts, bills only)
+- deposit (bills + coins, exact amount required)
+- transfer
+- transaction history
+- account settings (including PIN change)
+- pay request inbox + creation
 
-- Opens a scrollable account list.
-- Shows account type and bank name for each account.
-- Choose account and press `Use`.
+## Physical Cash Rules
 
-### Withdraw Cash
+### Withdraw
 
-- Quick amount buttons: `$20`, `$50`, `$100`, `$200`, `$500`.
-- Custom amount input is supported.
-- Whole-dollar amounts only (`ATM dispenses bills only`).
-- Success result:
-- Balance decreases
-- Bill items are given
-- Overflow bills are dropped if inventory is full
-- Transaction log entry: `ATM Cash Withdrawal`
+- ATM dispenses bills only.
+- Denomination breakdown is highest-first: `$100`, `$50`, `$20`, `$10`, `$5`, `$2`, `$1`.
 
-### Deposit Cash
+### Deposit
 
-- Enter amount and confirm.
-- Supports up to 2 decimal places.
-- ATM checks your inventory and offhand for legal tender cash items (bills + coins).
-- Deposit only succeeds if exact amount can be built from cash you carry.
-- Success result:
-- Required cash items are removed
-- Balance increases
-- Transaction log entry: `ATM Cash Deposit`
+- UBS scans inventory and offhand for legal tender cash.
+- Deposit only succeeds if an exact denomination combination exists.
 
-### Transfer Funds
+### Teller Cash-Out
 
-- Enter recipient account UUID + amount.
-- Uses selected account as sender.
-- Includes confirmation step.
-- Success result:
-- Funds move from sender to recipient
-- Transaction log entry: `ATM Transfer` on both accounts
-- Recipient receives chat message via Balance Changed event
+- Teller can dispense bills and coins.
+- Teller cap is controlled via bank limit type `teller`.
 
-### Balance Inquiry
+## Payment Terminal and Handheld
 
-Shows:
-- Account type
-- Bank name
-- Account ID
-- Balance
-- Creation date (formatted `MM/dd/yyyy HH:mm`)
+### Terminal Block
 
-### Transaction History
+- Right-click: pay configured amount.
+- Shift + right-click: open config (owner/OP).
+- Payment source:
+  - held valid credit card account, else primary account.
+- Terminal shows success/denied result and enforces a short interaction lock.
+- Optional idle/success/failure redstone output.
 
-- Scrollable list, newest first.
-- Maximum returned entries per request: `50`.
-- Each entry shows:
-- Date/time
-- Description
-- Amount (incoming green, outgoing red)
-- Counterparty short ID (`ATM` when terminal is counterparty)
+### Handheld Terminal
 
-### Account Settings
+- Hold item and right-click target player to charge.
+- Shift + right-click opens handheld config.
+- Uses same payment source rules as terminal.
+- No redstone controls.
 
-`Info` tab:
-- Account ID + copy button
-- Account type
-- Bank name
-- Created date
-- Primary toggle
+## Retail and Shop Systems
 
-`Security` tab:
-- Current PIN
-- New PIN
-- Confirm new PIN
-- Confirmation dialog before applying PIN change
+Retail features now include:
 
-## Payment Terminal
+- shop shelves/tables/coolers/displays
+- shopping basket session flow
+- cashier-led checkout
+- stockroom + pallet assignment + restock loops
+- webshop order/cart/delivery flows
 
-`Payment Terminal` block enables in-world merchant checkout.
+For shop management details:
 
-Basic use:
-- Right-click terminal to pay configured price.
-- Shift + right-click terminal to configure it (owner or OP only).
+- `docs/wiki/Retail-Shop-System.md`
+- `docs/wiki/Bank-Owner-PC.md`
 
-Payment source:
-- If you hold a valid UBS credit card, payment uses the card-linked account.
-- Otherwise payment uses your primary account.
+## Pickpocket
 
-Terminal feedback:
-- Terminal shows success/denied state for 2 seconds.
-- During that period, interaction is blocked for all players.
+- Default keybind is a Shift-modified chord (default key `F`, so `Shift + F`).
+- Toggle participation:
+  - `/account pickpocket toggle`
+  - `/account pickpocket status`
 
-Redstone:
-- Terminal can output configurable success/failure signal strength.
-- Optional idle signal can remain active continuously while terminal is idle.
+If disabled, you cannot steal and cannot be targeted.
 
-## How Physical Cash Works
+## Safe Box and HUD
 
-### ATM withdraw bill breakdown
+- `/account safebox list`
+- `/account safebox deposit`
+- `/account safebox withdraw <slot>`
+- `/account hud toggle`
+- `/account hud primary`
+- `/account hud account <accountId>`
 
-ATM uses denominations in this order:
-`$100, $50, $20, $10, $5, $2, $1`
+## Player Command Highlights
 
-Example:
-- Withdraw `137` -> `$100 x1, $20 x1, $10 x1, $5 x1, $2 x1`
-
-### ATM deposit cash matching
-
-ATM attempts to build your exact requested amount from your current legal tender cash.
-
-Example:
-- Deposit `37.41` can work with `20 + 10 + 5 + 2 + 0.25 + 0.10 + 0.05 + 0.01`.
-
-If exact combination is impossible, deposit is rejected.
-
-### Bank Teller cash-out
-
-Bank Teller cash payout can dispense bills and coins.
-Server owners can set a higher teller counter limit from bank limits (`teller` type).
-
-## Player Commands (`/account`)
-
-### Help
-
-- `/account`
-- `/account help`
-
-### Account info
-
-- `/account info`
-Shows primary account details.
-
-- `/account info list`
-Shows all your accounts.
-
-- `/account info bank <Bank Name>`
-Shows your account at a specific bank.
-
-- `/account info <accountUUID>`
-Shows specific account details.
-
-### Account creation
+### Account
 
 - `/account open <accountType> [certificateTier] <bankName>`
+- `/account close <bankName>`
+- `/account info`
+- `/account info list`
+- `/account info bank <bankName>`
+- `/account info <accountId>`
+- `/account balance`
+- `/account primary set <accountId>`
+- `/account primary bank <bankName>`
+- `/account transfer <fromAccountId> <toAccountId> <amount>`
+- `/account transfer bank <fromBank> <toBank> <amount>`
+- `/account send <player> <amount> [bankName]`
+- `/account payrequest <player> <amount> [destinationAccountId]`
+- `/account transaction <transactionId>`
+- `/account transaction list <accountId>`
+- `/account shop pay <amount> [shop]`
+- `/account note write <amount>`
+- `/account cheque write <player> <amount>`
+- `/account loan request|confirm|status ...`
+- `/account cd break|confirm ...`
+- `/account joint ...`
+- `/account business ...`
 
-Valid account types:
-- `checking`
-- `saving`
-- `moneymarket`
-- `certificate`
+### Bank
 
-### Transfers
+- `/bank list`
+- `/bank create <name> [ownershipModel]`
+- `/bank info <bankName>`
+- `/bank reserve`
+- `/bank dashboard`
+- `/bank accounts`
+- `/bank limit set <type> <amount>`
+- `/bank role ...`
+- `/bank shares ...`
+- `/bank cofounder ...`
+- `/bank hire|fire|employees`
+- `/bank lend ...`
+- `/bank loan ...`
+- `/bank appeal <message>`
+- `/bank heist start <bankName>` (Coming Soon)
 
-- `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
+### Session Control
 
-### Transaction lookup
+- `/cashier cancel`
+- `/bankteller cancel`
 
-- `/account transaction <transactionUUID>`
-- `/account transaction list <accountUUID>`
+## Admin Commands (Permission Level 3)
 
-### Account management
-
-- `/account delete <accountUUID>`
-Shows clickable confirmation in chat before final deletion.
-
-- `/account primary set <accountUUID>`
-Sets one account as primary and clears primary on your other accounts.
-
-## Admin Commands (`/ubs`, permission level 3)
-
-- `/ubs centralbank`
-- `/ubs centralbank interest set <rate>`
-- `/ubs bank save`
-- `/ubs bank rename <new name>`
-- `/ubs money deposit <accountUUID> <amount>`
-- `/ubs money withdraw <accountUUID> <amount>`
 - `/ubs admin view <player>`
-- `/ubs admin freeze <player> [reason]`
-- `/ubs admin unfreeze <player>`
-- `/ubs admin freeze account <accountUUID> [reason]`
-- `/ubs admin unfreeze account <accountUUID>`
-- `/ubs admin report`
-- `/ubs admin import csv <path>`
-- `/ubs admin import essentialsx <path>`
-- `/ubs admin import cmi <path>`
-- `/ubs admin import iconomy <path>`
-
-Alias:
-- `/bank admin ...` supports the same admin subcommands.
+- `/ubs admin freeze|unfreeze ...`
+- `/ubs admin applications ...`
+- `/ubs admin appeals ...`
+- `/ubs admin import csv|essentialsx|cmi|iconomy <path>`
+- `/centralbank rate [set <rate>]`
+- `/centralbank opm inject|withdraw|history ...`
+- `/centralbank audit [bankName]`
+- `/centralbank report [history]`
+- `/centralbank ledger [suspense]`
 
 ## Migration Import Notes
 
-- `csv` format supports:
-`player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
-- `history` is optional:
-`timestamp|signedAmount|description;timestamp|signedAmount|description`
-- `essentialsx` and `cmi` imports accept either a userdata folder or a single `.yml/.yaml` file.
-- `iconomy` import accepts file lines in `player,balance` or `player:balance`.
-- Every import command reports created/updated/failed counts and logs detailed warnings to server logs.
-
-## Server Config Options
-
-- `TransactionsPerMinute` (default `10`)
-Per-account outgoing transfer limit.
-
-- `DefaultATMWithdrawalLimit`
-Base per-transaction ATM withdrawal cap.
-
-- `DailyWithdrawalLimit`
-Per-account ATM withdrawal cap per Minecraft day.
-
-- `AutoSaveIntervalMinutes`
-Interval for scheduled banking data dirty-mark autosave.
-
-- `SavingsInterestIntervalTicks`
-Interval for scheduled savings interest payout.
-
-- `AllowBankCustomInterestRate`
-Enables custom bank interest control.
-
-- `ServerInterestRate`
-Server default interest rate value.
-
-- `FederalFundsRate`
-Economic reference rate value.
-
-- `MinCustomBankInterestRate`
-Minimum allowed custom rate.
-
-- `MaxCustomBankInterestRate`
-Maximum allowed custom rate.
-
-- `CurrencySymbol`
-Display symbol used in textual outputs.
-
-- `CurrencyName`
-Display currency name used in textual outputs.
-
-## Chat Notifications
-
-When balance-change events fire, UBS sends chat updates to account owner:
-
-- Positive change message (deposit-style)
-- Negative change message (withdrawal-style)
-
-Recipient of successful ATM transfer receives a positive balance-change chat message.
-
-## Data Saving
-
-- Account and transaction data is world-persistent.
-- Stored in world saved data key: `ultimate_banking_system`.
-
-## Current Known Behavior / Limitations
-
-- ATM withdraw supports whole-dollar amounts only (bills only).
-- ATM deposit supports up to 2 decimals and uses UBS bills + coins.
-- No crafting recipes are currently present in this codebase for ATM, terminal, or cash items.
-- If no account exists, ATM actions remain unavailable.
-- Account creation requires existing bank name.
-- Default bank is `Central Bank` unless renamed by admin.
+- `csv` supports:
+  - `player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
+- Optional `history` format:
+  - `timestamp|signedAmount|description;timestamp|signedAmount|description`
+- `essentialsx` and `cmi` accept userdata folder or single YAML file.
+- `iconomy` accepts `player,balance` or `player:balance`.
 
 ## Troubleshooting
 
 ### "No accounts found"
 
-Create one account first:
-`/account open checking "Central Bank"`
+Create an account first:
+
+- `/account open checking "Central Bank"`
 
 ### "Not enough cash on hand"
 
-You do not carry enough legal tender cash items for requested deposit.
+You do not carry enough legal tender items for the requested action.
 
 ### "Cannot form that exact amount"
 
-You have enough total value, but wrong denominations for exact amount.
+You may have enough total value, but not a matching denomination combination.
 
-### "Transfer failed" or transfer speed warning
+### Transfer/payment fails
 
-Possible causes:
-- Not enough balance
-- Invalid recipient account
-- Per-account transfer rate limit (`TransactionsPerMinute`) reached
+Common causes:
 
-## Suggested Setup Flow (Server Owners)
+- insufficient balance
+- invalid destination account
+- frozen account
+- daily/transaction limit hit
 
-1. Place ATM machines in spawn/city/bank areas.
-2. Tell players to create/open accounts with `/account open ...`.
-3. Tell players to set a 4-digit PIN on first ATM use.
-4. Adjust config and admin rates as needed.
+## Suggested Server Setup Flow
+
+1. Place ATMs and initial terminals.
+2. Tell players to create accounts and set PINs.
+3. Configure limits/rates in common config.
+4. Set central-bank policy values (`rate`, reserve/tax intervals, audit windows).
+5. Decide whether to enable pickpocket and world-cash systems for your server style.

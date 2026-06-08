@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "facing=north,half=lower": { "model": "ultimatebankingsystem:block/tall_wall_shelf" },
+    "facing=south,half=lower": { "model": "ultimatebankingsystem:block/tall_wall_shelf", "y": 180 },
+    "facing=east,half=lower": { "model": "ultimatebankingsystem:block/tall_wall_shelf", "y": 90 },
+    "facing=west,half=lower": { "model": "ultimatebankingsystem:block/tall_wall_shelf", "y": 270 },
+
+    "facing=north,half=upper": { "model": "ultimatebankingsystem:block/tall_wall_shelf_upper" },
+    "facing=south,half=upper": { "model": "ultimatebankingsystem:block/tall_wall_shelf_upper", "y": 180 },
+    "facing=east,half=upper": { "model": "ultimatebankingsystem:block/tall_wall_shelf_upper", "y": 90 },
+    "facing=west,half=upper": { "model": "ultimatebankingsystem:block/tall_wall_shelf_upper", "y": 270 }
+  }
+}

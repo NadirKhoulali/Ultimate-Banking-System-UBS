@@ -1,0 +1,24 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"1": "ultimatebankingsystem:block/modular_wall_display_2",
+		"particle": "ultimatebankingsystem:block/modular_wall_display_2"
+	},
+	"elements": [
+		{
+			"from": [0, 0, 14],
+			"to": [16, 16, 16],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 0, 14]},
+			"faces": {
+				"north": {"uv": [0, 0, 4, 4], "texture": "#1"},
+				"east": {"uv": [8, 0.5, 8.5, 4.5], "texture": "#1"},
+				"south": {"uv": [0, 4, 4, 8], "texture": "#1"},
+				"west": {"uv": [8, 4.5, 8.5, 8.5], "texture": "#1"},
+				"up": {"uv": [4, 8.5, 0, 8], "texture": "#1"},
+				"down": {"uv": [8, 0, 4, 0.5], "texture": "#1"}
+			}
+		}
+	]
+}

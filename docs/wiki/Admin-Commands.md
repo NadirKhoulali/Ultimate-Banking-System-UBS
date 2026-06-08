@@ -7,6 +7,11 @@ Admin level required: permission level `3`.
 - `/ubs admin ...`
 - `/bank admin ...`
 - `/centralbank ...`
+- `/ubs centralbank interest set <rate>`
+- `/ubs bank save`
+- `/ubs bank rename <newName>`
+- `/ubs money deposit <accountId> <amount>`
+- `/ubs money withdraw <accountId> <amount>`
 
 ## Account and Player Moderation
 
@@ -23,6 +28,15 @@ Admin level required: permission level `3`.
 - `/centralbank report history`
 - `/centralbank ledger`
 - `/centralbank ledger suspense`
+
+## Loan and Schedule Overrides
+
+- `/ubs admin loan pending`
+- `/ubs admin loan approve <player>`
+- `/ubs admin loan deny <player> [reason]`
+- `/ubs admin schedule list`
+- `/ubs admin schedule add <sourceAccountId> <targetAccountId> <amount> <frequencyTicks>`
+- `/ubs admin schedule remove <paymentId>`
 
 ## Bank Governance and Compliance
 
@@ -44,7 +58,15 @@ Admin level required: permission level `3`.
 - `/ubs admin rateexempt <bankName>`
 - `/ubs admin waivefee <player>`
 - `/ubs admin deferrenewal <bankName>`
+- `/ubs admin deferrenwal <bankName>` (legacy alias)
 - `/ubs admin flags`
+
+## Shop Admin
+
+- `/ubs admin shop view <player>`
+- `/ubs admin shop level set <shopId> <level>`
+- `/ubs admin shop level add <shopId> <levels>`
+- `/ubs admin shop level remove <shopId> <levels>`
 
 ## Central Bank Policy Controls
 

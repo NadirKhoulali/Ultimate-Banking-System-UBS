@@ -81,6 +81,10 @@ public interface UltimateBankingApi {
 
     List<ApiTransactionSnapshot> getPlayerTransactions(UUID playerId, int limit);
 
+    boolean hasPlayerEverStolen(UUID playerId);
+
+    List<UUID> getPlayersStolenFrom(UUID playerId);
+
     ApiResult getPlayerTotalBalance(UUID playerId);
 
     ApiResult getPlayerPrimaryBalance(UUID playerId);

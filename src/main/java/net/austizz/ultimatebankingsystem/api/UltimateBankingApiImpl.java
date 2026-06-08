@@ -777,6 +777,30 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public boolean hasPlayerEverStolen(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return false;
+        }
+        return centralBank.hasPlayerEverStolen(playerId);
+    }
+
+    @Override
+    public List<UUID> getPlayersStolenFrom(UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+        CentralBank centralBank = resolveCentralBank();
+        if (centralBank == null) {
+            return List.of();
+        }
+        return centralBank.getPlayersStolenFrom(playerId);
+    }
+
+    @Override
     public ApiResult getPlayerTotalBalance(UUID playerId) {
         if (playerId == null) {
             return ApiResult.fail("Player id is required", BigDecimal.ZERO);

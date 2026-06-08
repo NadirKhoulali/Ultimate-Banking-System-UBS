@@ -1,0 +1,10 @@
+{
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "texture_size": [128, 128],
+  "textures": {
+    "0": "ultimatebankingsystem:block/shop_cooler",
+    "particle": "ultimatebankingsystem:block/shop_cooler"
+  },
+  "elements": []
+}

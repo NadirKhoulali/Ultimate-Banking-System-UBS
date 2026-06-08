@@ -7,6 +7,8 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
+import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
+import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
@@ -50,6 +52,12 @@ public class BankTellerEntity extends PathfinderMob {
             SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Optional<UUID>> BOUND_BANK_UUID =
             SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Boolean> CASHIER =
+            SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Optional<UUID>> SHOP_ID =
+            SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> EMPLOYEE_ID =
+            SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.OPTIONAL_UUID);
 
     private UUID pendingRemovePlayer;
     private long pendingRemoveUntilTick;
@@ -75,6 +83,9 @@ public class BankTellerEntity extends PathfinderMob {
         this.entityData.define(VARIANT, VARIANT_MALE);
         this.entityData.define(FIXED_YAW, 0.0F);
         this.entityData.define(BOUND_BANK_UUID, Optional.empty());
+        this.entityData.define(CASHIER, false);
+        this.entityData.define(SHOP_ID, Optional.empty());
+        this.entityData.define(EMPLOYEE_ID, Optional.empty());
     }
 
     @Override
@@ -140,8 +151,28 @@ public class BankTellerEntity extends PathfinderMob {
             return InteractionResult.SUCCESS;
         }
 
+        if (isCashier()) {
+            MinecraftServer server = serverPlayer.getServer();
+            CentralBank centralBank = server == null ? null : BankManager.getCentralBank(server);
+            if (centralBank != null && ShopService.hasCashierTerminalSelection(serverPlayer.getUUID())) {
+                ShopService.ShopActionResult result = serverPlayer.isShiftKeyDown()
+                        ? ShopService.cancelCashierTerminalSelection(serverPlayer, "Cashier-terminal link mode cancelled.")
+                        : ShopService.applyCashierTerminalSelection(serverPlayer, centralBank, this);
+                serverPlayer.sendSystemMessage(Component.literal((result.success() ? "§a" : "§c") + result.message()));
+                return InteractionResult.CONSUME;
+            }
+        }
+
         if (serverPlayer.isShiftKeyDown()) {
             return handleRemovalClick(serverPlayer);
+        }
+
+        if (isCashier()) {
+            if (ShopCashierInteractionManager.handleInteract(serverPlayer, this, hand)) {
+                return InteractionResult.CONSUME;
+            }
+            serverPlayer.sendSystemMessage(Component.literal("§eHold a shopping basket to checkout."));
+            return InteractionResult.CONSUME;
         }
 
         if (BankTellerPaymentInteractionManager.handleInteract(serverPlayer, this, hand)) {
@@ -171,9 +202,11 @@ public class BankTellerEntity extends PathfinderMob {
 
         long now = this.level().getGameTime();
         if (player.getUUID().equals(pendingRemovePlayer) && now <= pendingRemoveUntilTick) {
-            ItemStack egg = new ItemStack(ModItems.BANK_TELLER_SPAWN_EGG.get());
+            ItemStack egg = new ItemStack(isCashier()
+                    ? ModItems.CASHIER_SPAWN_EGG.get()
+                    : ModItems.BANK_TELLER_SPAWN_EGG.get());
             UUID bankId = getBoundBankId();
-            if (bankId != null) {
+            if (!isCashier() && bankId != null) {
                 applyBankBindingToEgg(egg, bankId, resolveBankName(player.getServer(), bankId));
             }
             if (!player.getInventory().add(egg)) {
@@ -181,8 +214,10 @@ public class BankTellerEntity extends PathfinderMob {
             }
             BankTellerInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             BankTellerPaymentInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
+            ShopCashierInteractionManager.cancelForCashier(this.getUUID(), "Cashier removed.");
             this.discard();
-            player.sendSystemMessage(Component.literal("§aBank Teller removed and spawn egg returned."));
+            player.sendSystemMessage(Component.literal("§a" + (isCashier() ? "Cashier" : "Bank Teller")
+                    + " removed and spawn egg returned."));
             return InteractionResult.CONSUME;
         }
 
@@ -217,6 +252,31 @@ public class BankTellerEntity extends PathfinderMob {
         return this.entityData.get(BOUND_BANK_UUID).orElse(null);
     }
 
+    public boolean isCashier() {
+        return this.entityData.get(CASHIER);
+    }
+
+    public void setCashier(boolean cashier) {
+        this.entityData.set(CASHIER, cashier);
+        updateDisplayNameFromBank();
+    }
+
+    public UUID getShopId() {
+        return this.entityData.get(SHOP_ID).orElse(null);
+    }
+
+    public void setShopId(UUID shopId) {
+        this.entityData.set(SHOP_ID, Optional.ofNullable(shopId));
+    }
+
+    public UUID getEmployeeId() {
+        return this.entityData.get(EMPLOYEE_ID).orElse(null);
+    }
+
+    public void setEmployeeId(UUID employeeId) {
+        this.entityData.set(EMPLOYEE_ID, Optional.ofNullable(employeeId));
+    }
+
     public void setBoundBankId(UUID bankId) {
         this.entityData.set(BOUND_BANK_UUID, Optional.ofNullable(bankId));
     }
@@ -230,6 +290,15 @@ public class BankTellerEntity extends PathfinderMob {
         }
         tag.putInt("Variant", getVariant());
         tag.putFloat("FixedYaw", this.entityData.get(FIXED_YAW));
+        tag.putBoolean("Cashier", isCashier());
+        UUID shopId = getShopId();
+        if (shopId != null) {
+            tag.putUUID("ShopId", shopId);
+        }
+        UUID employeeId = getEmployeeId();
+        if (employeeId != null) {
+            tag.putUUID("EmployeeId", employeeId);
+        }
         UUID bankId = getBoundBankId();
         if (bankId != null) {
             tag.putUUID("BoundBank", bankId);
@@ -244,6 +313,21 @@ public class BankTellerEntity extends PathfinderMob {
         }
         if (tag.contains("Variant")) {
             setVariant(tag.getInt("Variant"));
+        }
+        if (tag.contains("Cashier")) {
+            setCashier(tag.getBoolean("Cashier"));
+        } else {
+            setCashier(false);
+        }
+        if (tag.hasUUID("ShopId")) {
+            setShopId(tag.getUUID("ShopId"));
+        } else {
+            setShopId(null);
+        }
+        if (tag.hasUUID("EmployeeId")) {
+            setEmployeeId(tag.getUUID("EmployeeId"));
+        } else {
+            setEmployeeId(null);
         }
         if (tag.contains("FixedYaw")) {
             this.entityData.set(FIXED_YAW, Mth.wrapDegrees(tag.getFloat("FixedYaw")));
@@ -278,6 +362,9 @@ public class BankTellerEntity extends PathfinderMob {
         this.setOwnerUUID(ownerPlayer.getUUID());
         this.setVariant(variant);
         this.setBoundBankId(bankId);
+        this.setCashier(false);
+        this.setShopId(null);
+        this.setEmployeeId(null);
         updateDisplayNameFromBank();
         this.setNoAi(true);
         this.setInvulnerable(true);
@@ -367,6 +454,9 @@ public class BankTellerEntity extends PathfinderMob {
                 if (!(entity instanceof BankTellerEntity teller)) {
                     continue;
                 }
+                if (teller.isCashier()) {
+                    continue;
+                }
                 if (bankId.equals(teller.getBoundBankId())) {
                     count++;
                 }
@@ -383,9 +473,10 @@ public class BankTellerEntity extends PathfinderMob {
             String prefix = (bankName == null || bankName.isBlank())
                     ? shortId(bankId)
                     : bankName.trim();
-            this.setCustomName(Component.literal("[" + prefix + "] Bank Teller").withStyle(ChatFormatting.AQUA));
+            String role = isCashier() ? "Cashier" : "Bank Teller";
+            this.setCustomName(Component.literal("[" + prefix + "] " + role).withStyle(ChatFormatting.AQUA));
         } else {
-            this.setCustomName(Component.literal("Bank Teller").withStyle(ChatFormatting.AQUA));
+            this.setCustomName(Component.literal(isCashier() ? "Cashier" : "Bank Teller").withStyle(ChatFormatting.AQUA));
         }
         this.setCustomNameVisible(true);
     }

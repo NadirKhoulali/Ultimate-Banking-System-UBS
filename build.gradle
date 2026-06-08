@@ -1,10 +1,21 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:6.0.42'
+    }
+}
+
 plugins {
     id 'java'
     id 'idea'
     id 'eclipse'
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[7.0.3,8)'
 }
+
+apply plugin: 'net.minecraftforge.gradle'
 
 version = mod_version
 group = mod_group_id
@@ -22,9 +33,7 @@ sourceSets.main.resources {
 }
 
 repositories {
-    minecraft.mavenizer(it)
-    maven fg.forgeMaven
-    maven fg.minecraftLibsMaven
+    maven { url = 'https://maven.minecraftforge.net' }
     mavenCentral()
 }
 
@@ -33,10 +42,10 @@ minecraft {
 
     runs {
         configureEach {
-            workingDir = layout.projectDirectory.dir('run')
-            systemProperty 'forge.enabledGameTestNamespaces', mod_id
-            systemProperty 'forge.logging.markers', 'REGISTRIES'
-            systemProperty 'forge.logging.console.level', 'debug'
+            workingDirectory project.file('run')
+            property 'forge.enabledGameTestNamespaces', mod_id
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
 
             mods {
                 "${mod_id}" {
@@ -45,29 +54,84 @@ minecraft {
             }
         }
 
-        register('client') {
+        client {
             args '--username', 'dev2'
         }
 
-        register('server') {
+        clientDev1 {
+            workingDirectory project.file('run-dev1')
+            args '--username', 'dev1'
+        }
+
+        clientDev2 {
+            workingDirectory project.file('run-dev2')
+            args '--username', 'dev2'
+        }
+
+        server {
             args '--nogui'
         }
 
-        register('gameTestServer')
+        gameTestServer {
+        }
 
-        register('data') {
-            workingDir = layout.projectDirectory.dir('run-data')
+        data {
+            workingDirectory project.file('run-data')
             args '--mod', mod_id, '--all',
-                    '--output', layout.projectDirectory.dir('src/generated/resources'),
-                    '--existing', layout.projectDirectory.dir('src/main/resources')
+                    '--output', file('src/generated/resources/'),
+                    '--existing', file('src/main/resources/')
         }
     }
 }
 
+tasks.register('runClientDual') {
+    group = 'forgegradle runs'
+    description = 'Launches two client instances in separate processes: dev1 and dev2.'
+    doLast {
+        def isWindows = System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('win')
+        if (isWindows) {
+            // Launch each client in its own shell window without relying on Gradle exec APIs.
+            new ProcessBuilder(
+                    'cmd', '/c',
+                    'start "UBS dev1" cmd /c "call gradlew.bat runClientDev1 --no-daemon"'
+            ).directory(project.projectDir).start()
+
+            new ProcessBuilder(
+                    'cmd', '/c',
+                    'start "UBS dev2" cmd /c "call gradlew.bat runClientDev2 --no-daemon"'
+            ).directory(project.projectDir).start()
+        } else {
+            new ProcessBuilder(
+                    'bash', '-lc',
+                    './gradlew runClientDev1 --no-daemon >/dev/null 2>&1 & ./gradlew runClientDev2 --no-daemon >/dev/null 2>&1 &'
+            ).directory(project.projectDir).start()
+        }
+        println 'Started UBS clients: dev1 and dev2.'
+    }
+}
+
 dependencies {
-    implementation minecraft.dependency("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
     implementation 'com.mojang:brigadier:1.0.18'
+    // Keep web admin HTTP codec aligned with the Netty version shipped by Forge/Minecraft.
+    // Force the full Netty family to one version so HTTP pieces cannot drift and crash at runtime.
+    def mcNettyVersion = '4.1.82.Final'
+    constraints {
+        implementation("io.netty:netty-common:${mcNettyVersion}")
+        implementation("io.netty:netty-buffer:${mcNettyVersion}")
+        implementation("io.netty:netty-codec:${mcNettyVersion}")
+        implementation("io.netty:netty-codec-http:${mcNettyVersion}")
+        implementation("io.netty:netty-handler:${mcNettyVersion}")
+        implementation("io.netty:netty-resolver:${mcNettyVersion}")
+        implementation("io.netty:netty-transport:${mcNettyVersion}")
+    }
+    implementation("io.netty:netty-codec-http:${mcNettyVersion}") {
+        transitive = false
+    }
+    minecraftLibrary("io.netty:netty-codec-http:${mcNettyVersion}") {
+        transitive = false
+    }
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
@@ -110,10 +174,17 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+// Always remap the development jar to runtime names before distribution.
+tasks.named('jar').configure {
+    finalizedBy 'reobfJar'
+}
+tasks.named('build').configure {
+    dependsOn 'reobfJar'
+}
+
 idea {
     module {
         downloadSources = true
         downloadJavadoc = true
     }
 }
-

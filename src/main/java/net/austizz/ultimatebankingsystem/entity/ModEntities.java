@@ -2,17 +2,17 @@ package net.austizz.ultimatebankingsystem.entity;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
 public final class ModEntities {
-
+    // Keep entity registration on Forge registries for 1.20.1 runtime compatibility.
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
-            DeferredRegister.create(Registries.ENTITY_TYPE, UltimateBankingSystem.MODID);
+            DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, UltimateBankingSystem.MODID);
 
     public static final RegistryObject<EntityType<BankTellerEntity>> BANK_TELLER =
             ENTITY_TYPES.register("bank_teller", () ->

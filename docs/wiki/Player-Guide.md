@@ -53,7 +53,7 @@ Deposit:
 Bank Teller:
 
 - Teller cash-out can dispense bills + coins.
-- Teller withdrawal limit can be configured per bank (`teller` limit type in Bank Limits).
+- Teller withdrawal limit can be configured per bank (`teller` bank limit type).
 
 Legal tender list with textures:
 
@@ -82,11 +82,55 @@ Full guide:
 
 - [Payment Terminal Guide](Payment-Terminal-Guide.md)
 
+## Retail and Shop Systems
+
+New retail surfaces include shelves, display tables, coolers, modular displays, shopping baskets/bags, pallets, and cashier NPC workflows.
+
+High-level loop:
+
+1. Browse shelf/display stock.
+2. Add/remove items with basket flow.
+3. Checkout via cashier/terminal.
+4. Funds settle through UBS account/payment systems.
+
+The desktop shop app also supports stockroom claims, pallet assignment, order flows, permissions, lighting/hours controls, and webshop/courier workflows.
+
+See:
+
+- [Retail & Shop System](Retail-Shop-System.md)
+- [Bank Owner PC](Bank-Owner-PC.md)
+
+## Pickpocket
+
+- Client keybind defaults to `Shift + F` (rebindable key + Shift safety modifier).
+- Players can opt in/out:
+  - `/account pickpocket toggle`
+  - `/account pickpocket status`
+
+If disabled, you are immune and also cannot pickpocket others.
+
+## HUD and Safe Box
+
+- `/account hud toggle`
+- `/account hud primary`
+- `/account hud account <accountId>`
+- `/account safebox list`
+- `/account safebox deposit`
+- `/account safebox withdraw <slot>`
+
+## World Cash Economy
+
+Depending on server config, UBS can add:
+
+- structure chest cash loot
+- cash drops from mobs/villagers
+- forced percentage cash drop on player death
+
 ## Limits and Security
 
 - PIN must be exactly 4 digits.
 - per-transaction ATM limit applies
-- daily ATM withdrawal limit applies
+- daily ATM withdrawal limits apply
 - frozen accounts cannot withdraw, deposit, or transfer
 
 ## Useful Commands
@@ -95,7 +139,7 @@ Full guide:
 - `/account info list`
 - `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
 - `/account transaction list <accountUUID>`
-- `/bank safebox list`
-- `/bank safebox deposit`
-- `/bank safebox withdraw <slot>`
+- `/account shop pay <amount> [shop]`
+- `/bank reserve`
+- `/bank dashboard`
 - `/bank heist start <bankName>` (Coming Soon)

@@ -7,6 +7,8 @@ import net.austizz.ultimatebankingsystem.account.transaction.BankToUserTransacti
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -278,9 +280,15 @@ public class Bank {
                 if (Math.abs(previousRate - annualRate) > 0.0001D && previousRate >= 0.0D) {
                     ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
                     if (holder != null) {
-                        holder.sendSystemMessage(Component.literal(
-                                "§eMoney Market rate changed: §f" + previousRate + "% §7-> §f" + annualRate + "%"
-                        ));
+                        String message = "§eMoney Market rate changed: §f" + previousRate + "% §7-> §f" + annualRate + "%";
+                        holder.sendSystemMessage(Component.literal(message));
+                        ServerActionAlert.sendLegacy(
+                                holder,
+                                "Banking",
+                                message,
+                                DeliveryAlertPayload.AlertTone.INFO,
+                                4400
+                        );
                     }
                 }
                 account.setLastVariableRate(annualRate);
@@ -289,11 +297,17 @@ public class Bank {
             if (server != null) {
                 ServerPlayer holder = server.getPlayerList().getPlayer(account.getPlayerUUID());
                 if (holder != null) {
-                    holder.sendSystemMessage(Component.literal(
-                            "§aInterest paid: §6" + MoneyText.abbreviateWithDollar(payoutAmount)
-                                    + " §a(" + annualRate + "% APR) New balance: §f"
-                                    + MoneyText.abbreviateWithDollar(account.getBalance())
-                    ));
+                    String message = "§aInterest paid: §6" + MoneyText.abbreviateWithDollar(payoutAmount)
+                            + " §a(" + annualRate + "% APR) New balance: §f"
+                            + MoneyText.abbreviateWithDollar(account.getBalance());
+                    holder.sendSystemMessage(Component.literal(message));
+                    ServerActionAlert.sendLegacy(
+                            holder,
+                            "Banking",
+                            message,
+                            DeliveryAlertPayload.AlertTone.SUCCESS,
+                            5000
+                    );
                 }
             }
 
@@ -357,10 +371,16 @@ public class Bank {
         account.setCertificateMaturitySettled(true);
         ServerPlayer holder = server == null ? null : server.getPlayerList().getPlayer(account.getPlayerUUID());
         if (holder != null) {
-            holder.sendSystemMessage(Component.literal(
-                    "§aYour CD matured. Interest credited: §6" + MoneyText.abbreviateWithDollar(interest)
-                            + " §a(new balance: §f" + MoneyText.abbreviateWithDollar(account.getBalance()) + "§a)."
-            ));
+            String message = "§aYour CD matured. Interest credited: §6" + MoneyText.abbreviateWithDollar(interest)
+                    + " §a(new balance: §f" + MoneyText.abbreviateWithDollar(account.getBalance()) + "§a).";
+            holder.sendSystemMessage(Component.literal(message));
+            ServerActionAlert.sendLegacy(
+                    holder,
+                    "Banking",
+                    message,
+                    DeliveryAlertPayload.AlertTone.SUCCESS,
+                    5400
+            );
         }
     }
 
