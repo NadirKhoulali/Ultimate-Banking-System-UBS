@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "part=master": { "model": "ultimatebankingsystem:block/shop_selling_table_large" },
+    "part=east": { "model": "ultimatebankingsystem:block/shop_selling_table_large_part" },
+    "part=north": { "model": "ultimatebankingsystem:block/shop_selling_table_large_part" },
+    "part=north_east": { "model": "ultimatebankingsystem:block/shop_selling_table_large_part" }
+  }
+}

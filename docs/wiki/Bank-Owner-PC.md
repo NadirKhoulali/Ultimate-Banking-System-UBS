@@ -1,11 +1,11 @@
 # Bank Owner PC
 
-The Bank Owner PC is the full-screen management interface for bank owners (and OP access to the Central Bank app).
+The Bank Owner PC (displayed in-game as **Business Manager PC**) is the full-screen management interface for bank owners and retail/shop management flows.
 
 ## Access
 
 - Place/use the Bank Owner PC block to open UBS Desktop.
-- Bank apps shown on desktop are based on your ownership/role access.
+- Bank and shop apps shown on desktop are based on your ownership/role access.
 - OP users (permission level `3`) also see and can open the Central Bank app.
 
 ## Desktop Behavior
@@ -14,6 +14,8 @@ The Bank Owner PC is the full-screen management interface for bank owners (and O
 - `Create Bank` opens the in-UI bank creation flow.
 - Max banks per player is enforced by config (`PLAYER_BANKS_MAX_BANKS_PER_PLAYER`).
 - UI scale is forced to `2` while this screen is open, then restored on close.
+
+Shop-capable desktop actions are role-gated (`OWNER`, `MANAGER`, `BUILDER`, `STAFF`) and validated server-side.
 
 ## Bank Manager Layout
 
@@ -105,6 +107,20 @@ Press `Market` to open dedicated interbank market mode:
 
 - submit appeal
 - quick links to dashboard/reserve views
+
+## Shop App Highlights
+
+The same desktop environment now hosts retail/shop actions, including:
+
+- shop create/overview/rename/type/delete
+- claim + stockroom claim tools
+- checkout terminal and cashier terminal link flows
+- cashier staffing and role-based permission management
+- shelf/stockroom reports and restock actions
+- order manager + pallet assignment flows
+- finance/cash-vault reporting and settlement account controls
+- webshop cart/checkout controls and courier order board actions
+- shop hours and lighting configuration
 
 ## Input Assistant
 

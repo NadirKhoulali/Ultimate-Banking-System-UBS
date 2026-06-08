@@ -7,6 +7,12 @@ import java.util.regex.Pattern;
 
 public final class MoneyText {
     private static final Pattern DOLLAR_TOKEN = Pattern.compile("\\$([+-]?(?:\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\.\\d+)?)");
+    private static final String[] SCALE_SUFFIXES = {
+            "", "K", "M", "B", "T",
+            "Qa", "Qi", "Sx", "Sp", "Oc", "No",
+            "Dc", "Ud", "Dd", "Td", "Qad", "Qid", "Sxd", "Spd", "Ocd", "Nod"
+    };
+    private static final BigDecimal[] SCALE_DIVISORS = buildScaleDivisors();
 
     private MoneyText() {}
 
@@ -31,26 +37,17 @@ public final class MoneyText {
             return "0";
         }
         BigDecimal abs = amount.abs();
-        String suffix = "";
-        BigDecimal divisor = BigDecimal.ONE;
-
-        if (abs.compareTo(BigDecimal.valueOf(1_000_000_000_000L)) >= 0) {
-            suffix = "T";
-            divisor = BigDecimal.valueOf(1_000_000_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000_000_000L)) >= 0) {
-            suffix = "B";
-            divisor = BigDecimal.valueOf(1_000_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000_000L)) >= 0) {
-            suffix = "M";
-            divisor = BigDecimal.valueOf(1_000_000L);
-        } else if (abs.compareTo(BigDecimal.valueOf(1_000L)) >= 0) {
-            suffix = "K";
-            divisor = BigDecimal.valueOf(1_000L);
+        int scaleIndex = 0;
+        for (int i = SCALE_DIVISORS.length - 1; i >= 1; i--) {
+            if (abs.compareTo(SCALE_DIVISORS[i]) >= 0) {
+                scaleIndex = i;
+                break;
+            }
         }
 
         // Truncate to 2 decimals so we never round up displayed money.
-        BigDecimal shortened = amount.divide(divisor, 2, RoundingMode.DOWN);
-        return shortened.stripTrailingZeros().toPlainString() + suffix;
+        BigDecimal shortened = amount.divide(SCALE_DIVISORS[scaleIndex], 2, RoundingMode.DOWN);
+        return shortened.stripTrailingZeros().toPlainString() + SCALE_SUFFIXES[scaleIndex];
     }
 
     public static String abbreviateWithDollar(String raw) {
@@ -90,5 +87,16 @@ public final class MoneyText {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static BigDecimal[] buildScaleDivisors() {
+        BigDecimal[] divisors = new BigDecimal[SCALE_SUFFIXES.length];
+        divisors[0] = BigDecimal.ONE;
+        BigDecimal current = BigDecimal.ONE;
+        for (int i = 1; i < SCALE_SUFFIXES.length; i++) {
+            current = current.multiply(BigDecimal.valueOf(1_000L));
+            divisors[i] = current;
+        }
+        return divisors;
     }
 }

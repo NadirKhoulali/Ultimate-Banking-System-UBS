@@ -212,6 +212,78 @@ public class Config {
             .comment("Coming Soon: cooldown (wanted state) applied after failed heist (currently unused).")
             .defineInRange("HeistCooldownTicks", 24000, 20, Integer.MAX_VALUE);
 
+    public static final ForgeConfigSpec.BooleanValue PICKPOCKET_ENABLED = BUILDER
+            .comment("Enable or disable the player pickpocket system globally.")
+            .define("PickpocketEnabled", true);
+
+    public static final ForgeConfigSpec.IntValue PICKPOCKET_DURATION_TICKS = BUILDER
+            .comment("How long a player must hold the pickpocket key to complete an attempt.")
+            .defineInRange("PickpocketDurationTicks", 60, 10, 20 * 30);
+
+    public static final ForgeConfigSpec.IntValue PICKPOCKET_COOLDOWN_TICKS = BUILDER
+            .comment("Cooldown after each pickpocket attempt ends (success, fail, or cancel).")
+            .defineInRange("PickpocketCooldownTicks", 200, 1, 20 * 300);
+
+    public static final ForgeConfigSpec.BooleanValue CHEST_CASH_LOOT_ENABLED = BUILDER
+            .comment("Enable money loot injection into specific vanilla structure chests.")
+            .define("ChestCashLootEnabled", true);
+
+    public static final ForgeConfigSpec.IntValue CHEST_CASH_LOOT_CHANCE_PERCENT = BUILDER
+            .comment("Chance percent to roll a cash bonus pool in targeted structure chests.")
+            .defineInRange("ChestCashLootChancePercent", 65, 0, 100);
+
+    public static final ForgeConfigSpec.BooleanValue MOB_CASH_DROPS_ENABLED = BUILDER
+            .comment("Enable cash drops from villagers and hostile mobs.")
+            .define("MobCashDropsEnabled", true);
+
+    public static final ForgeConfigSpec.BooleanValue MOB_CASH_DROPS_PLAYER_KILL_ONLY = BUILDER
+            .comment("If true, mob cash drops only when a player caused the kill.")
+            .define("MobCashDropsPlayerKillOnly", true);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_HEALTH_WEIGHT = BUILDER
+            .comment("Weight applied to mob max-health when computing cash drop value.")
+            .defineInRange("MobCashDropHealthWeight", 10, 0, 1000);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_ATTACK_WEIGHT = BUILDER
+            .comment("Weight applied to mob attack-damage when computing cash drop value.")
+            .defineInRange("MobCashDropAttackWeight", 22, 0, 1000);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_ARMOR_WEIGHT = BUILDER
+            .comment("Weight applied to mob armor when computing cash drop value.")
+            .defineInRange("MobCashDropArmorWeight", 8, 0, 1000);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_VARIANCE_PERCENT = BUILDER
+            .comment("Plus/minus random variance percent applied to computed mob cash drops.")
+            .defineInRange("MobCashDropVariancePercent", 15, 0, 100);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_MIN_CENTS = BUILDER
+            .comment("Minimum mob cash drop value in cents after scaling.")
+            .defineInRange("MobCashDropMinCents", 25, 0, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue MOB_CASH_DROP_MAX_CENTS = BUILDER
+            .comment("Maximum mob cash drop value in cents after scaling.")
+            .defineInRange("MobCashDropMaxCents", 5000, 0, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.BooleanValue DEATH_CASH_DROP_ENABLED = BUILDER
+            .comment("Enable forced cash drop when players die.")
+            .define("DeathCashDropEnabled", true);
+
+    public static final ForgeConfigSpec.IntValue DEATH_CASH_DROP_PERCENT = BUILDER
+            .comment("Percent of carried cash forced into death drops.")
+            .defineInRange("DeathCashDropPercent", 30, 0, 100);
+
+    public static final ForgeConfigSpec.BooleanValue DEATH_CASH_DROP_APPLY_WITH_KEEP_INVENTORY = BUILDER
+            .comment("If true, forced death cash drop still applies while keepInventory is enabled.")
+            .define("DeathCashDropApplyWithKeepInventory", true);
+
+    public static final ForgeConfigSpec.IntValue DEATH_CASH_DROP_DESPAWN_TICKS = BUILDER
+            .comment("How long managed death cash drops remain before despawning.")
+            .defineInRange("DeathCashDropDespawnTicks", 2400, 20, 20 * 60 * 30);
+
+    public static final ForgeConfigSpec.IntValue DEATH_CASH_DROP_LABEL_REFRESH_TICKS = BUILDER
+            .comment("How often death cash drop timer labels refresh (ticks).")
+            .defineInRange("DeathCashDropLabelRefreshTicks", 10, 1, 20 * 60);
+
     public static final ForgeConfigSpec.BooleanValue PLAYER_BANKS_ENABLED = BUILDER
             .comment("Enable player-owned bank creation.")
             .define("PlayerBanksEnabled", true);
@@ -243,6 +315,98 @@ public class Config {
     public static final ForgeConfigSpec.IntValue PLAYER_BANKS_CREATION_COOLDOWN_HOURS = BUILDER
             .comment("Cooldown in hours between player bank creation attempts.")
             .defineInRange("PlayerBanksCreationCooldownHours", 24, 0, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVELING_ENABLED = BUILDER
+            .comment("Enable shop leveling progression from sales revenue. When disabled, level-based growth is frozen.")
+            .define("ShopLevelingEnabled", true);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVEL_SCALE_CLAIM_CAPACITY = BUILDER
+            .comment("If true, shop plot claim capacity scales by level. If false, claim capacity stays at base level.")
+            .define("ShopLevelScaleClaimCapacity", true);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVEL_SCALE_STOCKROOM_CAPACITY = BUILDER
+            .comment("If true, stockroom claim capacity scales by level. If false, stockroom capacity stays at base level.")
+            .define("ShopLevelScaleStockroomCapacity", true);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVEL_SCALE_DISPLAY_LIMIT = BUILDER
+            .comment("If true, display/shelf placement limit scales by level. If false, display limit stays at base level.")
+            .define("ShopLevelScaleDisplayLimit", true);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVEL_SCALE_CASHIER_LIMIT = BUILDER
+            .comment("If true, cashier spawn-egg capacity scales by level. If false, cashier capacity stays at base level.")
+            .define("ShopLevelScaleCashierLimit", true);
+
+    public static final ForgeConfigSpec.BooleanValue SHOP_LEVEL_SCALE_DELIVERY_PALLET_LIMIT = BUILDER
+            .comment("If true, delivery pallet assignment capacity scales by level. If false, pallet capacity stays at base level.")
+            .define("ShopLevelScaleDeliveryPalletLimit", true);
+
+    public static final ForgeConfigSpec.IntValue SHOP_STOCKROOM_BASE_CAPACITY_BLOCKS = BUILDER
+            .comment("Base stockroom claim capacity in blocks at level 1.")
+            .defineInRange("ShopStockroomBaseCapacityBlocks", 4608, 1, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_STOCKROOM_CAPACITY_PER_LEVEL_BLOCKS = BUILDER
+            .comment("Additional stockroom claim capacity in blocks gained per level.")
+            .defineInRange("ShopStockroomCapacityPerLevelBlocks", 576, 0, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_STOCKROOM_MAX_CAPACITY_BLOCKS = BUILDER
+            .comment("Maximum stockroom claim capacity in blocks.")
+            .defineInRange("ShopStockroomMaxCapacityBlocks", 1_000_000, 1, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_DISPLAY_BASE_LIMIT = BUILDER
+            .comment("Base maximum number of display blocks (shelves/tables/counters) per shop at level 1.")
+            .defineInRange("ShopDisplayBaseLimit", 24, 1, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_DISPLAY_LIMIT_PER_LEVEL = BUILDER
+            .comment("Additional display blocks unlocked per level.")
+            .defineInRange("ShopDisplayLimitPerLevel", 2, 0, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_DISPLAY_MAX_LIMIT = BUILDER
+            .comment("Hard maximum number of display blocks per shop.")
+            .defineInRange("ShopDisplayMaxLimit", 512, 1, Integer.MAX_VALUE);
+
+    public static final ForgeConfigSpec.IntValue SHOP_MAX_CASHIER_SPAWN_EGGS_PER_SHOP = BUILDER
+            .comment("Maximum cashier spawn eggs (active + unplaced) allowed per shop.")
+            .defineInRange("ShopMaxCashierSpawnEggsPerShop", 48, 1, 512);
+
+    public static final ForgeConfigSpec.IntValue SHOP_MAX_ASSIGNED_ORDER_PALLETS_PER_SHOP = BUILDER
+            .comment("Hard cap for assigned delivery pallets per shop (actual max is min(level cap, this value)).")
+            .defineInRange("ShopMaxAssignedOrderPalletsPerShop", 24, 1, 512);
+
+    public static final ForgeConfigSpec.IntValue SHOP_MAX_ACTIVE_COURIER_ORDERS = BUILDER
+            .comment("Maximum active accepted shop orders a courier can hold at once.")
+            .defineInRange("ShopMaxActiveCourierOrders", 5, 1, 256);
+
+    public static final ForgeConfigSpec.IntValue SHOP_CASHIER_LOW_BAG_THRESHOLD = BUILDER
+            .comment("Shopping bag count at or below which cashiers show a low-stock warning hologram.")
+            .defineInRange("ShopCashierLowBagThreshold", 16, 0, 4096);
+
+    public static final ForgeConfigSpec.IntValue SHOP_WEBSHOP_MAX_ACTIVE_ORDERS = BUILDER
+            .comment("Maximum queued webshop orders a single buyer can have at once.")
+            .defineInRange("ShopWebshopMaxActiveOrders", 8, 1, 256);
+
+    public static final ForgeConfigSpec.IntValue SHOP_WEBSHOP_DEFAULT_ETA_SECONDS = BUILDER
+            .comment("Default delivery ETA in seconds for webshop checkouts.")
+            .defineInRange("ShopWebshopDefaultEtaSeconds", 45, 5, 3600);
+
+    public static final ForgeConfigSpec.IntValue SHOP_WEBSHOP_RETRY_DELAY_SECONDS = BUILDER
+            .comment("Delay in seconds before retrying queued webshop delivery when target is temporarily unavailable.")
+            .defineInRange("ShopWebshopRetryDelaySeconds", 15, 1, 3600);
+
+    public static final ForgeConfigSpec.IntValue SHOP_WEBSHOP_MAX_RETRY_ATTEMPTS = BUILDER
+            .comment("Maximum delivery retries before a queued webshop order is marked failed and refunded.")
+            .defineInRange("ShopWebshopMaxRetryAttempts", 20, 1, 5000);
+
+    public static final ForgeConfigSpec.DoubleValue SHOP_WEBSHOP_CANCEL_FEE_PERCENT = BUILDER
+            .comment("Cancellation fee percent for queued webshop orders (0-100).")
+            .defineInRange("ShopWebshopCancelFeePercent", 5.0D, 0.0D, 100.0D);
+
+    public static final ForgeConfigSpec.DoubleValue SHOP_WEBSHOP_EXPEDITE_SURCHARGE_PERCENT = BUILDER
+            .comment("Expedite checkout surcharge percent applied on webshop subtotal (0-500).")
+            .defineInRange("ShopWebshopExpediteSurchargePercent", 12.5D, 0.0D, 500.0D);
+
+    public static final ForgeConfigSpec.IntValue SHOP_WEBSHOP_EXPEDITE_ETA_SECONDS = BUILDER
+            .comment("Expedite delivery ETA in seconds for webshop checkouts.")
+            .defineInRange("ShopWebshopExpediteEtaSeconds", 12, 3, 3600);
 
     public static final ForgeConfigSpec.IntValue GLOBAL_MAX_SINGLE_TRANSACTION = BUILDER
             .comment("Global maximum amount for a single transaction.")
@@ -324,6 +488,22 @@ public class Config {
                     "Example: 2.00 means 200% of the base value."
             )
             .defineInRange("MaxCustomBankInterestRate", 100.00, 0.01, Double.MAX_VALUE);
+
+    public static final ForgeConfigSpec.BooleanValue WEB_ADMIN_ENABLED = BUILDER
+            .comment("Enable embedded UBS web admin panel (HTTP + WebSocket).")
+            .define("WebAdminEnabled", false);
+
+    public static final ForgeConfigSpec.ConfigValue<String> WEB_ADMIN_BIND_HOST = BUILDER
+            .comment("Bind host for embedded web admin server (for example: 0.0.0.0, 127.0.0.1).")
+            .define("WebAdminBindHost", "0.0.0.0");
+
+    public static final ForgeConfigSpec.IntValue WEB_ADMIN_PORT = BUILDER
+            .comment("Bind port for embedded web admin server.")
+            .defineInRange("WebAdminPort", 8080, 1, 65535);
+
+    public static final ForgeConfigSpec.BooleanValue WEB_ADMIN_WARN_UNSECURED = BUILDER
+            .comment("Log a startup warning when web admin is enabled without authentication.")
+            .define("WebAdminWarnUnsecured", true);
 
     // a list of strings that are treated as resource locations for items
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER

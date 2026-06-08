@@ -56,4 +56,15 @@ public final class ItemStackDataCompat {
         }
         return stack.getTag().getInt(CUSTOM_MODEL_DATA_KEY);
     }
+
+    public static ItemStack parseStack(CompoundTag tag) {
+        if (tag == null || tag.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            return ItemStack.of(tag);
+        } catch (RuntimeException ignored) {
+            return ItemStack.EMPTY;
+        }
+    }
 }

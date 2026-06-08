@@ -15,6 +15,8 @@ public class BankTellerRenderer extends HumanoidMobRenderer<BankTellerEntity, Pl
             new ResourceLocation(UltimateBankingSystem.MODID, "textures/entity/bank_teller_male.png");
     private static final ResourceLocation FEMALE_TEXTURE =
             new ResourceLocation(UltimateBankingSystem.MODID, "textures/entity/bank_teller_female.png");
+    private static final ResourceLocation CASHIER_TEXTURE =
+            new ResourceLocation(UltimateBankingSystem.MODID, "textures/entity/cashier.png");
 
     private final PlayerModel<BankTellerEntity> wideModel;
     private final PlayerModel<BankTellerEntity> slimModel;
@@ -27,6 +29,9 @@ public class BankTellerRenderer extends HumanoidMobRenderer<BankTellerEntity, Pl
 
     @Override
     public ResourceLocation getTextureLocation(BankTellerEntity entity) {
+        if (entity.isCashier()) {
+            return CASHIER_TEXTURE;
+        }
         return entity.getVariant() == BankTellerEntity.VARIANT_FEMALE ? FEMALE_TEXTURE : MALE_TEXTURE;
     }
 
@@ -37,7 +42,11 @@ public class BankTellerRenderer extends HumanoidMobRenderer<BankTellerEntity, Pl
                        PoseStack poseStack,
                        net.minecraft.client.renderer.MultiBufferSource buffer,
                        int packedLight) {
-        this.model = entity.getVariant() == BankTellerEntity.VARIANT_FEMALE ? this.slimModel : this.wideModel;
+        if (entity.isCashier()) {
+            this.model = this.wideModel;
+        } else {
+            this.model = entity.getVariant() == BankTellerEntity.VARIANT_FEMALE ? this.slimModel : this.wideModel;
+        }
         super.render(entity, entityYaw, partialTicks, poseStack, buffer, packedLight);
     }
 

@@ -1,10 +1,10 @@
 package net.austizz.ultimatebankingsystem.payments;
 
-import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.minecraft.ChatFormatting;
@@ -44,6 +44,8 @@ public final class CreditCardService {
     public static final String TAG_ISSUED_AT = "ubs_cc_issued";
     public static final String TAG_EXPIRY_AT = "ubs_cc_expiry";
     public static final String TAG_BLOCKED = "ubs_cc_blocked";
+    public static final String TAG_PRIVATE_BANK_CARD = "ubs_cc_private";
+    public static final String RECORD_PRIVATE_BANK_CARD = "privateBankCard";
 
     private static final DateTimeFormatter EXPIRY_FORMAT =
             DateTimeFormatter.ofPattern("MM/yy").withZone(ZoneId.systemDefault());
@@ -78,10 +80,11 @@ public final class CreditCardService {
             UUID cardId,
             String cardNumber,
             String cvc,
-            long expiryEpochMillis
+            long expiryEpochMillis,
+            boolean privateBankCard
     ) {
         public static CardIssueResult fail(String message) {
-            return new CardIssueResult(false, message, ItemStack.EMPTY, null, "", "", 0L);
+            return new CardIssueResult(false, message, ItemStack.EMPTY, null, "", "", 0L, false);
         }
     }
 
@@ -193,6 +196,12 @@ public final class CreditCardService {
         String cvc = readNonBlank(record, "cvc", readNonBlank(tag, TAG_CVC, ""));
         String bankName = readNonBlank(record, "bankName", "");
         boolean recordUpdated = false;
+        boolean privateBankCard = record.getBoolean(RECORD_PRIVATE_BANK_CARD);
+        if (!privateBankCard && tag.getBoolean(TAG_PRIVATE_BANK_CARD)) {
+            privateBankCard = true;
+            record.putBoolean(RECORD_PRIVATE_BANK_CARD, true);
+            recordUpdated = true;
+        }
         if (bankName.isBlank()) {
             bankName = resolveBankName(centralBank, bankId);
             if (!bankName.isBlank()) {
@@ -207,6 +216,10 @@ public final class CreditCardService {
             tag.putString(TAG_BANK_NAME, bankName);
             stackUpdated = true;
         }
+        if (tag.getBoolean(TAG_PRIVATE_BANK_CARD) != privateBankCard) {
+            tag.putBoolean(TAG_PRIVATE_BANK_CARD, privateBankCard);
+            stackUpdated = true;
+        }
         if (stackUpdated) {
             ItemStackDataCompat.setCustomData(stack, tag);
         }
@@ -217,7 +230,7 @@ public final class CreditCardService {
             tag.putBoolean(TAG_BLOCKED, blocked);
             ItemStackDataCompat.setCustomData(stack, tag);
         }
-        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, blocked));
+        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, blocked, privateBankCard));
 
         if (blocked) {
             return new CardValidationResult(false,
@@ -261,6 +274,14 @@ public final class CreditCardService {
                                             AccountHolder account,
                                             String holderName,
                                             boolean replacement) {
+        return issueCard(centralBank, account, holderName, replacement, false);
+    }
+
+    public static CardIssueResult issueCard(CentralBank centralBank,
+                                            AccountHolder account,
+                                            String holderName,
+                                            boolean replacement,
+                                            boolean privateBankCard) {
         if (centralBank == null || account == null) {
             return CardIssueResult.fail("Bank data is unavailable.");
         }
@@ -292,6 +313,7 @@ public final class CreditCardService {
         record.putLong("expiryEpochMillis", expiry);
         record.putBoolean("blocked", false);
         record.putString("status", "ACTIVE");
+        record.putBoolean(RECORD_PRIVATE_BANK_CARD, privateBankCard);
         if (replacement) {
             record.putBoolean("replacement", true);
         }
@@ -303,7 +325,7 @@ public final class CreditCardService {
         writeCreditCardTag(stack, record);
 
         String masked = maskCardNumber(cardNumber);
-        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, masked, false));
+        ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, masked, false, privateBankCard));
 
         return new CardIssueResult(
                 true,
@@ -312,7 +334,8 @@ public final class CreditCardService {
                 cardId,
                 cardNumber,
                 cvc,
-                expiry
+                expiry,
+                privateBankCard
         );
     }
 
@@ -420,6 +443,44 @@ public final class CreditCardService {
         return false;
     }
 
+    public static boolean isPrivateBankCardEligible(CentralBank centralBank, UUID bankId, UUID playerId) {
+        if (centralBank == null || bankId == null || playerId == null) {
+            return false;
+        }
+        UUID centralBankId = centralBank.getBankId();
+        if (centralBankId != null && centralBankId.equals(bankId)) {
+            return false;
+        }
+
+        Bank bank = centralBank.getBank(bankId);
+        if (bank == null) {
+            return false;
+        }
+        if (playerId.equals(bank.getBankOwnerId())) {
+            return true;
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bankId);
+        if (containsUuidInList(metadata.getString("cofounders"), playerId)) {
+            return true;
+        }
+        return readSharePercent(metadata.getString("shares"), playerId).compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    public static boolean isPrivateBankCardAccountEligible(CentralBank centralBank, AccountHolder account, UUID playerId) {
+        if (centralBank == null || account == null || playerId == null) {
+            return false;
+        }
+        if (!playerId.equals(account.getPlayerUUID())) {
+            return false;
+        }
+        UUID bankId = account.getBankId();
+        if (bankId == null) {
+            return false;
+        }
+        return isPrivateBankCardEligible(centralBank, bankId, playerId);
+    }
+
     private static void writeCreditCardTag(ItemStack stack, CompoundTag record) {
         CompoundTag tag = readCustomTag(stack);
         if (tag == null) {
@@ -445,6 +506,7 @@ public final class CreditCardService {
         tag.putLong(TAG_ISSUED_AT, record.contains("issuedEpochMillis") ? record.getLong("issuedEpochMillis") : 0L);
         tag.putLong(TAG_EXPIRY_AT, record.contains("expiryEpochMillis") ? record.getLong("expiryEpochMillis") : 0L);
         tag.putBoolean(TAG_BLOCKED, record.getBoolean("blocked"));
+        tag.putBoolean(TAG_PRIVATE_BANK_CARD, record.getBoolean(RECORD_PRIVATE_BANK_CARD));
 
         ItemStackDataCompat.setCustomData(stack, tag);
     }
@@ -521,18 +583,22 @@ public final class CreditCardService {
         return bank.getBankName().trim();
     }
 
-    private static Component buildCardDisplayName(String bankName, String cardNumberOrMasked, boolean blocked) {
+    private static Component buildCardDisplayName(String bankName,
+                                                  String cardNumberOrMasked,
+                                                  boolean blocked,
+                                                  boolean privateBankCard) {
         String safeBankName = (bankName == null || bankName.isBlank()) ? "Unknown Bank" : bankName.trim();
         String masked = cardNumberOrMasked == null ? "" : cardNumberOrMasked.trim();
         if (!masked.contains("*")) {
             masked = maskCardNumber(masked);
         }
+        String cardTitle = privateBankCard ? "Private Bank Card" : "Credit Card";
         if (blocked) {
-            return UbsTranslations.literal("Credit Card • BLOCKED • " + safeBankName + " • " + masked)
+            return UbsTranslations.literal(cardTitle + " • BLOCKED • " + safeBankName + " • " + masked)
                     .withStyle(ChatFormatting.RED);
         }
-        return UbsTranslations.literal("Credit Card • " + safeBankName + " • " + masked)
-                .withStyle(ChatFormatting.AQUA);
+        return UbsTranslations.literal(cardTitle + " • " + safeBankName + " • " + masked)
+                .withStyle(privateBankCard ? ChatFormatting.WHITE : ChatFormatting.AQUA);
     }
 
     private static void markBlockedCardsInOnlineInventories(CentralBank centralBank, Set<UUID> blockedCardIds) {
@@ -563,15 +629,55 @@ public final class CreditCardService {
                 String bankName = record == null ? readNonBlank(tag, TAG_BANK_NAME, "Unknown Bank")
                         : readNonBlank(record, "bankName", readNonBlank(tag, TAG_BANK_NAME, "Unknown Bank"));
                 String cardNumber = readNonBlank(tag, TAG_CARD_NUMBER, "");
+                boolean privateBankCard = (record != null && record.getBoolean(RECORD_PRIVATE_BANK_CARD))
+                        || tag.getBoolean(TAG_PRIVATE_BANK_CARD);
                 tag.putBoolean(TAG_BLOCKED, true);
+                tag.putBoolean(TAG_PRIVATE_BANK_CARD, privateBankCard);
                 if (!bankName.isBlank()) {
                     tag.putString(TAG_BANK_NAME, bankName);
                 }
                 ItemStackDataCompat.setCustomData(stack, tag);
-                ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, true));
+                ItemStackDataCompat.setCustomName(stack, buildCardDisplayName(bankName, cardNumber, true, privateBankCard));
             }
             player.containerMenu.broadcastChanges();
         }
+    }
+
+    private static boolean containsUuidInList(String encoded, UUID target) {
+        if (encoded == null || encoded.isBlank() || target == null) {
+            return false;
+        }
+        String targetRaw = target.toString();
+        String[] parts = encoded.split(",");
+        for (String part : parts) {
+            if (targetRaw.equalsIgnoreCase(part == null ? "" : part.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static BigDecimal readSharePercent(String encoded, UUID target) {
+        if (encoded == null || encoded.isBlank() || target == null) {
+            return BigDecimal.ZERO;
+        }
+        String targetRaw = target.toString();
+        String[] entries = encoded.split(";");
+        for (String entry : entries) {
+            if (entry == null || entry.isBlank() || !entry.contains("=")) {
+                continue;
+            }
+            String[] parts = entry.split("=", 2);
+            if (parts.length < 2 || !targetRaw.equalsIgnoreCase(parts[0].trim())) {
+                continue;
+            }
+            try {
+                return new BigDecimal(parts[1].trim());
+            } catch (NumberFormatException ignored) {
+                return BigDecimal.ZERO;
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     private static CompoundTag readCustomTag(ItemStack stack) {

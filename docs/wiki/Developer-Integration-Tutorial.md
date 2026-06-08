@@ -162,7 +162,7 @@ if (!api.isServerAvailable()) {
 Guard integration so your mod does not crash when UBS is missing.
 
 ```java
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 
 boolean hasUbs = ModList.get().isLoaded("ultimatebankingsystem");
 if (!hasUbs) {

@@ -1,0 +1,23 @@
+{
+  "variants": {
+    "facing=north,half=lower,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_closed" },
+    "facing=south,half=lower,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_closed", "y": 180 },
+    "facing=east,half=lower,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_closed", "y": 90 },
+    "facing=west,half=lower,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_closed", "y": 270 },
+
+    "facing=north,half=lower,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_open" },
+    "facing=south,half=lower,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_open", "y": 180 },
+    "facing=east,half=lower,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_open", "y": 90 },
+    "facing=west,half=lower,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_open", "y": 270 },
+
+    "facing=north,half=upper,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_upper" },
+    "facing=south,half=upper,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 180 },
+    "facing=east,half=upper,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 90 },
+    "facing=west,half=upper,open=false": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 270 },
+
+    "facing=north,half=upper,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_upper" },
+    "facing=south,half=upper,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 180 },
+    "facing=east,half=upper,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 90 },
+    "facing=west,half=upper,open=true": { "model": "ultimatebankingsystem:block/shop_cooler_upper", "y": 270 }
+  }
+}

@@ -8,6 +8,8 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `DefaultATMWithdrawalLimit`
 - `DailyWithdrawalLimit`
 - `GlobalMaxSingleTransaction` (also caps handheld terminal max save value; default `50000`)
+- `GlobalMaxDailyPlayerVolume`
+- `GlobalMaxDailyBankVolume`
 - `DailyWithdrawalLimitChecking`
 - `DailyWithdrawalLimitSaving`
 - `DailyWithdrawalLimitMoneyMarket`
@@ -72,14 +74,76 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `CreditScoreMissedPenalty`
 - `CreditScoreDefaultPenalty`
 
-## Special Systems
+## Pickpocket
+
+- `PickpocketEnabled`
+- `PickpocketDurationTicks`
+- `PickpocketCooldownTicks`
+
+## World Cash Economy
+
+- `ChestCashLootEnabled`
+- `ChestCashLootChancePercent`
+- `MobCashDropsEnabled`
+- `MobCashDropsPlayerKillOnly`
+- `MobCashDropHealthWeight`
+- `MobCashDropAttackWeight`
+- `MobCashDropArmorWeight`
+- `MobCashDropVariancePercent`
+- `MobCashDropMinCents`
+- `MobCashDropMaxCents`
+- `DeathCashDropEnabled`
+- `DeathCashDropPercent`
+- `DeathCashDropApplyWithKeepInventory`
+- `DeathCashDropDespawnTicks`
+- `DeathCashDropLabelRefreshTicks`
+
+## Shop and Retail
 
 - `OpenMarketHistoryLimit`
 - `ClearingLedgerLimit`
+- `ShopLevelingEnabled`
+- `ShopLevelScaleClaimCapacity`
+- `ShopLevelScaleStockroomCapacity`
+- `ShopLevelScaleDisplayLimit`
+- `ShopLevelScaleCashierLimit`
+- `ShopLevelScaleDeliveryPalletLimit`
+- `ShopStockroomBaseCapacityBlocks`
+- `ShopStockroomCapacityPerLevelBlocks`
+- `ShopStockroomMaxCapacityBlocks`
+- `ShopDisplayBaseLimit`
+- `ShopDisplayLimitPerLevel`
+- `ShopDisplayMaxLimit`
+- `ShopMaxCashierSpawnEggsPerShop`
+- `ShopMaxAssignedOrderPalletsPerShop`
+- `ShopMaxActiveCourierOrders`
+- `ShopCashierLowBagThreshold`
+- `ShopWebshopMaxActiveOrders`
+- `ShopWebshopDefaultEtaSeconds`
+- `ShopWebshopRetryDelaySeconds`
+- `ShopWebshopMaxRetryAttempts`
+- `ShopWebshopCancelFeePercent`
+- `ShopWebshopExpediteSurchargePercent`
+- `ShopWebshopExpediteEtaSeconds`
+
+## Account Storage and CDs
+
 - `SafeBoxSlotsChecking`
 - `SafeBoxSlotsSaving`
 - `SafeBoxSlotsMoneyMarket`
 - `SafeBoxSlotsCertificate`
+- `CDShortTermTicks`
+- `CDMediumTermTicks`
+- `CDLongTermTicks`
+- `CDShortRate`
+- `CDMediumRate`
+- `CDLongRate`
+- `CDEarlyPenaltyFactorShort`
+- `CDEarlyPenaltyFactorMedium`
+- `CDEarlyPenaltyFactorLong`
+
+## Coming Soon / Reserved Heist Keys
+
 - `HeistDurationTicks` (Coming Soon)
 - `HeistMinPlayers` (Coming Soon)
 - `HeistSuccessChance` (Coming Soon)

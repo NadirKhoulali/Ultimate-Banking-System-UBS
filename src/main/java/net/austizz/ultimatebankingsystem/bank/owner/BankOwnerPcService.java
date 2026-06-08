@@ -12,14 +12,18 @@ import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
@@ -158,12 +162,34 @@ public final class BankOwnerPcService {
                     color,
                     status.toUpperCase(Locale.ROOT),
                     owner,
-                    roleLabel
+                    roleLabel,
+                    OwnerPcBankAppSummary.APP_TYPE_BANK
+            ));
+        }
+
+        for (ShopService.ShopSummary shop : ShopService.listOwnerShopSummaries(centralBank, playerId)) {
+            if (shop == null || shop.shopId() == null) {
+                continue;
+            }
+            String color = switch (shop.type()) {
+                case ShopService.SHOP_TYPE_FRANCHISE -> "#E29A4A";
+                case ShopService.SHOP_TYPE_CORPORATE_CHAIN -> "#5BB0FF";
+                default -> "#68C18E";
+            };
+            apps.add(new OwnerPcBankAppSummary(
+                    shop.shopId(),
+                    shop.name(),
+                    color,
+                    "ACTIVE",
+                    shop.ownerView(),
+                    shop.role(),
+                    OwnerPcBankAppSummary.APP_TYPE_SHOP
             ));
         }
 
         apps.sort(Comparator
                 .comparing(OwnerPcBankAppSummary::owner).reversed()
+                .thenComparing(OwnerPcBankAppSummary::appType)
                 .thenComparing(OwnerPcBankAppSummary::bankName, String.CASE_INSENSITIVE_ORDER));
         return apps;
     }
@@ -271,14 +297,16 @@ public final class BankOwnerPcService {
         );
     }
 
-    public static ActionResult executeDesktopAction(CentralBank centralBank,
-                                                    UUID playerId,
+    public static ActionResult executeDesktopAction(MinecraftServer server,
+                                                    CentralBank centralBank,
+                                                    ServerPlayer player,
                                                     String action,
                                                     String arg1,
                                                     String arg2) {
-        if (centralBank == null || playerId == null) {
+        if (centralBank == null || player == null) {
             return fail("DESKTOP", "Desktop storage is unavailable.");
         }
+        UUID playerId = player.getUUID();
         DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(playerId);
         if (context == null) {
             return fail("DESKTOP", "Open a bank owner PC block first.");
@@ -306,6 +334,19 @@ public final class BankOwnerPcService {
 
         if (!authOrPowerAction && !sessionUnlocked) {
             return fail(normalizedAction, "This PC is locked. Enter your password first.");
+        }
+
+        // Enforce delegated shop roles for the desktop shop app. This guarantees
+        // the role assignments in the permissions panel are actually authoritative.
+        UUID selectedShopId = parseOptionalUuid(arg2);
+        ActionResult shopPermissionFailure = validateShopDesktopPermission(
+                normalizedAction,
+                centralBank,
+                player,
+                selectedShopId
+        );
+        if (shopPermissionFailure != null) {
+            return shopPermissionFailure;
         }
 
         return switch (normalizedAction) {
@@ -504,6 +545,528 @@ public final class BankOwnerPcService {
                 clearDesktopSessionsForMachine(machineId);
                 setDesktopPowerState(centralBank, context, false);
                 yield ok(normalizedAction, "PC turned off.");
+            }
+            case "SHOP_CREATE" -> {
+                ShopService.ShopActionResult result = ShopService.createShop(centralBank, player, arg1, arg2);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_OVERVIEW" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.overview(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LEVEL_ROADMAP" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.levelRoadmapReport(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLAIM" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.claimAroundPosition(
+                        centralBank,
+                        player,
+                        shopId,
+                        context.dimensionId(),
+                        context.x(),
+                        context.y(),
+                        context.z()
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLAIM_TOOL_PLOT" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.startClaimToolSession(centralBank, player, shopId, false);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLAIM_TOOL_STOCKROOM" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.startClaimToolSession(centralBank, player, shopId, true);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLAIM_TOOL_PALLETS" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.startPalletClaimToolSession(centralBank, player, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SET_STOCKROOM" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setStockroomNearPosition(
+                        server,
+                        centralBank,
+                        playerId,
+                        shopId,
+                        context.dimensionId(),
+                        context.x(),
+                        context.y(),
+                        context.z()
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.orderManagerReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_ITEM_PICKER" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.orderItemPickerReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_CREATE" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.createOrder(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_CANCEL" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.cancelOrderByOwner(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_ASSIGN_PALLET" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.assignOrderPallet(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_UNASSIGN_PALLET" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.unassignOrderPallet(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_BIND_PALLET" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.bindOrderPallet(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_ORDER_CLEAR_PALLET" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.clearOrderPalletBinding(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SET_CHECKOUT_TERMINAL" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setCheckoutTerminalNearPosition(
+                        server,
+                        centralBank,
+                        playerId,
+                        shopId,
+                        context.dimensionId(),
+                        context.x(),
+                        context.y(),
+                        context.z()
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SCAN_CASHIERS" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.cashierReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_HIRE_CASHIER" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.hireCashierNpc(server, centralBank, player, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIST_EMPLOYEES" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.listEmployeesReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FIRE_EMPLOYEE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.fireEmployee(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LINK_CASHIER_TERMINAL" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.beginCashierTerminalSelection(
+                        server,
+                        centralBank,
+                        playerId,
+                        shopId,
+                        player,
+                        arg1 == null ? "" : arg1
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIST_OWNER_ACCOUNTS" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.listOwnerAccountsForSettlement(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_PERMISSIONS_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.permissionsReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_PERMISSIONS_SET" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setPermissionRole(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_PERMISSIONS_REMOVE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.removePermissionRole(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_HOURS_LIGHTING_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.shopHoursLightingReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_HOURS_SET" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopHours(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopClosedDelivererStockroomAccess(
+                        server,
+                        centralBank,
+                        playerId,
+                        shopId,
+                        arg1
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIGHTING_ENABLED" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopLightingEnabled(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIGHTING_MAIN_MODE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopMainLightingMode(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIGHTING_STOCKROOM_MODE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopStockroomLightingMode(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIGHTING_EXCLUDE_STOCKROOM" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopExcludeStockroomLighting(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_LIGHTING_LEVEL" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopLightingLevel(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SCAN" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.shelfReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_STOCKROOM_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.stockroomReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_STOCKROOM_LOCATE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.beginStockroomLocate(server, centralBank, playerId, shopId, player, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_RESTOCK" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.restockFromStockroom(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_RESTOCK_SLOT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.restockShelfSlot(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_RESTOCK_LOW" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.restockLowStockSlots(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_RESTOCK_SHELF" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.restockShelf(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_REMOVE_SHELF_SLOT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.removeShelfSlotToStockroom(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SET_SLOT_TARGETS" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShelfSlotTargets(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FINANCE_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.financeReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SHOW_CASH_VAULT" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.cashVaultReport(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_VAULT_WITHDRAW_AMOUNT" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.withdrawCashVaultAmount(
+                        centralBank,
+                        playerId,
+                        shopId,
+                        player,
+                        arg1
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_VAULT_WITHDRAW_PLAN" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.withdrawCashVaultPlan(
+                        centralBank,
+                        playerId,
+                        shopId,
+                        player,
+                        arg1
+                );
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SET_SETTLEMENT_ACCOUNT" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setSettlementAccount(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_RENAME" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.renameShop(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_SET_TYPE" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.setShopType(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLEAR_CHECKOUT_TERMINAL" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.clearCheckoutTerminal(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CLEAR_CASHIER_LINKS" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.clearCashierTerminalLinks(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_DELETE" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.deleteShop(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopReport(server, centralBank, playerId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_ADD" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                String[] parts = (arg1 == null ? "" : arg1).split("\\|", -1);
+                String itemId = parts.length >= 1 ? parts[0] : "";
+                String qty = parts.length >= 2 ? parts[1] : "1";
+                ShopService.ShopActionResult result = ShopService.webshopAddToCart(server, centralBank, playerId, itemId, qty);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_SET_QTY" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                String[] parts = (arg1 == null ? "" : arg1).split("\\|", -1);
+                String itemId = parts.length >= 1 ? parts[0] : "";
+                String qty = parts.length >= 2 ? parts[1] : "0";
+                ShopService.ShopActionResult result = ShopService.webshopSetCartQuantity(server, centralBank, playerId, itemId, qty);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_REMOVE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopRemoveFromCart(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_CLEAR_CART" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopClearCart(server, centralBank, playerId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_SELECT_ACCOUNT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopSelectAccount(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_MODE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopSetDeliveryMode(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_COORDS" -> {
+                yield fail(normalizedAction, "Coordinates delivery mode was removed. Use delivery pallets.");
+            }
+            case "SHOP_WEBSHOP_SELECT_SHOP" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopSelectShop(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_SELECT_PALLET" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopSelectPallet(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_EXPEDITE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopSetExpedite(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_CHECKOUT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopCheckout(server, centralBank, playerId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_CANCEL_ORDER" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopCancelOrder(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "ORDER_BOARD_REPORT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.orderBoardReport(server, centralBank, playerId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "ORDER_BOARD_ACCEPT" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.orderBoardAccept(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "ORDER_BOARD_CANCEL" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.orderBoardCancel(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
             }
             default -> fail(normalizedAction, "Unknown desktop action: " + normalizedAction);
         };
@@ -1782,6 +2345,8 @@ public final class BankOwnerPcService {
             founderAccount.setPrimaryAccount(true);
         }
 
+        String privateCardMessage = tryIssueFounderPrivateCard(centralBank, founder, founderAccount);
+
         if (charterFee.compareTo(BigDecimal.ZERO) > 0) {
             recordSettlement(
                     centralBank,
@@ -1794,7 +2359,47 @@ public final class BankOwnerPcService {
         }
 
         BankManager.markDirty();
-        return new ActionResult(true, "Bank created: " + newBank.getBankName() + " (" + shortId(newBank.getBankId()) + ").");
+        return new ActionResult(true,
+                "Bank created: " + newBank.getBankName() + " (" + shortId(newBank.getBankId()) + "). "
+                        + privateCardMessage);
+    }
+
+    /**
+     * Founders get one private card at creation time if there is inventory room.
+     * If there is no room, we keep the action non-fatal and direct them to teller issuance.
+     */
+    private static String tryIssueFounderPrivateCard(CentralBank centralBank,
+                                                     ServerPlayer founder,
+                                                     AccountHolder founderAccount) {
+        if (centralBank == null || founder == null || founderAccount == null) {
+            return "Private card not issued (missing data).";
+        }
+
+        if (founder.getInventory().getFreeSlot() < 0) {
+            String warning = "Inventory full: private bank card was not delivered. Visit your bank teller to issue it.";
+            founder.sendSystemMessage(Component.literal("§e" + warning));
+            ServerActionAlert.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
+            return "Private card pending teller issue (inventory full).";
+        }
+
+        CreditCardService.CardIssueResult issued = CreditCardService.issueCard(
+                centralBank,
+                founderAccount,
+                founder.getName().getString(),
+                false,
+                true
+        );
+        if (!issued.success() || issued.cardStack().isEmpty()) {
+            return "Private card could not be issued (" + issued.message() + ").";
+        }
+
+        founder.getInventory().add(issued.cardStack().copy());
+        founder.containerMenu.broadcastChanges();
+        String masked = CreditCardService.maskCardNumber(issued.cardNumber());
+        String success = "Private bank card issued: " + masked + ".";
+        founder.sendSystemMessage(Component.literal("§a" + success));
+        ServerActionAlert.send(founder, "Banking", success, DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
+        return success;
     }
 
     private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {
@@ -2376,6 +2981,171 @@ public final class BankOwnerPcService {
                 || normalized.equals("yes")
                 || normalized.equals("hide")
                 || normalized.equals("on");
+    }
+
+    private enum ShopRoleRequirement {
+        NONE,
+        STAFF,
+        BUILDER,
+        MANAGER,
+        OWNER
+    }
+
+    /**
+     * Validates desktop shop-action authorization from delegated shop roles.
+     * Returns null when allowed, otherwise a fail() action result.
+     */
+    private static ActionResult validateShopDesktopPermission(String normalizedAction,
+                                                              CentralBank centralBank,
+                                                              ServerPlayer player,
+                                                              UUID selectedShopId) {
+        if (normalizedAction == null
+                || normalizedAction.isBlank()
+                || centralBank == null
+                || player == null) {
+            return null;
+        }
+        if (!normalizedAction.startsWith("SHOP_")
+                || normalizedAction.startsWith("SHOP_WEBSHOP")) {
+            return null;
+        }
+        if (player.hasPermissions(3)) {
+            return null;
+        }
+
+        ShopRoleRequirement requirement = requiredShopRoleForAction(normalizedAction);
+        if (requirement == ShopRoleRequirement.NONE) {
+            return null;
+        }
+
+        UUID actorId = player.getUUID();
+        UUID shopId = selectedShopId != null ? selectedShopId : ShopService.resolveDefaultShopIdForActor(centralBank, actorId);
+        if (shopId == null) {
+            return fail(normalizedAction, "Select a shop first.");
+        }
+
+        String role = ShopService.resolveShopRole(centralBank, actorId, shopId);
+        if (role == null || role.isBlank()) {
+            return fail(normalizedAction, "You do not have access to this shop.");
+        }
+        if (roleMeetsRequirement(role, requirement)) {
+            return null;
+        }
+
+        return fail(
+                normalizedAction,
+                "Insufficient role permissions. Required: " + requirementLabel(requirement)
+                        + ". Current role: " + role.toUpperCase(Locale.ROOT) + "."
+        );
+    }
+
+    /**
+     * Maps each desktop shop action to its minimum delegated role.
+     */
+    private static ShopRoleRequirement requiredShopRoleForAction(String action) {
+        return switch (action) {
+            case "SHOP_OVERVIEW",
+                 "SHOP_LEVEL_ROADMAP",
+                 "SHOP_ORDER_REPORT",
+                 "SHOP_HOURS_LIGHTING_REPORT",
+                 "SHOP_SCAN",
+                 "SHOP_STOCKROOM_REPORT",
+                 "SHOP_STOCKROOM_LOCATE",
+                 "SHOP_RESTOCK",
+                 "SHOP_RESTOCK_SLOT",
+                 "SHOP_RESTOCK_LOW",
+                 "SHOP_RESTOCK_SHELF",
+                 "SHOP_SCAN_CASHIERS",
+                 "SHOP_LIST_EMPLOYEES",
+                 "SHOP_FINANCE_REPORT",
+                 "SHOP_SHOW_CASH_VAULT",
+                 "SHOP_PERMISSIONS_REPORT" -> ShopRoleRequirement.STAFF;
+
+            case "SHOP_CLAIM",
+                 "SHOP_CLAIM_TOOL_PLOT",
+                 "SHOP_CLAIM_TOOL_STOCKROOM",
+                 "SHOP_CLAIM_TOOL_PALLETS",
+                 "SHOP_SET_STOCKROOM",
+                 "SHOP_REMOVE_SHELF_SLOT",
+                 "SHOP_SET_SLOT_TARGETS" -> ShopRoleRequirement.BUILDER;
+
+            case "SHOP_HIRE_CASHIER",
+                 "SHOP_FIRE_EMPLOYEE",
+                 "SHOP_LINK_CASHIER_TERMINAL",
+                 "SHOP_SET_CHECKOUT_TERMINAL",
+                 "SHOP_CLEAR_CHECKOUT_TERMINAL",
+                 "SHOP_CLEAR_CASHIER_LINKS",
+                 "SHOP_ORDER_ITEM_PICKER",
+                 "SHOP_ORDER_CREATE",
+                 "SHOP_ORDER_CANCEL",
+                 "SHOP_ORDER_ASSIGN_PALLET",
+                 "SHOP_ORDER_UNASSIGN_PALLET",
+                 "SHOP_ORDER_BIND_PALLET",
+                 "SHOP_ORDER_CLEAR_PALLET" -> ShopRoleRequirement.MANAGER;
+
+            case "SHOP_LIST_OWNER_ACCOUNTS",
+                 "SHOP_VAULT_WITHDRAW_AMOUNT",
+                 "SHOP_VAULT_WITHDRAW_PLAN",
+                 "SHOP_SET_SETTLEMENT_ACCOUNT",
+                 "SHOP_HOURS_SET",
+                 "SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS",
+                 "SHOP_LIGHTING_ENABLED",
+                 "SHOP_LIGHTING_LEVEL",
+                 "SHOP_LIGHTING_MAIN_MODE",
+                 "SHOP_LIGHTING_STOCKROOM_MODE",
+                 "SHOP_LIGHTING_EXCLUDE_STOCKROOM",
+                 "SHOP_RENAME",
+                 "SHOP_SET_TYPE",
+                 "SHOP_DELETE",
+                 "SHOP_PERMISSIONS_SET",
+                 "SHOP_PERMISSIONS_REMOVE" -> ShopRoleRequirement.OWNER;
+
+            default -> ShopRoleRequirement.NONE;
+        };
+    }
+
+    private static boolean roleMeetsRequirement(String role, ShopRoleRequirement requirement) {
+        return shopRoleRank(role) >= switch (requirement) {
+            case STAFF -> 1;
+            case BUILDER -> 2;
+            case MANAGER -> 3;
+            case OWNER -> 4;
+            case NONE -> 0;
+        };
+    }
+
+    private static int shopRoleRank(String role) {
+        if (role == null || role.isBlank()) {
+            return 0;
+        }
+        return switch (role.trim().toUpperCase(Locale.ROOT)) {
+            case ShopService.SHOP_ROLE_OWNER -> 4;
+            case ShopService.SHOP_ROLE_MANAGER -> 3;
+            case ShopService.SHOP_ROLE_BUILDER -> 2;
+            case ShopService.SHOP_ROLE_STAFF -> 1;
+            default -> 0;
+        };
+    }
+
+    private static String requirementLabel(ShopRoleRequirement requirement) {
+        return switch (requirement) {
+            case STAFF -> ShopService.SHOP_ROLE_STAFF;
+            case BUILDER -> ShopService.SHOP_ROLE_BUILDER;
+            case MANAGER -> ShopService.SHOP_ROLE_MANAGER;
+            case OWNER -> ShopService.SHOP_ROLE_OWNER;
+            case NONE -> "NONE";
+        };
+    }
+
+    private static UUID parseOptionalUuid(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static ActionResult ok(String action, String message) {

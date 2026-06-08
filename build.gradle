@@ -74,6 +74,10 @@ dependencies {
     implementation minecraft.dependency("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
 
     implementation 'com.mojang:brigadier:1.0.18'
+    implementation('io.netty:netty-codec-http:4.1.97.Final') {
+        transitive = false
+    }
+    implementation 'com.bucket4j:bucket4j_jdk17-core:8.11.1'
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

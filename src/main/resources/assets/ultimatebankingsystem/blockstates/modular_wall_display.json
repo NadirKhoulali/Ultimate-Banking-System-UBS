@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,part=master": { "model": "ultimatebankingsystem:block/modular_wall_display" },
+    "facing=south,part=master": { "model": "ultimatebankingsystem:block/modular_wall_display", "y": 180 },
+    "facing=east,part=master": { "model": "ultimatebankingsystem:block/modular_wall_display", "y": 90 },
+    "facing=west,part=master": { "model": "ultimatebankingsystem:block/modular_wall_display", "y": 270 },
+    "facing=north,part=extension": { "model": "ultimatebankingsystem:block/modular_wall_display_extension" },
+    "facing=south,part=extension": { "model": "ultimatebankingsystem:block/modular_wall_display_extension", "y": 180 },
+    "facing=east,part=extension": { "model": "ultimatebankingsystem:block/modular_wall_display_extension", "y": 90 },
+    "facing=west,part=extension": { "model": "ultimatebankingsystem:block/modular_wall_display_extension", "y": 270 }
+  }
+}

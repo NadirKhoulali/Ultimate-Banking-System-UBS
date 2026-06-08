@@ -1,6 +1,5 @@
 package net.austizz.ultimatebankingsystem.npc;
 
-import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -8,7 +7,10 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.network.BankTellerActionResponsePayload;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -149,7 +151,7 @@ public final class BankTellerPaymentInteractionManager {
             return false;
         }
         if (!session.tellerId.equals(teller.getUUID())) {
-            player.sendSystemMessage(UbsTranslations.literal("§eYou already have an active teller payment at another teller."));
+            sendPaymentFeedback(player, "§eYou already have an active teller payment at another teller.");
             return true;
         }
 
@@ -171,15 +173,15 @@ public final class BankTellerPaymentInteractionManager {
             return true;
         }
 
-        player.sendSystemMessage(UbsTranslations.literal("§7Use §aCash (bills/coins)§7 or a §bCredit Card§7 on the teller to continue payment."));
-        player.sendSystemMessage(UbsTranslations.literal("§8Remaining: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(remainingCents(session), 2))));
+        sendPaymentFeedback(player, "§7Use §aCash (bills/coins)§7 or a §bCredit Card§7 on the teller to continue payment.");
+        player.sendSystemMessage(Component.literal("§8Remaining: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(remainingCents(session), 2))));
         return true;
     }
 
     public static int handleCancel(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendSystemMessage(UbsTranslations.literal("§cOnly players can do this."));
+            source.sendSystemMessage(Component.literal("§cOnly players can do this."));
             return 0;
         }
         Session session = SESSIONS.get(player.getUUID());
@@ -275,10 +277,10 @@ public final class BankTellerPaymentInteractionManager {
             return;
         }
 
-        player.sendSystemMessage(UbsTranslations.literal("§aAccepted §6$"
+        sendPaymentFeedback(player, "§aAccepted §6$"
                 + MoneyText.abbreviate(BigDecimal.valueOf(denominationCents, 2))
                 + "§a cash. Remaining: §6$"
-                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2))));
+                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)));
         sendCancelHint(player);
     }
 
@@ -294,24 +296,24 @@ public final class BankTellerPaymentInteractionManager {
 
         var cardLookup = CreditCardService.findHeldCard(centralBank, player);
         if (!cardLookup.hasCard()) {
-            player.sendSystemMessage(UbsTranslations.literal("§cNo credit card detected. Hold a card and right-click the teller."));
+            sendPaymentFeedback(player, "§cNo credit card detected. Hold a card and right-click the teller.");
             return;
         }
         if (!cardLookup.validation().valid()) {
-            player.sendSystemMessage(UbsTranslations.literal("§cCard payment failed: " + cardLookup.validation().message()));
+            sendPaymentFeedback(player, "§cCard payment failed: " + cardLookup.validation().message());
             return;
         }
 
         AccountHolder payer = centralBank.SearchForAccountByAccountId(cardLookup.validation().accountId());
         if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
-            player.sendSystemMessage(UbsTranslations.literal("§cCard payment failed: linked account is unavailable."));
+            sendPaymentFeedback(player, "§cCard payment failed: linked account is unavailable.");
             return;
         }
 
         BigDecimal charge = BigDecimal.valueOf(remaining, 2);
         if (!payer.RemoveBalance(charge)) {
-            player.sendSystemMessage(UbsTranslations.literal("§cCard payment failed: insufficient funds for §6$"
-                    + MoneyText.abbreviate(charge) + "§c."));
+            sendPaymentFeedback(player, "§cCard payment failed: insufficient funds for §6$"
+                    + MoneyText.abbreviate(charge) + "§c.");
             return;
         }
 
@@ -420,7 +422,7 @@ public final class BankTellerPaymentInteractionManager {
             }
         }
 
-        player.sendSystemMessage(UbsTranslations.literal("§e" + reason));
+        sendPaymentFeedback(player, "§e" + reason);
     }
 
     private static void reopenWithFeedback(ServerPlayer player,
@@ -432,7 +434,7 @@ public final class BankTellerPaymentInteractionManager {
         }
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         if (centralBank == null) {
-            player.sendSystemMessage(UbsTranslations.literal("§e" + message));
+            sendPaymentFeedback(player, "§e" + message);
             return;
         }
         PacketDistributor.sendToPlayer(player, BankTellerService.buildOpenPayload(player.server, centralBank, player, teller));
@@ -467,7 +469,7 @@ public final class BankTellerPaymentInteractionManager {
         }
 
         if (infoMessage != null && !infoMessage.isBlank()) {
-            player.sendSystemMessage(UbsTranslations.literal("§7" + infoMessage));
+            sendPaymentFeedback(player, "§7" + infoMessage);
         }
     }
 
@@ -475,20 +477,27 @@ public final class BankTellerPaymentInteractionManager {
         if (player == null || session == null) {
             return;
         }
-        player.sendSystemMessage(UbsTranslations.literal("§b[Bank Teller] §f" + session.paymentReason));
-        player.sendSystemMessage(UbsTranslations.literal("§7Amount due: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(session.requiredCents, 2))));
-        player.sendSystemMessage(UbsTranslations.literal("§7Right-click this teller with §aCash (bills/coins)§7 (one item per click) or with a §bCredit Card§7."));
+        player.sendSystemMessage(Component.literal("§b[Bank Teller] §f" + session.paymentReason));
+        player.sendSystemMessage(Component.literal("§7Amount due: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(session.requiredCents, 2))));
+        player.sendSystemMessage(Component.literal("§7Right-click this teller with §aCash (bills/coins)§7 (one item per click) or with a §bCredit Card§7."));
+        ServerActionAlert.sendLegacy(
+                player,
+                "Bank Teller",
+                "§bTeller payment started. Amount due: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(session.requiredCents, 2)),
+                DeliveryAlertPayload.AlertTone.INFO,
+                4200
+        );
         sendCancelHint(player);
     }
 
     private static void sendCancelHint(ServerPlayer player) {
-        MutableComponent cancel = UbsTranslations.literal("")
-                .append(UbsTranslations.literal("[Cancel Payment]").withStyle(Style.EMPTY
+        MutableComponent cancel = Component.literal("")
+                .append(Component.literal("[Cancel Payment]").withStyle(Style.EMPTY
                         .withColor(ChatFormatting.RED)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/bankteller cancel"))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, UbsTranslations.literal("Cancel teller payment and refund")))));
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Cancel teller payment and refund")))));
         player.sendSystemMessage(cancel);
-        player.sendSystemMessage(UbsTranslations.literal("§8(You can also cancel by walking away from the teller.)"));
+        player.sendSystemMessage(Component.literal("§8(You can also cancel by walking away from the teller.)"));
     }
 
     private static long remainingCents(Session session) {
@@ -508,5 +517,15 @@ public final class BankTellerPaymentInteractionManager {
             }
         }
         return null;
+    }
+
+    private static void sendPaymentFeedback(ServerPlayer player, String legacyMessage) {
+        if (player == null || legacyMessage == null || legacyMessage.isBlank()) {
+            return;
+        }
+        // Keep teller guidance in chat and mirror it to the shared alert card.
+        player.sendSystemMessage(UbsTranslations.literal(legacyMessage));
+        DeliveryAlertPayload.AlertTone tone = ServerActionAlert.inferToneFromLegacy(legacyMessage);
+        ServerActionAlert.sendLegacy(player, "Bank Teller", legacyMessage, tone, 4200);
     }
 }

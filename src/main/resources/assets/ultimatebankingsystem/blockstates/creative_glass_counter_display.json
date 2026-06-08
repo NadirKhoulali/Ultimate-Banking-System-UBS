@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "ultimatebankingsystem:block/glass_counter_display" },
+    "facing=south": { "model": "ultimatebankingsystem:block/glass_counter_display", "y": 180 },
+    "facing=east": { "model": "ultimatebankingsystem:block/glass_counter_display", "y": 90 },
+    "facing=west": { "model": "ultimatebankingsystem:block/glass_counter_display", "y": 270 }
+  }
+}

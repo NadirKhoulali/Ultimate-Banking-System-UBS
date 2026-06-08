@@ -9,6 +9,9 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -133,6 +136,8 @@ public class AccountHolder {
             return false;
         }
         this.balance = this.balance.add(amount);
+        // Global money-in feedback: whenever an account gains funds, surface a unified alert.
+        sendBalanceDeltaAlert(amount, true);
         BankManager.markDirty();
         return true;
     }
@@ -152,6 +157,8 @@ public class AccountHolder {
         }
         this.balance = this.balance.subtract(amount);
         UltimateBankingSystem.LOGGER.debug("[UBS] RemoveBalance: ${} from account {}, new balance: ${}", amount, this.accountUUID, this.balance);
+        // Global money-out feedback: every successful debit should be visible to the account owner.
+        sendBalanceDeltaAlert(amount, false);
         BankManager.markDirty();
         return true;
     }
@@ -171,6 +178,31 @@ public class AccountHolder {
 
     public boolean forceRemoveBalance(BigDecimal balance) {
         return removeBalanceInternal(balance, true);
+    }
+
+    private void sendBalanceDeltaAlert(BigDecimal amount, boolean incoming) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || this.playerUUID == null) {
+            return;
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return;
+        }
+        ServerPlayer owner = server.getPlayerList().getPlayer(this.playerUUID);
+        if (owner == null) {
+            return;
+        }
+        String direction = incoming ? "received" : "spent";
+        String legacyMessage = (incoming ? "§a" : "§e")
+                + "Account " + direction + ": §6"
+                + MoneyText.abbreviateWithDollar(amount)
+                + " §7(new balance: §f"
+                + MoneyText.abbreviateWithDollar(this.balance)
+                + "§7)";
+        DeliveryAlertPayload.AlertTone tone = incoming
+                ? DeliveryAlertPayload.AlertTone.SUCCESS
+                : DeliveryAlertPayload.AlertTone.WARNING;
+        ServerActionAlert.sendLegacy(owner, "Balance", legacyMessage, tone, 3600);
     }
     public void addTransaction(UserTransaction transaction) {
         this.transactions.put(transaction.getTransactionUUID(), transaction);

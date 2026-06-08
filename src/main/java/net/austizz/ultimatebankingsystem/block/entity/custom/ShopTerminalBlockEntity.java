@@ -203,6 +203,21 @@ public class ShopTerminalBlockEntity extends net.minecraft.world.level.block.ent
         markUpdated();
     }
 
+    public void clearPaymentResult() {
+        Level level = getLevel();
+        this.displayResult = 0;
+        this.displayResultUntilGameTime = 0L;
+        if (level != null && !level.isClientSide()) {
+            BlockState current = level.getBlockState(worldPosition);
+            if (current.is(ModBlocks.PAYMENT_TERMINAL.get())
+                    && current.hasProperty(ShopTerminalBlock.RESULT)
+                    && current.getValue(ShopTerminalBlock.RESULT) != 0) {
+                level.setBlock(worldPosition, current.setValue(ShopTerminalBlock.RESULT, 0), Block.UPDATE_ALL);
+            }
+        }
+        markUpdated();
+    }
+
     public static void serverTick(Level level, BlockPos pos, BlockState state, ShopTerminalBlockEntity terminal) {
         if (terminal == null || level == null || level.isClientSide()) {
             return;

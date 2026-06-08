@@ -14,6 +14,9 @@ import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.common.MinecraftForge;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +40,8 @@ public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, CompoundTag> interbankLoans;
     private ConcurrentHashMap<UUID, CompoundTag> reportSnapshots;
     private ConcurrentHashMap<UUID, CompoundTag> issuedCreditCards;
+    private ConcurrentHashMap<UUID, Boolean> pickpocketOptOut;
+    private ConcurrentHashMap<UUID, CompoundTag> pickpocketHistory;
     private int nextBankTellerVariant;
 
     public CentralBank() {
@@ -57,6 +62,8 @@ public class CentralBank extends Bank{
         this.interbankLoans = new ConcurrentHashMap<>();
         this.reportSnapshots = new ConcurrentHashMap<>();
         this.issuedCreditCards = new ConcurrentHashMap<>();
+        this.pickpocketOptOut = new ConcurrentHashMap<>();
+        this.pickpocketHistory = new ConcurrentHashMap<>();
         this.nextBankTellerVariant = TELLER_VARIANT_MALE;
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
@@ -92,21 +99,6 @@ public class CentralBank extends Bank{
                 .findFirst()
                 .orElse(null);
     }
-
-    /**
-     * Heist tracking is not yet implemented; keep API contract stable with safe defaults.
-     */
-    public boolean hasPlayerEverStolen(UUID playerId) {
-        return false;
-    }
-
-    /**
-     * Heist tracking is not yet implemented; keep API contract stable with safe defaults.
-     */
-    public List<UUID> getPlayersStolenFrom(UUID playerId) {
-        return List.of();
-    }
-
     public ConcurrentHashMap<UUID, AccountHolder> SearchForAccount(UUID playerId) {
         ConcurrentHashMap<UUID, AccountHolder> result = new ConcurrentHashMap<>();
         if (playerId == null) {
@@ -373,11 +365,135 @@ public class CentralBank extends Bank{
         return issuedCreditCards;
     }
 
+    public ConcurrentHashMap<UUID, Boolean> getPickpocketOptOut() {
+        if (pickpocketOptOut == null) {
+            pickpocketOptOut = new ConcurrentHashMap<>();
+        }
+        return pickpocketOptOut;
+    }
+
+    public ConcurrentHashMap<UUID, CompoundTag> getPickpocketHistory() {
+        if (pickpocketHistory == null) {
+            pickpocketHistory = new ConcurrentHashMap<>();
+        }
+        return pickpocketHistory;
+    }
+
+    public boolean isPickpocketOptOut(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        return Boolean.TRUE.equals(getPickpocketOptOut().get(playerId));
+    }
+
+    public void setPickpocketOptOut(UUID playerId, boolean optedOut) {
+        if (playerId == null) {
+            return;
+        }
+        if (optedOut) {
+            getPickpocketOptOut().put(playerId, Boolean.TRUE);
+        } else {
+            getPickpocketOptOut().remove(playerId);
+        }
+        BankManager.markDirty();
+    }
+
+    public void recordPickpocket(UUID thiefId,
+                                 UUID victimId,
+                                 String victimNameSnapshot,
+                                 long timestampMillis,
+                                 String stolenStackSummary) {
+        if (thiefId == null || victimId == null) {
+            return;
+        }
+        CompoundTag entry = new CompoundTag();
+        entry.putUUID("thief_id", thiefId);
+        entry.putUUID("victim_id", victimId);
+        entry.putString("victim_name", victimNameSnapshot == null ? "" : victimNameSnapshot.trim());
+        entry.putLong("timestamp_millis", Math.max(0L, timestampMillis));
+        entry.putString("stolen_stack_summary", stolenStackSummary == null ? "" : stolenStackSummary.trim());
+        getPickpocketHistory().put(UUID.randomUUID(), entry);
+        BankManager.markDirty();
+    }
+
+    public boolean hasPlayerEverStolen(UUID thiefId) {
+        if (thiefId == null || getPickpocketHistory().isEmpty()) {
+            return false;
+        }
+        for (CompoundTag entry : getPickpocketHistory().values()) {
+            if (entry != null && entry.hasUUID("thief_id") && thiefId.equals(entry.getUUID("thief_id"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public List<UUID> getPlayersStolenFrom(UUID thiefId) {
+        if (thiefId == null || getPickpocketHistory().isEmpty()) {
+            return List.of();
+        }
+        List<CompoundTag> ordered = new ArrayList<>();
+        for (CompoundTag entry : getPickpocketHistory().values()) {
+            if (entry == null || !entry.hasUUID("thief_id") || !entry.hasUUID("victim_id")) {
+                continue;
+            }
+            if (thiefId.equals(entry.getUUID("thief_id"))) {
+                ordered.add(entry);
+            }
+        }
+        ordered.sort(Comparator.comparingLong(tag -> tag.getLong("timestamp_millis")));
+        LinkedHashSet<UUID> uniqueVictims = new LinkedHashSet<>();
+        for (CompoundTag entry : ordered) {
+            uniqueVictims.add(entry.getUUID("victim_id"));
+        }
+        return List.copyOf(uniqueVictims);
+    }
+
+    public List<CompoundTag> getPickpocketHistoryForThief(UUID thiefId) {
+        if (thiefId == null || getPickpocketHistory().isEmpty()) {
+            return List.of();
+        }
+        List<CompoundTag> snapshots = new ArrayList<>();
+        for (CompoundTag entry : getPickpocketHistory().values()) {
+            if (entry == null || !entry.hasUUID("thief_id")) {
+                continue;
+            }
+            if (thiefId.equals(entry.getUUID("thief_id"))) {
+                snapshots.add(entry.copy());
+            }
+        }
+        snapshots.sort(Comparator.comparingLong(tag -> tag.getLong("timestamp_millis")));
+        return snapshots;
+    }
+
     public boolean isNoteSerialRedeemed(String serial) {
         if (serial == null || serial.isBlank()) {
             return false;
         }
         return redeemedNoteSerials != null && redeemedNoteSerials.containsKey(serial);
+    }
+
+    public boolean tryRedeemNoteSerial(String serial) {
+        if (serial == null || serial.isBlank()) {
+            return false;
+        }
+        if (redeemedNoteSerials == null) {
+            redeemedNoteSerials = new ConcurrentHashMap<>();
+        }
+        boolean firstRedeem = redeemedNoteSerials.putIfAbsent(serial, Boolean.TRUE) == null;
+        if (firstRedeem) {
+            BankManager.markDirty();
+        }
+        return firstRedeem;
+    }
+
+    public void rollbackNoteSerialRedemption(String serial) {
+        if (serial == null || serial.isBlank() || redeemedNoteSerials == null) {
+            return;
+        }
+        if (redeemedNoteSerials.remove(serial) != null) {
+            BankManager.markDirty();
+        }
     }
 
     public void markNoteSerialRedeemed(String serial) {
@@ -396,6 +512,29 @@ public class CentralBank extends Bank{
             return false;
         }
         return redeemedChequeIds != null && redeemedChequeIds.containsKey(chequeId);
+    }
+
+    public boolean tryRedeemChequeId(String chequeId) {
+        if (chequeId == null || chequeId.isBlank()) {
+            return false;
+        }
+        if (redeemedChequeIds == null) {
+            redeemedChequeIds = new ConcurrentHashMap<>();
+        }
+        boolean firstRedeem = redeemedChequeIds.putIfAbsent(chequeId, Boolean.TRUE) == null;
+        if (firstRedeem) {
+            BankManager.markDirty();
+        }
+        return firstRedeem;
+    }
+
+    public void rollbackChequeRedemption(String chequeId) {
+        if (chequeId == null || chequeId.isBlank() || redeemedChequeIds == null) {
+            return;
+        }
+        if (redeemedChequeIds.remove(chequeId) != null) {
+            BankManager.markDirty();
+        }
     }
 
     public void markChequeRedeemed(String chequeId) {
@@ -475,6 +614,8 @@ public class CentralBank extends Bank{
         tag.put("interbank_loans", saveTagMap(getInterbankLoans()));
         tag.put("report_snapshots", saveTagMap(getReportSnapshots()));
         tag.put("issued_credit_cards", saveTagMap(getIssuedCreditCards()));
+        tag.put("pickpocket_history", saveTagMap(getPickpocketHistory()));
+        tag.put("pickpocket_opt_out", saveUuidBooleanMap(getPickpocketOptOut()));
         tag.putInt("next_bank_teller_variant", this.nextBankTellerVariant);
 
         return tag;
@@ -551,6 +692,8 @@ public class CentralBank extends Bank{
         centralBank.interbankLoans = loadTagMap(tag.getList("interbank_loans", 10));
         centralBank.reportSnapshots = loadTagMap(tag.getList("report_snapshots", 10));
         centralBank.issuedCreditCards = loadTagMap(tag.getList("issued_credit_cards", 10));
+        centralBank.pickpocketHistory = loadTagMap(tag.getList("pickpocket_history", 10));
+        centralBank.pickpocketOptOut = loadUuidBooleanMap(tag.getList("pickpocket_opt_out", 10));
         centralBank.nextBankTellerVariant = tag.contains("next_bank_teller_variant")
                 ? tag.getInt("next_bank_teller_variant")
                 : TELLER_VARIANT_MALE;
@@ -582,6 +725,35 @@ public class CentralBank extends Bank{
                 continue;
             }
             map.put(entry.getUUID("id"), entry.getCompound("data"));
+        }
+        return map;
+    }
+
+    private static ListTag saveUuidBooleanMap(ConcurrentHashMap<UUID, Boolean> map) {
+        ListTag list = new ListTag();
+        if (map == null) {
+            return list;
+        }
+        map.forEach((id, value) -> {
+            if (id == null || !Boolean.TRUE.equals(value)) {
+                return;
+            }
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("id", id);
+            entry.putBoolean("value", true);
+            list.add(entry);
+        });
+        return list;
+    }
+
+    private static ConcurrentHashMap<UUID, Boolean> loadUuidBooleanMap(ListTag list) {
+        ConcurrentHashMap<UUID, Boolean> map = new ConcurrentHashMap<>();
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            if (!entry.hasUUID("id") || !entry.getBoolean("value")) {
+                continue;
+            }
+            map.put(entry.getUUID("id"), Boolean.TRUE);
         }
         return map;
     }

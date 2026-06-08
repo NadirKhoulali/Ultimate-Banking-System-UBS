@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "facing=north,half=lower": { "model": "ultimatebankingsystem:block/shopping_basket_holder" },
+    "facing=south,half=lower": { "model": "ultimatebankingsystem:block/shopping_basket_holder", "y": 180 },
+    "facing=east,half=lower": { "model": "ultimatebankingsystem:block/shopping_basket_holder", "y": 90 },
+    "facing=west,half=lower": { "model": "ultimatebankingsystem:block/shopping_basket_holder", "y": 270 },
+
+    "facing=north,half=upper": { "model": "ultimatebankingsystem:block/shopping_basket_holder_upper" },
+    "facing=south,half=upper": { "model": "ultimatebankingsystem:block/shopping_basket_holder_upper", "y": 180 },
+    "facing=east,half=upper": { "model": "ultimatebankingsystem:block/shopping_basket_holder_upper", "y": 90 },
+    "facing=west,half=upper": { "model": "ultimatebankingsystem:block/shopping_basket_holder_upper", "y": 270 }
+  }
+}
