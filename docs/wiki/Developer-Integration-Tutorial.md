@@ -9,7 +9,7 @@ Current UBS identity:
 - Maven group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
 - Mod id: `ultimatebankingsystem`
-- Current version in this repo: `1.3.0`
+- Current version in this repo: `1.3.1`
 
 Dependency coordinate format:
 
@@ -55,9 +55,9 @@ Point the path to your local UBS clone.
 
 ```gradle
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
 
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.0"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
 }
 ```
 
@@ -85,8 +85,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.0"
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.0"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
 }
 ```
 
@@ -110,8 +110,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-1.3.0"
-    runtimeOnly name: "ultimatebankingsystem-1.3.0"
+    compileOnly name: "ultimatebankingsystem-1.3.1"
+    runtimeOnly name: "ultimatebankingsystem-1.3.1"
 }
 ```
 

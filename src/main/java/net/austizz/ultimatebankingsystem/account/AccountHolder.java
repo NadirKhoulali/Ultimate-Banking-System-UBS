@@ -644,15 +644,22 @@ public class AccountHolder {
     }
 
     public boolean setTemporaryWithdrawalLimit(BigDecimal newLimit, long currentGameTime) {
+        return setTemporaryWithdrawalLimit(newLimit, currentGameTime, currentGameTime + TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS);
+    }
+
+    public boolean setTemporaryWithdrawalLimit(BigDecimal newLimit, long currentGameTime, long expiresAtGameTime) {
         if (newLimit == null || newLimit.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
         if (newLimit.stripTrailingZeros().scale() > 0) {
             return false;
         }
+        if (expiresAtGameTime <= currentGameTime) {
+            return false;
+        }
 
         this.temporaryWithdrawalLimit = newLimit;
-        this.temporaryWithdrawalLimitExpiresAtGameTime = currentGameTime + TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS;
+        this.temporaryWithdrawalLimitExpiresAtGameTime = expiresAtGameTime;
         BankManager.markDirty();
         return true;
     }

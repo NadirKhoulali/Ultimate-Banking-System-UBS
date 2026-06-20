@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.1] - 2026-06-20
+
+### Fixed
+- Fixed the bank Accounts drilldown buttons by adding the missing `ACCOUNT_DETAIL`, freeze/unfreeze, and temporary-limit action handlers.
+- Account detail responses now return the structured profile/history payload expected by the redesigned owner PC UI.
+
 ## [1.3.0] - 2026-06-20
 
 ### Added
