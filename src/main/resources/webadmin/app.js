@@ -1,6 +1,7 @@
 (function () {
     const storageKey = "ubs.webadmin.sessionId";
     const themeStorageKey = "ubs.webadmin.theme";
+    const dashboardModeStorageKey = "ubs.webadmin.dashboardMode";
     const state = {
         sessionId: localStorage.getItem(storageKey) || ("web-" + Math.random().toString(36).slice(2, 10)),
         ws: null,
@@ -8,6 +9,13 @@
         healthTimer: null,
         refreshTimer: null,
         route: "dashboard",
+        dashboardHost: null,
+        activeDashboardId: "ultimatebankingsystem",
+        activePanelId: "dashboard",
+        dashboardMode: localStorage.getItem(dashboardModeStorageKey) === "legacy" ? "legacy" : "component",
+        componentPageData: null,
+        componentPage: null,
+        componentChartRenderers: [],
         entityMode: "banks",
         dashboard: null,
         banksRows: [],
@@ -35,15 +43,21 @@
     const el = {
         pageTitle: document.getElementById("page-title"),
         pageSubtitle: document.getElementById("page-subtitle"),
+        dashboardSwitcherTitle: document.getElementById("dashboard-switcher-title"),
+        dashboardTabs: document.getElementById("dashboard-tabs"),
+        dashboardNav: document.getElementById("dashboard-nav"),
+        dashboardTopComponents: document.getElementById("dashboard-top-components"),
         globalAlerts: document.getElementById("global-alerts"),
         serverBind: document.getElementById("server-bind"),
         themeToggle: document.getElementById("theme-toggle"),
         themeToggleLabel: document.getElementById("theme-toggle-label"),
+        legacyModeToggle: document.getElementById("legacy-mode-toggle"),
         sessionId: document.getElementById("session-id"),
         wsState: document.getElementById("ws-state"),
         healthState: document.getElementById("health-state"),
 
         pages: {
+            addon: document.getElementById("page-addon"),
             dashboard: document.getElementById("page-dashboard"),
             health: document.getElementById("page-health"),
             entities: document.getElementById("page-entities"),
@@ -58,6 +72,7 @@
         },
 
         navLinks: Array.from(document.querySelectorAll(".nav-link")),
+        addonWidgetGrid: document.getElementById("addon-widget-grid"),
 
         refreshAll: document.getElementById("refresh-all"),
         refreshAudit: document.getElementById("refresh-audit"),
@@ -411,6 +426,197 @@
             .replaceAll(">", "&gt;");
     }
 
+    function fallbackDashboardHost() {
+        return {
+            apiVersion: "local",
+            mods: [{
+                modId: "ultimatebankingsystem",
+                displayName: "Ultimate Banking System",
+                title: "Ultimate Banking System",
+                subtitle: "Banking, retail, users, and server health",
+                icon: "UBS",
+                registered: true,
+                enabled: true,
+                dashboard: fallbackUbsDashboard()
+            }],
+            dashboards: [fallbackUbsDashboard()]
+        };
+    }
+
+    function fallbackUbsDashboard() {
+        const pages = [
+            {id: "dashboard", title: "Dashboard", subtitle: "Economy health and live operations.", routePattern: "#/dashboard", dataUrl: "/api/webadmin/dashboard", components: []},
+            {id: "health", title: "Server Health", subtitle: "Live server health, lag pressure, and UBS resource impact.", routePattern: "#/health", dataUrl: "/api/webadmin/health", components: []},
+            {id: "banks", title: "Banks", subtitle: "Full banking registry, status, reserves, and account coverage.", routePattern: "#/banks", dataUrl: "/api/webadmin/banks", components: []},
+            {id: "shops", title: "Shops", subtitle: "All shops with ownership, level progression, and revenue KPIs.", routePattern: "#/shops", dataUrl: "/api/webadmin/shops", components: []},
+            {id: "shop-items", title: "Shop Items", subtitle: "Global item pricing index across all shops.", routePattern: "#/shop-items", dataUrl: "/api/webadmin/shop-items", components: []},
+            {id: "users", title: "Users", subtitle: "All known players with UBS footprint summaries.", routePattern: "#/users", dataUrl: "/api/webadmin/users", components: []},
+            {id: "audit", title: "Audit", subtitle: "Operational event stream and command trail.", routePattern: "#/audit", dataUrl: "/api/webadmin/audit", components: []}
+        ];
+        return {
+            modId: "ultimatebankingsystem",
+            title: "Ultimate Banking System",
+            subtitle: "Banking, retail, users, and server health",
+            icon: "UBS",
+            defaults: {
+                density: "comfortable",
+                sectionGap: 12,
+                panelPadding: 16,
+                kpiColumns: 6,
+                compactKpiColumns: 4
+            },
+            pages: pages,
+            panels: [
+                {id: "dashboard", title: "Dashboard", subtitle: "Economy health and live operations.", widgets: []},
+                {id: "health", title: "Server Health", subtitle: "Live server health, lag pressure, and UBS resource impact.", widgets: []},
+                {id: "banks", title: "Banks", subtitle: "Full banking registry, status, reserves, and account coverage.", widgets: []},
+                {id: "shops", title: "Shops", subtitle: "All shops with ownership, level progression, and revenue KPIs.", widgets: []},
+                {id: "shop-items", title: "Shop Items", subtitle: "Global item pricing index across all shops.", widgets: []},
+                {id: "users", title: "Users", subtitle: "All known players with UBS footprint summaries.", widgets: []},
+                {id: "audit", title: "Audit", subtitle: "Operational event stream and command trail.", widgets: []}
+            ]
+        };
+    }
+
+    function refreshDashboardHost() {
+        return api("/api/webadmin/dashboards")
+            .then(data => {
+                state.dashboardHost = data || fallbackDashboardHost();
+                renderDashboardTabs();
+                renderDashboardNav();
+                return state.dashboardHost;
+            })
+            .catch(error => {
+                state.dashboardHost = fallbackDashboardHost();
+                renderDashboardTabs();
+                renderDashboardNav();
+                pushAlert("Dashboard host metadata failed: " + error.message, "warn");
+                return state.dashboardHost;
+            });
+    }
+
+    function dashboards() {
+        return (state.dashboardHost && state.dashboardHost.dashboards) || fallbackDashboardHost().dashboards;
+    }
+
+    function dashboardMods() {
+        return (state.dashboardHost && state.dashboardHost.mods) || fallbackDashboardHost().mods;
+    }
+
+    function findDashboard(modId) {
+        const id = String(modId || "").toLowerCase();
+        return dashboards().find(dashboard => String(dashboard.modId || "").toLowerCase() === id) || dashboards()[0] || fallbackUbsDashboard();
+    }
+
+    function findPanel(dashboard, panelId) {
+        const id = String(panelId || "").toLowerCase();
+        const panels = (dashboard && dashboard.panels) || [];
+        return panels.find(panel => String(panel.id || "").toLowerCase() === id) || panels[0] || null;
+    }
+
+    function dashboardPages(dashboard) {
+        const pages = (dashboard && Array.isArray(dashboard.pages)) ? dashboard.pages.slice() : [];
+        if (pages.length > 0) {
+            return pages;
+        }
+        return ((dashboard && dashboard.panels) || []).map(panel => ({
+            id: panel.id,
+            title: panel.title,
+            subtitle: panel.subtitle,
+            nativeRoute: panel.nativeRoute,
+            widgets: panel.widgets || [],
+            components: []
+        }));
+    }
+
+    function navPages(dashboard) {
+        const navIds = new Set(((dashboard && dashboard.panels) || []).map(panel => String(panel.id || "").toLowerCase()));
+        const pages = dashboardPages(dashboard);
+        if (navIds.size === 0) {
+            return pages.filter(page => !String(page.id || "").includes("-detail") && !["bank", "shop", "player", "account", "shop-item"].includes(String(page.id || "")));
+        }
+        return pages.filter(page => navIds.has(String(page.id || "").toLowerCase()));
+    }
+
+    function findPage(dashboard, pageId) {
+        const id = String(pageId || "").toLowerCase();
+        const pages = dashboardPages(dashboard);
+        return pages.find(page => String(page.id || "").toLowerCase() === id) || pages[0] || null;
+    }
+
+    function routeForPanel(modId, panelId) {
+        return "#/d/" + encodeURIComponent(modId || "ultimatebankingsystem") + "/" + encodeURIComponent(panelId || "dashboard");
+    }
+
+    function routeForPage(modId, pageId) {
+        const normalizedMod = String(modId || "ultimatebankingsystem");
+        const normalizedPage = String(pageId || "dashboard");
+        if (normalizedMod === "ultimatebankingsystem") {
+            if (["dashboard", "health", "banks", "shops", "shop-items", "users", "audit"].includes(normalizedPage)) {
+                return "#/" + normalizedPage;
+            }
+        }
+        return routeForPanel(normalizedMod, normalizedPage);
+    }
+
+    function renderDashboardTabs() {
+        if (!el.dashboardTabs) {
+            return;
+        }
+        el.dashboardTabs.textContent = "";
+        for (const mod of dashboardMods()) {
+            const modId = String(mod.modId || "").trim();
+            if (!modId) {
+                continue;
+            }
+            const enabled = mod.enabled !== false && mod.registered !== false;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "dashboard-tab";
+            button.textContent = String(mod.title || mod.displayName || modId);
+            button.dataset.modId = modId;
+            button.disabled = !enabled;
+            button.classList.toggle("active", modId === state.activeDashboardId);
+            if (!enabled) {
+                button.title = String(mod.disabledReason || "No dashboard registered.");
+            }
+            el.dashboardTabs.appendChild(button);
+        }
+    }
+
+    function renderDashboardNav() {
+        if (!el.dashboardNav) {
+            return;
+        }
+        const dashboard = findDashboard(state.activeDashboardId);
+        state.activeDashboardId = dashboard.modId || "ultimatebankingsystem";
+        if (el.dashboardSwitcherTitle) {
+            el.dashboardSwitcherTitle.textContent = dashboard.title || state.activeDashboardId;
+        }
+        el.dashboardNav.textContent = "";
+        for (const panel of navPages(dashboard)) {
+            const link = document.createElement("a");
+            link.href = routeForPage(dashboard.modId, panel.id);
+            link.dataset.route = panel.id;
+            link.dataset.panelId = panel.id;
+            link.className = "nav-link";
+            link.textContent = panel.title || panel.id;
+            link.classList.toggle("active", panel.id === state.activePanelId);
+            el.dashboardNav.appendChild(link);
+        }
+        el.navLinks = Array.from(document.querySelectorAll(".nav-link"));
+        renderDashboardTabs();
+    }
+
+    function setActiveDashboard(modId, panelId) {
+        const dashboard = findDashboard(modId || state.activeDashboardId);
+        const panel = findPanel(dashboard, panelId) || findPage(dashboard, panelId);
+        state.activeDashboardId = dashboard.modId || "ultimatebankingsystem";
+        state.activePanelId = panel ? panel.id : (findPage(dashboard, panelId) || {}).id || "";
+        renderDashboardNav();
+        return {dashboard: dashboard, panel: panel};
+    }
+
     const SCALE_SUFFIXES = [
         "", "K", "M", "B", "T",
         "Qa", "Qi", "Sx", "Sp", "Oc", "No",
@@ -507,6 +713,9 @@
         if (num == null) {
             return abbreviateDigitsString(value);
         }
+        if (Math.abs(num) >= 1.0E63) {
+            return "Unlimited";
+        }
 
         let scaleIndex = 0;
         let abs = Math.abs(num);
@@ -523,7 +732,8 @@
     }
 
     function money(value) {
-        return "$" + abbreviateNumber(value);
+        const abbreviated = abbreviateNumber(value);
+        return abbreviated === "Unlimited" ? "Unlimited" : "$" + abbreviated;
     }
 
     function clamp(num, min, max) {
@@ -1119,11 +1329,37 @@
         applyTheme(state.theme === "dark" ? "light" : "dark");
     }
 
+    function applyDashboardMode(mode) {
+        state.dashboardMode = mode === "legacy" ? "legacy" : "component";
+        localStorage.setItem(dashboardModeStorageKey, state.dashboardMode);
+        document.body.dataset.dashboardMode = state.dashboardMode;
+        if (el.dashboardTopComponents && state.dashboardMode === "legacy") {
+            el.dashboardTopComponents.textContent = "";
+            el.dashboardTopComponents.hidden = true;
+        }
+        if (el.legacyModeToggle) {
+            el.legacyModeToggle.textContent = state.dashboardMode === "legacy" ? "Return to component UI" : "Compare legacy UI";
+            el.legacyModeToggle.classList.toggle("active", state.dashboardMode === "legacy");
+        }
+    }
+
+    function toggleDashboardMode() {
+        applyDashboardMode(state.dashboardMode === "legacy" ? "component" : "legacy");
+        handleRoute();
+    }
+
     function parseRoute() {
         const hash = (location.hash || "#/dashboard").replace(/^#/, "");
         const parts = hash.split("/").filter(Boolean);
         if (parts.length === 0) {
             return {page: "dashboard"};
+        }
+        if (parts[0] === "d" && parts[1]) {
+            return {
+                page: "dashboard-panel",
+                dashboardId: decodeRoutePart(parts[1]),
+                panelId: decodeRoutePart(parts[2] || "")
+            };
         }
         if (parts[0] === "shop-items" && parts[1]) {
             const rawId = parts.slice(1).join("/");
@@ -1140,14 +1376,32 @@
         if (parts[0] === "players" && parts[1] && parts[2] === "accounts" && parts[3]) {
             return {page: "account", playerId: parts[1], accountId: parts[3]};
         }
+        if (parts[0] === "users" && parts[1] && parts[2] === "accounts" && parts[3]) {
+            return {page: "account", playerId: parts[1], accountId: parts[3]};
+        }
         if (parts[0] === "players" && parts[1]) {
             return {page: "player", playerId: parts[1]};
+        }
+        if (parts[0] === "users" && parts[1]) {
+            return {page: "player", playerId: parts[1]};
+        }
+        if (parts[0] === "bank" && parts[1]) {
+            return {page: "bank", bankId: parts[1]};
         }
         if (parts[0] === "banks" && parts[1]) {
             return {page: "bank", bankId: parts[1]};
         }
+        if (parts[0] === "shop" && parts[1]) {
+            return {page: "shop", shopId: parts[1]};
+        }
         if (parts[0] === "shops" && parts[1]) {
             return {page: "shop", shopId: parts[1]};
+        }
+        if (parts[0] === "player" && parts[1]) {
+            return {page: "player", playerId: parts[1]};
+        }
+        if (parts[0] === "account" && parts[1]) {
+            return {page: "account", accountId: parts[1]};
         }
         if (parts[0] === "entities") {
             return {page: "banks"};
@@ -1156,6 +1410,14 @@
             return {page: parts[0]};
         }
         return {page: "dashboard"};
+    }
+
+    function decodeRoutePart(value) {
+        try {
+            return decodeURIComponent(String(value || ""));
+        } catch (ignored) {
+            return String(value || "");
+        }
     }
 
     function applyRouteMeta(page) {
@@ -1201,6 +1463,1525 @@
             card.innerHTML = "<span>" + html(label) + "</span><strong>" + html(value) + "</strong>";
             container.appendChild(card);
         }
+    }
+
+    function renderGenericDashboardPanel(dashboard, panel) {
+        if (!el.addonWidgetGrid) {
+            return;
+        }
+        el.pageTitle.textContent = panel ? panel.title || "Dashboard" : "Dashboard";
+        el.pageSubtitle.textContent = panel ? panel.subtitle || dashboard.subtitle || "" : dashboard.subtitle || "";
+        el.addonWidgetGrid.textContent = "";
+        const widgets = panel && Array.isArray(panel.widgets) ? panel.widgets : [];
+        if (widgets.length === 0) {
+            const empty = document.createElement("section");
+            empty.className = "panel dashboard-widget";
+            empty.innerHTML = "<p class=\"dashboard-widget-empty\">This dashboard panel has no widgets registered yet.</p>";
+            el.addonWidgetGrid.appendChild(empty);
+            return;
+        }
+        for (const widget of widgets) {
+            renderDashboardWidget(widget);
+        }
+    }
+
+    function renderDashboardWidget(widget) {
+        const section = document.createElement("section");
+        section.className = "panel dashboard-widget";
+        section.dataset.width = widget.width || "full";
+        const head = document.createElement("div");
+        head.className = "panel-head";
+        const titleWrap = document.createElement("div");
+        const title = document.createElement("h3");
+        title.textContent = widget.title || widget.id || "Widget";
+        titleWrap.appendChild(title);
+        if (widget.subtitle) {
+            const subtitle = document.createElement("p");
+            subtitle.className = "hint";
+            subtitle.textContent = widget.subtitle;
+            titleWrap.appendChild(subtitle);
+        }
+        head.appendChild(titleWrap);
+        section.appendChild(head);
+        const body = document.createElement("div");
+        body.className = "dashboard-widget-body";
+        section.appendChild(body);
+        el.addonWidgetGrid.appendChild(section);
+
+        if (widget.type === "iframe") {
+            renderIframeWidget(body, widget);
+            return;
+        }
+        if (!widget.dataUrl) {
+            renderWidgetPayload(body, widget, widget.options || {});
+            return;
+        }
+        body.innerHTML = "<p class=\"dashboard-widget-empty\">Loading...</p>";
+        api(widget.dataUrl)
+            .then(payload => renderWidgetPayload(body, widget, payload))
+            .catch(error => {
+                body.innerHTML = "<p class=\"dashboard-widget-error\">Widget failed: " + html(error.message) + "</p>";
+            });
+    }
+
+    function renderIframeWidget(body, widget) {
+        const iframe = document.createElement("iframe");
+        iframe.className = "dashboard-iframe";
+        iframe.src = widget.iframeUrl || "about:blank";
+        iframe.sandbox = "allow-forms allow-scripts";
+        iframe.title = widget.title || widget.id || "Addon widget";
+        body.textContent = "";
+        body.appendChild(iframe);
+    }
+
+    function renderWidgetPayload(body, widget, payload) {
+        payload = payload == null ? {} : payload;
+        const type = widget.type || "";
+        if (type === "kpi-grid") {
+            const grid = document.createElement("div");
+            grid.className = "kpi-grid compact-grid";
+            renderKpiCards(grid, Array.isArray(payload) ? payload : (payload.items || payload.kpis || []));
+            body.textContent = "";
+            body.appendChild(grid);
+            return;
+        }
+        if (type === "alert-list") {
+            renderAlertListWidget(body, payload.items || payload.alerts || payload || []);
+            return;
+        }
+        if (type === "table") {
+            renderTableWidget(body, payload);
+            return;
+        }
+        if (type === "key-value") {
+            renderKeyValueWidget(body, payload.entries || payload.items || []);
+            return;
+        }
+        if (type === "output") {
+            const pre = document.createElement("pre");
+            pre.className = "output";
+            pre.textContent = String(payload.text || payload.output || JSON.stringify(payload, null, 2));
+            body.textContent = "";
+            body.appendChild(pre);
+            return;
+        }
+        renderJsonWidget(body, payload);
+    }
+
+    function renderAlertListWidget(body, items) {
+        const list = document.createElement("ul");
+        list.className = "inline-alerts";
+        for (const item of Array.isArray(items) ? items : []) {
+            const li = document.createElement("li");
+            const tone = String(item.tone || item.type || "info");
+            li.className = "alert-" + tone;
+            li.textContent = String(item.message || item.label || item);
+            list.appendChild(li);
+        }
+        body.textContent = "";
+        body.appendChild(list);
+    }
+
+    function renderKeyValueWidget(body, entries) {
+        const grid = document.createElement("div");
+        grid.className = "kv-grid";
+        for (const entry of Array.isArray(entries) ? entries : []) {
+            const label = document.createElement("span");
+            label.textContent = String(entry.label || entry.key || "");
+            const value = document.createElement("strong");
+            value.textContent = String(entry.value == null ? "" : entry.value);
+            grid.appendChild(label);
+            grid.appendChild(value);
+        }
+        body.textContent = "";
+        body.appendChild(grid);
+    }
+
+    function renderTableWidget(body, payload) {
+        payload = payload == null ? {} : payload;
+        const columns = Array.isArray(payload.columns) ? payload.columns : [];
+        const rows = Array.isArray(payload.rows) ? payload.rows : [];
+        const tableWrap = document.createElement("div");
+        tableWrap.className = "table-wrap";
+        const table = document.createElement("table");
+        table.className = "data-table";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const col of columns) {
+            const th = document.createElement("th");
+            th.textContent = String(col.label || col.key || col);
+            headRow.appendChild(th);
+        }
+        thead.appendChild(headRow);
+        const tbody = document.createElement("tbody");
+        for (const row of rows) {
+            const tr = document.createElement("tr");
+            for (const col of columns) {
+                const key = String(col.key || col);
+                const td = document.createElement("td");
+                td.textContent = String(row[key] == null ? "" : row[key]);
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+        body.textContent = "";
+        body.appendChild(tableWrap);
+    }
+
+    function renderJsonWidget(body, payload) {
+        const pre = document.createElement("pre");
+        pre.className = "output";
+        pre.textContent = JSON.stringify(payload == null ? {} : payload, null, 2);
+        body.textContent = "";
+        body.appendChild(pre);
+    }
+
+    function resolveComponentPageRoute(route) {
+        const dashboard = findDashboard(route.dashboardId || "ultimatebankingsystem");
+        let pageId = route.panelId || route.page || "dashboard";
+        if (route.page === "dashboard-panel") {
+            pageId = route.panelId || "dashboard";
+        } else if (route.page === "bank") {
+            pageId = "bank";
+        } else if (route.page === "shop") {
+            pageId = "shop";
+        } else if (route.page === "shop-item") {
+            pageId = "shop-item";
+        } else if (route.page === "player") {
+            pageId = "player";
+        } else if (route.page === "account") {
+            pageId = "account";
+        }
+        const page = findPage(dashboard, pageId);
+        const navId = route.page === "bank" ? "banks"
+            : (route.page === "shop" ? "shops"
+                : (route.page === "shop-item" ? "shop-items"
+                    : ((route.page === "player" || route.page === "account") ? "users" : (page ? page.id : pageId))));
+        return {dashboard: dashboard, page: page, navId: navId, route: route};
+    }
+
+    function expandDashboardTemplate(template, route) {
+        return String(template || "").replace(/\{([a-zA-Z0-9_.-]+)\}/g, (match, key) => {
+            const value = route && route[key] != null ? route[key] : "";
+            return encodeURIComponent(String(value));
+        });
+    }
+
+    function renderComponentDashboardRoute(routeInfo) {
+        const resolved = resolveComponentPageRoute(routeInfo || parseRoute());
+        setActiveDashboard(resolved.dashboard.modId, resolved.navId);
+        setActivePage("addon", resolved.navId, resolved.page ? resolved.page.id : resolved.navId);
+        return renderComponentDashboardPage(resolved.dashboard, resolved.page, resolved.route);
+    }
+
+    function renderComponentDashboardPage(dashboard, page, route) {
+        if (!el.addonWidgetGrid) {
+            return Promise.resolve();
+        }
+        state.componentPage = page || null;
+        state.componentPageData = null;
+        el.pageTitle.textContent = page ? normalizedComponentPageTitle(page) : "Dashboard";
+        el.pageSubtitle.textContent = page ? (page.subtitle || dashboard.subtitle || "") : (dashboard.subtitle || "");
+        el.addonWidgetGrid.textContent = "";
+        if (el.dashboardTopComponents) {
+            el.dashboardTopComponents.textContent = "";
+            el.dashboardTopComponents.hidden = true;
+        }
+        if (!page) {
+            const empty = document.createElement("section");
+            empty.className = "panel dashboard-widget";
+            empty.innerHTML = "<p class=\"dashboard-widget-empty\">Dashboard page not found.</p>";
+            el.addonWidgetGrid.appendChild(empty);
+            return Promise.resolve();
+        }
+        const components = Array.isArray(page.components) ? page.components : [];
+        if (components.length === 0 && Array.isArray(page.widgets) && page.widgets.length > 0) {
+            renderGenericDashboardPanel(dashboard, page);
+            return Promise.resolve();
+        }
+        const loading = document.createElement("section");
+        loading.className = "panel dashboard-widget";
+        loading.innerHTML = "<p class=\"dashboard-widget-empty\">Loading...</p>";
+        el.addonWidgetGrid.appendChild(loading);
+        const dataUrl = expandDashboardTemplate(page.dataUrl || "", route || {});
+        const dataPromise = dataUrl ? api(dataUrl) : Promise.resolve({});
+        return dataPromise.then(payload => {
+            state.componentPageData = payload || {};
+            el.addonWidgetGrid.textContent = "";
+            if (components.length === 0) {
+                renderJsonWidget(el.addonWidgetGrid, payload || {});
+                return;
+            }
+            state.componentChartRenderers = [];
+            const context = {dashboard: dashboard, page: page, route: route || {}, pageData: payload || {}, chartRenderers: state.componentChartRenderers};
+            const topComponents = components.filter(component => componentOptions(component).placement === "top");
+            const bodyComponents = components.filter(component => componentOptions(component).placement !== "top");
+            if (el.dashboardTopComponents && topComponents.length > 0) {
+                el.dashboardTopComponents.hidden = false;
+                for (const component of topComponents) {
+                    const node = renderDashboardComponent(component, payload || {}, context, true);
+                    if (node) {
+                        el.dashboardTopComponents.appendChild(node);
+                    }
+                }
+            }
+            for (const component of bodyComponents) {
+                const node = renderDashboardComponent(component, payload || {}, context, true);
+                if (node) {
+                    el.addonWidgetGrid.appendChild(node);
+                }
+            }
+            requestAnimationFrame(() => {
+                for (const renderChart of state.componentChartRenderers || []) {
+                    renderChart();
+                }
+            });
+        }).catch(error => {
+            el.addonWidgetGrid.textContent = "";
+            const failed = document.createElement("section");
+            failed.className = "panel dashboard-widget";
+            failed.innerHTML = "<p class=\"dashboard-widget-error\">Page failed: " + html(error.message) + "</p>";
+            el.addonWidgetGrid.appendChild(failed);
+        });
+    }
+
+    function renderDashboardComponent(component, pageData, context, topLevel) {
+        if (!component) {
+            return null;
+        }
+        const type = String(component.type || "");
+        const width = component.width || "full";
+        if (type === "two-column" && topLevel && String(component.id || "") === "bank-overview-split") {
+            const section = document.createElement("section");
+            section.className = "panel dashboard-component-panel dashboard-widget";
+            section.dataset.width = width;
+            section.appendChild(componentHeader("Bank Overview", ""));
+            const split = document.createElement("section");
+            split.className = "split-grid dashboard-component-split";
+            renderComponentChildren(split, component, pageData, context);
+            section.appendChild(split);
+            return section;
+        }
+        if (type === "panel") {
+            const section = document.createElement("section");
+            section.className = "panel dashboard-component-panel" + (topLevel ? " dashboard-widget" : "");
+            section.dataset.width = width;
+            const initialChildCount = section.childElementCount;
+            const title = normalizedComponentTitle(component);
+            if (title || component.subtitle) {
+                section.appendChild(componentHeader(title, component.subtitle));
+            }
+            renderComponentChildren(section, component, pageData, context);
+            if (section.childElementCount === initialChildCount || (section.childElementCount === 1 && section.querySelector(":scope > .panel-head"))) {
+                return null;
+            }
+            return section;
+        }
+        if (type === "stack") {
+            const stack = document.createElement("div");
+            stack.className = topLevel ? "dashboard-widget dashboard-component-stack" : "dashboard-component-stack";
+            stack.dataset.width = width;
+            renderComponentChildren(stack, component, pageData, context);
+            return stack;
+        }
+        if (type === "two-column") {
+            const split = document.createElement("section");
+            split.className = "split-grid dashboard-component-split" + (topLevel ? " dashboard-widget" : "");
+            split.dataset.width = width;
+            renderComponentChildren(split, component, pageData, context);
+            return split;
+        }
+        const wrapper = document.createElement("div");
+        wrapper.className = topLevel ? "dashboard-widget dashboard-component" : "dashboard-component";
+        wrapper.dataset.width = width;
+        renderLeafComponent(wrapper, component, pageData, context);
+        if (!hasRenderableContent(wrapper)) {
+            return null;
+        }
+        return wrapper;
+    }
+
+    function normalizedComponentPageTitle(page) {
+        if (String(page && page.id || "") === "bank" && String(page.title || "") === "Bank") {
+            return "Bank Detail";
+        }
+        return String((page && page.title) || "Dashboard");
+    }
+
+    function normalizedComponentTitle(component) {
+        const id = String(component && component.id || "");
+        const title = String(component && component.title || "");
+        const bankTitles = {
+            "bank-accounts": "Bank Accounts",
+            "bank-roles": "Access Roles",
+            "bank-shares": "Shareholders",
+            "bank-offers": "Interbank Offers",
+            "bank-loans": "Interbank Loans"
+        };
+        return bankTitles[id] || title;
+    }
+
+    function hasRenderableContent(node) {
+        if (!node) {
+            return false;
+        }
+        if (node.children && node.children.length > 0) {
+            return true;
+        }
+        return String(node.textContent || "").trim().length > 0;
+    }
+
+    function componentHeader(titleValue, subtitleValue) {
+        const head = document.createElement("div");
+        head.className = "panel-head";
+        const titleWrap = document.createElement("div");
+        if (titleValue) {
+            const title = document.createElement("h3");
+            title.textContent = String(titleValue);
+            titleWrap.appendChild(title);
+        }
+        head.appendChild(titleWrap);
+        if (subtitleValue) {
+            const subtitle = document.createElement("span");
+            subtitle.className = "hint";
+            subtitle.textContent = String(subtitleValue);
+            head.appendChild(subtitle);
+        }
+        return head;
+    }
+
+    function renderComponentChildren(parent, component, pageData, context) {
+        const children = Array.isArray(component.children) ? component.children : [];
+        for (const child of children) {
+            const node = renderDashboardComponent(child, pageData, context, false);
+            if (node) {
+                parent.appendChild(node);
+            }
+        }
+    }
+
+    function renderLeafComponent(parent, component, pageData, context) {
+        const type = String(component.type || "");
+        const data = resolveComponentData(component, pageData);
+        if (type === "kpi-group") {
+            renderKpiGroupComponent(parent, component, data, context);
+            return;
+        }
+        if (type === "alert-list") {
+            renderAlertListComponent(parent, component, data, context);
+            return;
+        }
+        if (type === "table") {
+            renderTableComponent(parent, component, data);
+            return;
+        }
+        if (type === "key-value") {
+            renderKeyValueComponent(parent, data);
+            return;
+        }
+        if (type === "line-chart" || type === "bar-chart" || type === "status-chart" || type === "shop-type-chart") {
+            renderChartComponent(parent, component, data, type, context);
+            return;
+        }
+        if (type === "health-meters") {
+            renderHealthMetersComponent(parent, pageData);
+            return;
+        }
+        if (type === "item-card-list") {
+            renderItemCardListComponent(parent, component, data);
+            return;
+        }
+        if (type === "card-carousel") {
+            renderSimpleCardCarouselComponent(parent, data);
+            return;
+        }
+        if (type === "roadmap") {
+            renderRoadmapComponent(parent, data, context);
+            return;
+        }
+        if (type === "command-runner") {
+            renderCommandRunnerComponent(parent, component);
+            return;
+        }
+        if (type === "action-form") {
+            renderActionFormComponent(parent, component, context);
+            return;
+        }
+        if (type === "action-buttons") {
+            renderActionButtonsComponent(parent, component, context);
+            return;
+        }
+        if (type === "item-model") {
+            renderItemModelComponent(parent, pageData);
+            return;
+        }
+        if (type === "plain-list") {
+            renderPlainListComponent(parent, data);
+            return;
+        }
+        if (type === "output") {
+            if (!component.dataPath && /-actions-output$/.test(String(component.id || ""))) {
+                return;
+            }
+            renderOutputComponent(parent, component, component.dataPath ? data : undefined);
+            return;
+        }
+        renderJsonWidget(parent, data);
+    }
+
+    function resolveComponentData(component, pageData) {
+        if (!component) {
+            return pageData;
+        }
+        const path = component.dataPath;
+        const direct = path ? valueAtPath(pageData, path) : pageData;
+        if (direct !== undefined && direct !== null) {
+            return direct;
+        }
+        const fallback = legacyUbsDataPath(component.id, path);
+        if (fallback) {
+            const value = valueAtPath(pageData, fallback);
+            if (value !== undefined && value !== null) {
+                return value;
+            }
+        }
+        return direct;
+    }
+
+    function legacyUbsDataPath(componentId, dataPath) {
+        const id = String(componentId || "");
+        const path = String(dataPath || "");
+        const exact = {
+            "bank-kpis": "bank",
+            "bank-summary": "bank",
+            "bank-summary-table": "bank",
+            "bank-products-table": "loanProducts",
+            "bank-offers-table": "interbankOffers",
+            "bank-loans-table": "interbankLoans",
+            "shop-summary": "shop",
+            "player-kpis": "summary",
+            "player-cards": "creditCards",
+            "account-kpis": "account",
+            "account-summary": "account",
+            "account-summary-table": "account",
+            "account-safebox-table": "safeBox"
+        };
+        if (exact[id]) {
+            return exact[id];
+        }
+        if (id.startsWith("bank-") && (path === "kpis" || path === "summary")) {
+            return "bank";
+        }
+        if (id.startsWith("shop-") && path === "summary") {
+            return "shop";
+        }
+        if (id.startsWith("player-") && path === "kpis") {
+            return "summary";
+        }
+        if (id.startsWith("account-") && (path === "kpis" || path === "summary")) {
+            return "account";
+        }
+        return "";
+    }
+
+    function componentOptions(component) {
+        return (component && component.options) || {};
+    }
+
+    function valueAtPath(source, path) {
+        if (!path) {
+            return source;
+        }
+        const parts = String(path).split(".").filter(Boolean);
+        let current = source;
+        for (const part of parts) {
+            if (current == null) {
+                return undefined;
+            }
+            current = current[part];
+        }
+        return current;
+    }
+
+    function formatDashboardValue(value, format) {
+        const kind = String(format || "").toLowerCase();
+        if (kind === "money") {
+            return money(value);
+        }
+        if (kind === "cents-money") {
+            return money((parseLooseNumber(value) || 0) / 100);
+        }
+        if (kind === "number") {
+            return abbreviateNumber(value || 0);
+        }
+        if (kind === "decimal2") {
+            const num = parseLooseNumber(value);
+            return num == null ? "0.00" : Number(num).toFixed(2);
+        }
+        if (kind === "percent") {
+            return percent(parseLooseNumber(value) || 0, 1);
+        }
+        if (kind === "percent-or-na") {
+            const num = parseLooseNumber(value);
+            return num == null || num < 0 ? "n/a" : percent(num, 1);
+        }
+        if (kind === "percent-string") {
+            return String(value == null ? "0.00" : value) + "%";
+        }
+        if (kind === "bytes") {
+            return formatBytes(value || 0);
+        }
+        if (kind === "ms") {
+            return formatMs(value || 0);
+        }
+        if (kind === "id") {
+            return shortId(value);
+        }
+        if (kind === "boolean") {
+            return value === true ? "Yes" : (value === false ? "No" : "-");
+        }
+        if (kind === "epoch-millis") {
+            return formatEpochMillis(value);
+        }
+        if (Array.isArray(value) || (value && typeof value === "object")) {
+            return summarizeDashboardValue(value);
+        }
+        return String(value == null ? "-" : value);
+    }
+
+    function summarizeDashboardValue(value) {
+        if (Array.isArray(value)) {
+            return value.length === 0 ? "None" : value.map(row => summarizeDashboardValue(row)).join(", ");
+        }
+        if (!value || typeof value !== "object") {
+            return String(value == null ? "-" : value);
+        }
+        const name = value.name || value.displayName || value.bankName || value.shopName || value.ownerName || value.type || value.status || value.role;
+        const id = value.id || value.bankId || value.shopId || value.playerId || value.accountId || value.itemId || value.cardId || value.loanId || value.orderId || value.palletId;
+        if (name && id) {
+            return String(name) + " (" + shortId(id) + ")";
+        }
+        if (name) {
+            return String(name);
+        }
+        if (id) {
+            return shortId(id);
+        }
+        const entries = Object.entries(value).filter(([, entryValue]) => entryValue != null && entryValue !== "");
+        if (entries.length === 0) {
+            return "None";
+        }
+        return entries.slice(0, 3).map(([key, entryValue]) => humanizeDashboardLabel(key) + ": " + formatDashboardValue(entryValue, inferDashboardFormat(key, entryValue))).join(" | ");
+    }
+
+    function humanizeDashboardLabel(raw) {
+        const text = String(raw || "").trim();
+        if (!text) {
+            return "";
+        }
+        const spaced = text
+            .replace(/[_-]+/g, " ")
+            .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+            .replace(/\b(id|uuid)\b/ig, "ID")
+            .replace(/\bpct\b/ig, "%")
+            .replace(/\bmspt\b/ig, "MSPT")
+            .replace(/\bms\b/ig, "ms")
+            .replace(/\bapr\b/ig, "APR")
+            .replace(/\bpin\b/ig, "PIN")
+            .replace(/\bkpi\b/ig, "KPI");
+        return spaced.replace(/\w\S*/g, word => {
+            if (/^(ID|UUID|APR|PIN|KPI|MSPT|UBS|CPU|TPS)$/i.test(word)) {
+                return word.toUpperCase();
+            }
+            if (word === "ms" || word === "%") {
+                return word;
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        });
+    }
+
+    function inferDashboardFormat(key, value) {
+        const lower = String(key || "").toLowerCase();
+        if (lower.endsWith("id") || lower === "id" || lower.includes("uuid")) {
+            return "id";
+        }
+        if (typeof value === "boolean" || lower.startsWith("is") || lower.startsWith("has") || lower === "online" || lower === "owner" || lower === "active" || lower === "frozen" || lower === "defaulted" || lower === "primary") {
+            return "boolean";
+        }
+        if (lower.includes("epochmillis") || lower.endsWith("atmillis") || lower.endsWith("millis")) {
+            return "epoch-millis";
+        }
+        if (lower.includes("cents")) {
+            return "cents-money";
+        }
+        if (lower.includes("balance") || lower.includes("deposit") || lower.includes("reserve") || lower.includes("revenue") || lower.includes("target") || lower.includes("fee") || lower.includes("limit") || lower.includes("lendable") || lower.includes("remaining") || lower.includes("withdrawn") || lower.includes("principal") || lower.includes("amount")) {
+            return "money";
+        }
+        if (lower.includes("pct") || lower.includes("ratio") || lower.includes("percent") || lower.endsWith("rate")) {
+            return "percent";
+        }
+        if (typeof value === "number") {
+            return "number";
+        }
+        return "";
+    }
+
+    function renderKpiGroupComponent(parent, component, data, context) {
+        const options = componentOptions(component);
+        const cards = Array.isArray(options.cards) ? options.cards : [];
+        const items = [];
+        if (cards.length > 0) {
+            for (const card of cards) {
+                const raw = resolveKpiCardValue(component, card, data, context);
+                items.push({
+                    label: card.label || card.path || "",
+                    value: formatDashboardValue(raw, card.format),
+                    hint: card.hint || ""
+                });
+            }
+        } else if (data && typeof data === "object") {
+            for (const key of Object.keys(data)) {
+                items.push({label: key, value: formatDashboardValue(data[key], "")});
+            }
+        }
+        const grid = document.createElement("div");
+        grid.className = "kpi-grid" + (options.compact ? " compact-grid" : "");
+        renderKpiCards(grid, items);
+        parent.textContent = "";
+        parent.appendChild(grid);
+    }
+
+    function resolveKpiCardValue(component, card, data, context) {
+        const path = String(card.path || card.key || "");
+        let raw = valueAtPath(data || {}, path);
+        if (raw !== undefined && raw !== null) {
+            return raw;
+        }
+        const id = String(component && component.id || "");
+        if (id === "bank-kpis") {
+            if (path === "accounts") {
+                return valueAtPath(data || {}, "accountsCount");
+            }
+            if (path === "loans") {
+                return valueAtPath(data || {}, "outstandingLoans");
+            }
+        }
+        if (id === "player-kpis" && path === "cards") {
+            return Number(valueAtPath(data || {}, "activeCards") || 0) + Number(valueAtPath(data || {}, "blockedCards") || 0);
+        }
+        if (id === "account-kpis" && path === "cards") {
+            const pageData = (context && context.pageData) || {};
+            return rowsFromData(pageData.cards).length;
+        }
+        return raw;
+    }
+
+    function renderAlertListComponent(parent, component, data, context) {
+        const options = componentOptions(component);
+        const items = options.healthReport
+            ? buildHealthReportItems((context && context.pageData) || {})
+            : (Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []));
+        const list = document.createElement("ul");
+        list.className = "inline-alerts";
+        const rows = items.length > 0 ? items : [{tone: "ok", text: "No alerts."}];
+        for (const item of rows) {
+            const li = document.createElement("li");
+            const text = typeof item === "string" ? item : (item.text || item.message || item.label || "");
+            const tone = typeof item === "string" && item.toLowerCase().includes("no critical") ? "ok" : (item.tone || item.type || "warn");
+            li.className = tone === "ok" || tone === "success" ? "ok" : "warn";
+            li.textContent = String(text || "No alerts.");
+            list.appendChild(li);
+        }
+        parent.textContent = "";
+        parent.appendChild(list);
+    }
+
+    function buildHealthReportItems(payload) {
+        const perf = (payload || {}).performance || {};
+        const serverMspt = Number(perf.serverAvgMspt || 0);
+        const cpuPct = Number(perf.processCpuLoadPct || 0);
+        const modTickBudgetPct = Number(perf.modTickBudgetPct || 0);
+        const modLagSharePct = Number(perf.modEstimatedLagSharePct || 0);
+        const sampleSize = Number(perf.sampleSizeTicks || 0);
+        const sampleAt = Number(perf.lastSampleEpochMillis || 0);
+        const uptime = Number((payload || {}).uptimeSeconds || 0);
+        const lines = [];
+        if (serverMspt >= 50) {
+            lines.push({tone: "warn", text: "Server is over 50 mspt. UBS estimated lag share is " + percent(modLagSharePct, 1) + "."});
+        } else if (serverMspt > 0) {
+            lines.push({tone: "ok", text: "Server tick time is stable at " + formatMs(serverMspt) + "."});
+        }
+        if (modTickBudgetPct >= 35) {
+            lines.push({tone: "warn", text: "UBS is using " + percent(modTickBudgetPct, 1) + " of the 50 ms/tick budget."});
+        } else {
+            lines.push({tone: "ok", text: "UBS tick budget usage is " + percent(modTickBudgetPct, 1) + "."});
+        }
+        lines.push({tone: "ok", text: "UBS average heap churn per tick: " + formatBytes(perf.modAvgAllocBytesPerTick || 0) + "."});
+        if (cpuPct >= 85) {
+            lines.push({tone: "warn", text: "Process CPU load is high at " + percent(cpuPct, 1) + "."});
+        } else if (cpuPct >= 0) {
+            lines.push({tone: "ok", text: "Process CPU load is " + percent(cpuPct, 1) + "."});
+        }
+        if (sampleSize > 0 && sampleAt > 0) {
+            const ageSeconds = Math.max(0, Math.floor((Date.now() - sampleAt) / 1000));
+            lines.push({tone: "ok", text: "Window: " + sampleSize + " ticks | sample age " + ageSeconds + "s | uptime " + uptime + "s."});
+        } else {
+            lines.push({tone: "warn", text: "Collecting performance samples..."});
+        }
+        return lines;
+    }
+
+    function rowsFromData(data) {
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.rows)) {
+            return data.rows;
+        }
+        if (data && Array.isArray(data.entries)) {
+            return data.entries;
+        }
+        return [];
+    }
+
+    function renderTableComponent(parent, component, data) {
+        const options = componentOptions(component);
+        const rows = rowsFromData(data);
+        const columns = Array.isArray(options.columns) && options.columns.length > 0
+            ? options.columns
+            : inferColumns(rows);
+        const tableWrap = document.createElement("div");
+        tableWrap.className = "table-wrap";
+        const table = document.createElement("table");
+        table.className = "data-table";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const col of columns) {
+            const th = document.createElement("th");
+            th.textContent = humanizeDashboardLabel(col.label || col.path || col.key || col);
+            headRow.appendChild(th);
+        }
+        if (options.detailRoute) {
+            const th = document.createElement("th");
+            th.textContent = "Open";
+            headRow.appendChild(th);
+        }
+        thead.appendChild(headRow);
+        const tbody = document.createElement("tbody");
+        for (const row of rows) {
+            const tr = document.createElement("tr");
+            for (const col of columns) {
+                const key = String(col.path || col.key || col);
+                const td = document.createElement("td");
+                const raw = valueAtPath(row, key);
+                td.textContent = formatDashboardValue(raw, col.format || inferDashboardFormat(key, raw));
+                tr.appendChild(td);
+            }
+            if (options.detailRoute) {
+                const key = String(options.detailKey || "id");
+                const value = valueAtPath(row, key) || valueAtPath(row, "id") || valueAtPath(row, "itemId") || valueAtPath(row, "bankId") || valueAtPath(row, "shopId") || valueAtPath(row, "playerId");
+                const td = document.createElement("td");
+                const link = document.createElement("a");
+                link.className = "btn btn-ghost";
+                link.href = String(options.detailRoute).replace(/\{[^}]+}/g, encodeURIComponent(String(value || "")));
+                link.textContent = "Open";
+                td.appendChild(link);
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        if (rows.length === 0) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = Math.max(1, columns.length + (options.detailRoute ? 1 : 0));
+            td.textContent = "No data.";
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+        parent.textContent = "";
+        parent.appendChild(tableWrap);
+    }
+
+    function inferColumns(rows) {
+        const sample = rows.find(row => row && typeof row === "object") || {};
+        const keys = Object.keys(sample);
+        const preferred = [
+            "name", "displayName", "bankName", "shopName", "ownerName", "status", "type", "role", "level",
+            "balance", "totalBalance", "deposits", "reserve", "revenueDollars", "price", "stock", "accounts",
+            "cards", "activeCards", "blockedCards", "online", "createdAtMillis"
+        ];
+        const ordered = [];
+        for (const key of preferred) {
+            if (keys.includes(key) && !ordered.includes(key)) {
+                ordered.push(key);
+            }
+        }
+        for (const key of keys) {
+            if (!ordered.includes(key) && !key.toLowerCase().endsWith("id")) {
+                ordered.push(key);
+            }
+        }
+        for (const key of keys) {
+            if (!ordered.includes(key)) {
+                ordered.push(key);
+            }
+        }
+        return ordered.slice(0, 8).map(key => ({label: humanizeDashboardLabel(key), path: key}));
+    }
+
+    function renderKeyValueComponent(parent, data) {
+        const entries = Array.isArray(data)
+            ? data
+            : Object.keys(data || {}).map(key => ({label: key, value: data[key]}));
+        if (entries.length === 0) {
+            parent.textContent = "";
+            return;
+        }
+        const grid = document.createElement("div");
+        grid.className = "kv-grid";
+        for (const entry of entries) {
+            const item = document.createElement("div");
+            item.className = "kv-item";
+            const label = document.createElement("span");
+            label.className = "k";
+            label.textContent = humanizeDashboardLabel(entry.label || entry.key || "");
+            const value = document.createElement("strong");
+            value.className = "v";
+            const raw = entry.value;
+            value.textContent = formatDashboardValue(raw, entry.format || inferDashboardFormat(entry.label || entry.key, raw));
+            item.appendChild(label);
+            item.appendChild(value);
+            grid.appendChild(item);
+        }
+        if (grid.children.length === 0) {
+            parent.textContent = "";
+            return;
+        }
+        parent.textContent = "";
+        parent.appendChild(grid);
+    }
+
+    function renderChartComponent(parent, component, data, type, context) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "chart-svg" + (type === "line-chart" ? "" : " small"));
+        svg.setAttribute("viewBox", type === "line-chart" ? "0 0 900 250" : "0 0 420 230");
+        svg.setAttribute("preserveAspectRatio", "none");
+        const info = document.createElement("div");
+        info.className = "chart-info-grid";
+        parent.textContent = "";
+        parent.appendChild(svg);
+        parent.appendChild(info);
+        const draw = () => {
+            if (type === "status-chart") {
+                renderBankStatusChart(svg, rowsFromData(data), info);
+            } else if (type === "shop-type-chart") {
+                renderShopTypeMixChart(svg, rowsFromData(data), info);
+            } else if (type === "bar-chart") {
+                renderValueBarChart(svg, rowsFromData(data));
+            } else {
+                renderEconomyTrendChart(svg, rowsFromData(data), info);
+            }
+        };
+        draw();
+        if (context && Array.isArray(context.chartRenderers)) {
+            context.chartRenderers.push(draw);
+        }
+    }
+
+    function renderHealthMetersComponent(parent, data) {
+        const perf = data.performance || data.perf || data || {};
+        const meters = [
+            {label: "UBS Tick Budget", value: Number(perf.modTickBudgetPct || 0), hint: percent(Number(perf.modTickBudgetPct || 0), 1), tooltip: explainUbsTickBudget(Number(perf.modTickBudgetPct || 0))},
+            {label: "UBS Share of Server Tick", value: Number(perf.modShareOfServerTickPct || 0), hint: percent(Number(perf.modShareOfServerTickPct || 0), 1), tooltip: explainUbsShareOfTick(Number(perf.modShareOfServerTickPct || 0))},
+            {label: "Estimated UBS Lag Share", value: Number(perf.modEstimatedLagSharePct || 0), hint: percent(Number(perf.modEstimatedLagSharePct || 0), 1), tooltip: explainLagShare(Number(perf.modEstimatedLagSharePct || 0))},
+            {label: "UBS Heap Churn Share", value: Number(perf.modAllocHeapSharePct || 0), hint: percent(Number(perf.modAllocHeapSharePct || 0), 2), tooltip: "Estimated share of heap churn per tick attributed to UBS. Lower is better."}
+        ];
+        const grid = document.createElement("div");
+        grid.className = "health-meter-grid";
+        for (const meter of meters) {
+            const node = document.createElement("article");
+            const safeValue = clamp(meter.value, 0, 100);
+            node.className = "health-meter";
+            node.dataset.tooltip = meter.tooltip || (meter.label + ": " + meter.hint);
+            node.tabIndex = 0;
+            node.innerHTML =
+                "<div class=\"health-meter-head\"><span>" + html(meter.label) + "</span><strong>" + html(meter.hint) + "</strong></div>" +
+                "<div class=\"health-meter-track\"><div class=\"health-meter-fill " + meterTone(safeValue) + "\" style=\"width:" + safeValue.toFixed(1) + "%\"></div></div>";
+            grid.appendChild(node);
+        }
+        parent.textContent = "";
+        parent.appendChild(grid);
+    }
+
+    function renderItemCardListComponent(parent, component, data) {
+        const options = componentOptions(component);
+        const rows = rowsFromData(data);
+        const list = document.createElement("div");
+        list.className = "shop-item-list";
+        for (const row of rows) {
+            const itemId = String(row.itemId || row.id || row.item || "");
+            const card = document.createElement("article");
+            card.className = "shop-item-card";
+            card.tabIndex = 0;
+            card.innerHTML =
+                "<div class=\"shop-item-card-head\"><div><strong>" + html(row.displayName || row.name || itemId || "Item") + "</strong><span class=\"hint\">" + html(itemId) + "</span></div></div>" +
+                "<div class=\"shop-item-stats\">" +
+                "<span>Listings <strong>" + html(formatDashboardValue(row.listings || row.listingsTotal || 0, "number")) + "</strong></span>" +
+                "<span>Average <strong>" + html(formatDashboardValue(row.priceAvgCents || row.averagePrice || row.avgPrice || row.price || 0, row.priceAvgCents == null ? "money" : "cents-money")) + "</strong></span>" +
+                "</div>";
+            const route = String(options.detailRoute || "").replace(/\{[^}]+}/g, encodeURIComponent(itemId));
+            if (route) {
+                card.addEventListener("click", () => { location.hash = route.replace(/^#/, "#"); });
+            }
+            list.appendChild(card);
+        }
+        if (rows.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "dashboard-widget-empty";
+            empty.textContent = "No items.";
+            list.appendChild(empty);
+        }
+        parent.textContent = "";
+        parent.appendChild(list);
+    }
+
+    function renderSimpleCardCarouselComponent(parent, data) {
+        const rows = rowsFromData(data);
+        const track = document.createElement("div");
+        track.className = "card-track component-card-track";
+        for (const row of rows) {
+            const card = document.createElement("article");
+            card.className = "credit-card" + (row.blocked ? " blocked" : "");
+            card.innerHTML =
+                "<div class=\"cc-top\"><span>" + html(row.holderName || row.ownerName || "Card") + "</span><strong>" + html(row.maskedNumber || row.cardId || "-") + "</strong></div>" +
+                "<div class=\"cc-bottom\"><span>" + html(row.accountId || "") + "</span><span>" + html(row.status || "") + "</span></div>";
+            track.appendChild(card);
+        }
+        if (rows.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "dashboard-widget-empty";
+            empty.textContent = "No cards.";
+            parent.textContent = "";
+            parent.appendChild(empty);
+            return;
+        }
+        parent.textContent = "";
+        parent.appendChild(track);
+    }
+
+    function renderRoadmapComponent(parent, data, context) {
+        const rows = rowsFromData(data);
+        const track = document.createElement("div");
+        track.className = "roadmap-track";
+        const shopLevel = Number(valueAtPath((context && context.pageData) || {}, "kpis.level") || 0);
+        for (const row of rows) {
+            const node = document.createElement("article");
+            const state = classifyRoadmapState(row.state || row.status, row.level, shopLevel);
+            node.className = "roadmap-node " + state;
+            const title = row.title || (row.level ? "Level " + row.level : (row.name || "Step"));
+            node.innerHTML =
+                "<div class=\"roadmap-head\"><strong class=\"roadmap-level\">" + html(title) + "</strong><span class=\"roadmap-state\">" + html(row.state || row.status || state) + "</span></div>" +
+                "<div class=\"roadmap-target\">Revenue target<strong>" + html(row.requiredRevenueDollars != null ? money(row.requiredRevenueDollars) : "-") + "</strong></div>" +
+                "<div class=\"roadmap-metrics\">" +
+                roadmapMetric("Claims", row.claimCapacityBlocks) +
+                roadmapMetric("Stockroom", row.stockroomCapacityBlocks) +
+                roadmapMetric("Displays", row.displayCapacity) +
+                roadmapMetric("Cashiers", row.cashierCapacity) +
+                "</div>";
+            track.appendChild(node);
+        }
+        if (rows.length === 0 && data && typeof data === "object") {
+            for (const key of Object.keys(data)) {
+                const node = document.createElement("article");
+                node.className = "roadmap-card";
+                node.innerHTML = "<strong>" + html(key) + "</strong><p>" + html(formatDashboardValue(data[key], "")) + "</p>";
+                track.appendChild(node);
+            }
+        }
+        parent.textContent = "";
+        parent.appendChild(track);
+    }
+
+    function roadmapMetric(label, value) {
+        return "<span class=\"roadmap-metric\"><span>" + html(label) + "</span><strong>" + html(value == null ? "-" : abbreviateNumber(value)) + "</strong></span>";
+    }
+
+    function renderCommandRunnerComponent(parent, component) {
+        const options = componentOptions(component);
+        const endpoint = String(options.endpoint || "/api/webadmin/command");
+        const quick = Array.isArray(options.quickCommands) ? options.quickCommands : [];
+        const row = document.createElement("div");
+        row.className = "command-row";
+        const output = document.createElement("pre");
+        output.className = "output";
+        output.textContent = "No command executed yet.";
+        function run(command) {
+            const raw = String(command || input.value || "").trim();
+            if (!raw) {
+                return;
+            }
+            output.textContent = "Running /" + raw.replace(/^\//, "") + "...";
+            api(endpoint, {method: "POST", body: JSON.stringify({command: raw})})
+                .then(result => {
+                    output.textContent = "Command: /" + raw.replace(/^\//, "") + "\nResult code: " + Number(result.result || 0);
+                    pushAlert("/" + raw.replace(/^\//, "") + " executed.", "success");
+                })
+                .catch(error => {
+                    output.textContent = "Error: " + error.message;
+                    pushAlert(error.message, "error");
+                });
+        }
+        for (const command of quick) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn-ghost";
+            button.textContent = String(command);
+            button.addEventListener("click", () => run(command));
+            row.appendChild(button);
+        }
+        const inputRow = document.createElement("div");
+        inputRow.className = "command-row";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = "Run server command";
+        const execute = document.createElement("button");
+        execute.type = "button";
+        execute.className = "btn btn-primary";
+        execute.textContent = "Execute";
+        execute.addEventListener("click", () => run(input.value));
+        inputRow.appendChild(input);
+        inputRow.appendChild(execute);
+        parent.textContent = "";
+        parent.appendChild(row);
+        parent.appendChild(inputRow);
+        parent.appendChild(output);
+    }
+
+    function renderActionButtonsComponent(parent, component, context) {
+        const options = componentOptions(component);
+        const endpoint = expandDashboardTemplate(options.endpoint || "", context.route || {});
+        if (isBankActionEndpoint(endpoint, component)) {
+            renderBankActionFormsComponent(parent, component, context);
+            return;
+        }
+        const output = document.createElement("pre");
+        output.className = "output";
+        output.textContent = "No action executed yet.";
+        const fields = document.createElement("div");
+        fields.className = "component-action-fields";
+        const argInputs = [];
+        for (let i = 1; i <= 4; i++) {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.placeholder = "arg" + i;
+            input.dataset.arg = "arg" + i;
+            argInputs.push(input);
+            fields.appendChild(input);
+        }
+        const row = document.createElement("div");
+        row.className = "command-row component-action-row";
+        for (const action of component.actions || []) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = action.options && action.options.danger ? "btn btn-danger" : "btn btn-ghost";
+            button.textContent = action.label || action.id;
+            button.addEventListener("click", () => {
+                if (action.confirm && !confirm(action.confirm)) {
+                    return;
+                }
+                const body = Object.assign({}, action.options || {}, {action: (action.options || {}).action || action.id});
+                for (const input of argInputs) {
+                    if (input.value.trim()) {
+                        body[input.dataset.arg] = input.value.trim();
+                    }
+                }
+                output.textContent = "Running " + (action.label || action.id) + "...";
+                api(endpoint || action.endpoint, {
+                    method: action.method || "POST",
+                    body: JSON.stringify(body)
+                }).then(result => {
+                    output.textContent = JSON.stringify(result, null, 2);
+                    if (action.refreshPage !== false) {
+                        renderComponentDashboardRoute(parseRoute());
+                    }
+                }).catch(error => {
+                    output.textContent = "Error: " + error.message;
+                });
+            });
+            row.appendChild(button);
+        }
+        parent.textContent = "";
+        parent.appendChild(fields);
+        parent.appendChild(row);
+        parent.appendChild(output);
+    }
+
+    function renderActionFormComponent(parent, component, context) {
+        const options = componentOptions(component);
+        const endpoint = expandDashboardTemplate(options.endpoint || "", context.route || {});
+        if (String(options.preset || "") === "bank-admin" || isBankActionEndpoint(endpoint, component)) {
+            renderBankActionFormsComponent(parent, component, context);
+            return;
+        }
+        const sections = Array.isArray(options.sections) ? options.sections : [];
+        renderActionFormSections(parent, endpoint, sections, context, {
+            emptyText: "No form fields configured.",
+            outputText: "No action executed yet."
+        });
+    }
+
+    function isBankActionEndpoint(endpoint, component) {
+        const id = String((component && component.id) || "");
+        const target = String(endpoint || (componentOptions(component).endpoint || ""));
+        return id.indexOf("bank-actions") >= 0 || /\/api\/webadmin\/bank\/[^/{}]+\/action$/.test(target) || /\/api\/webadmin\/bank\/\{bankId\}\/action$/.test(target);
+    }
+
+    function renderBankActionFormsComponent(parent, component, context) {
+        const endpoint = expandDashboardTemplate(componentOptions(component).endpoint || "/api/webadmin/bank/{bankId}/action", context.route || {});
+        renderActionFormSections(parent, endpoint, buildBankActionFormSections(context), context, {
+            className: "bank-action-forms",
+            emptyText: "Bank action forms are not available.",
+            outputText: "No bank action executed yet."
+        });
+    }
+
+    function buildBankActionFormSections(context) {
+        const payload = (context && context.pageData) || {};
+        const bank = payload.bank || {};
+        const limits = payload.limits || {};
+        return [
+            {
+                title: "Overview & Policy",
+                subtitle: "Matches the legacy Edit Overview modal and policy controls.",
+                fields: [
+                    textField("ownerLookup", "Owner Name", "Online name or UUID", bank.ownerName || ""),
+                    textField("ownerId", "Owner UUID", "UUID overrides owner name", bank.ownerId || ""),
+                    selectField("status", "Status", ["ACTIVE", "WARNING", "RESTRICTED", "SUSPENDED", "REVOKED", "LOCKDOWN"], bank.status || "ACTIVE"),
+                    selectField("ownershipModel", "Ownership Model", ["SOLE", "ROLE_BASED", "PERCENTAGE_SHARES", "FIXED_COFOUNDERS"], bank.ownershipModel || "SOLE"),
+                    textField("color", "Brand Color", "#55AAFF", bank.color || "#55AAFF"),
+                    textField("motto", "Motto", "Bank motto", bank.motto || ""),
+                    textField("federalFundsRate", "Federal Funds Rate", "3.50", bank.federalFundsRate == null ? "" : bank.federalFundsRate),
+                    textField("issueFee", "Card Issue Fee", "25", bank.cardIssueFee == null ? "" : bank.cardIssueFee),
+                    textField("replacementFee", "Card Replacement Fee", "50", bank.cardReplacementFee == null ? "" : bank.cardReplacementFee),
+                    textField("singleLimit", "Single Tx Limit", "50000", limits.singleLimit == null ? "" : limits.singleLimit),
+                    textField("dailyPlayerLimit", "Daily Player Limit", "200000", limits.dailyPlayerLimit == null ? "" : limits.dailyPlayerLimit),
+                    textField("dailyBankLimit", "Daily Bank Limit", "1000000", limits.dailyBankLimit == null ? "" : limits.dailyBankLimit),
+                    textField("tellerLimit", "Teller Cash Limit", "250000", limits.tellerLimit == null ? "" : limits.tellerLimit)
+                ],
+                actions: [
+                    actionButton("Save Overview", "UPDATE_OVERVIEW", {
+                        ownerLookup: "$ownerLookup",
+                        ownerId: "$ownerId",
+                        status: "$status",
+                        ownershipModel: "$ownershipModel",
+                        color: "$color",
+                        motto: "$motto",
+                        federalFundsRate: "$federalFundsRate",
+                        issueFee: "$issueFee",
+                        replacementFee: "$replacementFee",
+                        singleLimit: "$singleLimit",
+                        dailyPlayerLimit: "$dailyPlayerLimit",
+                        dailyBankLimit: "$dailyBankLimit",
+                        tellerLimit: "$tellerLimit"
+                    }, ["status", "ownershipModel"])
+                ]
+            },
+            {
+                title: "Access Roles",
+                subtitle: "Grant, update, or revoke bank access for an online player name or UUID.",
+                fields: [
+                    textField("rolePlayer", "Player", "Player UUID or name"),
+                    selectField("role", "Role", ["FOUNDER", "DIRECTOR", "TELLER", "AUDITOR"], "DIRECTOR")
+                ],
+                actions: [
+                    actionButton("Grant / Update Role", "ROLE_ASSIGN", {arg1: "$rolePlayer", arg2: "$role"}, ["rolePlayer"]),
+                    actionButton("Revoke Role", "ROLE_REVOKE", {arg1: "$rolePlayer"}, ["rolePlayer"], "danger")
+                ]
+            },
+            {
+                title: "Shareholders",
+                subtitle: "Set or remove ownership shares for percentage-share banks.",
+                fields: [
+                    textField("sharePlayer", "Player", "Player UUID or name"),
+                    textField("sharePercent", "Share %", "25.00")
+                ],
+                actions: [
+                    actionButton("Set Share", "SHARES_SET", {arg1: "$sharePlayer", arg2: "$sharePercent"}, ["sharePlayer", "sharePercent"]),
+                    actionButton("Remove Share", "SHARES_REMOVE", {playerId: "$sharePlayer", arg1: "$sharePlayer"}, ["sharePlayer"], "danger")
+                ]
+            },
+            {
+                title: "Cofounders",
+                subtitle: "Manage the fixed cofounder list.",
+                fields: [
+                    textField("cofounderPlayer", "Player", "Player UUID or name")
+                ],
+                actions: [
+                    actionButton("Add Cofounder", "COFOUNDER_ADD", {arg1: "$cofounderPlayer"}, ["cofounderPlayer"]),
+                    actionButton("Remove Cofounder", "COFOUNDER_REMOVE", {playerId: "$cofounderPlayer", arg1: "$cofounderPlayer"}, ["cofounderPlayer"], "danger")
+                ]
+            },
+            {
+                title: "Employees",
+                subtitle: "Hire, update, or fire bank employees.",
+                fields: [
+                    textField("employeePlayer", "Player", "Player UUID or name"),
+                    selectField("employeeRole", "Role", ["STAFF", "TELLER", "DIRECTOR", "AUDITOR"], "STAFF"),
+                    textField("employeeSalary", "Salary", "Salary")
+                ],
+                actions: [
+                    actionButton("Hire / Update", "HIRE", {arg1: "$employeePlayer", arg2: "$employeeRole", arg3: "$employeeSalary"}, ["employeePlayer"]),
+                    actionButton("Fire", "FIRE", {arg1: "$employeePlayer"}, ["employeePlayer"], "danger")
+                ]
+            },
+            {
+                title: "Loan Products",
+                subtitle: "Create, replace, or delete bank loan products.",
+                fields: [
+                    textField("productName", "Product", "Product name"),
+                    textField("productMax", "Max Amount", "Max amount"),
+                    textField("productApr", "APR %", "APR %"),
+                    textField("productDuration", "Duration Ticks", "Duration ticks")
+                ],
+                actions: [
+                    actionButton("Create / Replace", "CREATE_LOAN_PRODUCT", {arg1: "$productName", arg2: "$productMax", arg3: "$productApr", arg4: "$productDuration"}, ["productName", "productMax", "productApr", "productDuration"]),
+                    actionButton("Delete Product", "LOAN_PRODUCT_DELETE", {name: "$productName", arg1: "$productName"}, ["productName"], "danger")
+                ]
+            },
+            {
+                title: "Interbank Offers",
+                subtitle: "Create lending offers or accept an existing offer UUID.",
+                fields: [
+                    textField("offerAmount", "Offer Amount", "Offer amount"),
+                    textField("offerApr", "APR %", "APR %"),
+                    textField("offerTerm", "Term Ticks", "Term ticks"),
+                    textField("offerId", "Offer UUID", "Offer UUID for accept")
+                ],
+                actions: [
+                    actionButton("Create Offer", "LEND_OFFER", {arg1: "$offerAmount", arg2: "$offerApr", arg3: "$offerTerm"}, ["offerAmount", "offerApr", "offerTerm"]),
+                    actionButton("Accept Offer", "LEND_ACCEPT", {arg1: "$offerId"}, ["offerId"])
+                ]
+            },
+            {
+                title: "Liquidity & Teller Operations",
+                subtitle: "Central-bank borrowing, appeals, and teller utility actions.",
+                fields: [
+                    textField("borrowAmount", "Borrow Amount", "Borrow amount"),
+                    textField("appealMessage", "Appeal Message", "Appeal message")
+                ],
+                actions: [
+                    actionButton("Borrow From Central Bank", "BORROW", {arg1: "$borrowAmount"}, ["borrowAmount"]),
+                    actionButton("Submit Appeal", "APPEAL", {arg1: "$appealMessage"}, ["appealMessage"]),
+                    actionButton("Issue Teller Spawn Egg", "TELLER_ISSUE", {}),
+                    actionButton("Count Active Tellers", "TELLER_COUNT", {})
+                ]
+            }
+        ];
+    }
+
+    function textField(id, label, placeholder, value) {
+        return {id: id, label: label, type: "text", placeholder: placeholder || "", value: value == null ? "" : String(value)};
+    }
+
+    function selectField(id, label, values, value) {
+        return {id: id, label: label, type: "select", options: values.map(item => ({value: item, label: item})), value: value == null ? "" : String(value)};
+    }
+
+    function actionButton(label, action, payload, required, tone) {
+        return {label: label, action: action, payload: payload || {}, required: required || [], tone: tone || ""};
+    }
+
+    function renderActionFormSections(parent, endpoint, sections, context, options) {
+        const config = options || {};
+        const form = document.createElement("div");
+        form.className = "component-form-stack" + (config.className ? " " + config.className : "");
+        const fieldsById = new Map();
+        const output = document.createElement("pre");
+        output.className = "output component-form-output";
+        output.textContent = config.outputText || "No action executed yet.";
+
+        for (const section of sections || []) {
+            const node = document.createElement("article");
+            node.className = "component-form-section";
+            const head = document.createElement("div");
+            head.className = "component-form-head";
+            const title = document.createElement("h4");
+            title.textContent = String(section.title || "Action");
+            head.appendChild(title);
+            if (section.subtitle) {
+                const subtitle = document.createElement("p");
+                subtitle.className = "hint";
+                subtitle.textContent = String(section.subtitle);
+                head.appendChild(subtitle);
+            }
+            node.appendChild(head);
+
+            const fieldWrap = document.createElement("div");
+            fieldWrap.className = "component-form-fields";
+            for (const field of section.fields || []) {
+                const control = createComponentFormField(field);
+                fieldsById.set(String(field.id || field.name || ""), control);
+                fieldWrap.appendChild(control.node);
+            }
+            if (fieldWrap.childElementCount > 0) {
+                node.appendChild(fieldWrap);
+            }
+
+            const actionWrap = document.createElement("div");
+            actionWrap.className = "component-form-actions";
+            for (const action of section.actions || []) {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = action.tone === "danger" ? "btn btn-danger" : (action.tone === "primary" ? "btn btn-primary" : "btn btn-ghost");
+                button.textContent = String(action.label || action.action || "Run");
+                button.addEventListener("click", () => runComponentFormAction(endpoint, action, fieldsById, output, context));
+                actionWrap.appendChild(button);
+            }
+            if (actionWrap.childElementCount > 0) {
+                node.appendChild(actionWrap);
+            }
+            form.appendChild(node);
+        }
+
+        if (form.childElementCount === 0) {
+            const empty = document.createElement("p");
+            empty.className = "dashboard-widget-empty";
+            empty.textContent = config.emptyText || "No form fields configured.";
+            form.appendChild(empty);
+        }
+        form.appendChild(output);
+        parent.textContent = "";
+        parent.appendChild(form);
+    }
+
+    function createComponentFormField(field) {
+        const node = document.createElement("label");
+        node.className = "component-form-field";
+        const label = document.createElement("span");
+        label.textContent = String(field.label || field.id || field.name || "Field");
+        node.appendChild(label);
+        let input;
+        if (String(field.type || "text") === "select") {
+            input = document.createElement("select");
+            for (const option of field.options || []) {
+                const opt = document.createElement("option");
+                opt.value = String(option.value == null ? option.label : option.value);
+                opt.textContent = String(option.label == null ? opt.value : option.label);
+                input.appendChild(opt);
+            }
+        } else {
+            input = document.createElement("input");
+            input.type = String(field.type || "text");
+            input.placeholder = String(field.placeholder || "");
+        }
+        input.dataset.fieldId = String(field.id || field.name || "");
+        input.value = String(field.value == null ? "" : field.value);
+        node.appendChild(input);
+        return {node: node, input: input, label: label.textContent};
+    }
+
+    function runComponentFormAction(endpoint, action, fieldsById, output, context) {
+        const actionId = String(action.action || action.id || "").trim();
+        if (!actionId) {
+            return;
+        }
+        const missing = [];
+        for (const id of action.required || []) {
+            const control = fieldsById.get(String(id));
+            const input = control && control.input;
+            if (!input || !String(input.value || "").trim()) {
+                missing.push(control && control.label ? control.label : String(id));
+            }
+        }
+        if (missing.length > 0) {
+            const message = "Missing required field: " + missing.join(", ") + ".";
+            output.textContent = message;
+            pushAlert(message, "error");
+            return;
+        }
+        if (action.confirm && !confirm(String(action.confirm))) {
+            return;
+        }
+        const body = Object.assign({action: actionId}, resolveComponentFormPayload(action.payload || {}, fieldsById));
+        output.textContent = "Running " + String(action.label || actionId) + "...";
+        api(endpoint || action.endpoint, {
+            method: action.method || "POST",
+            body: JSON.stringify(body)
+        }).then(result => {
+            const ok = result && result.ok !== false;
+            const message = result && result.message ? String(result.message) : (ok ? "Action completed." : "Action failed.");
+            output.textContent = message + "\n\n" + JSON.stringify(result || {}, null, 2);
+            pushAlert(message, ok ? "success" : "error");
+            if (action.refreshPage !== false && ok) {
+                return renderComponentDashboardRoute((context && context.route) || parseRoute());
+            }
+            return result;
+        }).catch(error => {
+            output.textContent = "Error: " + error.message;
+            pushAlert(error.message, "error");
+        });
+    }
+
+    function resolveComponentFormPayload(payload, fieldsById) {
+        const body = {};
+        for (const [key, rawValue] of Object.entries(payload || {})) {
+            if (typeof rawValue === "string" && rawValue.startsWith("$")) {
+                const control = fieldsById.get(rawValue.slice(1));
+                const input = control && control.input;
+                body[key] = input ? String(input.value || "").trim() : "";
+            } else {
+                body[key] = rawValue;
+            }
+        }
+        return body;
+    }
+
+    function renderItemModelComponent(parent, data) {
+        const node = document.createElement("div");
+        node.className = "item-model-preview";
+        node.textContent = data.displayName || data.itemName || data.itemId || "Item preview";
+        parent.textContent = "";
+        parent.appendChild(node);
+    }
+
+    function renderPlainListComponent(parent, data) {
+        const rows = rowsFromData(data);
+        const list = document.createElement("ul");
+        list.className = "plain-list";
+        for (const row of rows) {
+            const li = document.createElement("li");
+            li.textContent = typeof row === "string" ? row : summarizeDashboardValue(row);
+            list.appendChild(li);
+        }
+        if (rows.length === 0) {
+            const li = document.createElement("li");
+            li.textContent = "No items.";
+            list.appendChild(li);
+        }
+        parent.textContent = "";
+        parent.appendChild(list);
+    }
+
+    function renderOutputComponent(parent, component, data) {
+        const pre = document.createElement("pre");
+        pre.className = "output";
+        if (data == null || (Array.isArray(data) && data.length === 0)) {
+            pre.textContent = (componentOptions(component).placeholder || "No data.");
+        } else if (Array.isArray(data)) {
+            pre.textContent = data.map(row => typeof row === "string" ? row : JSON.stringify(row)).join("\n");
+        } else if (typeof data === "string") {
+            pre.textContent = data;
+        } else {
+            pre.textContent = JSON.stringify(data, null, 2);
+        }
+        parent.textContent = "";
+        parent.appendChild(pre);
     }
 
     function clearHoverTipTimer() {
@@ -5041,6 +6822,17 @@
 
     function refreshCurrentPage(routeInfo) {
         const route = routeInfo || parseRoute();
+        if (state.dashboardMode !== "legacy") {
+            return Promise.allSettled([renderComponentDashboardRoute(route), refreshHealth()]);
+        }
+        if (route.page === "dashboard-panel") {
+            const resolved = resolveDashboardPanelRoute(route);
+            if (resolved.nativeRoute) {
+                return refreshCurrentPage(Object.assign({}, resolved.route, {page: resolved.nativeRoute}));
+            }
+            renderGenericDashboardPanel(resolved.dashboard, resolved.panel);
+            return Promise.allSettled([refreshHealth()]);
+        }
         if (route.page === "dashboard") {
             return Promise.allSettled([refreshDashboard(), refreshHealth()]);
         }
@@ -5080,11 +6872,36 @@
 
     function handleRoute() {
         const route = parseRoute();
-        state.route = route.page;
         if (state.bankOverviewModalOpen) {
             closeBankOverviewModal();
         }
         window.scrollTo(0, 0);
+        if (state.dashboardMode !== "legacy") {
+            state.route = route.page;
+            renderComponentDashboardRoute(route);
+            refreshHealth();
+            return;
+        }
+        if (route.page === "dashboard-panel") {
+            const resolved = resolveDashboardPanelRoute(route);
+            state.route = resolved.nativeRoute || "addon";
+            if (resolved.nativeRoute) {
+                const nativeRoute = Object.assign({}, route, {page: resolved.nativeRoute});
+                const displayPage = (nativeRoute.page === "banks" || nativeRoute.page === "shops") ? "entities" : nativeRoute.page;
+                setActivePage(displayPage, resolved.panel.id, nativeRoute.page);
+                refreshCurrentPage(nativeRoute);
+                return;
+            }
+            setActivePage("addon", resolved.panel ? resolved.panel.id : "", "dashboard");
+            renderGenericDashboardPanel(resolved.dashboard, resolved.panel);
+            refreshHealth();
+            return;
+        }
+        state.route = route.page;
+        setActiveDashboard("ultimatebankingsystem", route.page === "shop-item" ? "shop-items"
+            : (route.page === "bank" ? "banks"
+                : (route.page === "shop" ? "shops"
+                    : (route.page === "player" || route.page === "account" ? "users" : route.page))));
         const displayPage = (route.page === "banks" || route.page === "shops") ? "entities"
             : (route.page === "player" ? "player"
                 : (route.page === "account" ? "account"
@@ -5096,6 +6913,18 @@
                 : (route.page === "shop" ? "shops" : (route.page === "shop-item" ? "shop-items" : route.page)));
         setActivePage(displayPage, activeNavRoute, route.page);
         refreshCurrentPage(route);
+    }
+
+    function resolveDashboardPanelRoute(route) {
+        const dashboard = findDashboard(route.dashboardId || "ultimatebankingsystem");
+        const panel = findPanel(dashboard, route.panelId);
+        setActiveDashboard(dashboard.modId, panel ? panel.id : "");
+        return {
+            dashboard: dashboard,
+            panel: panel,
+            nativeRoute: panel ? String(panel.nativeRoute || "") : "",
+            route: route
+        };
     }
 
     function clearReconnectTimer() {
@@ -5152,6 +6981,20 @@
         });
         if (el.themeToggle) {
             el.themeToggle.addEventListener("click", toggleTheme);
+        }
+        if (el.legacyModeToggle) {
+            el.legacyModeToggle.addEventListener("click", toggleDashboardMode);
+        }
+        if (el.dashboardTabs) {
+            el.dashboardTabs.addEventListener("click", event => {
+                const button = event.target.closest(".dashboard-tab");
+                if (!button || button.disabled) {
+                    return;
+                }
+                const dashboard = findDashboard(button.dataset.modId);
+                const panel = findPage(dashboard, state.activePanelId) || findPanel(dashboard, state.activePanelId) || findPage(dashboard, "") || findPanel(dashboard, "");
+                location.hash = routeForPage(dashboard.modId, panel ? panel.id : "dashboard");
+            });
         }
 
         el.entitySearch.addEventListener("input", renderEntities);
@@ -5844,8 +7687,11 @@
         }, 15000);
     }
 
+    applyDashboardMode(state.dashboardMode);
     bindEvents();
-    connectWebSocket();
-    startTimers();
-    handleRoute();
+    refreshDashboardHost().finally(() => {
+        connectWebSocket();
+        startTimers();
+        handleRoute();
+    });
 })();

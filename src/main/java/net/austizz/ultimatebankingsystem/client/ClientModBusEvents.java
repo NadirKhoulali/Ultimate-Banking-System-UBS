@@ -4,6 +4,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ShoppingBagScreen;
+import net.austizz.ultimatebankingsystem.gui.screens.WalletScreen;
 import net.austizz.ultimatebankingsystem.menu.ModMenus;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
@@ -36,6 +37,7 @@ public final class ClientModBusEvents {
         event.register(ModMenus.CARDBOARD_BOX.get(), CardboardBoxScreen::new);
         event.register(ModMenus.SHOPPING_BAG.get(), ShoppingBagScreen::new);
         event.register(ModMenus.SHOPPING_BAG_ITEM.get(), ShoppingBagScreen::new);
+        event.register(ModMenus.WALLET.get(), WalletScreen::new);
     }
 
     @SubscribeEvent

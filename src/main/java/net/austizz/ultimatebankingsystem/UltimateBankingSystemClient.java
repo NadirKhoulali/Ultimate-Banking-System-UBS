@@ -244,6 +244,9 @@ public class UltimateBankingSystemClient {
             // BankOwnerPcScreen already handles its own force/restore cycle.
             return false;
         }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.WalletScreen) {
+            return false;
+        }
         String className = screen.getClass().getName();
         return className.startsWith("net.austizz.ultimatebankingsystem.gui.screens.");
     }

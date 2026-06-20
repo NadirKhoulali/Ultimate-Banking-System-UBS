@@ -10,6 +10,7 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.BankLevelService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
@@ -28,6 +29,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -72,6 +74,15 @@ public class UBSAdminCommands {
         int importedHistoryEntries;
         final List<String> errors = new ArrayList<>();
     }
+
+    private record AppealComplianceReview(
+            boolean bankFound,
+            boolean compliancePassed,
+            boolean statusChanged,
+            String previousStatus,
+            String nextStatus,
+            String message
+    ) {}
 
     private static MutableComponent moneyLiteral(String text) {
         return Component.literal(MoneyText.abbreviateCurrencyTokens(text == null ? "" : text));
@@ -134,6 +145,17 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
+                .then(Commands.literal("seed")
+                        .then(Commands.literal("banking")
+                                .executes(context -> seedBankingDemo(context.getSource()))
+                        )
+                        .then(Commands.literal("leaderboard")
+                                .executes(context -> seedLeaderboardDemo(context.getSource()))
+                                .then(Commands.literal("remove")
+                                        .executes(context -> removeLeaderboardDemo(context.getSource()))
+                                )
+                        )
+                )
                 .then(Commands.literal("money")
                         .then(Commands.literal("deposit")
                                 .then(Commands.argument("accountId", UuidArgument.uuid())
@@ -160,6 +182,62 @@ public class UBSAdminCommands {
                 )
                 .then(buildWebAdminLiteral())
                 .then(buildAdminLiteral());
+    }
+
+    private static int seedBankingDemo(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        UBSBankingSeedService.SeedResult result = UBSBankingSeedService.seedBankingDemo(
+                source.getServer(),
+                source.getPlayer()
+        );
+
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Seeded/updated UBS demo banking data.\n\n"));
+        body.append(moneyLiteral("§8- §fBanks: §a" + result.banksCreated() + " created §7/ §e" + result.banksUpdated() + " updated\n"));
+        body.append(moneyLiteral("§8- §fAccounts: §b" + result.accountsSeeded() + "\n"));
+        body.append(moneyLiteral("§8- §fLoan products: §b" + result.loanProductsSeeded() + "\n"));
+        body.append(moneyLiteral("§8- §fInter-bank offers: §b" + result.offersSeeded() + "\n"));
+        body.append(moneyLiteral("§8- §fInter-bank loans: §b" + result.loansSeeded() + "\n"));
+        body.append(moneyLiteral("§8- §fSettlement rows: §b" + result.settlementsSeeded() + "\n"));
+        body.append(moneyLiteral("§8- §fDashboard history points: §b" + result.historyPointsSeeded() + "\n\n"));
+        body.append(moneyLiteral("§7Open the Bank Owner PC or web dashboard to inspect the seeded market."));
+        if (result.playerSandboxBankName() != null && !result.playerSandboxBankName().isBlank()) {
+            body.append(moneyLiteral("\n§7Player sandbox bank: §e" + result.playerSandboxBankName()));
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GREEN, "Demo Banking Seed", body));
+        return Math.max(1, result.totalSeeded());
+    }
+
+    private static int seedLeaderboardDemo(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        ShopService.LeaderboardSeedResult result = ShopService.seedOrderBoardLeaderboardDemo(source.getServer());
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Seeded/updated Order Board leaderboard placeholder couriers.\n\n"));
+        body.append(moneyLiteral("§8- §fRows created: §a" + result.rowsCreated() + "\n"));
+        body.append(moneyLiteral("§8- §fRows updated: §e" + result.rowsUpdated() + "\n"));
+        if (result.rowsSkipped() > 0) {
+            body.append(moneyLiteral("§8- §fRows skipped: §c" + result.rowsSkipped() + " §7(real courier row used the demo id)\n"));
+        }
+        body.append(moneyLiteral("\n§7Open Order Board > Ranking to inspect the seeded top 10 and Top 100 panels."));
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GREEN, "Demo Leaderboard Seed", body));
+        return Math.max(1, result.totalChanged());
+    }
+
+    private static int removeLeaderboardDemo(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        ShopService.LeaderboardSeedResult result = ShopService.removeOrderBoardLeaderboardDemo(source.getServer());
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Removed Order Board leaderboard placeholder couriers.\n\n"));
+        body.append(moneyLiteral("§8- §fRows removed: §c" + result.rowsRemoved() + "\n"));
+        body.append(moneyLiteral("\n§7Real courier delivery history was left untouched."));
+        source.sendSystemMessage(ubsPanel(ChatFormatting.RED, "Demo Leaderboard Removed", body));
+        return Math.max(1, result.rowsRemoved());
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildCentralBankRoot() {
@@ -581,6 +659,59 @@ public class UBSAdminCommands {
                                         context.getSource(),
                                         StringArgumentType.getString(context, "bankName")
                                 ))
+                        )
+                )
+                .then(Commands.literal("bank")
+                        .then(Commands.literal("level")
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("bankId", UuidArgument.uuid())
+                                                .then(Commands.argument("level", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminBankLevelSet(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "bankId"),
+                                                                IntegerArgumentType.getInteger(context, "level")
+                                                        ))
+                                                )
+                                        )
+                                )
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("bankId", UuidArgument.uuid())
+                                                .then(Commands.argument("levels", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminBankLevelAdd(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "bankId"),
+                                                                IntegerArgumentType.getInteger(context, "levels")
+                                                        ))
+                                                )
+                                        )
+                                )
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("bankId", UuidArgument.uuid())
+                                                .then(Commands.argument("levels", IntegerArgumentType.integer(1))
+                                                        .executes(context -> adminBankLevelRemove(
+                                                                context.getSource(),
+                                                                UuidArgument.getUuid(context, "bankId"),
+                                                                IntegerArgumentType.getInteger(context, "levels")
+                                                        ))
+                                                )
+                                        )
+                                )
+                                .then(Commands.literal("delete")
+                                        .then(Commands.argument("bankId", UuidArgument.uuid())
+                                                .executes(context -> adminBankLevelDelete(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "bankId")
+                                                ))
+                                        )
+                                )
+                                .then(Commands.literal("clear")
+                                        .then(Commands.argument("bankId", UuidArgument.uuid())
+                                                .executes(context -> adminBankLevelDelete(
+                                                        context.getSource(),
+                                                        UuidArgument.getUuid(context, "bankId")
+                                                ))
+                                        )
+                                )
                         )
                 )
                 .then(Commands.literal("shop")
@@ -1290,6 +1421,18 @@ public class UBSAdminCommands {
             return 1;
         }
 
+        AppealComplianceReview complianceReview = null;
+        if (approve) {
+            UUID bankId = readUuidTag(appeal, "bankId");
+            Bank appealedBank = bankId == null ? null : centralBank.getBank(bankId);
+            complianceReview = reviewApprovedAppealCompliance(source.getServer(), centralBank, appealedBank);
+            appeal.putBoolean("compliancePassed", complianceReview.compliancePassed());
+            appeal.putBoolean("statusChangedByReview", complianceReview.statusChanged());
+            appeal.putString("statusBeforeReview", complianceReview.previousStatus());
+            appeal.putString("statusAfterReview", complianceReview.nextStatus());
+            appeal.putString("complianceReviewMessage", complianceReview.message());
+        }
+
         appeal.putString("status", approve ? "APPROVED" : "DENIED");
         appeal.putString("reviewReason", reason == null ? "" : reason.trim());
         appeal.putLong("reviewedMillis", System.currentTimeMillis());
@@ -1300,13 +1443,135 @@ public class UBSAdminCommands {
         UUID playerId = readUuidTag(appeal, "playerId");
         ServerPlayer player = playerId == null ? null : source.getServer().getPlayerList().getPlayer(playerId);
         if (player != null) {
+            String reviewMessage = complianceReview == null ? "" : " " + complianceReview.message();
             player.sendSystemMessage(moneyLiteral(
                     (approve ? "§aYour bank appeal was approved." : "§cYour bank appeal was denied.")
                             + ((reason == null || reason.isBlank()) ? "" : " Reason: " + reason)
+                            + reviewMessage
             ));
         }
-        source.sendSystemMessage(moneyLiteral("§aAppeal " + appealId + " reviewed: " + (approve ? "APPROVED" : "DENIED")));
+        source.sendSystemMessage(moneyLiteral("§aAppeal " + appealId + " reviewed: " + (approve ? "APPROVED" : "DENIED")
+                + (complianceReview == null ? "" : "\n§7" + complianceReview.message())));
         return 1;
+    }
+
+    private static AppealComplianceReview reviewApprovedAppealCompliance(MinecraftServer server,
+                                                                         CentralBank centralBank,
+                                                                         Bank bank) {
+        if (centralBank == null || bank == null) {
+            return new AppealComplianceReview(
+                    false,
+                    false,
+                    false,
+                    "UNKNOWN",
+                    "UNKNOWN",
+                    "Compliance review skipped: the appealed bank no longer exists."
+            );
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        String previousStatus = getBankStatus(centralBank, bank);
+        BigDecimal reserve = bank.getDeclaredReserve();
+        BigDecimal deposits = bank.getTotalDeposits();
+        BigDecimal minReserve = deposits.multiply(BigDecimal.valueOf(Config.BANK_MIN_RESERVE_RATIO.get()))
+                .setScale(2, RoundingMode.HALF_EVEN);
+        boolean reserveCompliant = reserve.compareTo(minReserve) >= 0;
+
+        if ("REVOKED".equals(previousStatus)) {
+            return new AppealComplianceReview(
+                    true,
+                    reserveCompliant,
+                    false,
+                    previousStatus,
+                    previousStatus,
+                    "Compliance reviewed, but bank remains REVOKED. Reinstatement must be handled explicitly by an admin."
+            );
+        }
+        if ("LOCKDOWN".equals(previousStatus)) {
+            return new AppealComplianceReview(
+                    true,
+                    reserveCompliant,
+                    false,
+                    previousStatus,
+                    previousStatus,
+                    "Compliance reviewed, but bank remains in LOCKDOWN. Use the bank-run unlock flow when appropriate."
+            );
+        }
+
+        long gameTime = currentOverworldGameTime(server);
+        String nextStatus = previousStatus;
+        if (!reserveCompliant) {
+            long breachTick = metadata.contains("reserveBreachStartTick")
+                    ? metadata.getLong("reserveBreachStartTick")
+                    : gameTime;
+            metadata.putLong("reserveBreachStartTick", breachTick);
+
+            if (!"SUSPENDED".equals(previousStatus)) {
+                long graceTicks = Math.max(20L, Config.BANK_RESERVE_GRACE_TICKS.get());
+                nextStatus = (gameTime - breachTick) >= graceTicks ? "RESTRICTED" : "WARNING";
+                metadata.putString("status", nextStatus);
+            }
+            centralBank.putBankMetadata(bank.getBankId(), metadata);
+            return new AppealComplianceReview(
+                    true,
+                    false,
+                    !nextStatus.equals(previousStatus),
+                    previousStatus,
+                    nextStatus,
+                    "Appeal approved, but compliance still fails: reserve $" + reserve.toPlainString()
+                            + " is below minimum $" + minReserve.toPlainString() + ". Status is " + nextStatus + "."
+            );
+        }
+
+        metadata.remove("reserveBreachStartTick");
+        if ("SUSPENDED".equals(previousStatus) && !isAppealClearableSuspension(metadata)) {
+            centralBank.putBankMetadata(bank.getBankId(), metadata);
+            String reason = metadata.getString("suspendReason");
+            return new AppealComplianceReview(
+                    true,
+                    true,
+                    false,
+                    previousStatus,
+                    previousStatus,
+                    "Reserve compliance passes, but bank remains SUSPENDED"
+                            + (reason == null || reason.isBlank() ? "." : " because: " + reason)
+            );
+        }
+
+        if ("WARNING".equals(previousStatus)
+                || "RESTRICTED".equals(previousStatus)
+                || "SUSPENDED".equals(previousStatus)) {
+            nextStatus = "ACTIVE";
+            metadata.putString("status", nextStatus);
+            metadata.remove("suspendReason");
+            metadata.remove("suspendedAtMillis");
+        }
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        return new AppealComplianceReview(
+                true,
+                true,
+                !nextStatus.equals(previousStatus),
+                previousStatus,
+                nextStatus,
+                !nextStatus.equals(previousStatus)
+                        ? "Compliance passes; bank status restored from " + previousStatus + " to " + nextStatus + "."
+                        : "Compliance passes; bank status remains " + nextStatus + "."
+        );
+    }
+
+    private static boolean isAppealClearableSuspension(CompoundTag metadata) {
+        if (metadata == null) {
+            return true;
+        }
+        String reason = metadata.getString("suspendReason");
+        if (reason == null || reason.isBlank()) {
+            return true;
+        }
+        String normalized = reason.toLowerCase(Locale.ROOT);
+        return normalized.contains("reserve")
+                || normalized.contains("compliance")
+                || normalized.contains("audit")
+                || normalized.contains("appeal");
     }
 
     private static int adminBankReserve(CommandSourceStack source, String bankNameRaw) {
@@ -1778,6 +2043,74 @@ public class UBSAdminCommands {
                 || "::".equals(cleaned)
                 || "[::]".equals(cleaned)
                 || "*".equals(cleaned);
+    }
+
+    /**
+     * Admin helper for forcing a bank to an explicit level milestone.
+     */
+    private static int adminBankLevelSet(CommandSourceStack source, UUID bankId, int level) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        BankLevelService.BankLevelResult result = BankLevelService.adminSetBankLevel(centralBank, bankId, level);
+        source.sendSystemMessage(moneyLiteral((result.success() ? "§a" : "§c") + result.message()));
+        return 1;
+    }
+
+    /**
+     * Admin helper for incrementing a bank level by a positive amount.
+     */
+    private static int adminBankLevelAdd(CommandSourceStack source, UUID bankId, int levels) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        BankLevelService.BankLevelResult result = BankLevelService.adminAdjustBankLevel(centralBank, bankId, levels);
+        source.sendSystemMessage(moneyLiteral((result.success() ? "§a" : "§c") + result.message()));
+        return 1;
+    }
+
+    /**
+     * Admin helper for decrementing a bank level by a positive amount.
+     */
+    private static int adminBankLevelRemove(CommandSourceStack source, UUID bankId, int levels) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        BankLevelService.BankLevelResult result = BankLevelService.adminAdjustBankLevel(centralBank, bankId, -levels);
+        source.sendSystemMessage(moneyLiteral((result.success() ? "§a" : "§c") + result.message()));
+        return 1;
+    }
+
+    /**
+     * Admin helper for deleting the manual bank level override and returning to earned level.
+     */
+    private static int adminBankLevelDelete(CommandSourceStack source, UUID bankId) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        BankLevelService.BankLevelResult result = BankLevelService.adminClearBankLevelOverride(centralBank, bankId);
+        source.sendSystemMessage(moneyLiteral((result.success() ? "§a" : "§c") + result.message()));
+        return 1;
     }
 
     /**
@@ -3219,8 +3552,8 @@ public class UBSAdminCommands {
     }
 
     private static void setPrimaryForPlayer(CentralBank centralBank, UUID playerUuid, UUID primaryAccountId) {
-        for (AccountHolder candidate : centralBank.SearchForAccount(playerUuid).values()) {
-            candidate.setPrimaryAccount(candidate.getAccountUUID().equals(primaryAccountId));
+        if (centralBank != null && playerUuid != null && primaryAccountId != null) {
+            centralBank.setPrimaryAccountForPlayer(playerUuid, primaryAccountId, true);
         }
     }
 

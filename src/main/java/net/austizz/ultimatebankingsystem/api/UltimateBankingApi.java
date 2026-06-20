@@ -68,6 +68,12 @@ public interface UltimateBankingApi {
 
     ApiResult validateAccountCanReceive(UUID accountId);
 
+    @ApiStatus.AvailableSince("1.2.2")
+    ApiResult validateAccountCanInteract(UUID accountId, String interactionName);
+
+    @ApiStatus.AvailableSince("1.2.2")
+    ApiAlertResult sendAccountAccessDeniedAlert(UUID playerId, UUID accountId, String interactionName, int durationMs);
+
     ApiAlertResult sendUiAlert(UUID playerId, String title, String message, ApiAlertTone tone, int durationMs);
 
     ApiAlertResult sendUiAlert(UUID playerId, String title, String message, boolean success, int durationMs, int toneCode);

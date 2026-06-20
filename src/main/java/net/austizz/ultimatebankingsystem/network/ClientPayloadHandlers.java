@@ -277,36 +277,16 @@ final class ClientPayloadHandlers {
         ClientOwnerPcData.setActionOutput(payload.message());
         String raw = payload.message() == null ? "" : payload.message();
         String toastMessage = raw;
-        if (raw.startsWith("@account.detail")) {
-            toastMessage = extractOwnerPcOutputValue(raw, "notice");
-            if (toastMessage.isBlank()) {
-                toastMessage = "Account detail loaded.";
-            }
-        } else {
-            int firstNewline = raw.indexOf('\n');
-            if (firstNewline >= 0) {
-                toastMessage = payload.success()
-                        ? "Action complete. See output panel for details."
-                        : raw.substring(0, firstNewline).trim();
-            }
+        int firstNewline = raw.indexOf('\n');
+        if (firstNewline >= 0) {
+            toastMessage = payload.success()
+                    ? "Action complete. See output panel for details."
+                    : raw.substring(0, firstNewline).trim();
         }
         ClientOwnerPcData.setToast(payload.success(), toastMessage);
         if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
             ownerScreen.refreshFromNetwork();
         }
-    }
-
-    private static String extractOwnerPcOutputValue(String raw, String key) {
-        if (raw == null || key == null || key.isBlank()) {
-            return "";
-        }
-        String prefix = key + "=";
-        for (String line : raw.split("\\R")) {
-            if (line != null && line.startsWith(prefix)) {
-                return line.substring(prefix.length()).trim();
-            }
-        }
-        return "";
     }
 
     static void handleOwnerPcCreateBankResponse(OwnerPcCreateBankResponsePayload payload) {

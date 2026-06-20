@@ -28,6 +28,11 @@ public final class ModMenus {
                     IMenuTypeExtension.create((windowId, playerInventory, data) ->
                             ShoppingBagMenu.forItem(windowId, playerInventory, data.readEnum(InteractionHand.class))));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<WalletMenu>> WALLET =
+            MENUS.register("wallet", () ->
+                    IMenuTypeExtension.create((windowId, playerInventory, data) ->
+                            WalletMenu.forItem(windowId, playerInventory, data.readEnum(InteractionHand.class))));
+
     private ModMenus() {
     }
 

@@ -47,6 +47,16 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.loan.AccountLoan;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardActionDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardComponentDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardPanelDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardPageDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardRegistry;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardRequestContext;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardResponse;
+import net.austizz.ultimatebankingsystem.api.dashboard.DashboardWidgetDefinition;
+import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
@@ -71,6 +81,8 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.neoforged.fml.ModList;
+import net.neoforged.neoforgespi.language.IModInfo;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -145,6 +157,10 @@ public final class WebAdminService {
     private volatile int bindPort = 8080;
     private volatile boolean running;
 
+    public WebAdminService() {
+        UbsDashboardBootstrap.register();
+    }
+
     public synchronized void start(MinecraftServer minecraftServer) {
         if (minecraftServer == null || running || !Config.WEB_ADMIN_ENABLED.get()) {
             return;
@@ -171,7 +187,7 @@ public final class WebAdminService {
                             ch.pipeline().addLast(new HttpServerCodec());
                             ch.pipeline().addLast(new HttpObjectAggregator(HTTP_MAX_BODY_BYTES));
                             ch.pipeline().addLast(new ChunkedWriteHandler());
-                            ch.pipeline().addLast(new WebSocketServerProtocolHandler("/ws/webadmin", null, true, HTTP_MAX_BODY_BYTES));
+                            ch.pipeline().addLast(new WebSocketServerProtocolHandler("/ws/webadmin", null, true, HTTP_MAX_BODY_BYTES, false, true));
                             ch.pipeline().addLast(new WebSocketHandler(WebAdminService.this));
                             ch.pipeline().addLast(new HttpHandler(WebAdminService.this));
                         }
@@ -320,6 +336,12 @@ public final class WebAdminService {
         HttpMethod method = request.method();
 
         try {
+            if (method.equals(HttpMethod.GET) && ("/api/webadmin/dashboards".equals(path) || "/api/webadmin/addons".equals(path))) {
+                return ApiResponse.ok(buildDashboardHostPayload());
+            }
+            if (path.startsWith("/api/webadmin/addons/")) {
+                return handleAddonDashboardApi(request, path, sessionId);
+            }
             if (method.equals(HttpMethod.GET) && "/api/webadmin/dashboard".equals(path)) {
                 return ApiResponse.ok(callSafely(this::buildDashboardPayload));
             }
@@ -427,6 +449,273 @@ public final class WebAdminService {
         }
 
         return ApiResponse.notFound("Unknown API route.");
+    }
+
+    private Map<String, Object> buildDashboardHostPayload() {
+        DashboardRegistry registry = UltimateBankingDashboardApiProvider.registry();
+        List<DashboardDefinition> registered = registry.getRegisteredDashboards();
+        Map<String, Map<String, Object>> byModId = new LinkedHashMap<>();
+
+        for (Map<String, Object> detected : detectUbsDependentMods()) {
+            String modId = String.valueOf(detected.getOrDefault("modId", ""));
+            Map<String, Object> row = new LinkedHashMap<>(detected);
+            row.put("registered", false);
+            row.put("enabled", false);
+            row.put("disabledReason", "This mod depends on UBS but has not registered a dashboard.");
+            byModId.put(modId, row);
+        }
+
+        for (DashboardDefinition dashboard : registered) {
+            String modId = dashboard.modId();
+            Map<String, Object> row = byModId.getOrDefault(modId, new LinkedHashMap<>());
+            row.put("modId", modId);
+            row.put("displayName", dashboard.title());
+            row.put("title", dashboard.title());
+            row.put("subtitle", dashboard.subtitle());
+            row.put("icon", dashboard.icon());
+            row.put("registered", true);
+            row.put("enabled", !dashboard.panels().isEmpty());
+            row.put("disabledReason", dashboard.panels().isEmpty() ? "Dashboard registered without panels." : "");
+            row.put("dashboard", dashboardToPayload(dashboard));
+            byModId.put(modId, row);
+        }
+
+        List<Map<String, Object>> mods = new ArrayList<>(byModId.values());
+        mods.sort(Comparator
+                .comparing((Map<String, Object> row) -> !UltimateBankingSystem.MODID.equals(row.get("modId")))
+                .thenComparing(row -> String.valueOf(row.getOrDefault("displayName", row.getOrDefault("modId", ""))).toLowerCase(Locale.ROOT)));
+
+        return Map.of(
+                "apiVersion", registry.getDashboardApiVersion(),
+                "mods", mods,
+                "dashboards", registered.stream().map(this::dashboardToPayload).toList()
+        );
+    }
+
+    private Map<String, Object> dashboardToPayload(DashboardDefinition dashboard) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("modId", dashboard.modId());
+        row.put("title", dashboard.title());
+        row.put("subtitle", dashboard.subtitle());
+        row.put("icon", dashboard.icon());
+        row.put("order", dashboard.order());
+        row.put("defaults", dashboard.defaults() == null ? Map.of() : dashboard.defaults().values());
+        row.put("pages", dashboard.pages().stream()
+                .sorted(Comparator.comparingInt(DashboardPageDefinition::order).thenComparing(DashboardPageDefinition::title))
+                .map(page -> pageToPayload(dashboard.modId(), page))
+                .toList());
+        row.put("panels", dashboard.panels().stream()
+                .sorted(Comparator.comparingInt(DashboardPanelDefinition::order).thenComparing(DashboardPanelDefinition::title))
+                .map(panel -> panelToPayload(dashboard.modId(), panel))
+                .toList());
+        return row;
+    }
+
+    private Map<String, Object> pageToPayload(String modId, DashboardPageDefinition page) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", page.id());
+        row.put("title", page.title());
+        row.put("subtitle", page.subtitle());
+        row.put("routePattern", page.routePattern());
+        row.put("dataUrl", page.dataUrl());
+        row.put("order", page.order());
+        row.put("components", page.components().stream()
+                .sorted(Comparator.comparingInt(DashboardComponentDefinition::order))
+                .map(this::componentToPayload)
+                .toList());
+        return row;
+    }
+
+    private Map<String, Object> componentToPayload(DashboardComponentDefinition component) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", component.id());
+        row.put("type", component.type());
+        row.put("title", component.title());
+        row.put("subtitle", component.subtitle());
+        row.put("dataPath", component.dataPath());
+        row.put("width", component.width());
+        row.put("order", component.order());
+        row.put("options", component.options());
+        row.put("actions", component.actions().stream()
+                .map(this::actionToPayload)
+                .toList());
+        row.put("children", component.children().stream()
+                .sorted(Comparator.comparingInt(DashboardComponentDefinition::order))
+                .map(this::componentToPayload)
+                .toList());
+        return row;
+    }
+
+    private Map<String, Object> actionToPayload(DashboardActionDefinition action) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", action.id());
+        row.put("label", action.label());
+        row.put("method", action.method());
+        row.put("endpoint", action.endpoint());
+        row.put("confirm", action.confirm());
+        row.put("refreshPage", action.refreshPage());
+        row.put("options", action.options());
+        return row;
+    }
+
+    private Map<String, Object> panelToPayload(String modId, DashboardPanelDefinition panel) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", panel.id());
+        row.put("title", panel.title());
+        row.put("subtitle", panel.subtitle());
+        row.put("order", panel.order());
+        row.put("nativeRoute", panel.nativeRoute());
+        row.put("widgets", panel.widgets().stream()
+                .sorted(Comparator.comparingInt(DashboardWidgetDefinition::order).thenComparing(DashboardWidgetDefinition::title))
+                .map(widget -> widgetToPayload(modId, panel.id(), widget))
+                .toList());
+        return row;
+    }
+
+    private Map<String, Object> widgetToPayload(String modId, String panelId, DashboardWidgetDefinition widget) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", widget.id());
+        row.put("type", widget.type());
+        row.put("title", widget.title());
+        row.put("subtitle", widget.subtitle());
+        row.put("width", widget.width());
+        row.put("order", widget.order());
+        row.put("options", widget.options());
+        row.put("dataUrl", widget.dataProvider() == null ? "" : "/api/webadmin/addons/" + modId + "/widgets/" + panelId + "/" + widget.id());
+        row.put("actionUrl", widget.actionHandler() == null ? "" : "/api/webadmin/addons/" + modId + "/actions/" + panelId + "/" + widget.id());
+        row.put("routeUrl", widget.routeHandler() == null ? "" : "/api/webadmin/addons/" + modId + "/routes/" + panelId + "/" + widget.id() + "/");
+        row.put("iframeUrl", widget.iframePath().isBlank() ? "" : "/ubs-admin/addons/" + modId + "/" + stripLeadingSlash(widget.iframePath()));
+        return row;
+    }
+
+    private List<Map<String, Object>> detectUbsDependentMods() {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try {
+            for (IModInfo mod : ModList.get().getMods()) {
+                if (UltimateBankingSystem.MODID.equals(mod.getModId())) {
+                    continue;
+                }
+                boolean dependsOnUbs = mod.getDependencies().stream()
+                        .anyMatch(dependency -> UltimateBankingSystem.MODID.equals(dependency.getModId()));
+                if (!dependsOnUbs) {
+                    continue;
+                }
+                rows.add(Map.of(
+                        "modId", mod.getModId(),
+                        "displayName", mod.getDisplayName() == null || mod.getDisplayName().isBlank() ? mod.getModId() : mod.getDisplayName(),
+                        "version", String.valueOf(mod.getVersion())
+                ));
+            }
+        } catch (Exception ex) {
+            UltimateBankingSystem.LOGGER.warn("[UBS WebAdmin] Failed to detect UBS dashboard addons: {}", ex.getMessage());
+        }
+        return rows;
+    }
+
+    private ApiResponse handleAddonDashboardApi(FullHttpRequest request, String path, String sessionId) {
+        String rest = path.substring("/api/webadmin/addons/".length());
+        String[] parts = rest.split("/", 5);
+        if (parts.length < 1 || parts[0].isBlank()) {
+            return ApiResponse.badRequest("Addon mod id is required.");
+        }
+        String modId = DashboardRegistry.normalizeId(decodePathSegment(parts[0]));
+        DashboardRegistry registry = UltimateBankingDashboardApiProvider.registry();
+        if (parts.length >= 4 && "widgets".equals(parts[1])) {
+            if (!request.method().equals(HttpMethod.GET)) {
+                return ApiResponse.methodNotAllowed("Use GET for dashboard widget data.");
+            }
+            String panelId = DashboardRegistry.normalizeId(decodePathSegment(parts[2]));
+            String widgetId = DashboardRegistry.normalizeId(decodePathSegment(parts[3]));
+            return registry.getWidget(modId, panelId, widgetId)
+                    .map(widget -> handleWidgetData(request, modId, panelId, widget))
+                    .orElseGet(() -> ApiResponse.notFound("Dashboard widget not found."));
+        }
+        if (parts.length >= 4 && "actions".equals(parts[1])) {
+            if (!request.method().equals(HttpMethod.POST)) {
+                return ApiResponse.methodNotAllowed("Use POST for dashboard widget actions.");
+            }
+            String panelId = DashboardRegistry.normalizeId(decodePathSegment(parts[2]));
+            String widgetId = DashboardRegistry.normalizeId(decodePathSegment(parts[3]));
+            return registry.getWidget(modId, panelId, widgetId)
+                    .map(widget -> handleWidgetAction(request, sessionId, modId, panelId, widget))
+                    .orElseGet(() -> ApiResponse.notFound("Dashboard widget not found."));
+        }
+        if (parts.length >= 4 && "routes".equals(parts[1])) {
+            String panelId = DashboardRegistry.normalizeId(decodePathSegment(parts[2]));
+            String widgetId = DashboardRegistry.normalizeId(decodePathSegment(parts[3]));
+            String routePath = parts.length >= 5 ? "/" + parts[4] : "/";
+            return registry.getWidget(modId, panelId, widgetId)
+                    .map(widget -> handleWidgetRoute(request, sessionId, modId, panelId, widget, routePath))
+                    .orElseGet(() -> ApiResponse.notFound("Dashboard widget route not found."));
+        }
+        return ApiResponse.notFound("Unknown addon dashboard route.");
+    }
+
+    private ApiResponse handleWidgetData(FullHttpRequest request, String modId, String panelId, DashboardWidgetDefinition widget) {
+        if (widget.dataProvider() == null) {
+            return ApiResponse.notFound("Dashboard widget does not expose data.");
+        }
+        try {
+            Object payload = callSafely(() -> widget.dataProvider().provide(requestContext(request, "", modId, panelId, widget.id(), "")));
+            return ApiResponse.ok(payload == null ? Map.of() : payload);
+        } catch (Exception ex) {
+            UltimateBankingSystem.LOGGER.error("[UBS WebAdmin] Dashboard widget data failed: {}/{}/{}", modId, panelId, widget.id(), ex);
+            return ApiResponse.serverError("Dashboard widget data failed: " + ex.getMessage());
+        }
+    }
+
+    private ApiResponse handleWidgetAction(FullHttpRequest request, String sessionId, String modId, String panelId, DashboardWidgetDefinition widget) {
+        if (widget.actionHandler() == null) {
+            return ApiResponse.notFound("Dashboard widget does not expose actions.");
+        }
+        try {
+            JsonObject body = parseBodyAsObject(request);
+            DashboardResponse response = callSafely(() -> widget.actionHandler().handle(requestContext(request, sessionId, modId, panelId, widget.id(), ""), body));
+            return dashboardResponseToApiResponse(response);
+        } catch (Exception ex) {
+            UltimateBankingSystem.LOGGER.error("[UBS WebAdmin] Dashboard widget action failed: {}/{}/{}", modId, panelId, widget.id(), ex);
+            return ApiResponse.serverError("Dashboard widget action failed: " + ex.getMessage());
+        }
+    }
+
+    private ApiResponse handleWidgetRoute(FullHttpRequest request, String sessionId, String modId, String panelId, DashboardWidgetDefinition widget, String routePath) {
+        if (widget.routeHandler() == null) {
+            return ApiResponse.notFound("Dashboard widget does not expose custom routes.");
+        }
+        try {
+            JsonObject body = parseBodyAsObject(request);
+            DashboardResponse response = callSafely(() -> widget.routeHandler().handle(
+                    requestContext(request, sessionId, modId, panelId, widget.id(), routePath),
+                    routePath,
+                    body
+            ));
+            return dashboardResponseToApiResponse(response);
+        } catch (Exception ex) {
+            UltimateBankingSystem.LOGGER.error("[UBS WebAdmin] Dashboard widget route failed: {}/{}/{} {}", modId, panelId, widget.id(), routePath, ex);
+            return ApiResponse.serverError("Dashboard widget route failed: " + ex.getMessage());
+        }
+    }
+
+    private DashboardRequestContext requestContext(FullHttpRequest request, String sessionId, String modId, String panelId, String widgetId, String routePath) {
+        QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
+        return new DashboardRequestContext(
+                requireServer(),
+                sessionId,
+                remoteAddress(request),
+                modId,
+                panelId,
+                widgetId,
+                request.method().name(),
+                routePath,
+                decoder.parameters()
+        );
+    }
+
+    private ApiResponse dashboardResponseToApiResponse(DashboardResponse response) {
+        if (response == null) {
+            return ApiResponse.serverError("Dashboard route returned no response.");
+        }
+        return new ApiResponse(HttpResponseStatus.valueOf(response.statusCode()), response.payload());
     }
 
     private ApiResponse handleImpersonationSelect(String sessionId, JsonObject body) {
@@ -1160,6 +1449,57 @@ public final class WebAdminService {
                             break;
                         }
                         ShopService.ShopActionResult result = ShopService.setSettlementAccount(centralBank, ownerId, shopId, accountSelection);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "PAY_TYPE_FEES" -> {
+                        ShopService.ShopActionResult result = ShopService.payShopTypeFees(centralBank, ownerId, shopId);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "FRANCHISE_PUBLISH_OFFER" -> {
+                        String brand = firstNonBlank(safeString(getString(body, "brandName")), safeString(getString(body, "brand")), safeString(getString(body, "arg1")));
+                        String upfront = firstNonBlank(safeString(getString(body, "upfrontDollars")), safeString(getString(body, "upfront")), safeString(getString(body, "arg2")));
+                        String royalty = firstNonBlank(safeString(getString(body, "royaltyPercent")), safeString(getString(body, "royalty")), safeString(getString(body, "arg3")));
+                        String marketing = firstNonBlank(safeString(getString(body, "marketingPercent")), safeString(getString(body, "marketing")), safeString(getString(body, "arg4")));
+                        String rules = firstNonBlank(safeString(getString(body, "rules")), safeString(getString(body, "arg5")));
+                        String directPlayer = firstNonBlank(safeString(getString(body, "directPlayerId")), safeString(getString(body, "directPlayer")), safeString(getString(body, "arg6")));
+                        String contractExpiresAtMillis = firstNonBlank(safeString(getString(body, "contractExpiresAtMillis")), safeString(getString(body, "expiresAtMillis")), safeString(getString(body, "arg7")));
+                        ShopService.ShopActionResult result = ShopService.publishFranchiseOffer(
+                                centralBank,
+                                ownerId,
+                                shopId,
+                                String.join("|", brand, upfront, royalty, marketing, rules, directPlayer, contractExpiresAtMillis)
+                        );
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "FRANCHISE_CANCEL_OFFER" -> {
+                        String offerId = firstNonBlank(safeString(getString(body, "offerId")), safeString(getString(body, "arg1")));
+                        ShopService.ShopActionResult result = ShopService.cancelFranchiseOffer(centralBank, ownerId, shopId, offerId);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "FRANCHISE_ACCEPT_OFFER" -> {
+                        String offerId = firstNonBlank(safeString(getString(body, "offerId")), safeString(getString(body, "arg1")));
+                        ShopService.ShopActionResult result = ShopService.acceptFranchiseOffer(centralBank, ownerId, shopId, offerId);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "FRANCHISE_NPC_LICENSE" -> {
+                        ShopService.ShopActionResult result = ShopService.addNpcFranchisee(centralBank, ownerId, shopId);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "CORPORATE_ADD_BRANCH" -> {
+                        String branchId = firstNonBlank(safeString(getString(body, "branchShopId")), safeString(getString(body, "branchId")), safeString(getString(body, "arg1")));
+                        ShopService.ShopActionResult result = ShopService.addCorporateBranch(centralBank, ownerId, shopId, branchId);
+                        success = result.success();
+                        message = result.message();
+                    }
+                    case "CORPORATE_REMOVE_BRANCH" -> {
+                        String branchId = firstNonBlank(safeString(getString(body, "branchShopId")), safeString(getString(body, "branchId")), safeString(getString(body, "arg1")));
+                        ShopService.ShopActionResult result = ShopService.removeCorporateBranch(centralBank, ownerId, shopId, branchId);
                         success = result.success();
                         message = result.message();
                     }
@@ -2714,6 +3054,7 @@ public final class WebAdminService {
         Map<String, List<String>> employeeTokens = Map.of();
         Map<String, List<String>> shelfTokens = Map.of();
         Map<String, List<String>> stockroomTokens = Map.of();
+        Map<String, List<String>> typeTokens = Map.of();
         if (ownerId != null) {
             overviewTokens = parseShopReportTokens(ShopService.overview(current, centralBank, ownerId, shopId).message());
             roadmapTokens = parseShopReportTokens(ShopService.levelRoadmapReport(centralBank, ownerId, shopId).message());
@@ -2724,6 +3065,7 @@ public final class WebAdminService {
             employeeTokens = parseShopReportTokens(ShopService.listEmployeesReport(current, centralBank, ownerId, shopId).message());
             shelfTokens = parseShopReportTokens(ShopService.shelfReport(current, centralBank, ownerId, shopId).message());
             stockroomTokens = parseShopReportTokens(ShopService.stockroomReport(current, centralBank, ownerId, shopId).message());
+            typeTokens = parseShopReportTokens(ShopService.shopTypeSystemReport(centralBank, ownerId, shopId).message());
         }
 
         List<Map<String, Object>> claimRows = extractShopRegionRows(shopTag == null ? null : shopTag.getList("claims", Tag.TAG_COMPOUND));
@@ -2972,6 +3314,66 @@ public final class WebAdminService {
             stockroomItemRows.add(item);
         }
 
+        Map<String, Object> typeEconomy = new LinkedHashMap<>();
+        typeEconomy.put("shopType", firstShopToken(typeTokens, "type.shop_type"));
+        typeEconomy.put("shopTypeLabel", firstShopToken(typeTokens, "type.shop_label"));
+        typeEconomy.put("level", parseIntToken(firstShopToken(typeTokens, "type.level"), level));
+        typeEconomy.put("payableCents", parseLongToken(firstShopToken(typeTokens, "type.payable_cents"), 0L));
+        typeEconomy.put("feesPaidCents", parseLongToken(firstShopToken(typeTokens, "type.fees_paid_cents"), 0L));
+        typeEconomy.put("feesAccruedCents", parseLongToken(firstShopToken(typeTokens, "type.fees_accrued_cents"), 0L));
+        typeEconomy.put("freeReclass", parseIntToken(firstShopToken(typeTokens, "type.free_reclass"), 0) > 0);
+        typeEconomy.put("lastConversionMillis", parseLongToken(firstShopToken(typeTokens, "type.last_conversion_millis"), 0L));
+        typeEconomy.put("franchiseCanSell", parseIntToken(firstShopToken(typeTokens, "franchise.can_sell"), 0) > 0);
+        typeEconomy.put("franchiseUnlockLevel", parseIntToken(firstShopToken(typeTokens, "franchise.unlock_level"), 0));
+        typeEconomy.put("franchiseLicenseCapacity", parseIntToken(firstShopToken(typeTokens, "franchise.license_capacity"), 0));
+        typeEconomy.put("franchiseActiveLicenses", parseIntToken(firstShopToken(typeTokens, "franchise.active_licenses"), 0));
+        typeEconomy.put("acceptedBrand", firstShopToken(typeTokens, "franchise.accepted_brand"));
+        typeEconomy.put("acceptedRoyaltyPercent", parseDoubleToken(firstShopToken(typeTokens, "franchise.accepted_royalty_percent"), 0.0D));
+        typeEconomy.put("acceptedMarketingPercent", parseDoubleToken(firstShopToken(typeTokens, "franchise.accepted_marketing_percent"), 0.0D));
+        typeEconomy.put("corporateBranchCapacity", parseIntToken(firstShopToken(typeTokens, "corporate.branch_capacity"), 0));
+        typeEconomy.put("corporateActiveBranches", parseIntToken(firstShopToken(typeTokens, "corporate.active_branches"), 0));
+        typeEconomy.put("corporateOverheadPercent", parseDoubleToken(firstShopToken(typeTokens, "corporate.overhead_percent"), 0.0D));
+
+        List<Map<String, Object>> franchiseOffers = new ArrayList<>();
+        for (String[] row : shopTokenRows(typeTokens, "franchise.offer", 9)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("index", parseIntToken(row[0], 0));
+            item.put("offerId", row[1]);
+            item.put("brandName", row[2]);
+            item.put("upfrontCents", parseLongToken(row[3], 0L));
+            item.put("royaltyPercent", parseDoubleToken(row[4], 0.0D));
+            item.put("marketingPercent", parseDoubleToken(row[5], 0.0D));
+            item.put("franchisorShop", row[6]);
+            item.put("visibility", row[7]);
+            item.put("rules", row[8]);
+            franchiseOffers.add(item);
+        }
+
+        List<Map<String, Object>> franchiseContracts = new ArrayList<>();
+        for (String[] row : shopTokenRows(typeTokens, "franchise.contract", 8)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("index", parseIntToken(row[0], 0));
+            item.put("contractId", row[1]);
+            item.put("brandName", row[2]);
+            item.put("franchisee", row[3]);
+            item.put("royaltyPercent", parseDoubleToken(row[4], 0.0D));
+            item.put("marketingPercent", parseDoubleToken(row[5], 0.0D));
+            item.put("mode", row[6]);
+            item.put("rules", row[7]);
+            franchiseContracts.add(item);
+        }
+
+        List<Map<String, Object>> corporateBranches = new ArrayList<>();
+        for (String[] row : shopTokenRows(typeTokens, "corporate.branch", 5)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("index", parseIntToken(row[0], 0));
+            item.put("shopId", row[1]);
+            item.put("name", row[2]);
+            item.put("level", parseIntToken(row[3], 0));
+            item.put("revenueDollars", parseLongToken(row[4], 0L));
+            corporateBranches.add(item);
+        }
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("ok", true);
         response.put("shop", shopInfo);
@@ -2990,6 +3392,10 @@ public final class WebAdminService {
         response.put("shelves", shelfRows);
         response.put("shelfItems", shelfItemRows);
         response.put("stockroomItems", stockroomItemRows);
+        response.put("typeEconomy", typeEconomy);
+        response.put("franchiseOffers", franchiseOffers);
+        response.put("franchiseContracts", franchiseContracts);
+        response.put("corporateBranches", corporateBranches);
         return response;
     }
 
@@ -3012,12 +3418,16 @@ public final class WebAdminService {
                 .thenComparing(row -> String.valueOf(row.get("name")), String.CASE_INSENSITIVE_ORDER));
 
         long online = rows.stream().filter(row -> Boolean.TRUE.equals(row.get("online"))).count();
+        long accounts = rows.stream().mapToLong(row -> asLong(row.get("accounts"))).sum();
+        long cards = rows.stream().mapToLong(row -> asLong(row.get("cards"))).sum();
         return Map.of(
                 "ok", true,
                 "rows", rows,
                 "metrics", Map.of(
                         "knownUsers", rows.size(),
-                        "onlineUsers", online
+                        "onlineUsers", online,
+                        "accounts", accounts,
+                        "cards", cards
                 )
         );
     }
@@ -4789,16 +5199,8 @@ public final class WebAdminService {
             return;
         }
         UUID ownerId = targetAccount.getPlayerUUID();
-        for (Bank bank : centralBank.getBanks().values()) {
-            if (bank == null || bank.getBankAccounts() == null) {
-                continue;
-            }
-            for (AccountHolder candidate : bank.getBankAccounts().values()) {
-                if (candidate == null || ownerId == null || !ownerId.equals(candidate.getPlayerUUID())) {
-                    continue;
-                }
-                candidate.setPrimaryAccount(candidate.getAccountUUID().equals(targetAccount.getAccountUUID()));
-            }
+        if (ownerId != null) {
+            centralBank.setPrimaryAccountForPlayer(ownerId, targetAccount.getAccountUUID(), true);
         }
     }
 
@@ -4807,22 +5209,17 @@ public final class WebAdminService {
             return;
         }
         AccountHolder fallback = null;
-        for (Bank bank : centralBank.getBanks().values()) {
-            if (bank == null || bank.getBankAccounts() == null) {
+        for (AccountHolder candidate : centralBank.SearchForAccount(ownerId).values()) {
+            if (candidate == null) {
                 continue;
             }
-            for (AccountHolder candidate : bank.getBankAccounts().values()) {
-                if (candidate == null || !ownerId.equals(candidate.getPlayerUUID())) {
-                    continue;
-                }
-                candidate.setPrimaryAccount(false);
-                if (fallback == null) {
-                    fallback = candidate;
-                }
+            candidate.setPrimaryAccount(false);
+            if (fallback == null) {
+                fallback = candidate;
             }
         }
         if (fallback != null) {
-            fallback.setPrimaryAccount(true);
+            centralBank.setPrimaryAccountForPlayer(ownerId, fallback.getAccountUUID(), true);
         }
     }
 
@@ -5849,6 +6246,26 @@ public final class WebAdminService {
         }
     }
 
+    private String decodePathSegment(String encoded) {
+        String raw = safeString(encoded);
+        if (raw.isBlank()) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(raw, StandardCharsets.UTF_8).trim();
+        } catch (Exception ignored) {
+            return raw.trim();
+        }
+    }
+
+    private String stripLeadingSlash(String value) {
+        String result = safeString(value);
+        while (result.startsWith("/")) {
+            result = result.substring(1);
+        }
+        return result;
+    }
+
     private String fallbackItemIconSvg(String itemId) {
         String text = safeString(itemId);
         if (text.isBlank()) {
@@ -6241,6 +6658,46 @@ public final class WebAdminService {
         }
     }
 
+    FullHttpResponse serveLegacyStatic(String path) {
+        return serveStatic(path);
+    }
+
+    FullHttpResponse serveAddonStatic(String path) {
+        String rest = path.substring("/ubs-admin/addons/".length());
+        String[] parts = rest.split("/", 2);
+        if (parts.length == 0 || parts[0].isBlank()) {
+            return buildJsonResponse(HttpResponseStatus.BAD_REQUEST, gson.toJson(Map.of("ok", false, "message", "Addon mod id is required.")));
+        }
+
+        String modId = DashboardRegistry.normalizeId(decodePathSegment(parts[0]));
+        String requested = parts.length > 1 ? parts[1] : "index.html";
+        String normalized = normalizeAddonResourcePath(requested);
+        if (normalized.isBlank()) {
+            return buildJsonResponse(HttpResponseStatus.BAD_REQUEST, gson.toJson(Map.of("ok", false, "message", "Unsafe addon resource path.")));
+        }
+
+        return UltimateBankingDashboardApiProvider.registry().getDashboard(modId)
+                .map(dashboard -> serveAddonResource(dashboard, normalized))
+                .orElseGet(() -> buildJsonResponse(HttpResponseStatus.NOT_FOUND, gson.toJson(Map.of("ok", false, "message", "Addon dashboard not found."))));
+    }
+
+    private FullHttpResponse serveAddonResource(DashboardDefinition dashboard, String normalizedPath) {
+        Class<?> anchor = dashboard.resourceAnchor();
+        if (anchor == null || dashboard.resourceRoot().isBlank()) {
+            return buildJsonResponse(HttpResponseStatus.NOT_FOUND, gson.toJson(Map.of("ok", false, "message", "Addon dashboard has no static resources.")));
+        }
+        String root = "/" + stripLeadingSlash(dashboard.resourceRoot());
+        String resourcePath = root.endsWith("/") ? root + normalizedPath : root + "/" + normalizedPath;
+        try (InputStream in = anchor.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                return buildJsonResponse(HttpResponseStatus.NOT_FOUND, gson.toJson(Map.of("ok", false, "message", "Addon asset not found.")));
+            }
+            return buildResponse(HttpResponseStatus.OK, in.readAllBytes(), contentTypeFor(normalizedPath));
+        } catch (Exception ex) {
+            return buildJsonResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, gson.toJson(Map.of("ok", false, "message", "Failed to load addon asset.")));
+        }
+    }
+
     private String normalizeStaticPath(String path) {
         if (path == null || path.isBlank() || "/".equals(path) || "/ubs-admin".equals(path) || "/ubs-admin/".equals(path)) {
             return "/index.html";
@@ -6250,6 +6707,14 @@ public final class WebAdminService {
             return rest.isBlank() ? "/index.html" : rest;
         }
         return "/index.html";
+    }
+
+    private String normalizeAddonResourcePath(String path) {
+        String value = stripLeadingSlash(path == null || path.isBlank() ? "index.html" : path.trim());
+        if (value.contains("..") || value.contains("\\") || value.startsWith("/")) {
+            return "";
+        }
+        return value.isBlank() ? "index.html" : value;
     }
 
     private String contentTypeFor(String path) {
@@ -6271,6 +6736,12 @@ public final class WebAdminService {
         }
         if (lower.endsWith(".png")) {
             return "image/png";
+        }
+        if (lower.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (lower.endsWith(".ico")) {
+            return "image/x-icon";
         }
         return "text/plain; charset=utf-8";
     }
@@ -6693,6 +7164,16 @@ public final class WebAdminService {
             if (path.startsWith("/api/webadmin/")) {
                 ApiResponse api = service.handleApi(request, path);
                 writeAndFlush(ctx, request, service.buildJsonResponse(api.status, service.gson.toJson(api.payload)));
+                return;
+            }
+
+            if (path.startsWith("/ubs-admin/addons/")) {
+                writeAndFlush(ctx, request, service.serveAddonStatic(path));
+                return;
+            }
+
+            if (path.startsWith("/ubs-admin/legacy")) {
+                writeAndFlush(ctx, request, service.serveLegacyStatic(path));
                 return;
             }
 

@@ -436,7 +436,9 @@ public class AccountSettingsLayer extends AbstractScreenLayer {
     }
 
     private Component primaryLabel() {
-        return UbsTranslations.literal("Primary: " + (isPrimary ? "YES" : "NO"))
+        return Component.empty()
+                .append(UbsTranslations.literal("Primary: "))
+                .append(Component.translatable(isPrimary ? "ubs.value.yes" : "ubs.value.no"))
                 .withStyle(isPrimary ? ChatFormatting.GREEN : ChatFormatting.GRAY);
     }
 

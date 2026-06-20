@@ -2,8 +2,8 @@
 
 UBS is a Forge `1.20.1` banking/economy mod focused on an in-world loop: ATM UI, physical legal tender, payment terminals, player-owned banks, central-bank policy, retail commerce systems, and admin migration tooling.
 
-Current release target: `1.3.1`
-Current worktree: retail/shop stack, redesigned retail webshop, order tracking, world cash economy, pickpocket, extended desktop apps.
+Current release target: `1.4.0`
+Current worktree: retail/shop stack, redesigned retail webshop, wallet payments, dashboard addon API, order tracking, world cash economy, pickpocket, extended desktop apps.
 
 ## What UBS Includes
 
@@ -18,6 +18,7 @@ Current worktree: retail/shop stack, redesigned retail webshop, order tracking, 
 - Teller and terminal payment flows:
   - bank teller cash-out (bills + coins)
   - `payment_terminal` block + `handheld_payment_terminal`
+  - wallet cash/card tender support for teller and cashier payments
   - success/denied feedback and configurable terminal redstone output
 - Expanded retail/shop systems:
   - shelf/display blocks (shelves, tables, coolers, modular/glass displays)
@@ -38,6 +39,7 @@ Current worktree: retail/shop stack, redesigned retail webshop, order tracking, 
   - player-owned bank ownership modes, staffing, loan products, interbank lending
   - central bank policy (`rate`, `opm`, audits, report, clearing ledger)
 - Admin moderation and migration tooling (`csv`, `EssentialsX`, `CMI`, `iConomy`)
+- Web admin dashboard addon API for UBS-styled addon panels and component pages
 
 ## Core Commands
 

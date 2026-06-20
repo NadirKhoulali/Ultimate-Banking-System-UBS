@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.api;
 
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.account.AccountAccessMessages;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -39,7 +40,7 @@ import java.util.regex.Pattern;
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
     private static final UUID API_EXTERNAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:api-external".getBytes());
-    private static final String API_VERSION = "1.2.1";
+    private static final String API_VERSION = "1.2.2";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final int MAX_REFERENCE_LENGTH = 160;
@@ -326,6 +327,10 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (account == null) {
             return ApiResult.fail("Account not found", BigDecimal.ZERO);
         }
+        ApiResult access = validateAccountCanSend(accountId, BigDecimal.valueOf(amount));
+        if (!access.success()) {
+            return access;
+        }
 
         boolean success = account.RemoveBalance(BigDecimal.valueOf(amount));
         if (!success) {
@@ -380,6 +385,14 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (payerBank == null || merchantBank == null) {
             return ApiResult.fail("Payer or merchant bank is unavailable", payer.getBalance());
         }
+        ApiResult payerAccess = validateAccountCanSend(payerAccountId, BigDecimal.valueOf(amount));
+        if (!payerAccess.success()) {
+            return payerAccess;
+        }
+        ApiResult merchantAccess = validateAccountCanReceive(merchantAccountId);
+        if (!merchantAccess.success()) {
+            return merchantAccess;
+        }
         String payerStatus = resolveBankStatusForTransactions(centralBank, payerBank);
         String merchantStatus = resolveBankStatusForTransactions(centralBank, merchantBank);
         if (blocksTransactions(payerStatus) || blocksTransactions(merchantStatus)) {
@@ -401,9 +414,6 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
                 : "SHOP_PURCHASE_SELF:" + merchantLabel + "@" + normalizedReference;
 
         if (payerAccountId.equals(merchantAccountId)) {
-            if (payer.isFrozen()) {
-                return ApiResult.fail("Account is frozen", payer.getBalance());
-            }
             UserTransaction selfTx = new UserTransaction(
                     payerAccountId,
                     merchantAccountId,
@@ -781,8 +791,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             return ApiResult.fail("Account not found", BigDecimal.ZERO);
         }
         if (account.isFrozen()) {
-            String reason = account.getFrozenReason();
-            return ApiResult.fail(reason == null || reason.isBlank() ? "Account is frozen" : "Account is frozen: " + reason, account.getBalance());
+            return ApiResult.fail(AccountAccessMessages.frozen("sending funds", account), account.getBalance());
         }
         if (account.getBalance() == null || account.getBalance().compareTo(value) < 0) {
             return ApiResult.fail("Insufficient funds", account.getBalance() == null ? BigDecimal.ZERO : account.getBalance());
@@ -801,14 +810,40 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             return ApiResult.fail("Account not found", BigDecimal.ZERO);
         }
         if (account.isFrozen()) {
-            String reason = account.getFrozenReason();
-            return ApiResult.fail(reason == null || reason.isBlank() ? "Account is frozen" : "Account is frozen: " + reason, account.getBalance());
+            return ApiResult.fail(AccountAccessMessages.frozen("receiving funds", account), account.getBalance());
         }
         String status = getAccountStatus(accountId);
         if (!"AVAILABLE".equals(status)) {
             return ApiResult.fail("Account cannot receive while status is " + status, account.getBalance());
         }
         return ApiResult.ok(account.getBalance());
+    }
+
+    @Override
+    public ApiResult validateAccountCanInteract(UUID accountId, String interactionName) {
+        AccountHolder account = resolveAccount(accountId);
+        if (account == null) {
+            return ApiResult.fail("Account not found", BigDecimal.ZERO);
+        }
+        if (account.isFrozen()) {
+            return ApiResult.fail(AccountAccessMessages.frozen(interactionName, account), account.getBalance());
+        }
+        String status = getAccountStatus(accountId);
+        if (!"AVAILABLE".equals(status)) {
+            return ApiResult.fail("Account cannot use "
+                    + AccountAccessMessages.normalizeInteraction(interactionName)
+                    + " while status is " + status, account.getBalance());
+        }
+        return ApiResult.ok(account.getBalance());
+    }
+
+    @Override
+    public ApiAlertResult sendAccountAccessDeniedAlert(UUID playerId, UUID accountId, String interactionName, int durationMs) {
+        ApiResult validation = validateAccountCanInteract(accountId, interactionName);
+        if (validation.success()) {
+            return ApiAlertResult.fail("Account interaction is currently allowed", playerId);
+        }
+        return sendErrorUiAlert(playerId, "Account access denied", validation.reason(), durationMs);
     }
 
     @Override
@@ -988,11 +1023,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (selected == null) {
             return ApiResult.fail("Account does not belong to player", BigDecimal.ZERO);
         }
-        for (AccountHolder account : accounts.values()) {
-            if (account != null) {
-                account.setPrimaryAccount(account.getAccountUUID().equals(accountId));
-            }
-        }
+        centralBank.setPrimaryAccountForPlayer(playerId, accountId, true);
         return ApiResult.ok(selected.getBalance());
     }
 

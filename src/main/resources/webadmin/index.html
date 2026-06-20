@@ -14,7 +14,7 @@
             <h1>Admin</h1>
             <p class="brand-subtle" id="server-bind">Server: ...</p>
         </div>
-        <nav class="nav">
+        <nav class="nav" id="dashboard-nav">
             <a href="#/dashboard" data-route="dashboard" class="nav-link">Dashboard</a>
             <a href="#/health" data-route="health" class="nav-link">Server Health</a>
             <a href="#/banks" data-route="banks" class="nav-link">Banks</a>
@@ -30,12 +30,21 @@
     </aside>
 
     <div class="main-shell">
+        <div class="dashboard-switcher">
+            <div>
+                <p class="brand-eyebrow">Dashboards</p>
+                <strong id="dashboard-switcher-title">Ultimate Banking System</strong>
+            </div>
+            <div id="dashboard-tabs" class="dashboard-tabs"></div>
+        </div>
+        <section id="dashboard-top-components" class="dashboard-top-components" hidden></section>
         <header class="topbar">
             <div class="topbar-main">
                 <h2 id="page-title">Dashboard</h2>
                 <p id="page-subtitle">Economy health and live operations.</p>
             </div>
             <div class="topbar-meta">
+                <button id="legacy-mode-toggle" class="btn btn-ghost compare-toggle" type="button">Compare legacy UI</button>
                 <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
                     <span class="theme-toggle-track">
                         <span class="theme-icon sun" aria-hidden="true">&#9728;</span>
@@ -52,6 +61,10 @@
         <div id="global-alerts" class="global-alerts"></div>
 
         <main class="page-stack">
+            <section id="page-addon" class="page">
+                <div id="addon-widget-grid" class="dashboard-widget-grid"></div>
+            </section>
+
             <section id="page-dashboard" class="page active">
                 <div class="kpi-grid" id="dashboard-kpis"></div>
                 <section class="panel slim-panel">

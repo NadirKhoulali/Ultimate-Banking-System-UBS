@@ -35,6 +35,14 @@ public class BankManager {
             );
 
             centralBank = dataRef.getCentralBank();
+            int repairedPrimaryOwners = centralBank == null ? 0 : centralBank.repairDuplicatePrimaryAccounts();
+            if (repairedPrimaryOwners > 0) {
+                markDirty();
+                UltimateBankingSystem.LOGGER.warn(
+                        "[UBS] Repaired duplicate primary-account flags for {} player(s) during world load.",
+                        repairedPrimaryOwners
+                );
+            }
 
             // Log even of het gelukt is
             UltimateBankingSystem.LOGGER.info("[UBS] Central Bank loaded with {} bank(s).", centralBank.getBanks().size());

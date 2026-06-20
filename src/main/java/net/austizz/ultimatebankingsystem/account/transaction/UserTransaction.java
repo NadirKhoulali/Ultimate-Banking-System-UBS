@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.account.transaction;
 
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.account.AccountAccessMessages;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
@@ -94,9 +95,8 @@ public class UserTransaction {
 
         if (sender.isFrozen()) {
             if (senderPlayer != null) {
-                String reason = sender.getFrozenReason();
                 senderPlayer.sendSystemMessage(UbsTranslations.literal(
-                        "§cThis account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
+                        "§c" + AccountAccessMessages.frozen("transfer", sender)
                 ));
             }
             return false;
@@ -104,7 +104,9 @@ public class UserTransaction {
 
         if (receiver.isFrozen()) {
             if (senderPlayer != null) {
-                senderPlayer.sendSystemMessage(UbsTranslations.literal("§cTransfer failed: the destination account is frozen."));
+                senderPlayer.sendSystemMessage(UbsTranslations.literal(
+                        "§c" + AccountAccessMessages.destinationFrozen("transfer", receiver)
+                ));
             }
             return false;
         }

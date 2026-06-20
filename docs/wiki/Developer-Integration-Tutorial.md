@@ -1,6 +1,6 @@
 # Developer Integration Tutorial
 
-This guide explains how to integrate UBS into another mod dev environment for the current Forge 1.20.1 branch.
+This guide explains how to integrate UBS into another mod dev environment for the current NeoForge 1.21.1 branch.
 
 ## 1. UBS coordinates and mod id
 
@@ -9,7 +9,7 @@ Current UBS identity:
 - Maven group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
 - Mod id: `ultimatebankingsystem`
-- Current version in this repo: `1.3.1`
+- Current version in this repo: `1.2.5`
 
 Dependency coordinate format:
 
@@ -55,9 +55,9 @@ Point the path to your local UBS clone.
 
 ```gradle
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 }
 ```
 
@@ -85,8 +85,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.3.1"
+    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
+    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
 }
 ```
 
@@ -110,8 +110,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-1.3.1"
-    runtimeOnly name: "ultimatebankingsystem-1.3.1"
+    compileOnly name: "ultimatebankingsystem-1.2.4"
+    runtimeOnly name: "ultimatebankingsystem-1.2.4"
 }
 ```
 
@@ -183,6 +183,18 @@ import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 UltimateBankingApi api = UltimateBankingApiProvider.get();
 String apiVersion = api.getApiVersion();
 ```
+
+Dashboard API bootstrap:
+
+```java
+import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApi;
+import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApiProvider;
+
+UltimateBankingDashboardApi dashboardApi = UltimateBankingDashboardApiProvider.get();
+String dashboardApiVersion = dashboardApi.getDashboardApiVersion();
+```
+
+Use the dashboard API when your mod wants to appear in the UBS web dashboard instead of hosting its own web server. Full step-by-step docs: [Dashboard Addon API](Dashboard-Addon-API.md).
 
 ## 10. Common usage examples
 

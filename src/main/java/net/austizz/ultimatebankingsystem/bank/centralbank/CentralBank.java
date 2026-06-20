@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.bank.centralbank;
 
 import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.BankToBankTransaction;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
@@ -11,13 +12,14 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.NeoForge;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -99,14 +101,33 @@ public class CentralBank extends Bank{
                 .findFirst()
                 .orElse(null);
     }
+
+    private List<Bank> allBanksIncludingCentral() {
+        List<Bank> result = new ArrayList<>();
+        LinkedHashSet<UUID> seen = new LinkedHashSet<>();
+        addUniqueBank(result, seen, this);
+        if (this.banks != null) {
+            for (Bank bank : this.banks.values()) {
+                addUniqueBank(result, seen, bank);
+            }
+        }
+        return result;
+    }
+
+    private static void addUniqueBank(List<Bank> result, LinkedHashSet<UUID> seen, Bank bank) {
+        if (bank == null || bank.getBankId() == null || !seen.add(bank.getBankId())) {
+            return;
+        }
+        result.add(bank);
+    }
+
     public ConcurrentHashMap<UUID, AccountHolder> SearchForAccount(UUID playerId) {
         ConcurrentHashMap<UUID, AccountHolder> result = new ConcurrentHashMap<>();
         if (playerId == null) {
             return result;
         }
 
-        // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
-        for (Bank bank : this.banks.values()) {
+        for (Bank bank : allBanksIncludingCentral()) {
             if (bank == null || bank.getBankAccounts() == null) {
                 continue;
             }
@@ -122,8 +143,7 @@ public class CentralBank extends Bank{
         if (accountId == null) {
             return null;
         }
-        // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
-        for (Bank bank : this.banks.values()) {
+        for (Bank bank : allBanksIncludingCentral()) {
             if (bank == null || bank.getBankAccounts() == null) {
                 continue;
             }
@@ -139,8 +159,7 @@ public class CentralBank extends Bank{
         if (transactionID == null) {
             return null;
         }
-        // TEMPORARY SOLUTION: THIS IS NOT OPTIMIZED CODE
-        for (Bank bank : this.banks.values()) {
+        for (Bank bank : allBanksIncludingCentral()) {
             if (bank == null || bank.getBankAccounts() == null) {
                 continue;
             }
@@ -155,6 +174,96 @@ public class CentralBank extends Bank{
             }
         }
         return null;
+    }
+
+    public boolean setPrimaryAccountForPlayer(UUID playerId, UUID accountId, boolean primary) {
+        if (playerId == null || accountId == null) {
+            return false;
+        }
+        ConcurrentHashMap<UUID, AccountHolder> accounts = SearchForAccount(playerId);
+        AccountHolder target = accounts.get(accountId);
+        if (target == null) {
+            return false;
+        }
+
+        if (!primary) {
+            setPrimaryIfChanged(target, false);
+            return true;
+        }
+
+        for (AccountHolder account : accounts.values()) {
+            if (account == null) {
+                continue;
+            }
+            setPrimaryIfChanged(account, accountId.equals(account.getAccountUUID()));
+        }
+        return true;
+    }
+
+    public int repairDuplicatePrimaryAccounts() {
+        Map<UUID, List<AccountHolder>> accountsByOwner = new HashMap<>();
+        for (Bank bank : allBanksIncludingCentral()) {
+            if (bank == null || bank.getBankAccounts() == null) {
+                continue;
+            }
+            for (AccountHolder account : bank.getBankAccounts().values()) {
+                if (account == null || account.getPlayerUUID() == null) {
+                    continue;
+                }
+                accountsByOwner.computeIfAbsent(account.getPlayerUUID(), ignored -> new ArrayList<>()).add(account);
+            }
+        }
+
+        int repairedPlayers = 0;
+        for (Map.Entry<UUID, List<AccountHolder>> entry : accountsByOwner.entrySet()) {
+            List<AccountHolder> primaries = entry.getValue().stream()
+                    .filter(AccountHolder::isPrimaryAccount)
+                    .toList();
+            if (primaries.size() <= 1) {
+                continue;
+            }
+
+            AccountHolder keeper = primaries.stream()
+                    .max(CentralBank::comparePrimaryKeeper)
+                    .orElse(null);
+            if (keeper == null) {
+                continue;
+            }
+
+            for (AccountHolder account : primaries) {
+                setPrimaryIfChanged(account, account.getAccountUUID().equals(keeper.getAccountUUID()));
+            }
+            repairedPlayers++;
+            UltimateBankingSystem.LOGGER.warn(
+                    "[UBS] Repaired {} duplicate primary accounts for player {}; kept {}.",
+                    primaries.size(),
+                    entry.getKey(),
+                    keeper.getAccountUUID()
+            );
+        }
+        return repairedPlayers;
+    }
+
+    private static int comparePrimaryKeeper(AccountHolder left, AccountHolder right) {
+        int balance = left.getBalance().compareTo(right.getBalance());
+        if (balance != 0) {
+            return balance;
+        }
+        int activity = Integer.compare(left.getTransactions().size(), right.getTransactions().size());
+        if (activity != 0) {
+            return activity;
+        }
+        int created = left.getDateOfCreation().compareTo(right.getDateOfCreation());
+        if (created != 0) {
+            return created;
+        }
+        return left.getAccountUUID().toString().compareTo(right.getAccountUUID().toString());
+    }
+
+    private static void setPrimaryIfChanged(AccountHolder account, boolean primary) {
+        if (account != null && account.isPrimaryAccount() != primary) {
+            account.setPrimaryAccount(primary);
+        }
     }
 
     public synchronized boolean settle(BankToBankTransaction transaction) {

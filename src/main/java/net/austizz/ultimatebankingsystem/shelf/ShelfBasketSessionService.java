@@ -9,6 +9,7 @@ import net.austizz.ultimatebankingsystem.block.entity.custom.ShoppingBasketHolde
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.RegistryKeysCompat;
 import net.minecraft.ChatFormatting;
@@ -66,7 +67,7 @@ public final class ShelfBasketSessionService {
         private final String holderDimension;
         private final BlockPos holderPos;
         private final List<ItemStack> inventorySnapshot;
-        // Snapshot of original payment-item slots (cash + credit cards) for collision-safe restore.
+        // Snapshot of original payment-item slots for collision-safe restore.
         private final boolean[] paymentSlotSnapshot;
         private final int selectedSlotSnapshot;
         private CompoundTag latestBasketData;
@@ -638,7 +639,9 @@ public final class ShelfBasketSessionService {
     private static boolean isPaymentStack(ItemStack stack) {
         return stack != null
                 && !stack.isEmpty()
-                && (DollarBills.isCashTenderItem(stack.getItem()) || stack.is(ModItems.CREDIT_CARD.get()));
+                && (DollarBills.isCashTenderItem(stack.getItem())
+                || stack.is(ModItems.CREDIT_CARD.get())
+                || WalletData.isWallet(stack));
     }
 
     private static String holderLabel(BasketSession session) {

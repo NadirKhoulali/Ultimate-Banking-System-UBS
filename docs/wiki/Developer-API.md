@@ -2,9 +2,12 @@
 
 This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
 
-API baseline in this release: `1.2.1`
+API baseline in this release: `1.2.2`
+
+Dashboard addon API baseline: `2.0.0`
 
 Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
+For web dashboard extensions, see [Dashboard Addon API](Dashboard-Addon-API.md).
 
 ## Java API Entry Point
 
@@ -13,6 +16,14 @@ Use:
 ```java
 UltimateBankingApi api = UltimateBankingApiProvider.get();
 ```
+
+Dashboard host API:
+
+```java
+UltimateBankingDashboardApi dashboardApi = UltimateBankingDashboardApiProvider.get();
+```
+
+Dashboard pages are component-driven in `2.0.0`: use `DashboardPageDefinition`, `DashboardComponentDefinition`, and `DashboardComponents` builders to define reusable UBS-styled pages without custom HTML/CSS. The full reference for widget/component types, left-nav panels, layout defaults, form actions, and addon data routes is [Dashboard Addon API](Dashboard-Addon-API.md).
 
 ## Core API Operations
 

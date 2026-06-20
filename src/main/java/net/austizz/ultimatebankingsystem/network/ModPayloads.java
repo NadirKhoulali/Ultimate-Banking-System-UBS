@@ -3,6 +3,7 @@ package net.austizz.ultimatebankingsystem.network;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.account.AccountAccessMessages;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
@@ -1840,13 +1841,12 @@ public final class ModPayloads {
             }
 
             if (account.isFrozen()) {
-                String reason = account.getFrozenReason();
                 sendWithdrawResponse(
                         player,
                         account,
                         false,
                         account.getBalance().toPlainString(),
-                        "This account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)
+                        AccountAccessMessages.frozen("ATM withdrawal", account)
                 );
                 return;
             }
@@ -1978,10 +1978,9 @@ public final class ModPayloads {
             }
 
             if (account.isFrozen()) {
-                String reason = account.getFrozenReason();
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(false, account.getBalance().toPlainString(),
-                        "This account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)));
+                        AccountAccessMessages.frozen("ATM deposit", account)));
                 return;
             }
 
@@ -2071,10 +2070,9 @@ public final class ModPayloads {
             }
 
             if (sender.isFrozen()) {
-                String reason = sender.getFrozenReason();
                 PacketDistributor.sendToPlayer(player,
                     new TransferResponsePayload(false, sender.getBalance().toPlainString(),
-                        "Sender account is frozen." + (reason.isEmpty() ? "" : " Reason: " + reason)));
+                        AccountAccessMessages.frozen("ATM transfer", sender)));
                 return;
             }
 
@@ -2087,7 +2085,8 @@ public final class ModPayloads {
 
             if (recipient.isFrozen()) {
                 PacketDistributor.sendToPlayer(player,
-                    new TransferResponsePayload(false, sender.getBalance().toPlainString(), "Recipient account is frozen."));
+                    new TransferResponsePayload(false, sender.getBalance().toPlainString(),
+                            AccountAccessMessages.destinationFrozen("ATM transfer", recipient)));
                 return;
             }
 
@@ -2206,14 +2205,7 @@ public final class ModPayloads {
                 return;
             }
 
-            if (payload.setPrimary()) {
-                for (AccountHolder candidate : centralBank.SearchForAccount(player.getUUID()).values()) {
-                    if (!candidate.getAccountUUID().equals(account.getAccountUUID())) {
-                        candidate.setPrimaryAccount(false);
-                    }
-                }
-            }
-            account.setPrimaryAccount(payload.setPrimary());
+            centralBank.setPrimaryAccountForPlayer(player.getUUID(), account.getAccountUUID(), payload.setPrimary());
             UltimateBankingSystem.LOGGER.info("[UBS] Set primary={} for account {}",
                 payload.setPrimary(), payload.accountId());
             PacketDistributor.sendToPlayer(player, new SetPrimaryResponsePayload(true, account.isPrimaryAccount()));

@@ -7,10 +7,12 @@ import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.network.BankTellerActionResponsePayload;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.payments.WalletPaymentService;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -60,6 +62,8 @@ public final class BankTellerPaymentInteractionManager {
         private final long requiredCents;
         private final String paymentReason;
         private final int[] insertedCash = new int[DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length];
+        private final int[] walletInsertedCash = new int[DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length];
+        private UUID walletCashOpenId;
         private long cashPaidCents = 0L;
         private long cardPaidCents = 0L;
         private UUID cardChargedAccountId;
@@ -158,6 +162,16 @@ public final class BankTellerPaymentInteractionManager {
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         if (centralBank == null) {
             cancelAndCleanup(player, "Bank data is unavailable.", false, false);
+            return true;
+        }
+
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        if (!wallet.isEmpty()) {
+            if (WalletData.getMode(wallet) == WalletData.PaymentMode.CASH) {
+                processWalletCashTender(player, teller, session);
+            } else {
+                processCardPayment(player, teller, session, centralBank);
+            }
             return true;
         }
 
@@ -284,6 +298,38 @@ public final class BankTellerPaymentInteractionManager {
         sendCancelHint(player);
     }
 
+    private static void processWalletCashTender(ServerPlayer player,
+                                                BankTellerEntity teller,
+                                                Session session) {
+        long remaining = remainingCents(session);
+        if (remaining <= 0L) {
+            completeSession(player, teller, session);
+            return;
+        }
+
+        WalletPaymentService.WalletCashTender tender = WalletPaymentService.takeCashForPayment(player, remaining);
+        if (!tender.success()) {
+            sendPaymentFeedback(player, "§cWallet payment failed: " + tender.message());
+            sendCancelHint(player);
+            return;
+        }
+
+        addCashPlan(session.insertedCash, tender.plan());
+        addCashPlan(session.walletInsertedCash, tender.plan());
+        session.walletCashOpenId = tender.walletOpenId();
+        session.cashPaidCents += tender.tenderedCents();
+
+        long newRemaining = remainingCents(session);
+        if (newRemaining <= 0L) {
+            completeSession(player, teller, session);
+            return;
+        }
+
+        sendPaymentFeedback(player, "§aAccepted wallet cash. Remaining: §6$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)));
+        sendCancelHint(player);
+    }
+
     private static void processCardPayment(ServerPlayer player,
                                            BankTellerEntity teller,
                                            Session session,
@@ -291,6 +337,12 @@ public final class BankTellerPaymentInteractionManager {
         long remaining = remainingCents(session);
         if (remaining <= 0L) {
             completeSession(player, teller, session);
+            return;
+        }
+
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        if (!wallet.isEmpty()) {
+            processWalletCardPayment(player, teller, session, centralBank);
             return;
         }
 
@@ -328,6 +380,68 @@ public final class BankTellerPaymentInteractionManager {
         session.cardPaidCents += remaining;
         session.cardChargedAccountId = payer.getAccountUUID();
         completeSession(player, teller, session);
+    }
+
+    private static void processWalletCardPayment(ServerPlayer player,
+                                                 BankTellerEntity teller,
+                                                 Session session,
+                                                 CentralBank centralBank) {
+        long remaining = remainingCents(session);
+        var cards = WalletPaymentService.paymentCards(player, player.level().registryAccess());
+        if (cards.isEmpty()) {
+            sendPaymentFeedback(player, "§cWallet card payment failed: " + WalletPaymentService.walletCardUnavailableMessage(player));
+            return;
+        }
+
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        boolean fallback = WalletData.isCardFallbackEnabled(wallet);
+        String firstFailure = "";
+        BigDecimal charge = BigDecimal.valueOf(remaining, 2);
+        for (WalletData.WalletCardSlot card : cards) {
+            var validation = WalletPaymentService.validateWalletCard(centralBank, player, card.stack());
+            if (!validation.valid()) {
+                firstFailure = firstFailure.isBlank() ? "Slot " + (card.slot() + 1) + ": " + validation.message() : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            AccountHolder payer = centralBank.SearchForAccountByAccountId(validation.accountId());
+            if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
+                firstFailure = firstFailure.isBlank() ? "Slot " + (card.slot() + 1) + ": linked account is unavailable." : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            if (!payer.RemoveBalance(charge)) {
+                firstFailure = firstFailure.isBlank()
+                        ? "Slot " + (card.slot() + 1) + ": insufficient funds for §6$" + MoneyText.abbreviate(charge) + "§c."
+                        : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            payer.addTransaction(new UserTransaction(
+                    payer.getAccountUUID(),
+                    BANK_TELLER_TERMINAL_ID,
+                    charge,
+                    LocalDateTime.now(),
+                    "TELLER_FEE_CARD:" + session.action
+            ));
+
+            session.cardPaidCents += remaining;
+            session.cardChargedAccountId = payer.getAccountUUID();
+            completeSession(player, teller, session);
+            return;
+        }
+
+        String message = firstFailure.isBlank() ? "No wallet card could complete the payment." : firstFailure;
+        sendPaymentFeedback(player, "§cWallet card payment failed: " + message);
     }
 
     private static void completeSession(ServerPlayer player, BankTellerEntity teller, Session session) {
@@ -390,12 +504,17 @@ public final class BankTellerPaymentInteractionManager {
         }
 
         if (changePlan != null) {
-            DollarBills.giveCash(player, changePlan);
+            if (hasCashPlan(session.walletInsertedCash)) {
+                WalletPaymentService.returnCashToWalletOrPlayer(player, session.walletCashOpenId, changePlan);
+            } else {
+                DollarBills.giveCash(player, changePlan);
+            }
         }
         SESSIONS.remove(player.getUUID());
         String changeLine = (changePlan == null)
                 ? ""
-                : " Change returned: " + DollarBills.formatCashPlan(changePlan) + ".";
+                : " Change returned" + (hasCashPlan(session.walletInsertedCash) ? " to wallet" : "")
+                + ": " + DollarBills.formatCashPlan(changePlan) + ".";
         reopenWithFeedback(player, teller, true, "Payment complete via " + method + "." + changeLine + " " + result.message());
     }
 
@@ -447,7 +566,13 @@ public final class BankTellerPaymentInteractionManager {
         }
 
         if (session.cashPaidCents > 0L) {
-            DollarBills.giveCash(player, session.insertedCash);
+            int[] physicalRefund = subtractCashPlan(session.insertedCash, session.walletInsertedCash);
+            if (hasCashPlan(session.walletInsertedCash)) {
+                WalletPaymentService.returnCashToWalletOrPlayer(player, session.walletCashOpenId, session.walletInsertedCash);
+            }
+            if (hasCashPlan(physicalRefund)) {
+                DollarBills.giveCash(player, physicalRefund);
+            }
         }
 
         if (session.cardPaidCents > 0L && session.cardChargedAccountId != null) {
@@ -471,6 +596,38 @@ public final class BankTellerPaymentInteractionManager {
         if (infoMessage != null && !infoMessage.isBlank()) {
             sendPaymentFeedback(player, "§7" + infoMessage);
         }
+    }
+
+    private static void addCashPlan(int[] target, int[] plan) {
+        if (target == null || plan == null) {
+            return;
+        }
+        for (int i = 0; i < target.length && i < plan.length; i++) {
+            target[i] += Math.max(0, plan[i]);
+        }
+    }
+
+    private static int[] subtractCashPlan(int[] total, int[] subtract) {
+        int size = DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length;
+        int[] result = new int[size];
+        for (int i = 0; i < size; i++) {
+            int base = total == null || i >= total.length ? 0 : Math.max(0, total[i]);
+            int remove = subtract == null || i >= subtract.length ? 0 : Math.max(0, subtract[i]);
+            result[i] = Math.max(0, base - remove);
+        }
+        return result;
+    }
+
+    private static boolean hasCashPlan(int[] plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (int count : plan) {
+            if (count > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void sendPaymentPrompt(ServerPlayer player, Session session) {

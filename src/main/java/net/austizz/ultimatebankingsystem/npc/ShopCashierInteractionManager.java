@@ -13,9 +13,11 @@ import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEn
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.payments.WalletPaymentService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfBasketSessionService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfService;
@@ -82,6 +84,8 @@ public final class ShopCashierInteractionManager {
         private final int requiredBagCount;
         private int reservedBagCount;
         private final int[] insertedCash = new int[DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length];
+        private final int[] walletInsertedCash = new int[DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length];
+        private UUID walletCashOpenId;
         private long cashPaidCents;
         private long cardPaidCents;
 
@@ -488,6 +492,16 @@ public final class ShopCashierInteractionManager {
     }
 
     private static boolean processPaymentInput(ServerPlayer player, BankTellerEntity cashier, InteractionHand hand, Session session) {
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        if (!wallet.isEmpty()) {
+            if (WalletData.getMode(wallet) == WalletData.PaymentMode.CASH) {
+                processWalletCashTender(player, cashier, session);
+            } else {
+                processCardPayment(player, session, false);
+            }
+            return true;
+        }
+
         ItemStack held = player.getItemInHand(hand);
         int cashIndex = held == null || held.isEmpty() ? -1 : DollarBills.cashIndexForItem(held.getItem());
         if (cashIndex >= 0) {
@@ -513,6 +527,46 @@ public final class ShopCashierInteractionManager {
         pushCashierAlert(player, DeliveryAlertPayload.AlertTone.INFO, message, 4600);
         sendCancelHint(player);
         return true;
+    }
+
+    private static void processWalletCashTender(ServerPlayer player,
+                                                BankTellerEntity cashier,
+                                                Session session) {
+        long remaining = remainingCents(session);
+        if (remaining <= 0L) {
+            completeSession(player, session);
+            return;
+        }
+
+        WalletPaymentService.WalletCashTender tender = WalletPaymentService.takeCashForPayment(player, remaining);
+        if (!tender.success()) {
+            String message = "Wallet payment failed: " + tender.message();
+            player.sendSystemMessage(Component.literal("§c" + message));
+            pushCashierAlert(player, DeliveryAlertPayload.AlertTone.ERROR, message, 5600);
+            sendCancelHint(player);
+            return;
+        }
+
+        addCashPlan(session.insertedCash, tender.plan());
+        addCashPlan(session.walletInsertedCash, tender.plan());
+        session.walletCashOpenId = tender.walletOpenId();
+        session.cashPaidCents += tender.tenderedCents();
+
+        long newRemaining = remainingCents(session);
+        if (newRemaining <= 0L) {
+            completeSession(player, session);
+            return;
+        }
+
+        player.sendSystemMessage(Component.literal("§aAccepted wallet cash. Remaining: §6$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2))));
+        pushCashierAlert(player,
+                DeliveryAlertPayload.AlertTone.SUCCESS,
+                "Accepted wallet cash. Remaining: $" + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)),
+                4800);
+        refreshTerminalForCheckout(player.getServer(), session);
+        sendTerminalRedirect(player, session, false);
+        sendCancelHint(player);
     }
 
     private static void processCashTender(ServerPlayer player,
@@ -581,6 +635,11 @@ public final class ShopCashierInteractionManager {
             return false;
         }
 
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        if (!wallet.isEmpty()) {
+            return processWalletCardPayment(player, session, centralBank, merchant, viaTerminal);
+        }
+
         var cardLookup = CreditCardService.findHeldCard(centralBank, player);
         if (!cardLookup.hasCard()) {
             if (viaTerminal) {
@@ -635,6 +694,80 @@ public final class ShopCashierInteractionManager {
         session.cardPaidCents += remaining;
         completeSession(player, session);
         return true;
+    }
+
+    private static boolean processWalletCardPayment(ServerPlayer player,
+                                                    Session session,
+                                                    CentralBank centralBank,
+                                                    AccountHolder merchant,
+                                                    boolean viaTerminal) {
+        long remaining = remainingCents(session);
+        var server = player.getServer();
+        if (server == null) {
+            return false;
+        }
+
+        var cards = WalletPaymentService.paymentCards(player, player.level().registryAccess());
+        if (cards.isEmpty()) {
+            String message = "Wallet card payment failed: " + WalletPaymentService.walletCardUnavailableMessage(player);
+            player.sendSystemMessage(Component.literal("§c" + message));
+            pushCashierAlert(player, DeliveryAlertPayload.AlertTone.ERROR, message, 5600);
+            if (viaTerminal) {
+                triggerTerminalPulse(server, session, false, 0L);
+            }
+            return false;
+        }
+
+        ItemStack wallet = WalletPaymentService.findHeldWallet(player);
+        boolean fallback = WalletData.isCardFallbackEnabled(wallet);
+        String firstFailure = "";
+        for (WalletData.WalletCardSlot card : cards) {
+            var validation = WalletPaymentService.validateWalletCard(centralBank, player, card.stack());
+            if (!validation.valid()) {
+                firstFailure = firstFailure.isBlank() ? "Slot " + (card.slot() + 1) + ": " + validation.message() : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            AccountHolder payer = centralBank.SearchForAccountByAccountId(validation.accountId());
+            if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
+                firstFailure = firstFailure.isBlank() ? "Slot " + (card.slot() + 1) + ": linked account is unavailable." : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            BigDecimal amount = BigDecimal.valueOf(remaining, 2);
+            UserTransaction tx = new UserTransaction(
+                    payer.getAccountUUID(),
+                    merchant.getAccountUUID(),
+                    amount,
+                    LocalDateTime.now(),
+                    "SHOP_CASHIER_CARD:" + safeShopName(session.shopName)
+            );
+            if (!tx.makeTransaction(server)) {
+                firstFailure = firstFailure.isBlank() ? "Slot " + (card.slot() + 1) + ": charge failed." : firstFailure;
+                if (!fallback) {
+                    break;
+                }
+                continue;
+            }
+
+            session.cardPaidCents += remaining;
+            completeSession(player, session);
+            return true;
+        }
+
+        String message = firstFailure.isBlank() ? "No wallet card could complete the payment." : firstFailure;
+        player.sendSystemMessage(Component.literal("§cWallet card payment failed: " + message));
+        pushCashierAlert(player, DeliveryAlertPayload.AlertTone.ERROR, "Wallet card payment failed: " + message, 5600);
+        if (viaTerminal) {
+            triggerTerminalPulse(server, session, false, 0L);
+        }
+        return false;
     }
 
     private static void completeSession(ServerPlayer player, Session session) {
@@ -732,13 +865,20 @@ public final class ShopCashierInteractionManager {
         clearBasket(player);
         ShelfBasketSessionService.completeCheckout(player);
         if (changePlan != null) {
-            // Return change after restoring the shopper's original inventory snapshot.
-            DollarBills.giveCash(player, changePlan);
+            boolean returnedToWallet = hasCashPlan(session.walletInsertedCash);
+            if (returnedToWallet) {
+                WalletPaymentService.returnCashToWalletOrPlayer(player, session.walletCashOpenId, changePlan);
+            } else {
+                // Return change after restoring the shopper's original inventory snapshot.
+                DollarBills.giveCash(player, changePlan);
+            }
             player.sendSystemMessage(Component.literal("§aChange returned: §6$"
-                    + MoneyText.abbreviate(BigDecimal.valueOf(changeCents, 2))));
+                    + MoneyText.abbreviate(BigDecimal.valueOf(changeCents, 2))
+                    + (returnedToWallet ? " §7(to wallet)" : "")));
             pushCashierAlert(player,
                     DeliveryAlertPayload.AlertTone.SUCCESS,
-                    "Change returned: $" + MoneyText.abbreviate(BigDecimal.valueOf(changeCents, 2)),
+                    "Change returned: $" + MoneyText.abbreviate(BigDecimal.valueOf(changeCents, 2))
+                            + (returnedToWallet ? " to wallet" : ""),
                     4600);
         }
         int droppedBags = deliverPackedBags(player, packedBags);
@@ -795,6 +935,38 @@ public final class ShopCashierInteractionManager {
         PacketDistributor.sendToPlayer(player, UBSCommands.buildHudStatePayload(centralBank, player.getUUID()));
     }
 
+    private static void addCashPlan(int[] target, int[] plan) {
+        if (target == null || plan == null) {
+            return;
+        }
+        for (int i = 0; i < target.length && i < plan.length; i++) {
+            target[i] += Math.max(0, plan[i]);
+        }
+    }
+
+    private static int[] subtractCashPlan(int[] total, int[] subtract) {
+        int size = DollarBills.CASH_DENOMINATIONS_CENTS_DESC.length;
+        int[] result = new int[size];
+        for (int i = 0; i < size; i++) {
+            int base = total == null || i >= total.length ? 0 : Math.max(0, total[i]);
+            int remove = subtract == null || i >= subtract.length ? 0 : Math.max(0, subtract[i]);
+            result[i] = Math.max(0, base - remove);
+        }
+        return result;
+    }
+
+    private static boolean hasCashPlan(int[] plan) {
+        if (plan == null) {
+            return false;
+        }
+        for (int count : plan) {
+            if (count > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void triggerTerminalPulse(MinecraftServer server, Session session, boolean success, long wholeDollars) {
         ServerLevel level = server.getLevel(serverLevelKey(session.terminalDimension));
         if (level == null) {
@@ -831,7 +1003,13 @@ public final class ShopCashierInteractionManager {
         SESSIONS.remove(player.getUUID());
         releaseReservedBags(player, session);
         if (session.cashPaidCents > 0L) {
-            DollarBills.giveCash(player, session.insertedCash);
+            int[] physicalRefund = subtractCashPlan(session.insertedCash, session.walletInsertedCash);
+            if (hasCashPlan(session.walletInsertedCash)) {
+                WalletPaymentService.returnCashToWalletOrPlayer(player, session.walletCashOpenId, session.walletInsertedCash);
+            }
+            if (hasCashPlan(physicalRefund)) {
+                DollarBills.giveCash(player, physicalRefund);
+            }
         }
         if (reason != null && !reason.isBlank()) {
             player.sendSystemMessage(Component.literal("§e" + reason));

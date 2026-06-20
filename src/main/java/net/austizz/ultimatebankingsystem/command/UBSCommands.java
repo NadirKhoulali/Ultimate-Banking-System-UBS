@@ -780,12 +780,11 @@ public class UBSCommands {
                                                         context.getSource().sendSystemMessage(moneyLiteral("§aAccount at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a is already the primary account!"));
                                                         return 1;
                                                     }
-                                                    // First, clear primary on ALL accounts
-                                                    for (AccountHolder a : result.values()) {
-                                                        a.setPrimaryAccount(false);
-                                                    }
-                                                    // Then set the target as primary
-                                                    targetAccount.setPrimaryAccount(true);
+                                                    centralBank.setPrimaryAccountForPlayer(
+                                                            context.getSource().getPlayer().getUUID(),
+                                                            targetAccount.getAccountUUID(),
+                                                            true
+                                                    );
                                                     context.getSource().sendSystemMessage(moneyLiteral("§aSuccessfully made account at §e" + centralBank.getBank(targetAccount.getBankId()).getBankName() + "§a the primary account! \n §7This means that actions, invoices and or recurring payments will default to this account."));
                                                     return 1;
                                                 })
@@ -1816,10 +1815,7 @@ public class UBSCommands {
                 .findFirst()
                 .orElse(inBank.get(0));
 
-        for (AccountHolder account : centralBank.SearchForAccount(player.getUUID()).values()) {
-            account.setPrimaryAccount(false);
-        }
-        selected.setPrimaryAccount(true);
+        centralBank.setPrimaryAccountForPlayer(player.getUUID(), selected.getAccountUUID(), true);
 
         source.sendSystemMessage(moneyLiteral(
                 "§aPrimary account set to §e" + bank.getBankName()
@@ -1899,10 +1895,7 @@ public class UBSCommands {
         bank.RemoveAccount(toClose);
 
         if (wasPrimary) {
-            for (AccountHolder account : centralBank.SearchForAccount(player.getUUID()).values()) {
-                account.setPrimaryAccount(false);
-            }
-            fallback.setPrimaryAccount(true);
+            centralBank.setPrimaryAccountForPlayer(player.getUUID(), fallback.getAccountUUID(), true);
         }
 
         source.sendSystemMessage(moneyLiteral(
