@@ -13,12 +13,22 @@ import java.util.function.Consumer;
 
 public class DesktopButton extends AbstractButton {
 
+    private static final int THEME_PANEL = 0xFF0E2338;
+    private static final int THEME_CARD = 0xFF132C45;
+    private static final int THEME_ROW = 0xFF0A1929;
+    private static final int THEME_BORDER = 0xFF244A6D;
+    private static final int THEME_BORDER_HI = 0xFF2D5F86;
+    private static final int THEME_TEXT = 0xFFF4F8FF;
+    private static final int THEME_MUTED = 0xFFA9BED4;
+    private static final int THEME_CYAN = 0xFF42C8FF;
+
     private final Consumer<DesktopButton> onPress;
     private int accentColor;
     private int labelOffsetX;
     private int labelOffsetY;
     private int iconOffsetX;
     private int iconOffsetY;
+    private boolean chromeVisible = true;
 
     public DesktopButton(int x,
                          int y,
@@ -38,7 +48,7 @@ public class DesktopButton extends AbstractButton {
                          int height,
                          Component message,
                          Consumer<DesktopButton> onPress) {
-        this(x, y, width, height, message, 0xFF69B8FF, onPress);
+        this(x, y, width, height, message, THEME_CYAN, onPress);
     }
 
     public DesktopButton setLabelOffset(int x, int y) {
@@ -58,6 +68,11 @@ public class DesktopButton extends AbstractButton {
         return this;
     }
 
+    public DesktopButton setChromeVisible(boolean chromeVisible) {
+        this.chromeVisible = chromeVisible;
+        return this;
+    }
+
     @Override
     public void onPress() {
         if (this.onPress != null) {
@@ -67,6 +82,9 @@ public class DesktopButton extends AbstractButton {
 
     @Override
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        if (!this.chromeVisible) {
+            return;
+        }
         int x1 = this.getX();
         int y1 = this.getY();
         int x2 = x1 + this.width;
@@ -74,15 +92,15 @@ public class DesktopButton extends AbstractButton {
 
         boolean hovered = this.isHoveredOrFocused();
         int border = this.active
-                ? (hovered ? 0xFFCDE9FF : 0xFF355A83)
-                : 0xFF526075;
+                ? (hovered ? THEME_CYAN : THEME_BORDER_HI)
+                : THEME_BORDER;
 
         int top = this.active
-                ? (hovered ? 0xEE2B5A8D : 0xE6264E7A)
-                : 0xCC37404D;
+                ? (hovered ? 0xFF173B5A : THEME_CARD)
+                : 0xFF111F31;
         int bottom = this.active
-                ? (hovered ? 0xEE1D4062 : 0xE61A3856)
-                : 0xCC2D3540;
+                ? (hovered ? THEME_PANEL : THEME_ROW)
+                : 0xFF0D1827;
 
         graphics.fill(x1, y1, x2, y2, border);
 
@@ -96,13 +114,13 @@ public class DesktopButton extends AbstractButton {
             graphics.fill(innerX1, innerY1 + y, innerX2, innerY1 + y + 1, lerpColor(top, bottom, t));
         }
 
-        int accent = this.active ? accentColor : 0xFF8798AA;
+        int accent = this.active ? accentColor : THEME_MUTED;
         graphics.fill(innerX1 + 1, innerY1 + 1, innerX1 + 4, innerY2 - 1, accent);
 
         int iconSeed = Math.abs(this.getMessage().getString().hashCode());
         int iconX = innerX1 + 8 + iconOffsetX;
         int iconY = innerY1 + Math.max(1, (innerY2 - innerY1 - 8) / 2) + iconOffsetY;
-        int iconColor = this.active ? 0xFFEAF5FF : 0xFFB4C0CD;
+        int iconColor = this.active ? THEME_TEXT : THEME_MUTED;
         if ((iconSeed & 1) == 0) {
             graphics.fill(iconX, iconY, iconX + 8, iconY + 2, iconColor);
             graphics.fill(iconX, iconY + 3, iconX + 6, iconY + 5, iconColor);
@@ -127,7 +145,7 @@ public class DesktopButton extends AbstractButton {
         );
 
         if (hovered && this.active) {
-            graphics.fill(innerX1 + 1, innerY1 + 1, innerX2 - 1, innerY1 + 2, 0x66FFFFFF);
+            graphics.fill(innerX1 + 1, innerY1 + 1, innerX2 - 1, innerY1 + 2, 0x6642C8FF);
         }
     }
 
@@ -149,12 +167,12 @@ public class DesktopButton extends AbstractButton {
 
     private static int resolveTextColor(TextColor styledColor, boolean active) {
         if (!active) {
-            return 0xFF98A8BA;
+            return THEME_MUTED;
         }
         if (styledColor != null) {
             return 0xFF000000 | styledColor.getValue();
         }
-        return 0xFFFFFFFF;
+        return THEME_TEXT;
     }
 
     private static int lerpColor(int from, int to, float t) {

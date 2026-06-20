@@ -106,6 +106,7 @@ import java.util.UUID;
  * </ul>
  */
 public final class ModPayloads {
+    private static final int OWNER_PC_DESKTOP_ACTION_RESPONSE_MAX_CHARS = 32_000;
 
     private static final UUID ATM_TERMINAL_ID = UUID.nameUUIDFromBytes(
             "ultimatebankingsystem:atm-terminal".getBytes(StandardCharsets.UTF_8));
@@ -1567,11 +1568,7 @@ public final class ModPayloads {
             var server = player.getServer();
             var centralBank = BankManager.getCentralBank(server);
             if (centralBank == null) {
-                PacketDistributor.sendToPlayer(player, new OwnerPcDesktopActionResponsePayload(
-                        payload.action(),
-                        false,
-                        "Desktop storage is unavailable."
-                ));
+                sendOwnerPcDesktopActionResponse(player, payload.action(), false, "Desktop storage is unavailable.");
                 return;
             }
 
@@ -1581,13 +1578,10 @@ public final class ModPayloads {
                     player,
                     payload.action(),
                     payload.arg1(),
-                    payload.arg2()
+                    payload.arg2(),
+                    payload.arg3()
             );
-            PacketDistributor.sendToPlayer(player, new OwnerPcDesktopActionResponsePayload(
-                    result.action(),
-                    result.success(),
-                    result.message()
-            ));
+            sendOwnerPcDesktopActionResponse(player, result.action(), result.success(), result.message());
             PacketDistributor.sendToPlayer(player, BankOwnerPcService.buildDesktopData(centralBank, player.getUUID()));
             List<OwnerPcBankAppSummary> apps = BankOwnerPcService.listAccessibleApps(
                     server,
@@ -1599,6 +1593,23 @@ public final class ModPayloads {
             int maxBanks = Math.max(1, Config.PLAYER_BANKS_MAX_BANKS_PER_PLAYER.get());
             PacketDistributor.sendToPlayer(player, new OwnerPcBootstrapPayload(apps, ownedCount, maxBanks));
         });
+    }
+
+    private static void sendOwnerPcDesktopActionResponse(ServerPlayer player, String action, boolean success, String message) {
+        if (player == null) {
+            return;
+        }
+        String safeAction = action == null ? "" : action;
+        String safeMessage = message == null ? "" : message;
+        if (safeMessage.length() > OWNER_PC_DESKTOP_ACTION_RESPONSE_MAX_CHARS) {
+            safeMessage = safeAction.trim().equalsIgnoreCase("ORDER_BOARD_REPORT")
+                    ? "Order Board\nOrder Board response exceeded the network string limit (" + safeMessage.length()
+                    + " chars). The server refused the oversized payload instead of crashing; clear stale/demo rows or narrow the report and refresh."
+                    : "Desktop action response exceeded the network string limit (" + safeMessage.length()
+                    + " chars). The server refused the oversized payload instead of crashing.";
+            success = false;
+        }
+        PacketDistributor.sendToPlayer(player, new OwnerPcDesktopActionResponsePayload(safeAction, success, safeMessage));
     }
 
     private static void handleOwnerPcDesktopActionResponse(OwnerPcDesktopActionResponsePayload payload, IPayloadContext context) {

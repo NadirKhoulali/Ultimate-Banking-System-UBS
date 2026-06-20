@@ -20,6 +20,7 @@ public final class DeliveryInfoBoardClientState {
     private static int successRatePct;
     private static long completedOrders;
     private static long totalPayoutCents;
+    private static boolean collapsed;
 
     private DeliveryInfoBoardClientState() {
     }
@@ -79,6 +80,7 @@ public final class DeliveryInfoBoardClientState {
         successRatePct = 0;
         completedOrders = 0L;
         totalPayoutCents = 0L;
+        collapsed = false;
     }
 
     public static boolean isActive() {
@@ -143,6 +145,18 @@ public final class DeliveryInfoBoardClientState {
 
     public static long getTotalPayoutCents() {
         return totalPayoutCents;
+    }
+
+    public static boolean isCollapsed() {
+        return collapsed;
+    }
+
+    public static void toggleCollapsed() {
+        if (!active) {
+            collapsed = false;
+            return;
+        }
+        collapsed = !collapsed;
     }
 
     private static String sanitize(String value) {

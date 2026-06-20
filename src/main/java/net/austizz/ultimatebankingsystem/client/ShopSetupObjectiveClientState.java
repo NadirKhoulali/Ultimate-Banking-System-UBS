@@ -10,6 +10,7 @@ import java.util.List;
 public final class ShopSetupObjectiveClientState {
     private static boolean active;
     private static boolean collapsed;
+    private static boolean dismissed;
     private static String shopName = "";
     private static int step = 1;
     private static int totalSteps = 1;
@@ -43,6 +44,7 @@ public final class ShopSetupObjectiveClientState {
     public static void clear() {
         active = false;
         collapsed = false;
+        dismissed = false;
         shopName = "";
         step = 1;
         totalSteps = 1;
@@ -52,7 +54,7 @@ public final class ShopSetupObjectiveClientState {
     }
 
     public static boolean isActive() {
-        return active;
+        return active && !dismissed;
     }
 
     public static boolean isCollapsed() {
@@ -64,6 +66,14 @@ public final class ShopSetupObjectiveClientState {
             return;
         }
         collapsed = !collapsed;
+    }
+
+    public static void dismiss() {
+        if (!active) {
+            return;
+        }
+        dismissed = true;
+        collapsed = false;
     }
 
     public static String getShopName() {

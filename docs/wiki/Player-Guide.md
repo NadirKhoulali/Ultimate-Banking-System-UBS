@@ -95,6 +95,14 @@ High-level loop:
 
 The desktop shop app also supports stockroom claims, pallet assignment, order flows, permissions, lighting/hours controls, and webshop/courier workflows.
 
+Retail Webshop:
+
+- Catalog search/filter/sort helps find checkout, display, shelving, and logistics items.
+- Cart lines have per-item add quantity, remove quantity, and remove item controls.
+- Checkout uses modals for payment account and delivery target selection.
+- Delivery target selection is step-based: choose shop/location, choose random or specific pallet mode, then choose a pallet when specific mode is selected.
+- Tracking shows queued and past orders. Successful orders do not show a failure reason; failed or completed orders can be replaced after confirmation.
+
 See:
 
 - [Retail & Shop System](Retail-Shop-System.md)

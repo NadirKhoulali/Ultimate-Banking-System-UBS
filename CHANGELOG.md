@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] - 2026-06-20
+
+### Added
+- Redesigned Retail Webshop catalog, cart, checkout, delivery-target selection, and tracking flows.
+- Added payment account and delivery target modal workflows for webshop checkout.
+- Added replacement ordering for completed/failed webshop orders with confirmation summary.
+- Added shop type, franchise, and corporate retail configuration keys.
+
+### Changed
+- Updated UBS desktop, shop, order-board, and retail-webshop controls to use the darker commerce UI theme.
+- Removed creative invisible displays from the retail webshop catalog.
+- Cart items now expose per-item quantity and remove controls next to checkout totals.
+- Tracking no longer shows failure reasons/fix cards for successful orders.
+
+### Fixed
+- Fixed retail-webshop modal layering so modal buttons render and click above background controls.
+- Fixed product-detail quantity/add/back controls so they scroll with the product detail panel.
+- Guarded oversized desktop action responses from crashing order-board/report refreshes.
+
+### Docs
+- Updated README and wiki sources for the redesigned shopping system, tracking flow, and new shop configuration keys.
+
 ## [1.2.1] - 2026-06-01
 
 ### Added

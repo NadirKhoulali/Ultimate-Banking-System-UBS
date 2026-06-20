@@ -10,7 +10,8 @@ import net.minecraft.resources.ResourceLocation;
 public record OwnerPcDesktopActionPayload(
         String action,
         String arg1,
-        String arg2
+        String arg2,
+        String arg3
 ) implements CustomPacketPayload {
 
     public static final Type<OwnerPcDesktopActionPayload> TYPE = new Type<>(
@@ -21,6 +22,7 @@ public record OwnerPcDesktopActionPayload(
                     ByteBufCodecs.STRING_UTF8, OwnerPcDesktopActionPayload::action,
                     ByteBufCodecs.STRING_UTF8, OwnerPcDesktopActionPayload::arg1,
                     ByteBufCodecs.STRING_UTF8, OwnerPcDesktopActionPayload::arg2,
+                    ByteBufCodecs.STRING_UTF8, OwnerPcDesktopActionPayload::arg3,
                     OwnerPcDesktopActionPayload::new
             );
 

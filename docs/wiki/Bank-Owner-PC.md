@@ -14,6 +14,7 @@ The Bank Owner PC (displayed in-game as **Business Manager PC**) is the full-scr
 - `Create Bank` opens the in-UI bank creation flow.
 - Max banks per player is enforced by config (`PLAYER_BANKS_MAX_BANKS_PER_PLAYER`).
 - UI scale is forced to `2` while this screen is open, then restored on close.
+- Desktop, shop, order-board, and retail-webshop controls use the same dark UBS commerce theme so app chrome and modals stack consistently.
 
 Shop-capable desktop actions are role-gated (`OWNER`, `MANAGER`, `BUILDER`, `STAFF`) and validated server-side.
 
@@ -119,8 +120,19 @@ The same desktop environment now hosts retail/shop actions, including:
 - shelf/stockroom reports and restock actions
 - order manager + pallet assignment flows
 - finance/cash-vault reporting and settlement account controls
-- webshop cart/checkout controls and courier order board actions
+- webshop catalog/cart/checkout/tracking controls and courier order board actions
 - shop hours and lighting configuration
+
+### Retail Webshop Utility
+
+The Retail Webshop utility app includes:
+
+- a filtered catalog with search, category filtering, sorting, product cards, and product-detail quantity controls
+- a cart page with per-item quantity controls and a side checkout summary
+- a checkout page with payment account selection, delivery target selection, pallet mode selection, pallet search, and final review/place order controls
+- a tracking page for queued, delivered, failed, cancelled, and replacement orders
+
+Payment account and delivery target selectors open modal overlays above the app and block background clicks until closed or confirmed.
 
 ## Input Assistant
 

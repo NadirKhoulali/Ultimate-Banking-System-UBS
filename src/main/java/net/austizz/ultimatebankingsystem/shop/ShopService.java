@@ -41,6 +41,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerLevel;
@@ -75,17 +76,21 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ShopService {
@@ -102,6 +107,15 @@ public final class ShopService {
                               int stockroomRegions,
                               boolean ownerView,
                               String role) {}
+
+    public record LeaderboardSeedResult(int rowsCreated,
+                                        int rowsUpdated,
+                                        int rowsRemoved,
+                                        int rowsSkipped) {
+        public int totalChanged() {
+            return rowsCreated + rowsUpdated + rowsRemoved;
+        }
+    }
 
     public record CashierSummary(UUID cashierId,
                                  UUID employeeId,
@@ -252,6 +266,9 @@ public final class ShopService {
     private record SetupDisplayStatus(int placedDisplays,
                                       int configuredShopDisplays) {}
 
+    private record FranchiseOfferRef(CompoundTag franchisorShop,
+                                     CompoundTag offer) {}
+
     /**
      * Tracks where a player entered a closed shop so we can return them to that
      * entry point when access is denied or grace windows expire.
@@ -312,24 +329,34 @@ public final class ShopService {
     private static final String TAG_ORDER_CREATED_AT = "order_created_at";
     private static final String TAG_ORDER_CREATED_BY = "order_created_by";
     private static final String TAG_ORDER_ACCEPTED_BY = "order_accepted_by";
+    private static final String TAG_ORDER_ACCEPTED_BY_NAME = "order_accepted_by_name";
     private static final String TAG_ORDER_ACCEPTED_AT = "order_accepted_at";
     private static final String TAG_ORDER_EXPIRES_AT = "order_expires_at";
     private static final String TAG_ORDER_COMPLETED_AT = "order_completed_at";
     private static final String TAG_ORDER_COMPLETED_BY = "order_completed_by";
     private static final String TAG_ORDER_PAYOUT_CENTS = "order_payout_cents";
     private static final String TAG_ORDER_BONUS_CENTS = "order_bonus_cents";
+    private static final String TAG_ORDER_ROUTE_DISTANCE_BLOCKS = "order_route_distance_blocks";
+    private static final String TAG_ORDER_ROUTE_COMPLETED_MILLIS = "order_route_completed_millis";
     private static final String TAG_ORDER_PALLET_ID = "order_pallet_id";
     private static final String TAG_ORDER_PALLET_REF = "order_pallet_ref";
     private static final String TAG_ORDER_RESERVED_CENTS = "order_reserved_cents";
     private static final String TAG_ORDER_RESERVED_FROM_ACCOUNT = "order_reserved_from_account";
     private static final String TAG_PALLET_ID = "pallet_id";
     private static final String TAG_COURIER_ID = "courier_id";
+    private static final String TAG_COURIER_NAME = "courier_name";
     private static final String TAG_COURIER_COMPLETED = "completed";
     private static final String TAG_COURIER_CANCELED = "canceled";
     private static final String TAG_COURIER_STREAK = "streak";
     private static final String TAG_COURIER_BEST_STREAK = "best_streak";
     private static final String TAG_COURIER_TOTAL_PAYOUT_CENTS = "total_payout_cents";
     private static final String TAG_COURIER_LAST_ACTIVITY_AT = "last_activity_at";
+    private static final String TAG_COURIER_BEST_ROUTE_MILLIS = "best_route_millis";
+    private static final String TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS = "best_route_distance_blocks";
+    private static final String TAG_COURIER_BEST_ROUTE_SCORE = "best_route_score";
+    private static final String TAG_COURIER_BEST_ROUTE_AT = "best_route_at";
+    private static final String TAG_COURIER_SEED_DATA = "ubs_leaderboard_seed_data";
+    private static final String TAG_COURIER_SEED_KEY = "ubs_leaderboard_seed_key";
     private static final String TAG_DAY = "day";
     private static final String TAG_AMOUNT = "amount";
     private static final String TAG_DIM = "dim";
@@ -344,6 +371,9 @@ public final class ShopService {
     private static final String TAG_MAX_Z = "max_z";
     private static final String TAG_SCHEDULE_OPEN_TICK = "schedule_open_tick";
     private static final String TAG_SCHEDULE_CLOSE_TICK = "schedule_close_tick";
+    private static final String TAG_SCHEDULE_DAYS = "schedule_days";
+    private static final String TAG_SCHEDULE_DAY_OPEN_MINUTE = "open_minute";
+    private static final String TAG_SCHEDULE_DAY_CLOSE_MINUTE = "close_minute";
     private static final String TAG_SCHEDULE_LAST_OPEN = "schedule_last_open";
     private static final String TAG_SCHEDULE_LAST_NOTIFY_TICK = "schedule_last_notify_tick";
     private static final String TAG_SCHEDULE_LAST_EJECT_TICK = "schedule_last_eject_tick";
@@ -356,6 +386,50 @@ public final class ShopService {
     private static final String TAG_LIGHTING_STOCKROOM_FLAG = "stockroom";
     private static final String TAG_CLOSED_DELIVERER_STOCKROOM_ACCESS = "closed_deliverer_stockroom_access";
     private static final String TAG_SETUP_COMPLETE = "setup_complete";
+    private static final String TAG_TYPE_FREE_RECLASS_AVAILABLE = "type_free_reclass_available";
+    private static final String TAG_TYPE_LAST_CONVERSION_MILLIS = "type_last_conversion_millis";
+    private static final String TAG_TYPE_PAYABLE_CENTS = "type_payable_cents";
+    private static final String TAG_TYPE_FEES_PAID_CENTS = "type_fees_paid_cents";
+    private static final String TAG_TYPE_FEES_ACCRUED_CENTS = "type_fees_accrued_cents";
+    private static final String TAG_FRANCHISE_BRAND = "franchise_brand";
+    private static final String TAG_FRANCHISE_OFFERS = "franchise_offers";
+    private static final String TAG_FRANCHISE_CONTRACTS = "franchise_contracts";
+    private static final String TAG_FRANCHISE_CONTRACT = "franchise_contract";
+    private static final String TAG_CORPORATE_HQ = "corporate_hq";
+    private static final String TAG_CORPORATE_BRANCHES = "corporate_branches";
+    private static final String TAG_REF_SHOP_ID = "shop_id";
+    private static final String TAG_REF_OWNER_ID = "owner_id";
+    private static final String TAG_REF_NAME = "name";
+    private static final String TAG_REF_ACTIVE = "active";
+    private static final String TAG_REF_CREATED_MILLIS = "created_millis";
+    private static final String TAG_REF_NOTE = "note";
+    private static final String TAG_OFFER_ID = "offer_id";
+    private static final String TAG_OFFER_BRAND_NAME = "brand_name";
+    private static final String TAG_OFFER_UPFRONT_CENTS = "upfront_cents";
+    private static final String TAG_OFFER_ROYALTY_PERCENT = "royalty_percent";
+    private static final String TAG_OFFER_MARKETING_PERCENT = "marketing_percent";
+    private static final String TAG_OFFER_DIRECT_PLAYER = "direct_player";
+    private static final String TAG_OFFER_RULES = "rules";
+    private static final String TAG_OFFER_CONTRACT_EXPIRES_AT_MILLIS = "contract_expires_at_millis";
+    private static final String TAG_FRANCHISE_REQUIRED_ITEMS = "required_items";
+    private static final String TAG_REQ_ITEM_ID = "item_id";
+    private static final String TAG_REQ_QUANTITY = "quantity";
+    private static final String TAG_REQ_EXACT = "exact";
+    private static final String TAG_REQ_NOTE = "note";
+    private static final String TAG_REQ_STACK = "stack";
+    private static final String TAG_CONTRACT_ID = "contract_id";
+    private static final String TAG_CONTRACT_FRANCHISOR_SHOP_ID = "franchisor_shop_id";
+    private static final String TAG_CONTRACT_FRANCHISEE_SHOP_ID = "franchisee_shop_id";
+    private static final String TAG_CONTRACT_FRANCHISOR_OWNER_ID = "franchisor_owner_id";
+    private static final String TAG_CONTRACT_FRANCHISEE_OWNER_ID = "franchisee_owner_id";
+    private static final String TAG_CONTRACT_BRAND_NAME = "brand_name";
+    private static final String TAG_CONTRACT_ROYALTY_PERCENT = "royalty_percent";
+    private static final String TAG_CONTRACT_MARKETING_PERCENT = "marketing_percent";
+    private static final String TAG_CONTRACT_RULES = "rules";
+    private static final String TAG_CONTRACT_NPC = "npc";
+    private static final String TAG_CONTRACT_LAST_NPC_ROYALTY_MILLIS = "last_npc_royalty_millis";
+    private static final String TAG_CONTRACT_EXPIRES_AT_MILLIS = "expires_at_millis";
+    private static final String TAG_CONTRACT_EXPIRED_AT_MILLIS = "expired_at_millis";
 
     private static final String TAG_WEBSHOP_ORDERS = "webshop_orders";
     private static final String TAG_WEBSHOP_ORDER_ITEMS = "webshop_order_items";
@@ -429,6 +503,15 @@ public final class ShopService {
     // Stored schedule values are minute-of-day on the server clock (0..1439).
     private static final int SHOP_DEFAULT_OPEN_MINUTE = 9 * 60;  // 09:00 AM
     private static final int SHOP_DEFAULT_CLOSE_MINUTE = 21 * 60; // 09:00 PM
+    private static final List<String> SHOP_SCHEDULE_DAY_KEYS = List.of(
+            "MON",
+            "TUE",
+            "WED",
+            "THU",
+            "FRI",
+            "SAT",
+            "SUN"
+    );
     private static final String LIGHT_MODE_ON = "ON";
     private static final String LIGHT_MODE_OFF = "OFF";
     private static final String LIGHT_MODE_OPEN_HOURS = "OPEN_HOURS";
@@ -480,6 +563,8 @@ public final class ShopService {
     public static final String SHOP_TYPE_INDEPENDENT = "INDEPENDENT_RETAILER";
     public static final String SHOP_TYPE_FRANCHISE = "FRANCHISE";
     public static final String SHOP_TYPE_CORPORATE_CHAIN = "CORPORATE_RETAIL_CHAIN";
+    private static final int FRANCHISE_NPC_ROYALTY_INTERVAL_HOURS = 24;
+    private static final long FRANCHISE_NPC_ROYALTY_BASE_CENTS = 750L * 100L;
     public static final String SHOP_ROLE_OWNER = "OWNER";
     public static final String SHOP_ROLE_MANAGER = "MANAGER";
     public static final String SHOP_ROLE_BUILDER = "BUILDER";
@@ -547,11 +632,17 @@ public final class ShopService {
         shop.putLong(TAG_REVENUE_DOLLARS, 0L);
         shop.putLong(TAG_NEXT_TARGET_DOLLARS, targetForLevel(1));
         shop.putLong(TAG_CREATED_MILLIS, System.currentTimeMillis());
+        shop.putBoolean(TAG_TYPE_FREE_RECLASS_AVAILABLE, false);
+        shop.putLong(TAG_TYPE_LAST_CONVERSION_MILLIS, 0L);
+        shop.putLong(TAG_TYPE_PAYABLE_CENTS, 0L);
+        shop.putLong(TAG_TYPE_FEES_PAID_CENTS, 0L);
+        shop.putLong(TAG_TYPE_FEES_ACCRUED_CENTS, 0L);
         shop.put(TAG_CLAIMS, new ListTag());
         shop.put(TAG_SHOP_PERMISSIONS, new ListTag());
         // Initialize shop-hours and lighting controls so owners can immediately manage opening windows.
         shop.putInt(TAG_SCHEDULE_OPEN_TICK, clampMinuteOfDay(SHOP_DEFAULT_OPEN_MINUTE));
         shop.putInt(TAG_SCHEDULE_CLOSE_TICK, clampMinuteOfDay(SHOP_DEFAULT_CLOSE_MINUTE));
+        initializeWeeklySchedule(shop, SHOP_DEFAULT_OPEN_MINUTE, SHOP_DEFAULT_CLOSE_MINUTE);
         shop.putBoolean(TAG_SCHEDULE_LAST_OPEN, true);
         shop.putLong(TAG_SCHEDULE_LAST_NOTIFY_TICK, -1L);
         shop.putLong(TAG_SCHEDULE_LAST_EJECT_TICK, -1L);
@@ -638,9 +729,470 @@ public final class ShopService {
         if (oldType.equals(newType)) {
             return new ShopActionResult(true, "Shop type is already " + prettyShopType(newType) + ".");
         }
+        long now = System.currentTimeMillis();
+        long payableCents = Math.max(0L, shop.getLong(TAG_TYPE_PAYABLE_CENTS));
+        if (payableCents > 0L) {
+            return new ShopActionResult(false, "Pay outstanding shop-type fees first: " + formatCents(payableCents) + ".");
+        }
+        boolean freeReclass = isFreeTypeReclassAvailable(shop);
+        if (!freeReclass) {
+            long cooldownMillis = Math.max(0L, Config.SHOP_TYPE_CONVERSION_COOLDOWN_HOURS.get()) * 60L * 60L * 1000L;
+            long last = Math.max(0L, shop.getLong(TAG_TYPE_LAST_CONVERSION_MILLIS));
+            if (cooldownMillis > 0L && last > 0L && now - last < cooldownMillis) {
+                long remainingMinutes = Math.max(1L, (cooldownMillis - (now - last) + 59_999L) / 60_000L);
+                return new ShopActionResult(false, "Shop type conversion is on cooldown for " + remainingMinutes + " more minute(s).");
+            }
+            long feeCents = Math.max(0L, Config.SHOP_TYPE_CONVERSION_FEE_DOLLARS.get()) * 100L;
+            if (feeCents > 0L) {
+                ShopActionResult paid = debitShopSettlement(
+                        centralBank,
+                        ownerId,
+                        shop.getUUID(TAG_ID),
+                        feeCents,
+                        "SHOP_TYPE_CONVERSION:" + prettyShopType(oldType) + "->" + prettyShopType(newType)
+                );
+                if (!paid.success()) {
+                    return new ShopActionResult(false, "Type conversion fee " + formatCents(feeCents) + " could not be paid: " + paid.message());
+                }
+            }
+        }
+        clearTypeSpecificState(shop, oldType, newType);
         shop.putString(TAG_TYPE, newType);
+        shop.putBoolean(TAG_TYPE_FREE_RECLASS_AVAILABLE, false);
+        shop.putLong(TAG_TYPE_LAST_CONVERSION_MILLIS, now);
+        if (SHOP_TYPE_CORPORATE_CHAIN.equals(newType)) {
+            ensureCorporateHqState(shop);
+        }
         saveShopTag(centralBank, shop);
-        return new ShopActionResult(true, "Shop type set to " + prettyShopType(newType) + ".");
+        return new ShopActionResult(true, "Shop type set to " + prettyShopType(newType)
+                + (freeReclass ? " using the one free migration reclass." : "."));
+    }
+
+    public static ShopActionResult shopTypeSystemReport(CentralBank centralBank, UUID ownerId, UUID shopId) {
+        return shopTypeSystemReport(ServerLifecycleHooks.getCurrentServer(), centralBank, ownerId, shopId);
+    }
+
+    public static ShopActionResult shopTypeSystemReport(MinecraftServer server, CentralBank centralBank, UUID ownerId, UUID shopId) {
+        if (centralBank == null || ownerId == null) {
+            return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        expireFranchiseAgreements(centralBank);
+        CompoundTag shop = resolveShopTag(centralBank, ownerId, shopId);
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        normalizeTypeStateForExistingShop(shop);
+        String type = normalizeShopType(shop.getString(TAG_TYPE));
+        int level = Math.max(1, shop.getInt(TAG_LEVEL));
+        if (SHOP_TYPE_FRANCHISE.equals(type)) {
+            processNpcFranchiseRoyalties(centralBank, shop);
+        }
+        long payableCents = Math.max(0L, shop.getLong(TAG_TYPE_PAYABLE_CENTS));
+        long paidCents = Math.max(0L, shop.getLong(TAG_TYPE_FEES_PAID_CENTS));
+        long accruedCents = Math.max(0L, shop.getLong(TAG_TYPE_FEES_ACCRUED_CENTS));
+        List<String> lines = new ArrayList<>();
+        lines.add("Shop Type System");
+        lines.add("@type.shop_type=" + type);
+        lines.add("@type.shop_label=" + sanitizeTokenText(prettyShopType(type)));
+        lines.add("@type.level=" + level);
+        lines.add("@type.payable_cents=" + payableCents);
+        lines.add("@type.fees_paid_cents=" + paidCents);
+        lines.add("@type.fees_accrued_cents=" + accruedCents);
+        lines.add("@type.free_reclass=" + (isFreeTypeReclassAvailable(shop) ? "1" : "0"));
+        lines.add("@type.last_conversion_millis=" + Math.max(0L, shop.getLong(TAG_TYPE_LAST_CONVERSION_MILLIS)));
+
+        if (SHOP_TYPE_FRANCHISE.equals(type)) {
+            int capacity = franchiseLicenseCapacityForLevel(level);
+            int active = countActiveFranchiseContracts(shop);
+            boolean canSell = level >= Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get());
+            CompoundTag accepted = shop.getCompound(TAG_FRANCHISE_CONTRACT);
+            lines.add("@franchise.can_sell=" + (canSell ? "1" : "0"));
+            lines.add("@franchise.unlock_level=" + Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get()));
+            lines.add("@franchise.license_capacity=" + capacity);
+            lines.add("@franchise.active_licenses=" + active);
+            lines.add("@franchise.accepted_brand=" + sanitizeTokenText(accepted.getString(TAG_CONTRACT_BRAND_NAME)));
+            lines.add("@franchise.accepted_royalty_percent=" + accepted.getDouble(TAG_CONTRACT_ROYALTY_PERCENT));
+            lines.add("@franchise.accepted_marketing_percent=" + accepted.getDouble(TAG_CONTRACT_MARKETING_PERCENT));
+            lines.add("@franchise.accepted_expires_at_millis=" + contractExpiryMillis(accepted));
+            FranchiseRequirementStatus acceptedStatus = evaluateFranchiseRequirements(server, shop, accepted);
+            lines.add("@franchise.accepted_compliance=" + (acceptedStatus.compliant() ? "1" : "0")
+                    + "|" + acceptedStatus.missingCount()
+                    + "|" + Config.SHOP_FRANCHISE_NONCOMPLIANCE_PENALTY_PERCENT.get()
+                    + "|" + sanitizeTokenText(acceptedStatus.missingSummary()));
+            if (accepted.contains(TAG_CONTRACT_ID)) {
+                appendFranchiseRequirementReportLines(
+                        lines,
+                        "franchise.accepted_req",
+                        accepted.getUUID(TAG_CONTRACT_ID),
+                        acceptedStatus
+                );
+            }
+            appendFranchiseOfferReportLines(server, centralBank, ownerId, shop, lines);
+            appendFranchiseContractReportLines(server, centralBank, shop, lines);
+            lines.add("- Franchise: buy brand rights now; selling your own brand unlocks at level "
+                    + Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get()) + ".");
+            lines.add("- License capacity: " + active + " / " + capacity + " active franchisee(s).");
+        } else if (SHOP_TYPE_CORPORATE_CHAIN.equals(type)) {
+            ensureCorporateHqState(shop);
+            int capacity = corporateBranchCapacityForLevel(level);
+            int active = countCorporateBranches(shop);
+            lines.add("@corporate.branch_capacity=" + capacity);
+            lines.add("@corporate.active_branches=" + active);
+            lines.add("@corporate.overhead_percent=" + Config.SHOP_CORPORATE_OVERHEAD_PERCENT.get());
+            appendCorporateBranchReportLines(centralBank, shop, lines);
+            lines.add("- Corporate: branch capacity " + active + " / " + capacity
+                    + " with " + formatPercent(Config.SHOP_CORPORATE_OVERHEAD_PERCENT.get()) + " overhead on gross sales.");
+        } else {
+            lines.add("@independent.net_margin_bonus=1");
+            lines.add("- Independent: no franchise royalties, no corporate overhead, and no network income.");
+            lines.add("- Best for high-margin single-store play with full pricing and stock autonomy.");
+        }
+        lines.add("- Outstanding type fees: " + formatCents(payableCents)
+                + " | Paid lifetime: " + formatCents(paidCents)
+                + " | Accrued lifetime: " + formatCents(accruedCents));
+        return new ShopActionResult(true, String.join("\n", lines));
+    }
+
+    public static ShopActionResult payShopTypeFees(CentralBank centralBank, UUID ownerId, UUID shopId) {
+        if (centralBank == null || ownerId == null) {
+            return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        CompoundTag shop = resolveShopTag(centralBank, ownerId, shopId);
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        long payableCents = Math.max(0L, shop.getLong(TAG_TYPE_PAYABLE_CENTS));
+        if (payableCents <= 0L) {
+            return new ShopActionResult(true, "No shop-type fees are due.");
+        }
+        ShopActionResult paid = debitShopSettlement(centralBank, ownerId, shop.getUUID(TAG_ID), payableCents, "SHOP_TYPE_FEES_PAYABLE");
+        if (!paid.success()) {
+            return paid;
+        }
+        shop.putLong(TAG_TYPE_PAYABLE_CENTS, 0L);
+        shop.putLong(TAG_TYPE_FEES_PAID_CENTS, safeAdd(Math.max(0L, shop.getLong(TAG_TYPE_FEES_PAID_CENTS)), payableCents));
+        saveShopTag(centralBank, shop);
+        return new ShopActionResult(true, "Paid shop-type fees: " + formatCents(payableCents) + ".");
+    }
+
+    public static ShopActionResult publishFranchiseOffer(CentralBank centralBank,
+                                                         UUID ownerId,
+                                                         UUID shopId,
+                                                         String rawTerms) {
+        return publishFranchiseOffer(centralBank, ownerId, shopId, rawTerms, "");
+    }
+
+    public static ShopActionResult publishFranchiseOffer(CentralBank centralBank,
+                                                         UUID ownerId,
+                                                         UUID shopId,
+                                                         String rawTerms,
+                                                         String rawRequiredItems) {
+        if (centralBank == null || ownerId == null) {
+            return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        CompoundTag shop = resolveShopTag(centralBank, ownerId, shopId);
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        if (!SHOP_TYPE_FRANCHISE.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+            return new ShopActionResult(false, "Only Franchise shops can publish franchise offers.");
+        }
+        int level = Math.max(1, shop.getInt(TAG_LEVEL));
+        int unlock = Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get());
+        if (level < unlock) {
+            return new ShopActionResult(false, "Selling your own franchise brand unlocks at shop level " + unlock + ".");
+        }
+        if (Math.max(0L, shop.getLong(TAG_TYPE_PAYABLE_CENTS)) > 0L) {
+            return new ShopActionResult(false, "Pay outstanding shop-type fees before publishing franchise offers.");
+        }
+        String[] parts = (rawTerms == null ? "" : rawTerms).split("\\|", -1);
+        String brand = normalizeName(parts.length > 0 ? parts[0] : "");
+        if (brand.isBlank()) {
+            brand = shop.getString(TAG_NAME);
+        }
+        if (brand.length() > 48) {
+            return new ShopActionResult(false, "Brand name is too long (max 48 characters).");
+        }
+        long upfrontCents = dollarsToCents(parseLongOrDefault(parts.length > 1 ? parts[1] : "", Config.SHOP_FRANCHISE_DEFAULT_UPFRONT_FEE_DOLLARS.get()));
+        double royalty = clampPercent(parseDoubleOrDefault(parts.length > 2 ? parts[2] : "", Config.SHOP_FRANCHISE_DEFAULT_ROYALTY_PERCENT.get()));
+        double marketing = clampPercent(parseDoubleOrDefault(parts.length > 3 ? parts[3] : "", Config.SHOP_FRANCHISE_DEFAULT_MARKETING_PERCENT.get()));
+        String rules = sanitizeTokenText(parts.length > 4 ? parts[4] : "Brand name, catalog template, price bands, hours template");
+        UUID directPlayer = parseOptionalUuid(parts.length > 5 ? parts[5] : "");
+        long contractExpiresAtMillis = parseContractExpiryMillis(parts.length > 6 ? parts[6] : "");
+        if (contractExpiresAtMillis > 0L && contractExpiresAtMillis <= System.currentTimeMillis()) {
+            return new ShopActionResult(false, "Contract end date must be in the future.");
+        }
+        ListTag requiredItems = parseFranchiseRequiredItemsPayload(rawRequiredItems);
+
+        CompoundTag offer = new CompoundTag();
+        UUID offerId = UUID.randomUUID();
+        offer.putUUID(TAG_OFFER_ID, offerId);
+        offer.putString(TAG_OFFER_BRAND_NAME, brand);
+        offer.putLong(TAG_OFFER_UPFRONT_CENTS, Math.max(0L, upfrontCents));
+        offer.putDouble(TAG_OFFER_ROYALTY_PERCENT, royalty);
+        offer.putDouble(TAG_OFFER_MARKETING_PERCENT, marketing);
+        offer.putString(TAG_OFFER_RULES, rules);
+        if (contractExpiresAtMillis > 0L) {
+            offer.putLong(TAG_OFFER_CONTRACT_EXPIRES_AT_MILLIS, contractExpiresAtMillis);
+        }
+        if (!requiredItems.isEmpty()) {
+            offer.put(TAG_FRANCHISE_REQUIRED_ITEMS, requiredItems);
+        }
+        offer.putBoolean(TAG_REF_ACTIVE, true);
+        offer.putLong(TAG_REF_CREATED_MILLIS, System.currentTimeMillis());
+        if (directPlayer != null) {
+            offer.putUUID(TAG_OFFER_DIRECT_PLAYER, directPlayer);
+        }
+        ListTag offers = shop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND);
+        offers.add(offer);
+        shop.put(TAG_FRANCHISE_OFFERS, offers);
+        saveShopTag(centralBank, shop);
+        return new ShopActionResult(true, "Published franchise offer " + offerId + " for " + brand
+                + " | upfront " + formatCents(upfrontCents)
+                + " | royalty " + formatPercent(royalty)
+                + " | marketing " + formatPercent(marketing)
+                + (contractExpiresAtMillis > 0L ? " | ends " + formatContractExpiry(contractExpiresAtMillis) : "")
+                + (requiredItems.isEmpty() ? "" : " | required shelf items " + requiredItems.size())
+                + ".");
+    }
+
+    public static ShopActionResult cancelFranchiseOffer(CentralBank centralBank, UUID ownerId, UUID shopId, String rawOfferId) {
+        CompoundTag shop = resolveShopTag(centralBank, ownerId, shopId);
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        UUID offerId = parseOptionalUuid(rawOfferId);
+        if (offerId == null) {
+            return new ShopActionResult(false, "Enter a valid franchise offer UUID.");
+        }
+        for (Tag tag : shop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND)) {
+            if (!(tag instanceof CompoundTag offer) || !offer.contains(TAG_OFFER_ID)) {
+                continue;
+            }
+            if (offerId.equals(offer.getUUID(TAG_OFFER_ID))) {
+                offer.putBoolean(TAG_REF_ACTIVE, false);
+                saveShopTag(centralBank, shop);
+                return new ShopActionResult(true, "Franchise offer canceled: " + offerId + ".");
+            }
+        }
+        return new ShopActionResult(false, "Franchise offer not found for this shop.");
+    }
+
+    public static ShopActionResult acceptFranchiseOffer(CentralBank centralBank,
+                                                        UUID buyerOwnerId,
+                                                        UUID buyerShopId,
+                                                        String rawOfferId) {
+        return acceptFranchiseOffer(ServerLifecycleHooks.getCurrentServer(), centralBank, buyerOwnerId, buyerShopId, rawOfferId);
+    }
+
+    public static ShopActionResult acceptFranchiseOffer(MinecraftServer server,
+                                                        CentralBank centralBank,
+                                                        UUID buyerOwnerId,
+                                                        UUID buyerShopId,
+                                                        String rawOfferId) {
+        if (centralBank == null || buyerOwnerId == null) {
+            return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        expireFranchiseAgreements(centralBank);
+        CompoundTag buyerShop = resolveShopTag(centralBank, buyerOwnerId, buyerShopId);
+        if (buyerShop == null || !buyerShop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        if (!SHOP_TYPE_FRANCHISE.equals(normalizeShopType(buyerShop.getString(TAG_TYPE)))) {
+            return new ShopActionResult(false, "Only Franchise shops can buy franchise rights.");
+        }
+        if (buyerShop.contains(TAG_FRANCHISE_CONTRACT, Tag.TAG_COMPOUND)
+                && buyerShop.getCompound(TAG_FRANCHISE_CONTRACT).getBoolean(TAG_REF_ACTIVE)) {
+            return new ShopActionResult(false, "This shop already has an active franchise contract.");
+        }
+        if (Math.max(0L, buyerShop.getLong(TAG_TYPE_PAYABLE_CENTS)) > 0L) {
+            return new ShopActionResult(false, "Pay outstanding shop-type fees before accepting a franchise offer.");
+        }
+        UUID offerId = parseOptionalUuid(rawOfferId);
+        if (offerId == null) {
+            return new ShopActionResult(false, "Enter a valid franchise offer UUID.");
+        }
+        FranchiseOfferRef ref = findActiveFranchiseOffer(centralBank, offerId);
+        if (ref == null) {
+            return new ShopActionResult(false, "Franchise offer not found or inactive.");
+        }
+        if (isFranchiseOfferExpired(ref.offer(), System.currentTimeMillis())) {
+            ref.offer().putBoolean(TAG_REF_ACTIVE, false);
+            saveShopTag(centralBank, ref.franchisorShop());
+            return new ShopActionResult(false, "Franchise offer has expired. Ask the franchisor to publish a new offer.");
+        }
+        UUID buyerShopResolved = buyerShop.getUUID(TAG_ID);
+        UUID franchisorShopId = ref.franchisorShop().getUUID(TAG_ID);
+        if (buyerShopResolved.equals(franchisorShopId)) {
+            return new ShopActionResult(false, "A shop cannot buy its own franchise offer.");
+        }
+        if (ref.offer().contains(TAG_OFFER_DIRECT_PLAYER)) {
+            UUID direct = ref.offer().getUUID(TAG_OFFER_DIRECT_PLAYER);
+            if (!buyerOwnerId.equals(direct)) {
+                return new ShopActionResult(false, "This franchise offer is direct-only for another player.");
+            }
+        }
+        int capacity = franchiseLicenseCapacityForLevel(Math.max(1, ref.franchisorShop().getInt(TAG_LEVEL)));
+        int active = countActiveFranchiseContracts(ref.franchisorShop());
+        if (active >= capacity) {
+            return new ShopActionResult(false, "Franchise brand has no remaining license capacity.");
+        }
+        FranchiseRequirementStatus requirementStatus = evaluateFranchiseRequirements(server, buyerShop, ref.offer());
+        if (!requirementStatus.compliant()) {
+            return new ShopActionResult(false, "Missing brand-required shelf items: "
+                    + requirementStatus.missingSummary()
+                    + ". Place matching items on shop-mode shelves inside this shop plot, set a valid price, and stock non-creative shelves.");
+        }
+
+        UUID franchisorOwner = ref.franchisorShop().getUUID(TAG_OWNER);
+        long upfront = Math.max(0L, ref.offer().getLong(TAG_OFFER_UPFRONT_CENTS));
+        if (upfront > 0L) {
+            UUID buyerSettlement = resolveSettlementAccountId(centralBank, buyerOwnerId, buyerShopResolved, null);
+            UUID franchisorSettlement = resolveSettlementAccountId(centralBank, franchisorOwner, franchisorShopId, null);
+            if (buyerSettlement == null || franchisorSettlement == null) {
+                return new ShopActionResult(false, "Both shops need settlement accounts before accepting a franchise offer.");
+            }
+            ShopActionResult transfer = transferAccountCents(
+                    centralBank,
+                    buyerSettlement,
+                    franchisorSettlement,
+                    upfront,
+                    "SHOP_FRANCHISE_UPFRONT:" + sanitizeTokenText(ref.offer().getString(TAG_OFFER_BRAND_NAME))
+            );
+            if (!transfer.success()) {
+                return new ShopActionResult(false, "Upfront franchise fee failed: " + transfer.message());
+            }
+        }
+
+        UUID contractId = UUID.randomUUID();
+        CompoundTag franchiseeContract = buildFranchiseContractTag(contractId, ref.franchisorShop(), buyerShop, ref.offer(), false);
+        buyerShop.put(TAG_FRANCHISE_CONTRACT, franchiseeContract);
+        ListTag franchisorContracts = ref.franchisorShop().getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND);
+        franchisorContracts.add(buildFranchiseContractTag(contractId, ref.franchisorShop(), buyerShop, ref.offer(), false));
+        ref.franchisorShop().put(TAG_FRANCHISE_CONTRACTS, franchisorContracts);
+        saveShopTag(centralBank, ref.franchisorShop());
+        saveShopTag(centralBank, buyerShop);
+        return new ShopActionResult(true, "Franchise contract accepted for "
+                + ref.offer().getString(TAG_OFFER_BRAND_NAME) + " (" + contractId + ").");
+    }
+
+    public static ShopActionResult addNpcFranchisee(CentralBank centralBank, UUID ownerId, UUID shopId) {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null || !server.isSingleplayer()) {
+            return new ShopActionResult(false, "NPC franchisees are only available in solo worlds.");
+        }
+        CompoundTag shop = resolveShopTag(centralBank, ownerId, shopId);
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        if (!SHOP_TYPE_FRANCHISE.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+            return new ShopActionResult(false, "Only Franchise shops can add NPC franchisees.");
+        }
+        int capacity = franchiseLicenseCapacityForLevel(Math.max(1, shop.getInt(TAG_LEVEL)));
+        int active = countActiveFranchiseContracts(shop);
+        if (active >= capacity) {
+            return new ShopActionResult(false, "No remaining franchise license capacity.");
+        }
+        CompoundTag offer = new CompoundTag();
+        offer.putString(TAG_OFFER_BRAND_NAME, shop.getString(TAG_NAME));
+        offer.putDouble(TAG_OFFER_ROYALTY_PERCENT, Config.SHOP_FRANCHISE_DEFAULT_ROYALTY_PERCENT.get());
+        offer.putDouble(TAG_OFFER_MARKETING_PERCENT, Config.SHOP_FRANCHISE_DEFAULT_MARKETING_PERCENT.get());
+        offer.putString(TAG_OFFER_RULES, "NPC virtual licensee");
+        CompoundTag npcShop = new CompoundTag();
+        npcShop.putUUID(TAG_ID, UUID.randomUUID());
+        npcShop.putUUID(TAG_OWNER, UUID.nameUUIDFromBytes(("ubs:npc-franchise:" + shop.getUUID(TAG_ID) + ":" + System.nanoTime()).getBytes()));
+        npcShop.putString(TAG_NAME, "NPC Franchisee " + (active + 1));
+        CompoundTag contract = buildFranchiseContractTag(UUID.randomUUID(), shop, npcShop, offer, true);
+        contract.putLong(TAG_CONTRACT_LAST_NPC_ROYALTY_MILLIS, System.currentTimeMillis());
+        ListTag contracts = shop.getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND);
+        contracts.add(contract);
+        shop.put(TAG_FRANCHISE_CONTRACTS, contracts);
+        saveShopTag(centralBank, shop);
+        return new ShopActionResult(true, "Added solo-world NPC franchisee. It will generate virtual royalties once per day.");
+    }
+
+    public static ShopActionResult addCorporateBranch(CentralBank centralBank,
+                                                      UUID ownerId,
+                                                      UUID hqShopId,
+                                                      String rawBranchShopId) {
+        CompoundTag hq = resolveShopTag(centralBank, ownerId, hqShopId);
+        if (hq == null || !hq.contains(TAG_ID)) {
+            return new ShopActionResult(false, "Corporate HQ shop not found.");
+        }
+        if (!SHOP_TYPE_CORPORATE_CHAIN.equals(normalizeShopType(hq.getString(TAG_TYPE)))) {
+            return new ShopActionResult(false, "Only Corporate Retail Chain shops can add branches.");
+        }
+        if (Math.max(0L, hq.getLong(TAG_TYPE_PAYABLE_CENTS)) > 0L) {
+            return new ShopActionResult(false, "Pay outstanding shop-type fees before adding branches.");
+        }
+        UUID branchId = parseOptionalUuid(rawBranchShopId);
+        if (branchId == null) {
+            return new ShopActionResult(false, "Enter a valid branch shop UUID.");
+        }
+        CompoundTag branch = resolveShopTag(centralBank, ownerId, branchId);
+        if (branch == null || !branch.contains(TAG_ID)) {
+            return new ShopActionResult(false, "Branch shop must be owned by you.");
+        }
+        if (!SHOP_TYPE_CORPORATE_CHAIN.equals(normalizeShopType(branch.getString(TAG_TYPE)))) {
+            return new ShopActionResult(false, "Branch shop must also be Corporate Retail Chain type.");
+        }
+        ensureCorporateHqState(hq);
+        int capacity = corporateBranchCapacityForLevel(Math.max(1, hq.getInt(TAG_LEVEL)));
+        int active = countCorporateBranches(hq);
+        if (!hq.getUUID(TAG_ID).equals(branchId) && active >= capacity) {
+            return new ShopActionResult(false, "Corporate branch capacity reached: " + active + " / " + capacity + ".");
+        }
+        if (containsShopRef(hq.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND), branchId)) {
+            return new ShopActionResult(true, "Branch is already linked to this corporate chain.");
+        }
+        CompoundTag ref = new CompoundTag();
+        ref.putUUID(TAG_REF_SHOP_ID, branchId);
+        ref.putUUID(TAG_REF_OWNER_ID, ownerId);
+        ref.putString(TAG_REF_NAME, branch.getString(TAG_NAME));
+        ref.putBoolean(TAG_REF_ACTIVE, true);
+        ref.putLong(TAG_REF_CREATED_MILLIS, System.currentTimeMillis());
+        ListTag branches = hq.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND);
+        branches.add(ref);
+        hq.put(TAG_CORPORATE_BRANCHES, branches);
+        branch.putUUID(TAG_CORPORATE_HQ, hq.getUUID(TAG_ID));
+        saveShopTag(centralBank, hq);
+        saveShopTag(centralBank, branch);
+        return new ShopActionResult(true, "Added corporate branch: " + branch.getString(TAG_NAME) + ".");
+    }
+
+    public static ShopActionResult removeCorporateBranch(CentralBank centralBank,
+                                                         UUID ownerId,
+                                                         UUID hqShopId,
+                                                         String rawBranchShopId) {
+        CompoundTag hq = resolveShopTag(centralBank, ownerId, hqShopId);
+        if (hq == null || !hq.contains(TAG_ID)) {
+            return new ShopActionResult(false, "Corporate HQ shop not found.");
+        }
+        UUID branchId = parseOptionalUuid(rawBranchShopId);
+        if (branchId == null) {
+            return new ShopActionResult(false, "Enter a valid branch shop UUID.");
+        }
+        boolean changed = false;
+        ListTag branches = hq.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND);
+        for (Tag tag : branches) {
+            if (!(tag instanceof CompoundTag ref) || !ref.contains(TAG_REF_SHOP_ID)) {
+                continue;
+            }
+            if (branchId.equals(ref.getUUID(TAG_REF_SHOP_ID))) {
+                ref.putBoolean(TAG_REF_ACTIVE, false);
+                changed = true;
+            }
+        }
+        CompoundTag branch = resolveShopTag(centralBank, ownerId, branchId);
+        if (branch != null) {
+            branch.remove(TAG_CORPORATE_HQ);
+            saveShopTag(centralBank, branch);
+        }
+        if (!changed) {
+            return new ShopActionResult(false, "Corporate branch not found in this chain.");
+        }
+        saveShopTag(centralBank, hq);
+        return new ShopActionResult(true, "Corporate branch unlinked: " + branchId + ".");
     }
 
     public static ShopActionResult clearCheckoutTerminal(CentralBank centralBank,
@@ -1474,10 +2026,12 @@ public final class ShopService {
             return new ShopActionResult(false, "Only the shop owner can manage opening hours and lighting.");
         }
 
-        int openMinute = getShopOpenMinute(shop);
-        int closeMinute = getShopCloseMinute(shop);
+        String currentDayKey = resolveCurrentScheduleDayKey(server);
+        ensureWeeklySchedule(shop);
+        int openMinute = getShopOpenMinuteForDay(shop, currentDayKey);
+        int closeMinute = getShopCloseMinuteForDay(shop, currentDayKey);
         int minuteOfDay = resolveCurrentMinuteOfDay(server);
-        boolean openNow = isShopOpenAtMinute(shop, minuteOfDay);
+        boolean openNow = isShopOpenAtMinute(shop, minuteOfDay, currentDayKey);
         long untilChangeSeconds = secondsUntilNextShopStateChange(openMinute, closeMinute, minuteOfDay, openNow);
         boolean lightingEnabled = shop.getBoolean(TAG_LIGHTING_ENABLED);
         boolean excludeStockroom = shop.getBoolean(TAG_LIGHTING_EXCLUDE_STOCKROOM);
@@ -1494,6 +2048,24 @@ public final class ShopService {
         lines.add("@shop_hours.close_tick=" + closeMinute);
         lines.add("@shop_hours.open_label=" + sanitizeTokenText(formatMinuteAmPm(openMinute)));
         lines.add("@shop_hours.close_label=" + sanitizeTokenText(formatMinuteAmPm(closeMinute)));
+        lines.add("@shop_hours.current_day=" + currentDayKey);
+        for (String dayKey : SHOP_SCHEDULE_DAY_KEYS) {
+            int dayOpen = getShopOpenMinuteForDay(shop, dayKey);
+            int dayClose = getShopCloseMinuteForDay(shop, dayKey);
+            lines.add("@shop_hours.day=" + dayKey
+                    + "|"
+                    + friendlyScheduleDay(dayKey)
+                    + "|"
+                    + dayOpen
+                    + "|"
+                    + dayClose
+                    + "|"
+                    + sanitizeTokenText(formatMinuteAmPm(dayOpen))
+                    + "|"
+                    + sanitizeTokenText(formatMinuteAmPm(dayClose))
+                    + "|"
+                    + (dayKey.equals(currentDayKey) ? "1" : "0"));
+        }
         lines.add("@shop_hours.is_open=" + (openNow ? "1" : "0"));
         lines.add("@shop_hours.closed_deliverer_stockroom_access=" + (closedDelivererStockroomAccess ? "1" : "0"));
         // Keep legacy key name and provide explicit seconds key for newer UIs.
@@ -1505,7 +2077,8 @@ public final class ShopService {
         lines.add("@shop_lighting.exclude_stockroom=" + (excludeStockroom ? "1" : "0"));
         lines.add("@shop_lighting.level=" + lightLevel);
         lines.add("@shop_lighting.managed_blocks=" + managedLights);
-        lines.add("Open: " + formatMinuteAmPm(openMinute) + "  |  Close: " + formatMinuteAmPm(closeMinute));
+        lines.add("Today (" + friendlyScheduleDay(currentDayKey) + "): "
+                + formatMinuteAmPm(openMinute) + "  |  Close: " + formatMinuteAmPm(closeMinute));
         lines.add("Current status: " + (openNow ? "OPEN" : "CLOSED"));
         lines.add("Closed-hours delivery access (stockroom only): " + (closedDelivererStockroomAccess ? "Allowed" : "Denied"));
         if (untilChangeSeconds >= 0L) {
@@ -1541,8 +2114,25 @@ public final class ShopService {
         }
 
         String[] parts = (hoursPayload == null ? "" : hoursPayload).split("\\|", -1);
-        String openRaw = parts.length > 0 ? parts[0].trim() : "";
-        String closeRaw = parts.length > 1 ? parts[1].trim() : "";
+        String dayKey = "";
+        String openRaw;
+        String closeRaw;
+        if (parts.length >= 3) {
+            String requestedDay = parts[0].trim();
+            if ("ALL".equalsIgnoreCase(requestedDay)) {
+                dayKey = "ALL";
+            } else {
+                dayKey = normalizeScheduleDay(requestedDay);
+                if (dayKey.isBlank()) {
+                    return new ShopActionResult(false, "Invalid day. Use Mon, Tue, Wed, Thu, Fri, Sat, or Sun.");
+                }
+            }
+            openRaw = parts[1].trim();
+            closeRaw = parts[2].trim();
+        } else {
+            openRaw = parts.length > 0 ? parts[0].trim() : "";
+            closeRaw = parts.length > 1 ? parts[1].trim() : "";
+        }
         int openMinute = parseClockToMinuteOfDay(openRaw);
         int closeMinute = parseClockToMinuteOfDay(closeRaw);
         if (openMinute < 0 || closeMinute < 0) {
@@ -1550,17 +2140,28 @@ public final class ShopService {
                     "Invalid time format. Use values like '9:00 AM', '21:30', or '09:00'.");
         }
 
-        shop.putInt(TAG_SCHEDULE_OPEN_TICK, clampMinuteOfDay(openMinute));
-        shop.putInt(TAG_SCHEDULE_CLOSE_TICK, clampMinuteOfDay(closeMinute));
+        ensureWeeklySchedule(shop);
+        if ("ALL".equals(dayKey) || dayKey.isBlank()) {
+            for (String key : SHOP_SCHEDULE_DAY_KEYS) {
+                setShopDayHours(shop, key, openMinute, closeMinute);
+            }
+        } else {
+            setShopDayHours(shop, dayKey, openMinute, closeMinute);
+        }
+        syncLegacyScheduleTagsToDay(shop, resolveCurrentScheduleDayKey(server));
         int minuteOfDay = resolveCurrentMinuteOfDay(server);
-        shop.putBoolean(TAG_SCHEDULE_LAST_OPEN, isShopOpenAtMinute(shop, minuteOfDay));
+        shop.putBoolean(TAG_SCHEDULE_LAST_OPEN, isShopOpenAtMinute(shop, minuteOfDay, resolveCurrentScheduleDayKey(server)));
         shop.putLong(TAG_SCHEDULE_LAST_NOTIFY_TICK, -1L);
         shop.putLong(TAG_SCHEDULE_LAST_EJECT_TICK, -1L);
         saveShopTag(centralBank, shop);
 
+        String targetLabel = "ALL".equals(dayKey) || dayKey.isBlank()
+                ? "all days"
+                : friendlyScheduleDay(dayKey);
         return new ShopActionResult(
                 true,
-                "Shop hours updated: " + formatMinuteAmPm(openMinute) + " - " + formatMinuteAmPm(closeMinute) + "."
+                "Shop hours updated for " + targetLabel + ": "
+                        + formatMinuteAmPm(openMinute) + " - " + formatMinuteAmPm(closeMinute) + "."
         );
     }
 
@@ -1707,6 +2308,155 @@ public final class ShopService {
         return new ShopActionResult(true, "Automatic lighting level set to " + level + ".");
     }
 
+    private static void ensureWeeklySchedule(CompoundTag shop) {
+        if (shop == null) {
+            return;
+        }
+        ListTag days = shop.getList(TAG_SCHEDULE_DAYS, Tag.TAG_COMPOUND);
+        boolean changed = false;
+        int fallbackOpen = getShopOpenMinute(shop);
+        int fallbackClose = getShopCloseMinute(shop);
+        for (String dayKey : SHOP_SCHEDULE_DAY_KEYS) {
+            if (getShopScheduleDayTag(shop, dayKey, false) == null) {
+                CompoundTag day = new CompoundTag();
+                day.putString(TAG_DAY, dayKey);
+                day.putInt(TAG_SCHEDULE_DAY_OPEN_MINUTE, fallbackOpen);
+                day.putInt(TAG_SCHEDULE_DAY_CLOSE_MINUTE, fallbackClose);
+                days.add(day);
+                changed = true;
+            }
+        }
+        if (changed || !shop.contains(TAG_SCHEDULE_DAYS, Tag.TAG_LIST)) {
+            shop.put(TAG_SCHEDULE_DAYS, days);
+        }
+    }
+
+    private static CompoundTag getShopScheduleDayTag(CompoundTag shop, String rawDay, boolean create) {
+        if (shop == null) {
+            return null;
+        }
+        String dayKey = normalizeScheduleDay(rawDay);
+        if (dayKey.isBlank()) {
+            return null;
+        }
+        ListTag days = shop.getList(TAG_SCHEDULE_DAYS, Tag.TAG_COMPOUND);
+        for (Tag tag : days) {
+            if (!(tag instanceof CompoundTag dayTag)) {
+                continue;
+            }
+            String existing = normalizeScheduleDay(dayTag.getString(TAG_DAY));
+            if (dayKey.equals(existing)) {
+                dayTag.putString(TAG_DAY, dayKey);
+                return dayTag;
+            }
+        }
+        if (!create) {
+            return null;
+        }
+        CompoundTag created = new CompoundTag();
+        created.putString(TAG_DAY, dayKey);
+        created.putInt(TAG_SCHEDULE_DAY_OPEN_MINUTE, getShopOpenMinute(shop));
+        created.putInt(TAG_SCHEDULE_DAY_CLOSE_MINUTE, getShopCloseMinute(shop));
+        days.add(created);
+        shop.put(TAG_SCHEDULE_DAYS, days);
+        return created;
+    }
+
+    private static void initializeWeeklySchedule(CompoundTag shop, int openMinute, int closeMinute) {
+        if (shop == null) {
+            return;
+        }
+        ListTag days = new ListTag();
+        int safeOpen = clampMinuteOfDay(openMinute);
+        int safeClose = clampMinuteOfDay(closeMinute);
+        for (String dayKey : SHOP_SCHEDULE_DAY_KEYS) {
+            CompoundTag day = new CompoundTag();
+            day.putString(TAG_DAY, dayKey);
+            day.putInt(TAG_SCHEDULE_DAY_OPEN_MINUTE, safeOpen);
+            day.putInt(TAG_SCHEDULE_DAY_CLOSE_MINUTE, safeClose);
+            days.add(day);
+        }
+        shop.put(TAG_SCHEDULE_DAYS, days);
+    }
+
+    private static void setShopDayHours(CompoundTag shop, String rawDay, int openMinute, int closeMinute) {
+        CompoundTag day = getShopScheduleDayTag(shop, rawDay, true);
+        if (day == null) {
+            return;
+        }
+        day.putInt(TAG_SCHEDULE_DAY_OPEN_MINUTE, clampMinuteOfDay(openMinute));
+        day.putInt(TAG_SCHEDULE_DAY_CLOSE_MINUTE, clampMinuteOfDay(closeMinute));
+    }
+
+    private static int getShopOpenMinuteForDay(CompoundTag shop, String rawDay) {
+        if (shop == null) {
+            return clampMinuteOfDay(SHOP_DEFAULT_OPEN_MINUTE);
+        }
+        CompoundTag day = getShopScheduleDayTag(shop, rawDay, false);
+        if (day == null || !day.contains(TAG_SCHEDULE_DAY_OPEN_MINUTE)) {
+            return getShopOpenMinute(shop);
+        }
+        return decodeScheduleMinute(day.getInt(TAG_SCHEDULE_DAY_OPEN_MINUTE), SHOP_DEFAULT_OPEN_MINUTE);
+    }
+
+    private static int getShopCloseMinuteForDay(CompoundTag shop, String rawDay) {
+        if (shop == null) {
+            return clampMinuteOfDay(SHOP_DEFAULT_CLOSE_MINUTE);
+        }
+        CompoundTag day = getShopScheduleDayTag(shop, rawDay, false);
+        if (day == null || !day.contains(TAG_SCHEDULE_DAY_CLOSE_MINUTE)) {
+            return getShopCloseMinute(shop);
+        }
+        return decodeScheduleMinute(day.getInt(TAG_SCHEDULE_DAY_CLOSE_MINUTE), SHOP_DEFAULT_CLOSE_MINUTE);
+    }
+
+    private static void syncLegacyScheduleTagsToDay(CompoundTag shop, String rawDay) {
+        if (shop == null) {
+            return;
+        }
+        String dayKey = normalizeScheduleDay(rawDay);
+        if (dayKey.isBlank()) {
+            dayKey = SHOP_SCHEDULE_DAY_KEYS.get(0);
+        }
+        shop.putInt(TAG_SCHEDULE_OPEN_TICK, getShopOpenMinuteForDay(shop, dayKey));
+        shop.putInt(TAG_SCHEDULE_CLOSE_TICK, getShopCloseMinuteForDay(shop, dayKey));
+    }
+
+    private static String resolveCurrentScheduleDayKey(MinecraftServer server) {
+        int index = Math.max(0, Math.min(6, LocalDate.now().getDayOfWeek().getValue() - 1));
+        return SHOP_SCHEDULE_DAY_KEYS.get(index);
+    }
+
+    private static String normalizeScheduleDay(String rawDay) {
+        if (rawDay == null || rawDay.isBlank()) {
+            return "";
+        }
+        String value = rawDay.trim().toUpperCase(Locale.ROOT).replace(".", "");
+        return switch (value) {
+            case "MON", "MONDAY" -> "MON";
+            case "TUE", "TUES", "TUESDAY" -> "TUE";
+            case "WED", "WEDNESDAY" -> "WED";
+            case "THU", "THUR", "THURS", "THURSDAY" -> "THU";
+            case "FRI", "FRIDAY" -> "FRI";
+            case "SAT", "SATURDAY" -> "SAT";
+            case "SUN", "SUNDAY" -> "SUN";
+            default -> "";
+        };
+    }
+
+    private static String friendlyScheduleDay(String rawDay) {
+        return switch (normalizeScheduleDay(rawDay)) {
+            case "MON" -> "Mon";
+            case "TUE" -> "Tue";
+            case "WED" -> "Wed";
+            case "THU" -> "Thu";
+            case "FRI" -> "Fri";
+            case "SAT" -> "Sat";
+            case "SUN" -> "Sun";
+            default -> "Day";
+        };
+    }
+
     private static int clampMinuteOfDay(int minute) {
         return (int) Math.floorMod(minute, 1440);
     }
@@ -1777,8 +2527,13 @@ public final class ShopService {
     }
 
     private static boolean isShopOpenAtMinute(CompoundTag shop, int minuteOfDay) {
-        int openMinute = getShopOpenMinute(shop);
-        int closeMinute = getShopCloseMinute(shop);
+        return isShopOpenAtMinute(shop, minuteOfDay, resolveCurrentScheduleDayKey(null));
+    }
+
+    private static boolean isShopOpenAtMinute(CompoundTag shop, int minuteOfDay, String rawDay) {
+        ensureWeeklySchedule(shop);
+        int openMinute = getShopOpenMinuteForDay(shop, rawDay);
+        int closeMinute = getShopCloseMinuteForDay(shop, rawDay);
         int minute = clampMinuteOfDay(minuteOfDay);
         if (openMinute == closeMinute) {
             // Equal values represent 24h operation.
@@ -1956,6 +2711,7 @@ public final class ShopService {
             return;
         }
         int minuteOfDay = resolveCurrentMinuteOfDay(server);
+        String currentDayKey = resolveCurrentScheduleDayKey(server);
         long epochDay = resolveCurrentEpochDay(server);
         long nowMillis = System.currentTimeMillis();
         Map<UUID, ShopSetupObjectivePayload> setupObjectiveByOwner = new HashMap<>();
@@ -2025,11 +2781,12 @@ public final class ShopService {
                 }
             }
 
-            boolean scheduleOpen = isShopOpenAtMinute(shop, minuteOfDay);
+            ensureWeeklySchedule(shop);
+            boolean scheduleOpen = isShopOpenAtMinute(shop, minuteOfDay, currentDayKey);
             boolean isOpen = scheduleOpen && setupComplete;
             boolean wasOpen = shop.getBoolean(TAG_SCHEDULE_LAST_OPEN);
-            int openMinute = getShopOpenMinute(shop);
-            int closeMinute = getShopCloseMinute(shop);
+            int openMinute = getShopOpenMinuteForDay(shop, currentDayKey);
+            int closeMinute = getShopCloseMinuteForDay(shop, currentDayKey);
 
             if (statusTick) {
                 if (shopId != null) {
@@ -6166,7 +6923,8 @@ public final class ShopService {
                     activeMine++;
                 }
                 boolean include = ORDER_STATUS_OPEN.equals(order.status())
-                        || (ORDER_STATUS_ACCEPTED.equals(order.status()) && courierId.equals(order.acceptedBy()));
+                        || (ORDER_STATUS_ACCEPTED.equals(order.status()) && courierId.equals(order.acceptedBy()))
+                        || isFinishedOrderStatus(order.status());
                 if (!include) {
                     continue;
                 }
@@ -6188,19 +6946,24 @@ public final class ShopService {
                         remaining,
                         order.timeoutMinutes(),
                         order.createdAtMillis(),
-                        order.boundPalletRef()
+                        order.boundPalletRef(),
+                        order.completedAtMillis(),
+                        order.routeMillis(),
+                        order.routeDistanceBlocks(),
+                        order.payoutCents()
                 ));
             }
         }
 
         entries.sort(Comparator
-                .comparing((OrderBoardEntry e) -> ORDER_STATUS_ACCEPTED.equals(e.status()) ? 0 : 1)
-                .thenComparingLong(OrderBoardEntry::createdAtMillis).reversed());
+                .comparingInt((OrderBoardEntry e) -> orderBoardStatusSort(e.status()))
+                .thenComparing(Comparator.comparingLong(OrderBoardEntry::sortMillis).reversed()));
 
         int cap = maxActiveCourierOrders();
         CourierProgress progress = readCourierProgress(centralBank, courierId);
         List<String> lines = new ArrayList<>();
         lines.add("Order Board");
+        lines.add("@order.board.courier_id=" + courierId);
         lines.add("@order.board.active_mine=" + activeMine);
         lines.add("@order.board.active_cap=" + cap);
         lines.add("@order.board.total_open=" + entries.stream().filter(e -> ORDER_STATUS_OPEN.equals(e.status())).count());
@@ -6214,6 +6977,7 @@ public final class ShopService {
         lines.add("@order.board.rank=" + sanitizeTokenText(courierRankLabel(progress.completed())));
         lines.add("@order.board.next_rank_at=" + nextCourierRankMilestone(progress.completed()));
         lines.add("@order.board.next_streak_at=" + nextCourierStreakMilestone(progress.streak()));
+        lines.add("@order.board.history_total=" + entries.stream().filter(e -> isFinishedOrderStatus(e.status())).count());
         int idx = 1;
         for (OrderBoardEntry entry : entries) {
             lines.add("@order_board_order=" + idx
@@ -6229,9 +6993,14 @@ public final class ShopService {
                     + "|" + Math.max(0L, entry.remainingSeconds())
                     + "|" + Math.max(ORDER_TIMEOUT_MINUTES_MIN, entry.timeoutMinutes())
                     + "|" + entry.createdAtMillis()
-                    + "|" + sanitizeTokenText(entry.boundPalletRef()));
+                    + "|" + sanitizeTokenText(entry.boundPalletRef())
+                    + "|" + Math.max(0L, entry.completedAtMillis())
+                    + "|" + Math.max(0L, entry.routeMillis())
+                    + "|" + entry.routeDistanceBlocks()
+                    + "|" + Math.max(0L, entry.payoutCents()));
             idx++;
         }
+        appendCourierRankingLines(lines, centralBank, server, courierId);
         if (entries.isEmpty()) {
             lines.add("(No open delivery orders available right now.)");
         }
@@ -6240,6 +7009,332 @@ public final class ShopService {
                 + " | Streak: " + progress.streak() + " (best " + progress.bestStreak() + ")");
         lines.add("Tip: accepted orders are reserved for a single courier until completed, canceled, or expired.");
         return new ShopActionResult(true, String.join("\n", lines));
+    }
+
+    public static LeaderboardSeedResult seedOrderBoardLeaderboardDemo(MinecraftServer server) {
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return new LeaderboardSeedResult(0, 0, 0, 0);
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        long now = System.currentTimeMillis();
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
+
+        for (int i = 1; i <= 100; i++) {
+            UUID courierId = demoLeaderboardCourierId(i);
+            CompoundTag entry = getCourierStatsEntry(root, courierId, false);
+            if (entry == null) {
+                entry = getCourierStatsEntry(root, courierId, true);
+                created++;
+            } else if (!entry.getBoolean(TAG_COURIER_SEED_DATA)) {
+                skipped++;
+                continue;
+            } else {
+                updated++;
+            }
+            writeDemoLeaderboardCourier(entry, i, now);
+        }
+
+        centralMeta.put(TAG_ROOT, root);
+        centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+        BankManager.markDirty();
+        return new LeaderboardSeedResult(created, updated, 0, skipped);
+    }
+
+    public static LeaderboardSeedResult removeOrderBoardLeaderboardDemo(MinecraftServer server) {
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        if (centralBank == null) {
+            return new LeaderboardSeedResult(0, 0, 0, 0);
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        ListTag couriers = root.getList(TAG_ORDER_COURIERS, Tag.TAG_COMPOUND);
+        int removed = 0;
+        for (int i = couriers.size() - 1; i >= 0; i--) {
+            Tag tag = couriers.get(i);
+            if (tag instanceof CompoundTag entry
+                    && entry.getBoolean(TAG_COURIER_SEED_DATA)
+                    && entry.getString(TAG_COURIER_SEED_KEY).startsWith("demo-leaderboard:")) {
+                couriers.remove(i);
+                removed++;
+            }
+        }
+        root.put(TAG_ORDER_COURIERS, couriers);
+        centralMeta.put(TAG_ROOT, root);
+        centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+        if (removed > 0) {
+            BankManager.markDirty();
+        }
+        return new LeaderboardSeedResult(0, 0, removed, 0);
+    }
+
+    private static UUID demoLeaderboardCourierId(int index) {
+        return UUID.nameUUIDFromBytes(("ultimatebankingsystem:order-board-demo-leaderboard:" + index)
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void writeDemoLeaderboardCourier(CompoundTag entry, int index, long now) {
+        if (entry == null) {
+            return;
+        }
+        int safeIndex = Math.max(1, Math.min(100, index));
+        long completed = 180L - safeIndex;
+        long canceled = Math.max(0L, safeIndex % 9L);
+        long streak = Math.max(1L, 20L - (safeIndex % 20L));
+        long bestStreak = Math.max(streak, 28L - (safeIndex % 24L));
+        long totalPayout = Math.max(0L, completed * (8_400L + safeIndex * 37L));
+        int distance = 36 + (safeIndex * 13 % 88);
+        long routeScore = 410L + (safeIndex * 31L % 690L);
+        long routeMillis = routeScore * Math.max(1, distance);
+
+        entry.putUUID(TAG_COURIER_ID, demoLeaderboardCourierId(safeIndex));
+        entry.putString(TAG_COURIER_NAME, demoLeaderboardName(safeIndex));
+        entry.putLong(TAG_COURIER_COMPLETED, completed);
+        entry.putLong(TAG_COURIER_CANCELED, canceled);
+        entry.putLong(TAG_COURIER_STREAK, streak);
+        entry.putLong(TAG_COURIER_BEST_STREAK, bestStreak);
+        entry.putLong(TAG_COURIER_TOTAL_PAYOUT_CENTS, totalPayout);
+        entry.putLong(TAG_COURIER_LAST_ACTIVITY_AT, Math.max(0L, now - safeIndex * 9L * 60L * 1000L));
+        entry.putLong(TAG_COURIER_BEST_ROUTE_MILLIS, routeMillis);
+        entry.putInt(TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS, distance);
+        entry.putLong(TAG_COURIER_BEST_ROUTE_SCORE, routeScore);
+        entry.putLong(TAG_COURIER_BEST_ROUTE_AT, Math.max(0L, now - safeIndex * 7L * 60L * 1000L));
+        entry.putBoolean(TAG_COURIER_SEED_DATA, true);
+        entry.putString(TAG_COURIER_SEED_KEY, "demo-leaderboard:" + safeIndex);
+    }
+
+    private static String demoLeaderboardName(int index) {
+        String[] first = {
+                "Mira", "Jonas", "Talia", "Ravi", "Nora", "Devon", "Iris", "Kian", "Selene", "Omar"
+        };
+        String[] last = {
+                "Stone", "Reed", "Vale", "Cross", "Lane", "Hart", "Wells", "March", "Quill", "North"
+        };
+        int safeIndex = Math.max(1, index);
+        String name = first[(safeIndex - 1) % first.length] + " " + last[((safeIndex - 1) / first.length) % last.length];
+        return name + " " + String.format(Locale.ROOT, "%03d", safeIndex);
+    }
+
+    private static void appendCourierRankingLines(List<String> lines, CentralBank centralBank, MinecraftServer server, UUID currentCourierId) {
+        if (lines == null || centralBank == null) {
+            return;
+        }
+        List<CourierRankEntry> entries = readCourierRankEntries(centralBank, server);
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        List<CourierRankEntry> completed = new ArrayList<>(entries);
+        completed.sort(Comparator
+                .comparingLong(CourierRankEntry::completed).reversed()
+                .thenComparing(Comparator.comparingLong(CourierRankEntry::successRatePct).reversed())
+                .thenComparing(CourierRankEntry::courierName));
+        appendCompletedRankLines(lines, completed, currentCourierId);
+
+        List<CourierRankEntry> fastest = new ArrayList<>();
+        for (CourierRankEntry entry : entries) {
+            if (entry.bestRouteScore() > 0L && entry.bestRouteMillis() > 0L && entry.bestRouteDistanceBlocks() > 0) {
+                fastest.add(entry);
+            }
+        }
+        fastest.sort(Comparator
+                .comparingLong(CourierRankEntry::bestRouteScore)
+                .thenComparing(Comparator.comparingLong(CourierRankEntry::bestRouteMillis))
+                .thenComparing(CourierRankEntry::courierName));
+        appendFastestRankLines(lines, fastest, currentCourierId);
+    }
+
+    private static void appendCompletedRankLines(List<String> lines, List<CourierRankEntry> entries, UUID currentCourierId) {
+        int rank = 1;
+        for (CourierRankEntry entry : entries) {
+            if (entry.completed() <= 0L && entry.canceled() <= 0L) {
+                continue;
+            }
+            boolean currentCourier = currentCourierId != null && currentCourierId.equals(entry.courierId());
+            if (rank > 100 && !currentCourier) {
+                rank++;
+                continue;
+            }
+            appendCourierRankLine(
+                    lines,
+                    "completed",
+                    rank,
+                    entry,
+                    entry.completed() + " completed",
+                    entry.successRatePct() + "% success | " + MoneyText.abbreviateWithDollar(BigDecimal.valueOf(entry.totalPayoutCents(), 2)) + " paid",
+                    courierRankLabel(entry.completed()),
+                    entry.completed()
+            );
+            rank++;
+        }
+    }
+
+    private static void appendFastestRankLines(List<String> lines, List<CourierRankEntry> entries, UUID currentCourierId) {
+        int rank = 1;
+        for (CourierRankEntry entry : entries) {
+            boolean currentCourier = currentCourierId != null && currentCourierId.equals(entry.courierId());
+            if (rank > 100 && !currentCourier) {
+                rank++;
+                continue;
+            }
+            appendCourierRankLine(
+                    lines,
+                    "fastest",
+                    rank,
+                    entry,
+                    formatMillisShort(entry.bestRouteMillis()) + " over " + entry.bestRouteDistanceBlocks() + " blocks",
+                    entry.bestRouteScore() + " ms/block",
+                    "Fast",
+                    entry.bestRouteScore()
+            );
+            rank++;
+        }
+    }
+
+    private static void appendPayoutRankLines(List<String> lines, List<CourierRankEntry> entries) {
+        int rank = 1;
+        for (CourierRankEntry entry : entries) {
+            if (rank > 100 || entry.totalPayoutCents() <= 0L) {
+                break;
+            }
+            appendCourierRankLine(
+                    lines,
+                    "payout",
+                    rank,
+                    entry,
+                    MoneyText.abbreviateWithDollar(BigDecimal.valueOf(entry.totalPayoutCents(), 2)) + " lifetime",
+                    entry.completed() + " completed | streak " + entry.streak(),
+                    "Paid",
+                    entry.totalPayoutCents()
+            );
+            rank++;
+        }
+    }
+
+    private static void appendStreakRankLines(List<String> lines, List<CourierRankEntry> entries) {
+        int rank = 1;
+        for (CourierRankEntry entry : entries) {
+            if (rank > 100 || entry.bestStreak() <= 0L) {
+                break;
+            }
+            appendCourierRankLine(
+                    lines,
+                    "streak",
+                    rank,
+                    entry,
+                    entry.bestStreak() + " best streak",
+                    "current " + entry.streak() + " | " + entry.successRatePct() + "% success",
+                    "Streak",
+                    entry.bestStreak()
+            );
+            rank++;
+        }
+    }
+
+    private static void appendCourierRankLine(List<String> lines,
+                                              String board,
+                                              int rank,
+                                              CourierRankEntry entry,
+                                              String primary,
+                                              String secondary,
+                                              String badge,
+                                              long score) {
+        lines.add("@order_board_rank=" + sanitizeTokenText(board)
+                + "|" + rank
+                + "|" + entry.courierId()
+                + "|" + sanitizeTokenText(entry.courierName())
+                + "|" + sanitizeTokenText(primary)
+                + "|" + sanitizeTokenText(secondary)
+                + "|" + Math.max(0L, score)
+                + "|" + sanitizeTokenText(badge));
+    }
+
+    private static List<CourierRankEntry> readCourierRankEntries(CentralBank centralBank, MinecraftServer server) {
+        List<CourierRankEntry> out = new ArrayList<>();
+        if (centralBank == null) {
+            return out;
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        ListTag couriers = root.getList(TAG_ORDER_COURIERS, Tag.TAG_COMPOUND);
+        boolean mutated = false;
+        for (Tag tag : couriers) {
+            if (!(tag instanceof CompoundTag entry) || !entry.contains(TAG_COURIER_ID)) {
+                continue;
+            }
+            UUID courierId;
+            try {
+                courierId = entry.getUUID(TAG_COURIER_ID);
+            } catch (Exception ignored) {
+                continue;
+            }
+            long completed = Math.max(0L, entry.getLong(TAG_COURIER_COMPLETED));
+            long canceled = Math.max(0L, entry.getLong(TAG_COURIER_CANCELED));
+            long streak = Math.max(0L, entry.getLong(TAG_COURIER_STREAK));
+            long bestStreak = Math.max(0L, entry.getLong(TAG_COURIER_BEST_STREAK));
+            long totalPayout = Math.max(0L, entry.getLong(TAG_COURIER_TOTAL_PAYOUT_CENTS));
+            long bestRouteMillis = Math.max(0L, entry.getLong(TAG_COURIER_BEST_ROUTE_MILLIS));
+            int bestRouteDistance = entry.contains(TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS)
+                    ? entry.getInt(TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS)
+                    : -1;
+            long bestRouteScore = Math.max(0L, entry.getLong(TAG_COURIER_BEST_ROUTE_SCORE));
+            String name = sanitizeTokenText(entry.getString(TAG_COURIER_NAME));
+            String resolvedName = resolveCourierProfileName(server, courierId);
+            if (!resolvedName.isBlank() && isCourierNameFallback(name, courierId)) {
+                name = resolvedName;
+                entry.putString(TAG_COURIER_NAME, name);
+                mutated = true;
+            }
+            if (isCourierNameFallback(name, courierId)) {
+                name = shortUuid(courierId);
+            }
+            out.add(new CourierRankEntry(
+                    courierId,
+                    name,
+                    completed,
+                    canceled,
+                    streak,
+                    bestStreak,
+                    totalPayout,
+                    bestRouteMillis,
+                    bestRouteDistance,
+                    bestRouteScore,
+                    computeCourierSuccessRate(completed, canceled)
+            ));
+        }
+        if (mutated) {
+            centralMeta.put(TAG_ROOT, root);
+            centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+        }
+        return out;
+    }
+
+    private static boolean isFinishedOrderStatus(String status) {
+        return ORDER_STATUS_COMPLETED.equals(status)
+                || ORDER_STATUS_CANCELED.equals(status)
+                || ORDER_STATUS_EXPIRED.equals(status);
+    }
+
+    private static int orderBoardStatusSort(String status) {
+        if (ORDER_STATUS_ACCEPTED.equals(status)) {
+            return 0;
+        }
+        if (ORDER_STATUS_OPEN.equals(status)) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private static String formatMillisShort(long millis) {
+        long safe = Math.max(0L, millis);
+        if (safe < 60_000L) {
+            return String.format(Locale.ROOT, "%.1fs", safe / 1000.0D);
+        }
+        long seconds = safe / 1000L;
+        return (seconds / 60L) + "m " + (seconds % 60L) + "s";
     }
 
     public static ShopActionResult orderBoardAccept(MinecraftServer server,
@@ -6285,15 +7380,26 @@ public final class ShopService {
         String itemName = sanitizeTokenText(order.getString(TAG_ORDER_ITEM_NAME));
         int quantity = Math.max(1, order.getInt(TAG_ORDER_QTY));
         long rewardCents = Math.max(0L, order.getLong(TAG_ORDER_REWARD_CENTS));
+        ServerPlayer courier = server.getPlayerList() == null ? null : server.getPlayerList().getPlayer(courierId);
+        String courierName = courierDisplayName(courier, courierId);
+        int routeDistanceBlocks = courier == null
+                ? -1
+                : blocksAwayFromShopClaims(
+                found.shopTag().getList(TAG_CLAIMS, Tag.TAG_COMPOUND),
+                courier.serverLevel().dimension().location().toString(),
+                courier.blockPosition()
+        );
         order.putString(TAG_ORDER_STATUS, ORDER_STATUS_ACCEPTED);
         order.putUUID(TAG_ORDER_ACCEPTED_BY, courierId);
+        order.putString(TAG_ORDER_ACCEPTED_BY_NAME, courierName);
         order.putLong(TAG_ORDER_ACCEPTED_AT, now);
         order.putLong(TAG_ORDER_EXPIRES_AT, now + (timeoutMinutes * 60_000L));
+        order.putInt(TAG_ORDER_ROUTE_DISTANCE_BLOCKS, routeDistanceBlocks);
         saveShopTag(centralBank, found.shopTag());
         notifyShopOwnerOrderAccepted(server, found.shopTag(), courierId, itemName, quantity, rewardCents, timeoutMinutes);
+        recordCourierSeen(centralBank, courierId, courierName, now);
         CourierProgress progress = readCourierProgress(centralBank, courierId);
         String boundPallet = normalizeOrderPalletBindingKey(order);
-        ServerPlayer courier = server.getPlayerList() == null ? null : server.getPlayerList().getPlayer(courierId);
         if (courier != null) {
             courier.sendSystemMessage(UbsTranslations.literal("Order accepted: ")
                     .withStyle(ChatFormatting.GREEN)
@@ -6356,11 +7462,13 @@ public final class ShopService {
         if (acceptedBy == null || !acceptedBy.equals(courierId)) {
             return new ShopActionResult(false, "You can only cancel your own accepted orders.");
         }
+        ServerPlayer courier = server.getPlayerList() == null ? null : server.getPlayerList().getPlayer(courierId);
+        String courierName = courierDisplayName(courier, courierId);
         order.putString(TAG_ORDER_STATUS, ORDER_STATUS_OPEN);
+        order.putString(TAG_ORDER_ACCEPTED_BY_NAME, courierName);
         clearOrderAcceptance(order);
         saveShopTag(centralBank, found.shopTag());
-        CourierProgress progress = recordCourierCancel(centralBank, courierId, System.currentTimeMillis());
-        ServerPlayer courier = server.getPlayerList() == null ? null : server.getPlayerList().getPlayer(courierId);
+        CourierProgress progress = recordCourierCancel(centralBank, courierId, courierName, System.currentTimeMillis());
         if (courier != null) {
             courier.sendSystemMessage(UbsTranslations.literal("§eOrder canceled. It is now available for other couriers."));
             courier.sendSystemMessage(UbsTranslations.literal("Streak reset. Current success rate: ")
@@ -6571,7 +7679,8 @@ public final class ShopService {
                     + "|" + sanitizeTokenText(target)
                     + "|" + Math.max(0, order.boxCount())
                     + "|" + Math.max(0, order.attempts())
-                    + "|" + sanitizeTokenText(order.lastError()));
+                    + "|" + sanitizeTokenText(order.lastError())
+                    + "|" + sanitizeTokenText(webshopOrderItemSummary(centralBank, order.orderId())));
             idx++;
         }
 
@@ -7029,6 +8138,207 @@ public final class ShopService {
         return new ShopActionResult(false, "Order not found.");
     }
 
+    public static ShopActionResult webshopReplaceOrder(MinecraftServer server,
+                                                       CentralBank centralBank,
+                                                       UUID playerId,
+                                                       String orderIdRaw) {
+        if (server == null || centralBank == null || playerId == null) {
+            return new ShopActionResult(false, "Webshop service is unavailable.");
+        }
+        UUID sourceOrderId = parseOptionalUuid(orderIdRaw);
+        if (sourceOrderId == null) {
+            return new ShopActionResult(false, "Invalid order selection.");
+        }
+
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        ListTag orders = getOrCreateWebshopOrders(root);
+        if (countActiveWebshopOrders(orders, playerId) >= maxActiveWebshopOrders()) {
+            return new ShopActionResult(false,
+                    "Queued order limit reached (" + maxActiveWebshopOrders() + "). Wait for delivery or cancel one.");
+        }
+
+        for (Tag tag : orders) {
+            if (!(tag instanceof CompoundTag source)) {
+                continue;
+            }
+            UUID id;
+            UUID buyer;
+            try {
+                id = source.getUUID(TAG_WEBSHOP_ORDER_ID);
+                buyer = source.getUUID(TAG_WEBSHOP_ORDER_BUYER);
+            } catch (Exception ignored) {
+                continue;
+            }
+            if (!sourceOrderId.equals(id) || !playerId.equals(buyer)) {
+                continue;
+            }
+
+            String status = normalizeWebshopStatus(source.getString(TAG_WEBSHOP_ORDER_STATUS));
+            if (WEBSHOP_STATUS_QUEUED.equals(status)) {
+                return new ShopActionResult(false, "Queued orders are already active. Cancel that order instead.");
+            }
+
+            List<WebshopCartLine> sourceLines = readWebshopCartLines(source);
+            if (sourceLines.isEmpty()) {
+                return new ShopActionResult(false, "Selected order has no saved item lines to replace.");
+            }
+            int boxCount = estimateWebshopBoxCount(sourceLines);
+            if (boxCount <= 0) {
+                return new ShopActionResult(false, "Selected order cannot be packed into delivery boxes.");
+            }
+
+            UUID accountId;
+            try {
+                accountId = source.contains(TAG_WEBSHOP_ORDER_ACCOUNT) ? source.getUUID(TAG_WEBSHOP_ORDER_ACCOUNT) : null;
+            } catch (Exception ignored) {
+                accountId = null;
+            }
+            if (accountId == null) {
+                return new ShopActionResult(false, "Selected order has no saved checkout account.");
+            }
+            AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+            if (account == null) {
+                return new ShopActionResult(false, "Saved checkout account no longer exists.");
+            }
+
+            long subtotalCents = Math.max(0L, source.getLong(TAG_WEBSHOP_ORDER_SUBTOTAL_CENTS));
+            if (subtotalCents <= 0L) {
+                for (WebshopCartLine line : sourceLines) {
+                    subtotalCents = safeAdd(subtotalCents, Math.max(0L, line.lineTotalCents()));
+                }
+            }
+            long surchargeCents = Math.max(0L, source.getLong(TAG_WEBSHOP_ORDER_SURCHARGE_CENTS));
+            long totalCents = Math.max(0L, source.getLong(TAG_WEBSHOP_ORDER_TOTAL_CENTS));
+            if (totalCents <= 0L) {
+                totalCents = safeAdd(subtotalCents, surchargeCents);
+            }
+            if (totalCents <= 0L) {
+                return new ShopActionResult(false, "Replacement total must be above $0.00.");
+            }
+            BigDecimal charge = BigDecimal.valueOf(totalCents, 2);
+            if (account.getBalance() == null || account.getBalance().compareTo(charge) < 0) {
+                return new ShopActionResult(false, "Insufficient account funds for replacement order.");
+            }
+
+            String mode = normalizeWebshopMode(source.getString(TAG_WEBSHOP_ORDER_MODE));
+            UUID selectedShopId = null;
+            try {
+                selectedShopId = source.contains(TAG_WEBSHOP_ORDER_SHOP_ID) ? source.getUUID(TAG_WEBSHOP_ORDER_SHOP_ID) : null;
+            } catch (Exception ignored) {
+                selectedShopId = null;
+            }
+            CompoundTag selectedShop = resolveShopTag(centralBank, playerId, selectedShopId);
+            if (selectedShop == null || !selectedShop.contains(TAG_ID)) {
+                return new ShopActionResult(false, "Saved delivery shop no longer exists or is no longer owned by you.");
+            }
+            Set<String> assigned = collectAssignedPalletRefSet(selectedShop);
+            if (assigned.isEmpty()) {
+                return new ShopActionResult(false,
+                        "Saved delivery shop has no delivery pallets assigned. Assign pallets before replacing this order.");
+            }
+            Map<String, PalletRef> liveLookup = buildLivePalletLookup(server, deliveryPalletSearchClaims(selectedShop));
+            String selectedPalletId = normalizeDeliveryPalletId(source.getString(TAG_WEBSHOP_ORDER_PALLET_ID));
+            if (WEBSHOP_MODE_PALLET_SPECIFIC.equals(mode)) {
+                if (selectedPalletId.isBlank()) {
+                    return new ShopActionResult(false, "Saved specific pallet target is missing.");
+                }
+                if (!assigned.contains(selectedPalletId)) {
+                    return new ShopActionResult(false, "Saved pallet is no longer assigned to that shop.");
+                }
+                PalletRef selectedRef = liveLookup.get(selectedPalletId);
+                if (selectedRef == null) {
+                    return new ShopActionResult(false, "Saved pallet is assigned but not currently loaded in the shop claim.");
+                }
+                int freeSlots = countPalletFreeSlots(server, selectedRef);
+                if (freeSlots < boxCount) {
+                    return new ShopActionResult(false,
+                            "Saved pallet has " + freeSlots + " free slot(s), but this replacement needs "
+                                    + formatWebshopBoxSlotCount(boxCount) + ".");
+                }
+            } else {
+                int liveAssigned = 0;
+                int freeSlots = 0;
+                for (String palletId : assigned) {
+                    PalletRef ref = liveLookup.get(palletId);
+                    if (ref == null) {
+                        continue;
+                    }
+                    liveAssigned++;
+                    freeSlots += Math.max(0, countPalletFreeSlots(server, ref));
+                }
+                if (liveAssigned <= 0) {
+                    return new ShopActionResult(false, "No assigned delivery pallets are currently loaded for the saved shop.");
+                }
+                if (freeSlots < boxCount) {
+                    return new ShopActionResult(false,
+                            "Assigned delivery pallets have " + freeSlots + " free slot(s), but this replacement needs "
+                                    + formatWebshopBoxSlotCount(boxCount) + ".");
+                }
+                selectedPalletId = "";
+            }
+
+            if (!account.RemoveBalance(charge)) {
+                return new ShopActionResult(false, "Failed to charge checkout account for replacement.");
+            }
+
+            UUID newOrderId = UUID.randomUUID();
+            boolean expedited = surchargeCents > 0L;
+            int etaSeconds = expedited ? webshopExpediteEtaSeconds() : webshopDefaultEtaSeconds();
+            long now = System.currentTimeMillis();
+            long etaAt = safeAdd(now, Math.max(3L, etaSeconds) * 1000L);
+            UserTransaction checkoutTx = new UserTransaction(
+                    account.getAccountUUID(),
+                    account.getAccountUUID(),
+                    charge,
+                    LocalDateTime.now(),
+                    "SHOP_WEBSHOP_REPLACE:" + shortUuid(sourceOrderId) + "->" + shortUuid(newOrderId)
+            );
+            account.addTransaction(checkoutTx);
+
+            CompoundTag replacement = new CompoundTag();
+            replacement.putUUID(TAG_WEBSHOP_ORDER_ID, newOrderId);
+            replacement.putUUID(TAG_WEBSHOP_ORDER_BUYER, playerId);
+            replacement.putUUID(TAG_WEBSHOP_ORDER_ACCOUNT, account.getAccountUUID());
+            replacement.putLong(TAG_WEBSHOP_ORDER_SUBTOTAL_CENTS, subtotalCents);
+            replacement.putLong(TAG_WEBSHOP_ORDER_SURCHARGE_CENTS, surchargeCents);
+            replacement.putLong(TAG_WEBSHOP_ORDER_TOTAL_CENTS, totalCents);
+            replacement.putString(TAG_WEBSHOP_ORDER_STATUS, WEBSHOP_STATUS_QUEUED);
+            replacement.putLong(TAG_WEBSHOP_ORDER_CREATED_AT, now);
+            replacement.putLong(TAG_WEBSHOP_ORDER_ETA_AT, etaAt);
+            replacement.putString(TAG_WEBSHOP_ORDER_MODE, mode);
+            if (selectedShopId != null) {
+                replacement.putUUID(TAG_WEBSHOP_ORDER_SHOP_ID, selectedShopId);
+            }
+            if (!selectedPalletId.isBlank()) {
+                replacement.putString(TAG_WEBSHOP_ORDER_PALLET_ID, selectedPalletId);
+            }
+            replacement.putString(TAG_WEBSHOP_ORDER_DIM, normalizedDim(source.getString(TAG_WEBSHOP_ORDER_DIM)));
+            replacement.putInt(TAG_WEBSHOP_ORDER_X, source.getInt(TAG_WEBSHOP_ORDER_X));
+            replacement.putInt(TAG_WEBSHOP_ORDER_Y, source.getInt(TAG_WEBSHOP_ORDER_Y));
+            replacement.putInt(TAG_WEBSHOP_ORDER_Z, source.getInt(TAG_WEBSHOP_ORDER_Z));
+            replacement.putInt(TAG_WEBSHOP_ORDER_ATTEMPTS, 0);
+
+            ListTag copiedItems = new ListTag();
+            ListTag sourceItems = source.getList(TAG_WEBSHOP_ORDER_ITEMS, Tag.TAG_COMPOUND);
+            for (Tag itemTag : sourceItems) {
+                if (itemTag instanceof CompoundTag item) {
+                    copiedItems.add(item.copy());
+                }
+            }
+            replacement.put(TAG_WEBSHOP_ORDER_ITEMS, copiedItems);
+            orders.add(replacement);
+            root.put(TAG_WEBSHOP_ORDERS, orders);
+            centralMeta.put(TAG_ROOT, root);
+            centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+            return new ShopActionResult(true,
+                    "Replacement order placed: " + shortUuid(newOrderId)
+                            + " | Total " + MoneyText.abbreviateWithDollar(charge)
+                            + " | ETA ~" + Math.max(1, etaSeconds) + "s.");
+        }
+        return new ShopActionResult(false, "Order not found.");
+    }
+
     private static WebshopSessionState getOrCreateWebshopSession(MinecraftServer server, UUID playerId) {
         WebshopSessionState session = WEBSHOP_SESSIONS.computeIfAbsent(playerId, WebshopSessionState::new);
         if (server != null && server.getPlayerList() != null) {
@@ -7114,9 +8424,6 @@ public final class ShopService {
         addWebshopCatalogEntry(list, ModBlocks.INVISIBLE_DISPLAY_SMALL.get().asItem(), 14_500L, "Displays", "Invisible small single-item display.");
         addWebshopCatalogEntry(list, ModBlocks.INVISIBLE_DISPLAY_MEDIUM.get().asItem(), 18_500L, "Displays", "Invisible medium single-item display.");
         addWebshopCatalogEntry(list, ModBlocks.INVISIBLE_DISPLAY_LARGE.get().asItem(), 23_500L, "Displays", "Invisible large single-item display.");
-        addWebshopCatalogEntry(list, ModBlocks.CREATIVE_INVISIBLE_DISPLAY_SMALL.get().asItem(), 28_000L, "Displays", "Creative invisible small single-item display.");
-        addWebshopCatalogEntry(list, ModBlocks.CREATIVE_INVISIBLE_DISPLAY_MEDIUM.get().asItem(), 32_000L, "Displays", "Creative invisible medium single-item display.");
-        addWebshopCatalogEntry(list, ModBlocks.CREATIVE_INVISIBLE_DISPLAY_LARGE.get().asItem(), 38_000L, "Displays", "Creative invisible large single-item display.");
         addWebshopCatalogEntry(list, ModBlocks.PALLET.get().asItem(), 9_000L, "Logistics", "3x3 pallet for stockroom and deliveries.");
         addWebshopCatalogEntry(list, ModBlocks.CARDBOARD_BOX.get().asItem(), 400L, "Logistics", "18-slot box for stock transfer.");
         addWebshopCatalogEntry(list, ModBlocks.SHOPPING_BASKET_HOLDER.get().asItem(), 18_000L, "Checkout", "Basket pickup/return stand.");
@@ -7384,6 +8691,50 @@ public final class ShopService {
             ));
         }
         return out;
+    }
+
+    private static String webshopOrderItemSummary(CentralBank centralBank, UUID orderId) {
+        if (centralBank == null || orderId == null) {
+            return "Saved order items";
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        ListTag orders = getOrCreateWebshopOrders(root);
+        for (Tag tag : orders) {
+            if (!(tag instanceof CompoundTag order) || !order.contains(TAG_WEBSHOP_ORDER_ID)) {
+                continue;
+            }
+            try {
+                if (!orderId.equals(order.getUUID(TAG_WEBSHOP_ORDER_ID))) {
+                    continue;
+                }
+            } catch (Exception ignored) {
+                continue;
+            }
+            List<WebshopCartLine> lines = readWebshopCartLines(order);
+            if (lines.isEmpty()) {
+                return "Saved order items";
+            }
+            List<String> labels = new ArrayList<>();
+            int shown = 0;
+            int remainingLines = 0;
+            for (WebshopCartLine line : lines) {
+                if (line == null || line.quantity() <= 0) {
+                    continue;
+                }
+                if (shown < 3) {
+                    labels.add(line.itemName() + " x" + line.quantity());
+                    shown++;
+                } else {
+                    remainingLines++;
+                }
+            }
+            if (remainingLines > 0) {
+                labels.add("+" + remainingLines + " more");
+            }
+            return labels.isEmpty() ? "Saved order items" : String.join(", ", labels);
+        }
+        return "Saved order items";
     }
 
     private static int estimateWebshopBoxCount(List<WebshopCartLine> lines) {
@@ -8117,14 +9468,30 @@ public final class ShopService {
             }
         }
 
+        long routeStartedAt = Math.max(0L, matched.getLong(TAG_ORDER_ACCEPTED_AT));
+        long routeMillis = routeStartedAt <= 0L ? 0L : Math.max(0L, now - routeStartedAt);
+        int routeDistanceBlocks = matched.contains(TAG_ORDER_ROUTE_DISTANCE_BLOCKS)
+                ? matched.getInt(TAG_ORDER_ROUTE_DISTANCE_BLOCKS)
+                : -1;
+        String courierName = courierDisplayName(courier, courier.getUUID());
         matched.putString(TAG_ORDER_STATUS, ORDER_STATUS_COMPLETED);
         matched.putLong(TAG_ORDER_COMPLETED_AT, now);
         matched.putUUID(TAG_ORDER_COMPLETED_BY, courier.getUUID());
+        matched.putString(TAG_ORDER_ACCEPTED_BY_NAME, courierName);
+        matched.putLong(TAG_ORDER_ROUTE_COMPLETED_MILLIS, routeMillis);
         matched.putLong(TAG_ORDER_BONUS_CENTS, bonus.bonusCents());
         matched.putLong(TAG_ORDER_PAYOUT_CENTS, bonus.totalPayoutCents());
         clearOrderAcceptance(matched);
         saveShopTag(centralBank, shop);
-        CourierProgress progress = recordCourierCompletion(centralBank, courier.getUUID(), bonus.totalPayoutCents(), now);
+        CourierProgress progress = recordCourierCompletion(
+                centralBank,
+                courier.getUUID(),
+                courierName,
+                bonus.totalPayoutCents(),
+                routeDistanceBlocks,
+                routeMillis,
+                now
+        );
         notifyShopOwnerOrderDelivered(
                 server,
                 shop,
@@ -8353,6 +9720,907 @@ public final class ShopService {
         }
     }
 
+    private static long parseLongOrDefault(String raw, long fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(raw.trim().replace("_", ""));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static long parseContractExpiryMillis(String raw) {
+        if (raw == null || raw.isBlank() || "-".equals(raw.trim())) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(raw.trim().replace("_", "")));
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
+    }
+
+    private static String formatContractExpiry(long expiresAtMillis) {
+        if (expiresAtMillis <= 0L) {
+            return "no end date";
+        }
+        try {
+            long displayMillis = Math.max(0L, expiresAtMillis - 1L);
+            return Instant.ofEpochMilli(displayMillis)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+                    .toString();
+        } catch (RuntimeException ignored) {
+            return String.valueOf(expiresAtMillis);
+        }
+    }
+
+    private static int parseIntOrDefault(String raw, int fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(raw.trim().replace("_", ""));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static double parseDoubleOrDefault(String raw, double fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(raw.trim().replace("%", ""));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static long dollarsToCents(long dollars) {
+        if (dollars <= 0L) {
+            return 0L;
+        }
+        try {
+            return Math.multiplyExact(dollars, 100L);
+        } catch (ArithmeticException overflow) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    private static double clampPercent(double raw) {
+        if (!Double.isFinite(raw)) {
+            return 0.0D;
+        }
+        return Math.max(0.0D, Math.min(100.0D, raw));
+    }
+
+    private static String formatPercent(double raw) {
+        return String.format(Locale.ROOT, "%.2f%%", clampPercent(raw));
+    }
+
+    private static String formatCents(long cents) {
+        return MoneyText.abbreviateWithDollar(BigDecimal.valueOf(Math.max(0L, cents), 2));
+    }
+
+    public static int franchiseLicenseCapacityForLevel(int level) {
+        int safeLevel = Math.max(1, level);
+        int unlock = Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get());
+        if (safeLevel < unlock) {
+            return 0;
+        }
+        int base = Math.max(0, Config.SHOP_FRANCHISE_BASE_LICENSE_CAPACITY.get());
+        int step = Math.max(0, Config.SHOP_FRANCHISE_LICENSE_CAPACITY_PER_10_LEVELS.get());
+        int extraBuckets = Math.max(0, (safeLevel - unlock) / 10);
+        int cap = base + (extraBuckets * step);
+        return Math.max(0, Math.min(Math.max(0, Config.SHOP_FRANCHISE_MAX_LICENSE_CAPACITY.get()), cap));
+    }
+
+    public static int corporateBranchCapacityForLevel(int level) {
+        int safeLevel = Math.max(1, level);
+        int max = Math.max(1, Config.SHOP_CORPORATE_MAX_BRANCHES.get());
+        int firstExtra = Math.max(1, Config.SHOP_CORPORATE_FIRST_EXTRA_BRANCH_LEVEL.get());
+        if (safeLevel < firstExtra) {
+            return 1;
+        }
+        int step = Math.max(1, Config.SHOP_CORPORATE_BRANCH_LEVEL_STEP.get());
+        int extras = 1 + Math.max(0, (safeLevel - firstExtra) / step);
+        return Math.max(1, Math.min(max, 1 + extras));
+    }
+
+    private static void normalizeTypeStateForExistingShop(CompoundTag shop) {
+        if (shop == null) {
+            return;
+        }
+        if (!shop.contains(TAG_TYPE_FREE_RECLASS_AVAILABLE)) {
+            shop.putBoolean(TAG_TYPE_FREE_RECLASS_AVAILABLE, true);
+        }
+        if (!shop.contains(TAG_TYPE_LAST_CONVERSION_MILLIS)) {
+            shop.putLong(TAG_TYPE_LAST_CONVERSION_MILLIS, 0L);
+        }
+        if (!shop.contains(TAG_TYPE_PAYABLE_CENTS)) {
+            shop.putLong(TAG_TYPE_PAYABLE_CENTS, 0L);
+        }
+        if (!shop.contains(TAG_TYPE_FEES_PAID_CENTS)) {
+            shop.putLong(TAG_TYPE_FEES_PAID_CENTS, 0L);
+        }
+        if (!shop.contains(TAG_TYPE_FEES_ACCRUED_CENTS)) {
+            shop.putLong(TAG_TYPE_FEES_ACCRUED_CENTS, 0L);
+        }
+        if (SHOP_TYPE_CORPORATE_CHAIN.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+            ensureCorporateHqState(shop);
+        }
+    }
+
+    private static boolean isFreeTypeReclassAvailable(CompoundTag shop) {
+        if (shop == null) {
+            return false;
+        }
+        normalizeTypeStateForExistingShop(shop);
+        return shop.getBoolean(TAG_TYPE_FREE_RECLASS_AVAILABLE);
+    }
+
+    private static void clearTypeSpecificState(CompoundTag shop, String oldType, String newType) {
+        if (shop == null) {
+            return;
+        }
+        if (!Objects.equals(oldType, newType)) {
+            if (!SHOP_TYPE_FRANCHISE.equals(newType)) {
+                shop.remove(TAG_FRANCHISE_BRAND);
+                shop.remove(TAG_FRANCHISE_OFFERS);
+                shop.remove(TAG_FRANCHISE_CONTRACTS);
+                shop.remove(TAG_FRANCHISE_CONTRACT);
+            }
+            if (!SHOP_TYPE_CORPORATE_CHAIN.equals(newType)) {
+                shop.remove(TAG_CORPORATE_HQ);
+                shop.remove(TAG_CORPORATE_BRANCHES);
+            }
+        }
+    }
+
+    private static void ensureCorporateHqState(CompoundTag shop) {
+        if (shop == null || !shop.contains(TAG_ID)) {
+            return;
+        }
+        ListTag branches = shop.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND);
+        UUID shopId = shop.getUUID(TAG_ID);
+        if (!containsShopRef(branches, shopId)) {
+            CompoundTag self = new CompoundTag();
+            self.putUUID(TAG_REF_SHOP_ID, shopId);
+            if (shop.contains(TAG_OWNER)) {
+                self.putUUID(TAG_REF_OWNER_ID, shop.getUUID(TAG_OWNER));
+            }
+            self.putString(TAG_REF_NAME, shop.getString(TAG_NAME));
+            self.putBoolean(TAG_REF_ACTIVE, true);
+            self.putLong(TAG_REF_CREATED_MILLIS, Math.max(0L, shop.getLong(TAG_CREATED_MILLIS)));
+            branches.add(0, self);
+        }
+        shop.put(TAG_CORPORATE_BRANCHES, branches);
+        shop.putUUID(TAG_CORPORATE_HQ, shopId);
+    }
+
+    private static boolean containsShopRef(ListTag refs, UUID shopId) {
+        if (refs == null || shopId == null) {
+            return false;
+        }
+        for (Tag tag : refs) {
+            if (!(tag instanceof CompoundTag ref) || !ref.contains(TAG_REF_SHOP_ID)) {
+                continue;
+            }
+            if (shopId.equals(ref.getUUID(TAG_REF_SHOP_ID)) && ref.getBoolean(TAG_REF_ACTIVE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int countCorporateBranches(CompoundTag hq) {
+        if (hq == null) {
+            return 0;
+        }
+        ensureCorporateHqState(hq);
+        int count = 0;
+        for (Tag tag : hq.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND)) {
+            if (tag instanceof CompoundTag ref && ref.getBoolean(TAG_REF_ACTIVE)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countActiveFranchiseContracts(CompoundTag franchisorShop) {
+        if (franchisorShop == null) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        int count = 0;
+        for (Tag tag : franchisorShop.getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND)) {
+            if (tag instanceof CompoundTag contract
+                    && contract.getBoolean(TAG_REF_ACTIVE)
+                    && !isFranchiseContractExpired(contract, now)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static void expireFranchiseAgreements(CentralBank centralBank) {
+        if (centralBank == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        for (CompoundTag shop : getAllShops(centralBank)) {
+            if (shop == null || !SHOP_TYPE_FRANCHISE.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+                continue;
+            }
+            boolean changed = false;
+            changed |= removeExpiredAcceptedFranchiseContract(shop, now);
+            changed |= deactivateExpiredFranchiseContracts(shop, now);
+            changed |= deactivateExpiredFranchiseOffers(shop, now);
+            if (changed) {
+                saveShopTag(centralBank, shop);
+            }
+        }
+    }
+
+    private static boolean removeExpiredAcceptedFranchiseContract(CompoundTag shop, long now) {
+        if (shop == null || !shop.contains(TAG_FRANCHISE_CONTRACT, Tag.TAG_COMPOUND)) {
+            return false;
+        }
+        CompoundTag contract = shop.getCompound(TAG_FRANCHISE_CONTRACT);
+        if (!contract.getBoolean(TAG_REF_ACTIVE) || !isFranchiseContractExpired(contract, now)) {
+            return false;
+        }
+        shop.remove(TAG_FRANCHISE_CONTRACT);
+        return true;
+    }
+
+    private static boolean deactivateExpiredFranchiseContracts(CompoundTag shop, long now) {
+        if (shop == null) {
+            return false;
+        }
+        boolean changed = false;
+        ListTag contracts = shop.getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND);
+        for (Tag tag : contracts) {
+            if (!(tag instanceof CompoundTag contract)
+                    || !contract.getBoolean(TAG_REF_ACTIVE)
+                    || !isFranchiseContractExpired(contract, now)) {
+                continue;
+            }
+            contract.putBoolean(TAG_REF_ACTIVE, false);
+            contract.putLong(TAG_CONTRACT_EXPIRED_AT_MILLIS, now);
+            changed = true;
+        }
+        if (changed) {
+            shop.put(TAG_FRANCHISE_CONTRACTS, contracts);
+        }
+        return changed;
+    }
+
+    private static boolean deactivateExpiredFranchiseOffers(CompoundTag shop, long now) {
+        if (shop == null) {
+            return false;
+        }
+        boolean changed = false;
+        ListTag offers = shop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND);
+        for (Tag tag : offers) {
+            if (!(tag instanceof CompoundTag offer)
+                    || !offer.getBoolean(TAG_REF_ACTIVE)
+                    || !isFranchiseOfferExpired(offer, now)) {
+                continue;
+            }
+            offer.putBoolean(TAG_REF_ACTIVE, false);
+            changed = true;
+        }
+        if (changed) {
+            shop.put(TAG_FRANCHISE_OFFERS, offers);
+        }
+        return changed;
+    }
+
+    private static boolean isFranchiseOfferExpired(CompoundTag offer, long now) {
+        long expiresAtMillis = offerContractExpiryMillis(offer);
+        return expiresAtMillis > 0L && now >= expiresAtMillis;
+    }
+
+    private static boolean isFranchiseContractExpired(CompoundTag contract, long now) {
+        long expiresAtMillis = contractExpiryMillis(contract);
+        return expiresAtMillis > 0L && now >= expiresAtMillis;
+    }
+
+    private static long offerContractExpiryMillis(CompoundTag offer) {
+        if (offer == null) {
+            return 0L;
+        }
+        long expiresAtMillis = Math.max(0L, offer.getLong(TAG_OFFER_CONTRACT_EXPIRES_AT_MILLIS));
+        if (expiresAtMillis <= 0L) {
+            expiresAtMillis = Math.max(0L, offer.getLong(TAG_CONTRACT_EXPIRES_AT_MILLIS));
+        }
+        return expiresAtMillis;
+    }
+
+    private static long contractExpiryMillis(CompoundTag contract) {
+        if (contract == null) {
+            return 0L;
+        }
+        return Math.max(0L, contract.getLong(TAG_CONTRACT_EXPIRES_AT_MILLIS));
+    }
+
+    private static FranchiseOfferRef findActiveFranchiseOffer(CentralBank centralBank, UUID offerId) {
+        if (centralBank == null || offerId == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        for (CompoundTag shop : getAllShops(centralBank)) {
+            if (shop == null || !SHOP_TYPE_FRANCHISE.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+                continue;
+            }
+            for (Tag tag : shop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND)) {
+                if (!(tag instanceof CompoundTag offer) || !offer.contains(TAG_OFFER_ID)) {
+                    continue;
+                }
+                if (offerId.equals(offer.getUUID(TAG_OFFER_ID))
+                        && offer.getBoolean(TAG_REF_ACTIVE)
+                        && !isFranchiseOfferExpired(offer, now)) {
+                    return new FranchiseOfferRef(shop, offer);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static CompoundTag buildFranchiseContractTag(UUID contractId,
+                                                         CompoundTag franchisorShop,
+                                                         CompoundTag franchiseeShop,
+                                                         CompoundTag offer,
+                                                         boolean npc) {
+        CompoundTag contract = new CompoundTag();
+        contract.putUUID(TAG_CONTRACT_ID, contractId == null ? UUID.randomUUID() : contractId);
+        contract.putUUID(TAG_CONTRACT_FRANCHISOR_SHOP_ID, franchisorShop.getUUID(TAG_ID));
+        contract.putUUID(TAG_CONTRACT_FRANCHISEE_SHOP_ID, franchiseeShop.getUUID(TAG_ID));
+        contract.putUUID(TAG_CONTRACT_FRANCHISOR_OWNER_ID, franchisorShop.getUUID(TAG_OWNER));
+        contract.putUUID(TAG_CONTRACT_FRANCHISEE_OWNER_ID, franchiseeShop.getUUID(TAG_OWNER));
+        contract.putString(TAG_CONTRACT_BRAND_NAME, offer.getString(TAG_OFFER_BRAND_NAME));
+        contract.putDouble(TAG_CONTRACT_ROYALTY_PERCENT, clampPercent(offer.getDouble(TAG_OFFER_ROYALTY_PERCENT)));
+        contract.putDouble(TAG_CONTRACT_MARKETING_PERCENT, clampPercent(offer.getDouble(TAG_OFFER_MARKETING_PERCENT)));
+        contract.putString(TAG_CONTRACT_RULES, sanitizeTokenText(offer.getString(TAG_OFFER_RULES)));
+        if (offer.contains(TAG_FRANCHISE_REQUIRED_ITEMS, Tag.TAG_LIST)) {
+            contract.put(TAG_FRANCHISE_REQUIRED_ITEMS, offer.getList(TAG_FRANCHISE_REQUIRED_ITEMS, Tag.TAG_COMPOUND).copy());
+        }
+        long expiresAtMillis = offerContractExpiryMillis(offer);
+        if (expiresAtMillis > 0L) {
+            contract.putLong(TAG_CONTRACT_EXPIRES_AT_MILLIS, expiresAtMillis);
+        }
+        contract.putBoolean(TAG_CONTRACT_NPC, npc);
+        contract.putBoolean(TAG_REF_ACTIVE, true);
+        contract.putLong(TAG_REF_CREATED_MILLIS, System.currentTimeMillis());
+        return contract;
+    }
+
+    private static ShopActionResult debitShopSettlement(CentralBank centralBank,
+                                                        UUID ownerId,
+                                                        UUID shopId,
+                                                        long cents,
+                                                        String reason) {
+        if (cents <= 0L) {
+            return new ShopActionResult(true, "No fee due.");
+        }
+        UUID settlementId = resolveSettlementAccountId(centralBank, ownerId, shopId, null);
+        if (settlementId == null) {
+            return new ShopActionResult(false, "No settlement account is configured.");
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(settlementId);
+        if (account == null) {
+            return new ShopActionResult(false, "Settlement account is unavailable.");
+        }
+        BigDecimal amount = BigDecimal.valueOf(cents, 2);
+        if (!account.RemoveBalance(amount)) {
+            return new ShopActionResult(false, "Settlement account has insufficient available funds.");
+        }
+        account.addTransaction(new UserTransaction(
+                account.getAccountUUID(),
+                account.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                sanitizeTokenText(reason)
+        ));
+        return new ShopActionResult(true, "Paid " + formatCents(cents) + ".");
+    }
+
+    private static ShopActionResult transferAccountCents(CentralBank centralBank,
+                                                         UUID sourceAccountId,
+                                                         UUID targetAccountId,
+                                                         long cents,
+                                                         String reason) {
+        if (cents <= 0L) {
+            return new ShopActionResult(true, "No transfer required.");
+        }
+        if (sourceAccountId == null || targetAccountId == null) {
+            return new ShopActionResult(false, "Source and target accounts are required.");
+        }
+        AccountHolder source = centralBank.SearchForAccountByAccountId(sourceAccountId);
+        AccountHolder target = centralBank.SearchForAccountByAccountId(targetAccountId);
+        if (source == null || target == null) {
+            return new ShopActionResult(false, "Source or target account is unavailable.");
+        }
+        BigDecimal amount = BigDecimal.valueOf(cents, 2);
+        if (sourceAccountId.equals(targetAccountId)) {
+            source.addTransaction(new UserTransaction(sourceAccountId, targetAccountId, amount, LocalDateTime.now(), sanitizeTokenText(reason)));
+            return new ShopActionResult(true, "Recorded self-transfer " + formatCents(cents) + ".");
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return new ShopActionResult(false, "Server context is unavailable.");
+        }
+        UserTransaction tx = new UserTransaction(sourceAccountId, targetAccountId, amount, LocalDateTime.now(), sanitizeTokenText(reason));
+        if (!tx.makeTransaction(server)) {
+            return new ShopActionResult(false, "Transfer failed.");
+        }
+        return new ShopActionResult(true, "Transferred " + formatCents(cents) + ".");
+    }
+
+    private static void accrueTypeFee(CompoundTag shop, long cents) {
+        if (shop == null || cents <= 0L) {
+            return;
+        }
+        shop.putLong(TAG_TYPE_PAYABLE_CENTS, safeAdd(Math.max(0L, shop.getLong(TAG_TYPE_PAYABLE_CENTS)), cents));
+        shop.putLong(TAG_TYPE_FEES_ACCRUED_CENTS, safeAdd(Math.max(0L, shop.getLong(TAG_TYPE_FEES_ACCRUED_CENTS)), cents));
+    }
+
+    private static long percentOfDollarsToCents(long dollars, double percent) {
+        if (dollars <= 0L || percent <= 0.0D) {
+            return 0L;
+        }
+        BigDecimal cents = BigDecimal.valueOf(dollars)
+                .multiply(BigDecimal.valueOf(100L))
+                .multiply(BigDecimal.valueOf(clampPercent(percent)))
+                .divide(BigDecimal.valueOf(100L), 0, RoundingMode.HALF_UP);
+        return cents.max(BigDecimal.ZERO).longValue();
+    }
+
+    private static void applyShopTypeSaleFees(CentralBank centralBank, CompoundTag shop, long grossDollars) {
+        if (centralBank == null || shop == null || grossDollars <= 0L || !shop.contains(TAG_ID) || !shop.contains(TAG_OWNER)) {
+            return;
+        }
+        expireFranchiseAgreements(centralBank);
+        removeExpiredAcceptedFranchiseContract(shop, System.currentTimeMillis());
+        normalizeTypeStateForExistingShop(shop);
+        String type = normalizeShopType(shop.getString(TAG_TYPE));
+        long feeCents = 0L;
+        long nonCompliancePenaltyCents = 0L;
+        UUID targetAccountId = null;
+        String reason = "";
+        if (SHOP_TYPE_FRANCHISE.equals(type) && shop.contains(TAG_FRANCHISE_CONTRACT, Tag.TAG_COMPOUND)) {
+            CompoundTag contract = shop.getCompound(TAG_FRANCHISE_CONTRACT);
+            if (contract.getBoolean(TAG_REF_ACTIVE)) {
+                double feePercent = clampPercent(contract.getDouble(TAG_CONTRACT_ROYALTY_PERCENT))
+                        + clampPercent(contract.getDouble(TAG_CONTRACT_MARKETING_PERCENT));
+                feeCents = percentOfDollarsToCents(grossDollars, feePercent);
+                UUID franchisorOwner = contract.contains(TAG_CONTRACT_FRANCHISOR_OWNER_ID)
+                        ? contract.getUUID(TAG_CONTRACT_FRANCHISOR_OWNER_ID)
+                        : null;
+                UUID franchisorShopId = contract.contains(TAG_CONTRACT_FRANCHISOR_SHOP_ID)
+                        ? contract.getUUID(TAG_CONTRACT_FRANCHISOR_SHOP_ID)
+                        : null;
+                targetAccountId = resolveSettlementAccountId(centralBank, franchisorOwner, franchisorShopId, null);
+                reason = "SHOP_FRANCHISE_ROYALTY:" + sanitizeTokenText(contract.getString(TAG_CONTRACT_BRAND_NAME));
+                FranchiseRequirementStatus status = evaluateFranchiseRequirements(ServerLifecycleHooks.getCurrentServer(), shop, contract);
+                if (!status.compliant()) {
+                    nonCompliancePenaltyCents = percentOfDollarsToCents(
+                            grossDollars,
+                            Config.SHOP_FRANCHISE_NONCOMPLIANCE_PENALTY_PERCENT.get()
+                    );
+                }
+            }
+        } else if (SHOP_TYPE_CORPORATE_CHAIN.equals(type)) {
+            feeCents = percentOfDollarsToCents(grossDollars, Config.SHOP_CORPORATE_OVERHEAD_PERCENT.get());
+            reason = "SHOP_CORPORATE_OVERHEAD:" + sanitizeTokenText(shop.getString(TAG_NAME));
+        }
+        if (nonCompliancePenaltyCents > 0L) {
+            accrueTypeFee(shop, nonCompliancePenaltyCents);
+        }
+        if (feeCents <= 0L) {
+            return;
+        }
+        UUID ownerId = shop.getUUID(TAG_OWNER);
+        UUID shopId = shop.getUUID(TAG_ID);
+        UUID sourceAccountId = resolveSettlementAccountId(centralBank, ownerId, shopId, null);
+        ShopActionResult paid;
+        if (targetAccountId != null) {
+            paid = transferAccountCents(centralBank, sourceAccountId, targetAccountId, feeCents, reason);
+        } else {
+            paid = debitShopSettlement(centralBank, ownerId, shopId, feeCents, reason);
+        }
+        if (paid.success()) {
+            shop.putLong(TAG_TYPE_FEES_PAID_CENTS, safeAdd(Math.max(0L, shop.getLong(TAG_TYPE_FEES_PAID_CENTS)), feeCents));
+        } else {
+            accrueTypeFee(shop, feeCents);
+        }
+    }
+
+    private static void appendFranchiseOfferReportLines(MinecraftServer server,
+                                                        CentralBank centralBank,
+                                                        UUID ownerId,
+                                                        CompoundTag currentShop,
+                                                        List<String> lines) {
+        int index = 0;
+        for (CompoundTag shop : getAllShops(centralBank)) {
+            if (shop == null || !SHOP_TYPE_FRANCHISE.equals(normalizeShopType(shop.getString(TAG_TYPE)))) {
+                continue;
+            }
+            UUID franchisorOwner = shop.contains(TAG_OWNER) ? shop.getUUID(TAG_OWNER) : null;
+            for (Tag tag : shop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND)) {
+                if (!(tag instanceof CompoundTag offer)
+                        || !offer.getBoolean(TAG_REF_ACTIVE)
+                        || !offer.contains(TAG_OFFER_ID)
+                        || isFranchiseOfferExpired(offer, System.currentTimeMillis())) {
+                    continue;
+                }
+                String visibility = "PUBLIC";
+                if (offer.contains(TAG_OFFER_DIRECT_PLAYER)) {
+                    UUID direct = offer.getUUID(TAG_OFFER_DIRECT_PLAYER);
+                    if (!Objects.equals(direct, ownerId) && !Objects.equals(franchisorOwner, ownerId)) {
+                        continue;
+                    }
+                    visibility = "DIRECT";
+                }
+                index++;
+                lines.add("@franchise.offer=" + index
+                        + "|" + offer.getUUID(TAG_OFFER_ID)
+                        + "|" + sanitizeTokenText(offer.getString(TAG_OFFER_BRAND_NAME))
+                        + "|" + Math.max(0L, offer.getLong(TAG_OFFER_UPFRONT_CENTS))
+                        + "|" + clampPercent(offer.getDouble(TAG_OFFER_ROYALTY_PERCENT))
+                        + "|" + clampPercent(offer.getDouble(TAG_OFFER_MARKETING_PERCENT))
+                        + "|" + sanitizeTokenText(shop.getString(TAG_NAME))
+                        + "|" + visibility
+                        + "|" + sanitizeTokenText(offer.getString(TAG_OFFER_RULES))
+                        + "|" + offerContractExpiryMillis(offer));
+                FranchiseRequirementStatus status = evaluateFranchiseRequirements(server, currentShop, offer);
+                lines.add("@franchise.offer_compliance=" + offer.getUUID(TAG_OFFER_ID)
+                        + "|" + (status.compliant() ? "1" : "0")
+                        + "|" + status.missingCount()
+                        + "|" + Config.SHOP_FRANCHISE_NONCOMPLIANCE_PENALTY_PERCENT.get()
+                        + "|" + sanitizeTokenText(status.missingSummary()));
+                appendFranchiseRequirementReportLines(lines, "franchise.offer_req", offer.getUUID(TAG_OFFER_ID), status);
+            }
+        }
+        if (currentShop != null) {
+            for (Tag tag : currentShop.getList(TAG_FRANCHISE_OFFERS, Tag.TAG_COMPOUND)) {
+                if (tag instanceof CompoundTag offer && !offer.getBoolean(TAG_REF_ACTIVE) && offer.contains(TAG_OFFER_ID)) {
+                    lines.add("@franchise.inactive_offer=" + offer.getUUID(TAG_OFFER_ID)
+                            + "|" + sanitizeTokenText(offer.getString(TAG_OFFER_BRAND_NAME)));
+                }
+            }
+        }
+    }
+
+    private static void appendFranchiseContractReportLines(MinecraftServer server, CentralBank centralBank, CompoundTag shop, List<String> lines) {
+        int index = 0;
+        for (Tag tag : shop.getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND)) {
+            if (!(tag instanceof CompoundTag contract)
+                    || !contract.getBoolean(TAG_REF_ACTIVE)
+                    || isFranchiseContractExpired(contract, System.currentTimeMillis())) {
+                continue;
+            }
+            index++;
+            String franchiseeName = "Franchisee";
+            UUID franchiseeShopId = contract.contains(TAG_CONTRACT_FRANCHISEE_SHOP_ID)
+                    ? contract.getUUID(TAG_CONTRACT_FRANCHISEE_SHOP_ID)
+                    : null;
+            CompoundTag franchiseeShop = franchiseeShopId == null ? null : resolveShopById(centralBank, franchiseeShopId);
+            if (franchiseeShop != null) {
+                franchiseeName = franchiseeShop.getString(TAG_NAME);
+            } else if (contract.getBoolean(TAG_CONTRACT_NPC)) {
+                franchiseeName = "NPC Franchisee";
+            }
+            lines.add("@franchise.contract=" + index
+                    + "|" + contract.getUUID(TAG_CONTRACT_ID)
+                    + "|" + sanitizeTokenText(contract.getString(TAG_CONTRACT_BRAND_NAME))
+                    + "|" + sanitizeTokenText(franchiseeName)
+                    + "|" + clampPercent(contract.getDouble(TAG_CONTRACT_ROYALTY_PERCENT))
+                    + "|" + clampPercent(contract.getDouble(TAG_CONTRACT_MARKETING_PERCENT))
+                    + "|" + (contract.getBoolean(TAG_CONTRACT_NPC) ? "NPC" : "PLAYER")
+                    + "|" + sanitizeTokenText(contract.getString(TAG_CONTRACT_RULES))
+                    + "|" + contractExpiryMillis(contract));
+            FranchiseRequirementStatus status = evaluateFranchiseRequirements(server, franchiseeShop, contract);
+            lines.add("@franchise.contract_compliance=" + contract.getUUID(TAG_CONTRACT_ID)
+                    + "|" + (status.compliant() ? "1" : "0")
+                    + "|" + status.missingCount()
+                    + "|" + Config.SHOP_FRANCHISE_NONCOMPLIANCE_PENALTY_PERCENT.get()
+                    + "|" + sanitizeTokenText(status.missingSummary()));
+            appendFranchiseRequirementReportLines(lines, "franchise.contract_req", contract.getUUID(TAG_CONTRACT_ID), status);
+        }
+    }
+
+    private static ListTag parseFranchiseRequiredItemsPayload(String rawRequiredItems) {
+        ListTag out = new ListTag();
+        if (rawRequiredItems == null || rawRequiredItems.isBlank() || "-".equals(rawRequiredItems.trim())) {
+            return out;
+        }
+        String[] rows = rawRequiredItems.split(";", -1);
+        for (String rawRow : rows) {
+            if (rawRow == null || rawRow.isBlank()) {
+                continue;
+            }
+            String[] parts = rawRow.split(",", -1);
+            if (parts.length < 3) {
+                continue;
+            }
+            String itemId = parts[0] == null ? "" : parts[0].trim();
+            net.minecraft.resources.ResourceLocation itemKey = net.minecraft.resources.ResourceLocation.tryParse(itemId);
+            if (itemKey == null) {
+                continue;
+            }
+            ItemStack itemStack = new ItemStack(BuiltInRegistries.ITEM.get(itemKey));
+            if (itemStack.isEmpty() || !itemKey.equals(BuiltInRegistries.ITEM.getKey(itemStack.getItem()))) {
+                continue;
+            }
+            int quantity = Math.max(1, parseIntOrDefault(parts[1], 1));
+            boolean exact = "1".equals(parts[2]) || "true".equalsIgnoreCase(parts[2]);
+            String note = parts.length > 3 ? decodeRequirementField(parts[3]) : "";
+            CompoundTag stackTag = parts.length > 4 ? decodeRequirementStack(parts[4]) : new CompoundTag();
+            if (exact && stackTag.isEmpty()) {
+                exact = false;
+            }
+            CompoundTag requirement = new CompoundTag();
+            requirement.putString(TAG_REQ_ITEM_ID, itemId);
+            requirement.putInt(TAG_REQ_QUANTITY, quantity);
+            requirement.putBoolean(TAG_REQ_EXACT, exact);
+            requirement.putString(TAG_REQ_NOTE, sanitizeTokenText(note));
+            if (!stackTag.isEmpty()) {
+                requirement.put(TAG_REQ_STACK, stackTag);
+            }
+            out.add(requirement);
+        }
+        return out;
+    }
+
+    private static String decodeRequirementField(String encoded) {
+        if (encoded == null || encoded.isBlank() || "-".equals(encoded)) {
+            return "";
+        }
+        try {
+            byte[] bytes = Base64.getUrlDecoder().decode(encoded);
+            return new String(bytes, StandardCharsets.UTF_8).trim();
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private static CompoundTag decodeRequirementStack(String encoded) {
+        String snbt = decodeRequirementField(encoded);
+        if (snbt.isBlank()) {
+            return new CompoundTag();
+        }
+        try {
+            return TagParser.parseTag(snbt);
+        } catch (Exception ignored) {
+            return new CompoundTag();
+        }
+    }
+
+    private static void appendFranchiseRequirementReportLines(List<String> lines,
+                                                              String key,
+                                                              UUID parentId,
+                                                              FranchiseRequirementStatus status) {
+        if (lines == null || key == null || key.isBlank() || parentId == null || status == null) {
+            return;
+        }
+        for (FranchiseRequirementProgress progress : status.items()) {
+            FranchiseRequiredItem requirement = progress.requirement();
+            lines.add("@" + key + "=" + parentId
+                    + "|" + sanitizeTokenText(requirement.itemId())
+                    + "|" + Math.max(1, requirement.quantity())
+                    + "|" + (requirement.exact() ? "1" : "0")
+                    + "|" + Math.max(0, progress.current())
+                    + "|" + (progress.satisfied() ? "1" : "0")
+                    + "|" + sanitizeTokenText(progress.displayName())
+                    + "|" + sanitizeTokenText(requirement.note()));
+        }
+    }
+
+    private static FranchiseRequirementStatus evaluateFranchiseRequirements(MinecraftServer server,
+                                                                            CompoundTag shop,
+                                                                            CompoundTag holder) {
+        List<FranchiseRequiredItem> requirements = readFranchiseRequirements(holder);
+        if (requirements.isEmpty()) {
+            return new FranchiseRequirementStatus(true, 0, "-", List.of());
+        }
+        List<ShelfRef> shelves = server == null || shop == null ? List.of() : collectShelvesForShop(server, shop);
+        List<FranchiseRequirementProgress> progress = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        for (FranchiseRequiredItem requirement : requirements) {
+            int available = countFranchiseRequirementStock(server, shelves, requirement);
+            boolean satisfied = available >= Math.max(1, requirement.quantity());
+            String displayName = resolveFranchiseRequirementDisplayName(server, requirement);
+            progress.add(new FranchiseRequirementProgress(requirement, available, satisfied, displayName));
+            if (!satisfied) {
+                missing.add(Math.max(1, requirement.quantity()) + "x " + displayName + " (" + Math.max(0, available) + " ready)");
+            }
+        }
+        boolean compliant = missing.isEmpty();
+        return new FranchiseRequirementStatus(
+                compliant,
+                missing.size(),
+                compliant ? "-" : String.join(", ", missing),
+                List.copyOf(progress)
+        );
+    }
+
+    private static List<FranchiseRequiredItem> readFranchiseRequirements(CompoundTag holder) {
+        if (holder == null || !holder.contains(TAG_FRANCHISE_REQUIRED_ITEMS, Tag.TAG_LIST)) {
+            return List.of();
+        }
+        List<FranchiseRequiredItem> out = new ArrayList<>();
+        for (Tag tag : holder.getList(TAG_FRANCHISE_REQUIRED_ITEMS, Tag.TAG_COMPOUND)) {
+            if (!(tag instanceof CompoundTag requirement)) {
+                continue;
+            }
+            String itemId = requirement.getString(TAG_REQ_ITEM_ID);
+            if (itemId == null || itemId.isBlank()) {
+                continue;
+            }
+            int quantity = Math.max(1, requirement.getInt(TAG_REQ_QUANTITY));
+            boolean exact = requirement.getBoolean(TAG_REQ_EXACT);
+            String note = requirement.getString(TAG_REQ_NOTE);
+            CompoundTag stackTag = requirement.contains(TAG_REQ_STACK, Tag.TAG_COMPOUND)
+                    ? requirement.getCompound(TAG_REQ_STACK).copy()
+                    : new CompoundTag();
+            out.add(new FranchiseRequiredItem(itemId, quantity, exact, note, stackTag));
+        }
+        return List.copyOf(out);
+    }
+
+    private static int countFranchiseRequirementStock(MinecraftServer server,
+                                                      List<ShelfRef> shelves,
+                                                      FranchiseRequiredItem requirement) {
+        if (shelves == null || shelves.isEmpty() || requirement == null) {
+            return 0;
+        }
+        int needed = Math.max(1, requirement.quantity());
+        int available = 0;
+        for (ShelfRef ref : shelves) {
+            if (ref == null || ref.shelf() == null || !ref.shelf().isShopMode()) {
+                continue;
+            }
+            ShelfDisplayBlockEntity shelf = ref.shelf();
+            for (int slot = 0; slot < Math.max(0, shelf.getSlotCount()); slot++) {
+                ItemStack display = shelf.getDisplayItem(slot);
+                if (display == null || display.isEmpty() || shelf.getSlotPrice(slot) < 0L) {
+                    continue;
+                }
+                if (!matchesFranchiseRequirement(server, display, requirement)) {
+                    continue;
+                }
+                if (shelf.isCreativeShelf()) {
+                    return needed;
+                }
+                available = safeAddInt(available, Math.max(0, shelf.getSlotStock(slot)));
+                if (available >= needed) {
+                    return available;
+                }
+            }
+        }
+        return available;
+    }
+
+    private static boolean matchesFranchiseRequirement(MinecraftServer server,
+                                                       ItemStack display,
+                                                       FranchiseRequiredItem requirement) {
+        if (display == null || display.isEmpty() || requirement == null) {
+            return false;
+        }
+        if (requirement.exact()) {
+            ItemStack expected = ItemStackDataCompat.parseStack(
+                    requirement.stackTag(),
+                    server == null ? ItemStackDataCompat.DEFAULT_REGISTRIES : server.registryAccess()
+            );
+            return !expected.isEmpty() && ItemStackDataCompat.sameItemSameComponents(display, expected);
+        }
+        net.minecraft.resources.ResourceLocation key = net.minecraft.resources.ResourceLocation.tryParse(requirement.itemId());
+        return key != null && key.equals(BuiltInRegistries.ITEM.getKey(display.getItem()));
+    }
+
+    private static String resolveFranchiseRequirementDisplayName(MinecraftServer server, FranchiseRequiredItem requirement) {
+        if (requirement == null) {
+            return "Item";
+        }
+        if (requirement.exact() && !requirement.stackTag().isEmpty()) {
+            ItemStack parsed = ItemStackDataCompat.parseStack(
+                    requirement.stackTag(),
+                    server == null ? ItemStackDataCompat.DEFAULT_REGISTRIES : server.registryAccess()
+            );
+            if (!parsed.isEmpty()) {
+                return parsed.getHoverName().getString();
+            }
+        }
+        net.minecraft.resources.ResourceLocation key = net.minecraft.resources.ResourceLocation.tryParse(requirement.itemId());
+        if (key != null) {
+            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(key));
+            if (!stack.isEmpty()) {
+                return stack.getHoverName().getString();
+            }
+        }
+        return requirement.itemId();
+    }
+
+    private static int safeAddInt(int left, int right) {
+        long sum = (long) Math.max(0, left) + Math.max(0, right);
+        return sum > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) sum;
+    }
+
+    private static void processNpcFranchiseRoyalties(CentralBank centralBank, CompoundTag franchisorShop) {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null || !server.isSingleplayer() || centralBank == null || franchisorShop == null || !franchisorShop.contains(TAG_OWNER)) {
+            return;
+        }
+        UUID ownerId = franchisorShop.getUUID(TAG_OWNER);
+        UUID shopId = franchisorShop.getUUID(TAG_ID);
+        UUID settlementId = resolveSettlementAccountId(centralBank, ownerId, shopId, null);
+        if (settlementId == null) {
+            return;
+        }
+        AccountHolder settlement = centralBank.SearchForAccountByAccountId(settlementId);
+        if (settlement == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long intervalMillis = FRANCHISE_NPC_ROYALTY_INTERVAL_HOURS * 60L * 60L * 1000L;
+        boolean changed = false;
+        for (Tag tag : franchisorShop.getList(TAG_FRANCHISE_CONTRACTS, Tag.TAG_COMPOUND)) {
+            if (!(tag instanceof CompoundTag contract)
+                    || !contract.getBoolean(TAG_REF_ACTIVE)
+                    || !contract.getBoolean(TAG_CONTRACT_NPC)
+                    || isFranchiseContractExpired(contract, now)) {
+                continue;
+            }
+            long last = Math.max(0L, contract.getLong(TAG_CONTRACT_LAST_NPC_ROYALTY_MILLIS));
+            if (last > 0L && now - last < intervalMillis) {
+                continue;
+            }
+            int level = Math.max(1, franchisorShop.getInt(TAG_LEVEL));
+            long royaltyCents = FRANCHISE_NPC_ROYALTY_BASE_CENTS + (long) Math.max(0, level - 1) * 125L * 100L;
+            BigDecimal amount = BigDecimal.valueOf(royaltyCents, 2);
+            if (settlement.forceAddBalance(amount)) {
+                settlement.addTransaction(new UserTransaction(
+                        settlementId,
+                        settlementId,
+                        amount,
+                        LocalDateTime.now(),
+                        "SHOP_FRANCHISE_NPC_ROYALTY:" + sanitizeTokenText(contract.getString(TAG_CONTRACT_BRAND_NAME))
+                ));
+                contract.putLong(TAG_CONTRACT_LAST_NPC_ROYALTY_MILLIS, now);
+                changed = true;
+            }
+        }
+        if (changed) {
+            saveShopTag(centralBank, franchisorShop);
+        }
+    }
+
+    private static void appendCorporateBranchReportLines(CentralBank centralBank, CompoundTag hq, List<String> lines) {
+        ensureCorporateHqState(hq);
+        int index = 0;
+        for (Tag tag : hq.getList(TAG_CORPORATE_BRANCHES, Tag.TAG_COMPOUND)) {
+            if (!(tag instanceof CompoundTag ref) || !ref.getBoolean(TAG_REF_ACTIVE) || !ref.contains(TAG_REF_SHOP_ID)) {
+                continue;
+            }
+            index++;
+            UUID branchId = ref.getUUID(TAG_REF_SHOP_ID);
+            CompoundTag branch = resolveShopById(centralBank, branchId);
+            String name = branch == null ? ref.getString(TAG_REF_NAME) : branch.getString(TAG_NAME);
+            int level = branch == null ? 0 : Math.max(1, branch.getInt(TAG_LEVEL));
+            long revenue = branch == null ? 0L : Math.max(0L, branch.getLong(TAG_REVENUE_DOLLARS));
+            lines.add("@corporate.branch=" + index
+                    + "|" + branchId
+                    + "|" + sanitizeTokenText(name)
+                    + "|" + level
+                    + "|" + revenue);
+        }
+    }
+
     private static String validateOrderItemAllowed(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return "Select an item first.";
@@ -8411,7 +10679,13 @@ public final class ShopService {
                 continue;
             }
             UUID acceptedBy = order.contains(TAG_ORDER_ACCEPTED_BY) ? order.getUUID(TAG_ORDER_ACCEPTED_BY) : null;
-            String acceptedByName = acceptedBy == null ? "-" : shortUuid(acceptedBy);
+            if (acceptedBy == null && order.contains(TAG_ORDER_COMPLETED_BY)) {
+                acceptedBy = order.getUUID(TAG_ORDER_COMPLETED_BY);
+            }
+            String acceptedByName = sanitizeTokenText(order.getString(TAG_ORDER_ACCEPTED_BY_NAME));
+            if (acceptedByName.isBlank() || "-".equals(acceptedByName)) {
+                acceptedByName = acceptedBy == null ? "-" : shortUuid(acceptedBy);
+            }
             out.add(new OrderView(
                     orderId,
                     sanitizeTokenText(order.getString(TAG_ORDER_ITEM_ID)),
@@ -8424,7 +10698,11 @@ public final class ShopService {
                     Math.max(0L, order.getLong(TAG_ORDER_EXPIRES_AT)),
                     Math.max(ORDER_TIMEOUT_MINUTES_MIN, order.getInt(TAG_ORDER_TIMEOUT_MINUTES)),
                     Math.max(0L, order.getLong(TAG_ORDER_CREATED_AT)),
-                    normalizeOrderPalletBindingKey(order)
+                    normalizeOrderPalletBindingKey(order),
+                    Math.max(0L, order.getLong(TAG_ORDER_COMPLETED_AT)),
+                    Math.max(0L, order.getLong(TAG_ORDER_ROUTE_COMPLETED_MILLIS)),
+                    order.contains(TAG_ORDER_ROUTE_DISTANCE_BLOCKS) ? order.getInt(TAG_ORDER_ROUTE_DISTANCE_BLOCKS) : -1,
+                    Math.max(0L, order.getLong(TAG_ORDER_PAYOUT_CENTS))
             ));
         }
         out.sort(Comparator.comparingLong(OrderView::createdAtMillis).reversed());
@@ -9377,7 +11655,10 @@ public final class ShopService {
 
     private static CourierProgress recordCourierCompletion(CentralBank centralBank,
                                                            UUID courierId,
+                                                           String courierName,
                                                            long payoutCents,
+                                                           int routeDistanceBlocks,
+                                                           long routeMillis,
                                                            long now) {
         if (centralBank == null || courierId == null) {
             return CourierProgress.empty();
@@ -9385,6 +11666,7 @@ public final class ShopService {
         CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
         CompoundTag root = getOrCreateRoot(centralMeta);
         CompoundTag entry = getCourierStatsEntry(root, courierId, true);
+        writeCourierName(entry, courierName, courierId);
         long completed = safeAdd(Math.max(0L, entry.getLong(TAG_COURIER_COMPLETED)), 1L);
         long canceled = Math.max(0L, entry.getLong(TAG_COURIER_CANCELED));
         long streak = safeAdd(Math.max(0L, entry.getLong(TAG_COURIER_STREAK)), 1L);
@@ -9397,6 +11679,7 @@ public final class ShopService {
         entry.putLong(TAG_COURIER_BEST_STREAK, bestStreak);
         entry.putLong(TAG_COURIER_TOTAL_PAYOUT_CENTS, totalPayoutCents);
         entry.putLong(TAG_COURIER_LAST_ACTIVITY_AT, Math.max(0L, now));
+        maybeRecordBestRoute(entry, routeDistanceBlocks, routeMillis, now);
         centralMeta.put(TAG_ROOT, root);
         centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
 
@@ -9411,13 +11694,14 @@ public final class ShopService {
         );
     }
 
-    private static CourierProgress recordCourierCancel(CentralBank centralBank, UUID courierId, long now) {
+    private static CourierProgress recordCourierCancel(CentralBank centralBank, UUID courierId, String courierName, long now) {
         if (centralBank == null || courierId == null) {
             return CourierProgress.empty();
         }
         CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
         CompoundTag root = getOrCreateRoot(centralMeta);
         CompoundTag entry = getCourierStatsEntry(root, courierId, true);
+        writeCourierName(entry, courierName, courierId);
         long completed = Math.max(0L, entry.getLong(TAG_COURIER_COMPLETED));
         long canceled = safeAdd(Math.max(0L, entry.getLong(TAG_COURIER_CANCELED)), 1L);
         long bestStreak = Math.max(0L, entry.getLong(TAG_COURIER_BEST_STREAK));
@@ -9443,6 +11727,84 @@ public final class ShopService {
         );
     }
 
+    private static void recordCourierSeen(CentralBank centralBank, UUID courierId, String courierName, long now) {
+        if (centralBank == null || courierId == null) {
+            return;
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        CompoundTag root = getOrCreateRoot(centralMeta);
+        CompoundTag entry = getCourierStatsEntry(root, courierId, true);
+        writeCourierName(entry, courierName, courierId);
+        entry.putLong(TAG_COURIER_LAST_ACTIVITY_AT, Math.max(0L, now));
+        centralMeta.put(TAG_ROOT, root);
+        centralBank.putBankMetadata(centralBank.getBankId(), centralMeta);
+    }
+
+    private static void writeCourierName(CompoundTag entry, String courierName, UUID courierId) {
+        if (entry == null) {
+            return;
+        }
+        String current = sanitizeTokenText(entry.getString(TAG_COURIER_NAME));
+        String name = sanitizeTokenText(courierName);
+        if (isCourierNameFallback(name, courierId)) {
+            if (!isCourierNameFallback(current, courierId)) {
+                return;
+            }
+            name = courierId == null ? "-" : shortUuid(courierId);
+        }
+        entry.putString(TAG_COURIER_NAME, name);
+    }
+
+    private static boolean isCourierNameFallback(String name, UUID courierId) {
+        String value = sanitizeTokenText(name);
+        if (value.isBlank() || "-".equals(value)) {
+            return true;
+        }
+        if (courierId == null) {
+            return false;
+        }
+        return value.equalsIgnoreCase(shortUuid(courierId))
+                || value.equalsIgnoreCase(courierId.toString());
+    }
+
+    private static String resolveCourierProfileName(MinecraftServer server, UUID courierId) {
+        if (server == null || courierId == null) {
+            return "";
+        }
+        ServerPlayer online = server.getPlayerList().getPlayer(courierId);
+        if (online != null && online.getName() != null) {
+            String name = sanitizeTokenText(online.getName().getString());
+            if (!name.isBlank()) {
+                return name;
+            }
+        }
+        if (server.getProfileCache() != null) {
+            var cached = server.getProfileCache().get(courierId);
+            if (cached.isPresent()) {
+                String name = sanitizeTokenText(cached.get().getName());
+                if (!name.isBlank()) {
+                    return name;
+                }
+            }
+        }
+        return "";
+    }
+
+    private static void maybeRecordBestRoute(CompoundTag entry, int distanceBlocks, long routeMillis, long now) {
+        if (entry == null || distanceBlocks < 1 || routeMillis <= 0L) {
+            return;
+        }
+        long score = Math.max(1L, routeMillis / Math.max(1, distanceBlocks));
+        long currentScore = Math.max(0L, entry.getLong(TAG_COURIER_BEST_ROUTE_SCORE));
+        if (currentScore > 0L && currentScore <= score) {
+            return;
+        }
+        entry.putLong(TAG_COURIER_BEST_ROUTE_SCORE, score);
+        entry.putLong(TAG_COURIER_BEST_ROUTE_MILLIS, routeMillis);
+        entry.putInt(TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS, distanceBlocks);
+        entry.putLong(TAG_COURIER_BEST_ROUTE_AT, Math.max(0L, now));
+    }
+
     private static int computeCourierSuccessRate(long completed, long canceled) {
         long done = Math.max(0L, completed);
         long failed = Math.max(0L, canceled);
@@ -9451,6 +11813,16 @@ public final class ShopService {
             return 100;
         }
         return (int) Math.max(0L, Math.min(100L, (done * 100L) / total));
+    }
+
+    private static String courierDisplayName(ServerPlayer player, UUID courierId) {
+        if (player != null && player.getGameProfile() != null) {
+            String name = sanitizeTokenText(player.getGameProfile().getName());
+            if (!name.isBlank() && !"-".equals(name)) {
+                return name;
+            }
+        }
+        return courierId == null ? "-" : shortUuid(courierId);
     }
 
     private static CompoundTag getCourierStatsEntry(CompoundTag root, UUID courierId, boolean create) {
@@ -9478,12 +11850,17 @@ public final class ShopService {
         // Persist courier progression centrally so all shops share the same delivery profile.
         CompoundTag created = new CompoundTag();
         created.putUUID(TAG_COURIER_ID, courierId);
+        created.putString(TAG_COURIER_NAME, shortUuid(courierId));
         created.putLong(TAG_COURIER_COMPLETED, 0L);
         created.putLong(TAG_COURIER_CANCELED, 0L);
         created.putLong(TAG_COURIER_STREAK, 0L);
         created.putLong(TAG_COURIER_BEST_STREAK, 0L);
         created.putLong(TAG_COURIER_TOTAL_PAYOUT_CENTS, 0L);
         created.putLong(TAG_COURIER_LAST_ACTIVITY_AT, 0L);
+        created.putLong(TAG_COURIER_BEST_ROUTE_MILLIS, 0L);
+        created.putInt(TAG_COURIER_BEST_ROUTE_DISTANCE_BLOCKS, -1);
+        created.putLong(TAG_COURIER_BEST_ROUTE_SCORE, 0L);
+        created.putLong(TAG_COURIER_BEST_ROUTE_AT, 0L);
         couriers.add(created);
         root.put(TAG_ORDER_COURIERS, couriers);
         return created;
@@ -9765,6 +12142,60 @@ public final class ShopService {
                 linkedCashiers++;
             }
         }
+        int shoppingBags = 0;
+        if (server != null && centralBank != null && ownerId != null && selectedShop.contains(TAG_ID)) {
+            shoppingBags = countShoppingBagsInStockroom(server, centralBank, ownerId, selectedShop.getUUID(TAG_ID));
+        }
+        int currentMinute = resolveCurrentMinuteOfDay(server);
+        String currentDayKey = resolveCurrentScheduleDayKey(server);
+        ensureWeeklySchedule(selectedShop);
+        boolean shopOpenNow = isShopSetupComplete(selectedShop) && isShopOpenAtMinute(selectedShop, currentMinute, currentDayKey);
+        String shopHoursLabel = friendlyScheduleDay(currentDayKey)
+                + " "
+                + formatMinuteAmPm(getShopOpenMinuteForDay(selectedShop, currentDayKey))
+                + " - "
+                + formatMinuteAmPm(getShopCloseMinuteForDay(selectedShop, currentDayKey));
+        UUID shopIdForSnapshot = selectedShop.contains(TAG_ID) ? selectedShop.getUUID(TAG_ID) : null;
+        UUID settlementAccountId = shopIdForSnapshot == null
+                ? null
+                : resolveSettlementAccountId(centralBank, ownerId, shopIdForSnapshot, null);
+        boolean settlementAccountReady = settlementAccountId != null
+                && centralBank != null
+                && centralBank.SearchForAccountByAccountId(settlementAccountId) != null;
+        String settlementAccountLabel = settlementAccountId == null ? "-" : shortUuid(settlementAccountId);
+        boolean checkoutTerminalBound = false;
+        String checkoutTerminalLabel = "-";
+        if (selectedShop.contains(TAG_CHECKOUT_TERMINAL, Tag.TAG_COMPOUND)) {
+            CompoundTag terminalTag = selectedShop.getCompound(TAG_CHECKOUT_TERMINAL);
+            checkoutTerminalLabel = terminalPosLabel(terminalTag);
+            if (server != null && selectedShop.contains(TAG_ID)) {
+                CheckoutTerminalTarget terminalTarget = resolveCheckoutTerminal(
+                        server,
+                        centralBank,
+                        ownerId,
+                        selectedShop.getUUID(TAG_ID),
+                        null
+                );
+                if (terminalTarget != null) {
+                    checkoutTerminalBound = true;
+                    checkoutTerminalLabel = normalizedDim(terminalTarget.dimensionId()) + " ("
+                            + terminalTarget.pos().getX() + ", "
+                            + terminalTarget.pos().getY() + ", "
+                            + terminalTarget.pos().getZ() + ")";
+                }
+            }
+        }
+        Set<String> assignedPalletSet = collectAssignedPalletRefSet(selectedShop);
+        int availablePallets = 0;
+        if (server != null && !assignedPalletSet.isEmpty()) {
+            Map<String, PalletRef> livePalletLookup = buildLivePalletLookup(server, deliveryPalletSearchClaims(selectedShop));
+            for (String assignedKey : assignedPalletSet) {
+                if (assignedKey != null && livePalletLookup.containsKey(assignedKey)) {
+                    availablePallets++;
+                }
+            }
+        }
+        int assignedPalletMax = maxAssignedOrderPalletsForLevel(level);
         long cashTxCount = Math.max(0L, selectedShop.getLong(TAG_METRIC_CASH_TX_COUNT));
         long cashTotalCents = Math.max(0L, selectedShop.getLong(TAG_METRIC_CASH_TOTAL_CENTS));
         long terminalTxCount = Math.max(0L, selectedShop.getLong(TAG_METRIC_TERMINAL_TX_COUNT));
@@ -9857,8 +12288,18 @@ public final class ShopService {
         lines.add("@kpi.out_of_stock_slots=" + outOfStockSlots);
         lines.add("@kpi.stock_units=" + stockUnits);
         lines.add("@kpi.stock_units_infinite=" + (stockUnitsInfinite ? 1 : 0));
+        lines.add("@kpi.shopping_bags=" + Math.max(0, shoppingBags));
+        lines.add("@kpi.shop_open=" + (shopOpenNow ? 1 : 0));
+        lines.add("@kpi.shop_hours_label=" + sanitizeTokenText(shopHoursLabel));
+        lines.add("@kpi.settlement_account_ready=" + (settlementAccountReady ? 1 : 0));
+        lines.add("@kpi.settlement_account_label=" + sanitizeTokenText(settlementAccountLabel));
         lines.add("@kpi.cashiers=" + cashierCount);
         lines.add("@kpi.linked_cashiers=" + linkedCashiers);
+        lines.add("@kpi.checkout_terminal_bound=" + (checkoutTerminalBound ? 1 : 0));
+        lines.add("@kpi.checkout_terminal_label=" + sanitizeTokenText(checkoutTerminalLabel));
+        lines.add("@kpi.assigned_pallets=" + assignedPalletSet.size());
+        lines.add("@kpi.available_pallets=" + availablePallets);
+        lines.add("@kpi.assigned_pallets_max=" + assignedPalletMax);
         lines.add("@kpi.cash_tx_count=" + cashTxCount);
         lines.add("@kpi.terminal_tx_count=" + terminalTxCount);
         lines.add("@kpi.cash_customers=" + cashCustomers);
@@ -9957,6 +12398,7 @@ public final class ShopService {
         lines.add("@roadmap.progress_ratio=" + String.format(Locale.ROOT, "%.6f", progressRatio));
         lines.add("@roadmap.max_level=100");
         lines.add("@roadmap.leveling_enabled=" + (Config.SHOP_LEVELING_ENABLED.get() ? "1" : "0"));
+        String shopType = normalizeShopType(selectedShop.getString(TAG_TYPE));
         for (int level = 1; level <= 100; level++) {
             long requiredRevenue = requiredRevenueForLevel(level);
             long claimCap = claimCapacityForLevel(level);
@@ -9964,6 +12406,7 @@ public final class ShopService {
             int displayCap = maxDisplayBlocksForLevel(level);
             int cashierCap = maxCashierSpawnEggsForLevel(level);
             int palletCap = maxAssignedOrderPalletsForLevel(level);
+            List<String> businessUnlocks = businessTypeUnlocksForRoadmapLevel(shopType, level);
             String state = level < currentLevel
                     ? "COMPLETED"
                     : (level == currentLevel ? "CURRENT" : "LOCKED");
@@ -9975,13 +12418,62 @@ public final class ShopService {
                     + "|" + displayCap
                     + "|" + cashierCap
                     + "|" + palletCap
-                    + "|" + state);
+                    + "|" + state
+                    + "|" + encodeRoadmapUnlocks(businessUnlocks));
         }
         lines.add("- Current level: " + currentLevel
                 + " | Revenue $" + ShelfPrice.abbreviateFromCents(revenue * 100L)
                 + " | Next target $" + ShelfPrice.abbreviateFromCents(nextTarget * 100L));
         lines.add("- Use the roadmap panel to inspect unlocks for each level milestone.");
         return new ShopActionResult(true, String.join("\n", lines));
+    }
+
+    private static List<String> businessTypeUnlocksForRoadmapLevel(String rawType, int level) {
+        int safeLevel = Math.max(1, Math.min(100, level));
+        String type = normalizeShopType(rawType);
+        List<String> unlocks = new ArrayList<>();
+        if (SHOP_TYPE_FRANCHISE.equals(type)) {
+            int unlockLevel = Math.max(1, Config.SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL.get());
+            int capacity = franchiseLicenseCapacityForLevel(safeLevel);
+            int previousCapacity = safeLevel <= 1 ? 0 : franchiseLicenseCapacityForLevel(safeLevel - 1);
+            if (safeLevel == unlockLevel) {
+                unlocks.add("Franchise brand offers unlock");
+            }
+            if (capacity > previousCapacity) {
+                unlocks.add("Franchise license capacity " + capacity);
+            }
+            if (safeLevel > unlockLevel
+                    && ((safeLevel - unlockLevel) % 10) == 0
+                    && capacity >= previousCapacity
+                    && Config.SHOP_FRANCHISE_LICENSE_CAPACITY_PER_10_LEVELS.get() <= 0) {
+                unlocks.add("Franchise milestone: brand reach");
+            }
+        } else if (SHOP_TYPE_CORPORATE_CHAIN.equals(type)) {
+            int capacity = corporateBranchCapacityForLevel(safeLevel);
+            int previousCapacity = safeLevel <= 1 ? 1 : corporateBranchCapacityForLevel(safeLevel - 1);
+            int firstExtra = Math.max(1, Config.SHOP_CORPORATE_FIRST_EXTRA_BRANCH_LEVEL.get());
+            if (safeLevel == firstExtra && capacity > 1) {
+                unlocks.add("First extra corporate branch unlocks");
+            }
+            if (capacity > previousCapacity) {
+                unlocks.add("Corporate branch capacity " + capacity);
+            }
+        }
+        return unlocks;
+    }
+
+    private static String encodeRoadmapUnlocks(List<String> unlocks) {
+        if (unlocks == null || unlocks.isEmpty()) {
+            return "-";
+        }
+        List<String> encoded = new ArrayList<>();
+        for (String unlock : unlocks) {
+            String clean = sanitizeTokenText(unlock).replace(";", ",");
+            if (!clean.isBlank() && !"-".equals(clean)) {
+                encoded.add(clean);
+            }
+        }
+        return encoded.isEmpty() ? "-" : String.join(";", encoded);
     }
 
     public static ShopActionResult shelfReport(MinecraftServer server, CentralBank centralBank, UUID ownerId) {
@@ -10012,6 +12504,8 @@ public final class ShopService {
         long nowMillis = System.currentTimeMillis();
 
         List<String> lines = new ArrayList<>();
+        lines.add("@inventory.source=LIVE_SHELF_BLOCK_ENTITIES");
+        lines.add("@inventory.generated=0");
         lines.add("@shelves.count=" + shelves.size());
         lines.add("Shelves for " + primary.getString(TAG_NAME) + " (" + shelves.size() + ")");
         for (int i = 0; i < shelves.size(); i++) {
@@ -10097,6 +12591,10 @@ public final class ShopService {
             }
             lines.addAll(slotLines);
         }
+        List<StockroomItemEntry> stockroomEntries = stockroomClaims.isEmpty()
+                ? List.of()
+                : collectStockroomEntries(server, stockroomClaims);
+        appendStockroomEntryTokens(lines, stockroomEntries);
         return new ShopActionResult(true, String.join("\n", lines));
     }
 
@@ -10122,15 +12620,27 @@ public final class ShopService {
 
         List<StockroomItemEntry> entries = collectStockroomEntries(server, stockroomClaims);
         List<String> lines = new ArrayList<>();
-        lines.add("@stockroom.count=" + entries.size());
         lines.add("Stockroom entries for " + primary.getString(TAG_NAME) + ": " + entries.size());
+        appendStockroomEntryTokens(lines, entries);
         if (entries.isEmpty()) {
             lines.add("(No items found in stockroom inventories.)");
             return new ShopActionResult(true, String.join("\n", lines));
         }
 
+        return new ShopActionResult(true, String.join("\n", lines));
+    }
+
+    private static void appendStockroomEntryTokens(List<String> lines, List<StockroomItemEntry> entries) {
+        if (lines == null) {
+            return;
+        }
+        List<StockroomItemEntry> safeEntries = entries == null ? List.of() : entries;
+        lines.add("@stockroom.count=" + safeEntries.size());
         int idx = 1;
-        for (StockroomItemEntry entry : entries) {
+        for (StockroomItemEntry entry : safeEntries) {
+            if (entry == null) {
+                continue;
+            }
             lines.add("@stockroom_item=" + idx
                     + "|" + entry.itemId()
                     + "|" + sanitizeTokenText(entry.itemName())
@@ -10150,7 +12660,6 @@ public final class ShopService {
                     + " | slot " + entry.slot() + "/" + entry.totalSlots());
             idx++;
         }
-        return new ShopActionResult(true, String.join("\n", lines));
     }
 
     public static ShopActionResult beginStockroomLocate(MinecraftServer server,
@@ -10236,7 +12745,90 @@ public final class ShopService {
                 "Locating " + matched.itemName() + " at "
                         + normalizedDim(matched.dimensionId()) + " ("
                         + matched.pos().getX() + ", " + matched.pos().getY() + ", " + matched.pos().getZ()
-                        + "), slot " + matched.slot() + "/" + matched.totalSlots() + ".");
+                + "), slot " + matched.slot() + "/" + matched.totalSlots() + ".");
+    }
+
+    public static ShopActionResult beginDeliveryPalletLocate(MinecraftServer server,
+                                                             CentralBank centralBank,
+                                                             UUID ownerId,
+                                                             UUID shopId,
+                                                             ServerPlayer player,
+                                                             String rawPalletRef) {
+        if (server == null || centralBank == null || ownerId == null || player == null) {
+            return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        CompoundTag primary = resolveShopTag(centralBank, ownerId, shopId);
+        if (primary == null) {
+            return new ShopActionResult(false, "No shop found. Create one first.");
+        }
+        ListTag palletClaims = deliveryPalletSearchClaims(primary);
+        if (palletClaims.isEmpty()) {
+            return new ShopActionResult(false, "Claim delivery pallet region(s) first.");
+        }
+
+        Map<String, PalletRef> liveLookup = buildLivePalletLookup(server, palletClaims);
+        if (liveLookup.isEmpty()) {
+            return new ShopActionResult(false, "No live delivery pallets found in your pallet claim.");
+        }
+
+        String requested = normalizeOrderPalletRef(rawPalletRef);
+        PalletRef target = requested.isBlank() ? null : liveLookup.get(requested);
+        if (target == null && requested.isBlank()) {
+            Set<String> assigned = collectAssignedPalletRefSet(primary);
+            for (String assignedKey : assigned) {
+                if (assignedKey == null || assignedKey.isBlank()) {
+                    continue;
+                }
+                target = liveLookup.get(assignedKey.trim());
+                if (target != null) {
+                    requested = assignedKey.trim();
+                    break;
+                }
+            }
+            if (target == null) {
+                Map.Entry<String, PalletRef> first = liveLookup.entrySet().iterator().next();
+                requested = first.getKey();
+                target = first.getValue();
+            }
+        }
+        if (target == null && !requested.isBlank()) {
+            PalletRef decoded = decodeOrderPalletRef(requested);
+            PalletRef live = resolveLivePalletRef(server, decoded);
+            if (live != null && isInsideClaims(palletClaims, live.dimensionId(), live.pos())) {
+                target = live;
+            }
+        }
+        if (target == null) {
+            return new ShopActionResult(false, "Selected pallet is no longer inside this shop's pallet claim.");
+        }
+
+        String encoded = encodeOrderPalletRef(target.dimensionId(), target.pos());
+        long nowTick = player.serverLevel().getGameTime();
+        StockroomLocateSession session = new StockroomLocateSession(
+                player.getUUID(),
+                ownerId,
+                primary.contains(TAG_ID) ? primary.getUUID(TAG_ID) : shopId,
+                normalizedDim(target.dimensionId()),
+                target.pos(),
+                encodePalletLocateSlot(4, 0),
+                "Delivery Pallet",
+                nowTick
+        );
+        STOCKROOM_LOCATE_SESSIONS.put(player.getUUID(), session);
+        pushStockroomLocateRender(player, session);
+        player.sendSystemMessage(UbsTranslations.literal("Delivery pallet trace started for ")
+                .withStyle(ChatFormatting.GREEN)
+                .append(Component.literal(formatPalletRef(encoded)).withStyle(ChatFormatting.WHITE))
+                .append(UbsTranslations.literal(". Sneak + right click to cancel.").withStyle(ChatFormatting.GREEN)));
+        pushShopAlert(
+                player,
+                "Pallet Trace",
+                "Delivery pallet trace started for " + formatPalletRef(encoded) + ". Sneak + right click to cancel.",
+                DeliveryAlertPayload.AlertTone.INFO,
+                5200
+        );
+        return new ShopActionResult(true,
+                "Tracing delivery pallet " + formatPalletRef(encoded) + ".");
     }
 
     public static ShopActionResult restockFromStockroom(MinecraftServer server, CentralBank centralBank, UUID ownerId) {
@@ -10735,6 +13327,7 @@ public final class ShopService {
         }
         primary.putInt(TAG_LEVEL, level);
         primary.putLong(TAG_NEXT_TARGET_DOLLARS, Math.max(1L, target));
+        applyShopTypeSaleFees(centralBank, primary, amountDollars);
         saveShopTag(centralBank, primary);
     }
 
@@ -13404,8 +15997,9 @@ public final class ShopService {
         String slotLabel = isPalletLocateSlot(session.slot())
                 ? inventoryLabel
                 : inventoryLabel + " Slot " + session.slot();
+        String traceTitle = isPalletLocateSlot(session.slot()) ? "Pallet Trace" : "Stockroom Locate";
         player.displayClientMessage(
-                UbsTranslations.literal("§bStockroom Locate §7| §fSneak + Right-click = Cancel §7| §f"
+                UbsTranslations.literal("§b" + traceTitle + " §7| §fSneak + Right-click = Cancel §7| §f"
                         + normalizedDim(session.dimensionId()) + " ("
                         + session.pos().getX() + ", " + session.pos().getY() + ", " + session.pos().getZ()
                         + ") §7| §f" + slotLabel),
@@ -14536,6 +17130,22 @@ public final class ShopService {
         return raw.replace("|", "/").replace("\n", " ").replace("\r", " ").trim();
     }
 
+    private record FranchiseRequiredItem(String itemId,
+                                         int quantity,
+                                         boolean exact,
+                                         String note,
+                                         CompoundTag stackTag) {}
+
+    private record FranchiseRequirementProgress(FranchiseRequiredItem requirement,
+                                                int current,
+                                                boolean satisfied,
+                                                String displayName) {}
+
+    private record FranchiseRequirementStatus(boolean compliant,
+                                             int missingCount,
+                                             String missingSummary,
+                                             List<FranchiseRequirementProgress> items) {}
+
     private record ItemPickEntry(String itemId, String itemName, int maxStack, int count) {}
     private record PalletRef(String dimensionId, BlockPos pos) {}
     private record AssignedPalletView(String palletId, PalletRef ref) {}
@@ -14550,7 +17160,11 @@ public final class ShopService {
                              long expiresAt,
                              int timeoutMinutes,
                              long createdAtMillis,
-                             String boundPalletRef) {}
+                             String boundPalletRef,
+                             long completedAtMillis,
+                             long routeMillis,
+                             int routeDistanceBlocks,
+                             long payoutCents) {}
     private record FoundOrder(CompoundTag shopTag, CompoundTag orderTag) {}
     private record FoundAssignedPallet(CompoundTag shopTag) {}
     private record OrderBoardEntry(UUID orderId,
@@ -14567,7 +17181,15 @@ public final class ShopService {
                                    long remainingSeconds,
                                    int timeoutMinutes,
                                    long createdAtMillis,
-                                   String boundPalletRef) {}
+                                   String boundPalletRef,
+                                   long completedAtMillis,
+                                   long routeMillis,
+                                   int routeDistanceBlocks,
+                                   long payoutCents) {
+        private long sortMillis() {
+            return completedAtMillis > 0L ? completedAtMillis : createdAtMillis;
+        }
+    }
     private record BoxDeliverySummary(boolean valid, String itemId, int totalCount) {}
     private record DeliveryBoardOrder(String shopName,
                                       String itemName,
@@ -14589,6 +17211,17 @@ public final class ShopService {
             return new CourierProgress(0L, 0L, 0L, 0L, 0L, 0L, 100);
         }
     }
+    private record CourierRankEntry(UUID courierId,
+                                    String courierName,
+                                    long completed,
+                                    long canceled,
+                                    long streak,
+                                    long bestStreak,
+                                    long totalPayoutCents,
+                                    long bestRouteMillis,
+                                    int bestRouteDistanceBlocks,
+                                    long bestRouteScore,
+                                    int successRatePct) {}
     private record DeliveryPayout(long baseRewardCents,
                                   long bonusCents,
                                   long totalPayoutCents,

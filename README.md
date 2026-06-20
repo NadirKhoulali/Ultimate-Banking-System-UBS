@@ -2,8 +2,8 @@
 
 UBS is a Forge `1.20.1` banking/economy mod focused on an in-world loop: ATM UI, physical legal tender, payment terminals, player-owned banks, central-bank policy, retail commerce systems, and admin migration tooling.
 
-Current release target: `1.2.4`
-Current worktree: large post-`1.2.0` additions (retail/shop stack, world cash economy, pickpocket, extended desktop apps).
+Current release target: `1.3.0`
+Current worktree: retail/shop stack, redesigned retail webshop, order tracking, world cash economy, pickpocket, extended desktop apps.
 
 ## What UBS Includes
 
@@ -23,7 +23,8 @@ Current worktree: large post-`1.2.0` additions (retail/shop stack, world cash ec
   - shelf/display blocks (shelves, tables, coolers, modular/glass displays)
   - shopping baskets/bags and cashier interaction flow
   - stockroom claims, pallet assignment, restock tooling, order workflows
-  - webshop cart/checkout/delivery queue and courier board features
+  - webshop catalog/cart/checkout/tracking flow with account and delivery-target modals
+  - delivery queue and courier board features
 - World cash economy systems:
   - structure chest cash loot injection
   - mob cash drops

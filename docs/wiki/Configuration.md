@@ -125,6 +125,22 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 - `ShopWebshopCancelFeePercent`
 - `ShopWebshopExpediteSurchargePercent`
 - `ShopWebshopExpediteEtaSeconds`
+- `ShopTypeConversionFeeDollars`
+- `ShopTypeConversionCooldownHours`
+- `ShopFranchiseBrandOwnerUnlockLevel`
+- `ShopFranchiseBaseLicenseCapacity`
+- `ShopFranchiseLicenseCapacityPer10Levels`
+- `ShopFranchiseMaxLicenseCapacity`
+- `ShopFranchiseDefaultUpfrontFeeDollars`
+- `ShopFranchiseDefaultRoyaltyPercent`
+- `ShopFranchiseDefaultMarketingPercent`
+- `ShopFranchiseNoncompliancePenaltyPercent`
+- `ShopCorporateFirstExtraBranchLevel`
+- `ShopCorporateBranchLevelStep`
+- `ShopCorporateMaxBranches`
+- `ShopCorporateOverheadPercent`
+
+Webshop-related keys control active order limits, ETA/retry behavior, cancel fees, and expedite surcharges. Shop type/franchise/corporate keys control reclassification cost, franchise offer capacity/defaults, noncompliance penalties, and corporate branch scaling.
 
 ## Account Storage and CDs
 

@@ -463,6 +463,7 @@ final class ClientPayloadHandlers {
         }
         return switch (action) {
             case "SHOP_OVERVIEW",
+                    "SHOP_CHECKOUT_DIAGNOSTIC",
                     "SHOP_ORDER_REPORT",
                     "SHOP_SCAN",
                     "SHOP_STOCKROOM_REPORT",
@@ -478,6 +479,7 @@ final class ClientPayloadHandlers {
         }
         return switch (action) {
             case "SHOP_OVERVIEW" -> "Dashboard refreshed.";
+            case "SHOP_CHECKOUT_DIAGNOSTIC" -> "Checkout diagnostic refreshed.";
             case "SHOP_ORDER_REPORT" -> "Orders refreshed.";
             case "SHOP_SCAN" -> "Inventory scan refreshed.";
             case "SHOP_STOCKROOM_REPORT" -> "Stockroom refreshed.";

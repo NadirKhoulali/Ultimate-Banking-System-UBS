@@ -9,6 +9,12 @@ import net.minecraft.network.chat.Component;
 public class DesktopEditBox extends EditBox {
 
     private static final int TEXT_LEFT_PADDING = 5;
+    private static final int THEME_ROW = 0xFF0A1929;
+    private static final int THEME_PANEL = 0xFF0E2338;
+    private static final int THEME_BORDER = 0xFF244A6D;
+    private static final int THEME_BORDER_HI = 0xFF2D5F86;
+    private static final int THEME_CYAN = 0xFF42C8FF;
+    private boolean chromeVisible = true;
 
     public DesktopEditBox(Font font, int x, int y, int width, int height, Component message) {
         super(font, x, y, width, height, translated(message));
@@ -20,6 +26,11 @@ public class DesktopEditBox extends EditBox {
         super.setHint(translated(hint));
     }
 
+    public DesktopEditBox setChromeVisible(boolean chromeVisible) {
+        this.chromeVisible = chromeVisible;
+        return this;
+    }
+
     @Override
     public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         int x1 = this.getX();
@@ -27,31 +38,33 @@ public class DesktopEditBox extends EditBox {
         int x2 = x1 + this.width;
         int y2 = y1 + this.height;
 
-        int border;
-        if (!this.active) {
-            border = 0xFF55647A;
-        } else if (this.isFocused()) {
-            border = 0xFFD8EEFF;
-        } else if (this.isHoveredOrFocused()) {
-            border = 0xFF95C4E8;
-        } else {
-            border = 0xFF3A5B80;
-        }
+        if (this.chromeVisible) {
+            int border;
+            if (!this.active) {
+                border = THEME_BORDER;
+            } else if (this.isFocused()) {
+                border = THEME_CYAN;
+            } else if (this.isHoveredOrFocused()) {
+                border = THEME_BORDER_HI;
+            } else {
+                border = THEME_BORDER;
+            }
 
-        graphics.fill(x1, y1, x2, y2, border);
+            graphics.fill(x1, y1, x2, y2, border);
 
-        int fillTop = this.active ? 0xF0182F47 : 0xCC2B3745;
-        int fillBottom = this.active ? 0xF0112238 : 0xCC212B36;
-        int innerX1 = x1 + 1;
-        int innerY1 = y1 + 1;
-        int innerX2 = x2 - 1;
-        int innerY2 = y2 - 1;
-        int h = Math.max(1, innerY2 - innerY1);
-        for (int y = 0; y < h; y++) {
-            float t = h <= 1 ? 0.0F : (float) y / (float) (h - 1);
-            graphics.fill(innerX1, innerY1 + y, innerX2, innerY1 + y + 1, lerpColor(fillTop, fillBottom, t));
+            int fillTop = this.active ? THEME_PANEL : 0xFF111F31;
+            int fillBottom = this.active ? THEME_ROW : 0xFF0D1827;
+            int innerX1 = x1 + 1;
+            int innerY1 = y1 + 1;
+            int innerX2 = x2 - 1;
+            int innerY2 = y2 - 1;
+            int h = Math.max(1, innerY2 - innerY1);
+            for (int y = 0; y < h; y++) {
+                float t = h <= 1 ? 0.0F : (float) y / (float) (h - 1);
+                graphics.fill(innerX1, innerY1 + y, innerX2, innerY1 + y + 1, lerpColor(fillTop, fillBottom, t));
+            }
+            graphics.fill(innerX1 + 1, innerY1 + 1, innerX2 - 1, innerY1 + 2, 0x5542C8FF);
         }
-        graphics.fill(innerX1 + 1, innerY1 + 1, innerX2 - 1, innerY1 + 2, 0x55C7E2FF);
 
         int originalX = this.getX();
         int originalY = this.getY();

@@ -2,7 +2,7 @@
 
 This wiki tracks the current UBS feature set and command surface.
 
-Current release target: `1.2.4`
+Current release target: `1.3.0`
 
 ## Start Here
 
@@ -35,7 +35,8 @@ UBS provides:
 - retail/shop stack:
   - shelves, displays, coolers, tables, baskets/bags, pallet logistics, stockroom tooling
   - cashier NPC workflows and desktop shop management actions
-  - webshop + delivery queue + courier order board support
+  - redesigned retail webshop with filtered catalog, cart summary, checkout review, delivery target picker, and tracking support
+  - delivery queue + courier order board support
 - world cash economy:
   - structure chest cash loot
   - mob cash drops

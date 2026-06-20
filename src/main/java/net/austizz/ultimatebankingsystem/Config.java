@@ -408,6 +408,62 @@ public class Config {
             .comment("Expedite delivery ETA in seconds for webshop checkouts.")
             .defineInRange("ShopWebshopExpediteEtaSeconds", 12, 3, 3600);
 
+    public static final ModConfigSpec.IntValue SHOP_TYPE_CONVERSION_FEE_DOLLARS = BUILDER
+            .comment("Fee in whole dollars charged after an existing shop has used its one free shop-type reclass.")
+            .defineInRange("ShopTypeConversionFeeDollars", 25000, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SHOP_TYPE_CONVERSION_COOLDOWN_HOURS = BUILDER
+            .comment("Cooldown in real hours between paid shop-type conversions.")
+            .defineInRange("ShopTypeConversionCooldownHours", 72, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SHOP_FRANCHISE_BRAND_OWNER_UNLOCK_LEVEL = BUILDER
+            .comment("Minimum shop level required for a Franchise shop to publish its own franchise brand offers.")
+            .defineInRange("ShopFranchiseBrandOwnerUnlockLevel", 10, 1, 100);
+
+    public static final ModConfigSpec.IntValue SHOP_FRANCHISE_BASE_LICENSE_CAPACITY = BUILDER
+            .comment("Base active franchise license capacity once brand selling unlocks.")
+            .defineInRange("ShopFranchiseBaseLicenseCapacity", 1, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SHOP_FRANCHISE_LICENSE_CAPACITY_PER_10_LEVELS = BUILDER
+            .comment("Extra active franchise licenses gained for every 10 levels after the brand-owner unlock level.")
+            .defineInRange("ShopFranchiseLicenseCapacityPer10Levels", 1, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SHOP_FRANCHISE_MAX_LICENSE_CAPACITY = BUILDER
+            .comment("Hard maximum active franchise licenses a single brand-owner shop can sell.")
+            .defineInRange("ShopFranchiseMaxLicenseCapacity", 25, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue SHOP_FRANCHISE_DEFAULT_UPFRONT_FEE_DOLLARS = BUILDER
+            .comment("Default upfront fee in whole dollars for newly published franchise offers.")
+            .defineInRange("ShopFranchiseDefaultUpfrontFeeDollars", 5000, 0, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue SHOP_FRANCHISE_DEFAULT_ROYALTY_PERCENT = BUILDER
+            .comment("Default franchise royalty percentage applied to gross sales.")
+            .defineInRange("ShopFranchiseDefaultRoyaltyPercent", 6.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.DoubleValue SHOP_FRANCHISE_DEFAULT_MARKETING_PERCENT = BUILDER
+            .comment("Default franchise marketing-fund percentage applied to gross sales.")
+            .defineInRange("ShopFranchiseDefaultMarketingPercent", 2.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.DoubleValue SHOP_FRANCHISE_NONCOMPLIANCE_PENALTY_PERCENT = BUILDER
+            .comment("Extra shop-type payable fee percent applied to franchise gross sales while brand-required shelf items are missing.")
+            .defineInRange("ShopFranchiseNoncompliancePenaltyPercent", 2.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.IntValue SHOP_CORPORATE_FIRST_EXTRA_BRANCH_LEVEL = BUILDER
+            .comment("Minimum corporate shop level required to unlock the first extra company-owned branch.")
+            .defineInRange("ShopCorporateFirstExtraBranchLevel", 5, 1, 100);
+
+    public static final ModConfigSpec.IntValue SHOP_CORPORATE_BRANCH_LEVEL_STEP = BUILDER
+            .comment("Levels between extra corporate branch unlocks after the first extra branch.")
+            .defineInRange("ShopCorporateBranchLevelStep", 10, 1, 100);
+
+    public static final ModConfigSpec.IntValue SHOP_CORPORATE_MAX_BRANCHES = BUILDER
+            .comment("Hard maximum company-owned branches in one corporate chain, including the HQ shop.")
+            .defineInRange("ShopCorporateMaxBranches", 12, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.DoubleValue SHOP_CORPORATE_OVERHEAD_PERCENT = BUILDER
+            .comment("Corporate overhead percentage applied to gross sales.")
+            .defineInRange("ShopCorporateOverheadPercent", 5.0D, 0.0D, 100.0D);
+
     public static final ModConfigSpec.IntValue GLOBAL_MAX_SINGLE_TRANSACTION = BUILDER
             .comment("Global maximum amount for a single transaction.")
             .defineInRange("GlobalMaxSingleTransaction", 50000, 1, Integer.MAX_VALUE);

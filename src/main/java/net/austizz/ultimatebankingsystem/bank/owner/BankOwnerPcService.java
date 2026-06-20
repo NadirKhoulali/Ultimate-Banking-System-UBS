@@ -302,7 +302,8 @@ public final class BankOwnerPcService {
                                                     ServerPlayer player,
                                                     String action,
                                                     String arg1,
-                                                    String arg2) {
+                                                    String arg2,
+                                                    String arg3) {
         if (centralBank == null || player == null) {
             return fail("DESKTOP", "Desktop storage is unavailable.");
         }
@@ -1045,6 +1046,13 @@ public final class BankOwnerPcService {
                     yield fail(normalizedAction, "Server context is unavailable.");
                 }
                 ShopService.ShopActionResult result = ShopService.webshopCancelOrder(server, centralBank, playerId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_WEBSHOP_REPLACE_ORDER" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                ShopService.ShopActionResult result = ShopService.webshopReplaceOrder(server, centralBank, playerId, arg1);
                 yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
             }
             case "ORDER_BOARD_REPORT" -> {

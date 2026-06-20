@@ -1275,7 +1275,8 @@ public final class WebAdminService {
                     target,
                     action,
                     arg1,
-                    arg2
+                    arg2,
+                    ""
             );
 
             OwnerPcDesktopDataPayload desktopData = BankOwnerPcService.buildDesktopData(centralBank, selectedPlayer);
