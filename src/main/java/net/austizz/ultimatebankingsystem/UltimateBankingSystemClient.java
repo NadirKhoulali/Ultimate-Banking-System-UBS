@@ -151,6 +151,10 @@ public class UltimateBankingSystemClient {
         if (mc == null || mc.options.hideGui || !ShopSetupObjectiveClientState.isActive()) {
             return;
         }
+        if ((event.getModifiers() & GLFW.GLFW_MOD_SHIFT) != 0) {
+            ShopSetupObjectiveClientState.dismiss();
+            return;
+        }
         // X toggles setup objective visibility so owners can temporarily declutter the HUD.
         ShopSetupObjectiveClientState.toggleCollapsed();
     }
@@ -868,7 +872,7 @@ public class UltimateBankingSystemClient {
             String stepText = tr("Step") + " " + ShopSetupObjectiveClientState.getStep()
                     + " / " + ShopSetupObjectiveClientState.getTotalSteps();
             String objectiveTitle = tr(ShopSetupObjectiveClientState.getObjectiveTitle());
-            String expandHint = tr("Press X to expand");
+            String expandHint = tr("Press X to expand | Shift+X to close");
             int compactWidth = Math.max(176, Math.min(236, panelWidth));
             int compactHeight = 42;
             int compactX = guiWidth - compactWidth - 8;
@@ -896,7 +900,7 @@ public class UltimateBankingSystemClient {
         String objectiveTitle = tr(ShopSetupObjectiveClientState.getObjectiveTitle());
         String objectiveDetail = tr(ShopSetupObjectiveClientState.getObjectiveDetail());
         List<ShopSetupObjectivePayload.RequirementProgress> requirements = ShopSetupObjectiveClientState.getRequirements();
-        String closeHint = tr("Press X to hide");
+        String closeHint = tr("Press X to minimize | Shift+X to close");
 
         List<FormattedCharSequence> detailLines = font.split(Component.literal(objectiveDetail), panelWidth - 14);
         if (detailLines.size() > 6) {

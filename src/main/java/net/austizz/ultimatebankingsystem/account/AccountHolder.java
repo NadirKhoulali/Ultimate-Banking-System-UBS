@@ -50,6 +50,7 @@ public class AccountHolder {
     private ConcurrentHashMap<UUID, UserTransaction> transactions;
     private BigDecimal temporaryWithdrawalLimit;
     private long temporaryWithdrawalLimitExpiresAtGameTime;
+    private long temporaryWithdrawalLimitExpiresAtEpochMillis;
     private boolean frozen;
     private String frozenReason;
     private long dailyWithdrawalWindowDay; // Epoch day in server local time
@@ -85,6 +86,7 @@ public class AccountHolder {
         this.transactions = new ConcurrentHashMap<>();
         this.temporaryWithdrawalLimit = null;
         this.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+        this.temporaryWithdrawalLimitExpiresAtEpochMillis = -1L;
         this.frozen = false;
         this.frozenReason = "";
         this.dailyWithdrawalWindowDay = currentEpochDay();
@@ -643,11 +645,38 @@ public class AccountHolder {
         return temporaryWithdrawalLimit == null ? -1L : temporaryWithdrawalLimitExpiresAtGameTime;
     }
 
+    public long getTemporaryWithdrawalLimitExpiresAtEpochMillis(long currentGameTime) {
+        expireTemporaryWithdrawalLimitIfNeeded(currentGameTime);
+        return temporaryWithdrawalLimit == null ? -1L : temporaryWithdrawalLimitExpiresAtEpochMillis;
+    }
+
     public boolean setTemporaryWithdrawalLimit(BigDecimal newLimit, long currentGameTime) {
-        return setTemporaryWithdrawalLimit(newLimit, currentGameTime, currentGameTime + TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS);
+        long nowMillis = System.currentTimeMillis();
+        long expiresAtGameTime = safeAdd(currentGameTime, TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS);
+        long expiresAtEpochMillis = safeAdd(nowMillis, ticksToMillis(TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS));
+        return applyTemporaryWithdrawalLimit(newLimit, currentGameTime, expiresAtGameTime, expiresAtEpochMillis, nowMillis);
     }
 
     public boolean setTemporaryWithdrawalLimit(BigDecimal newLimit, long currentGameTime, long expiresAtGameTime) {
+        long nowMillis = System.currentTimeMillis();
+        long ticksUntilExpiry = Math.max(1L, expiresAtGameTime - currentGameTime);
+        long expiresAtEpochMillis = safeAdd(nowMillis, ticksToMillis(ticksUntilExpiry));
+        return applyTemporaryWithdrawalLimit(newLimit, currentGameTime, expiresAtGameTime, expiresAtEpochMillis, nowMillis);
+    }
+
+    public boolean setTemporaryWithdrawalLimitUntil(BigDecimal newLimit, long currentGameTime, long expiresAtEpochMillis) {
+        long nowMillis = System.currentTimeMillis();
+        long millisUntilExpiry = expiresAtEpochMillis - nowMillis;
+        long ticksUntilExpiry = Math.max(1L, (millisUntilExpiry + 49L) / 50L);
+        long expiresAtGameTime = safeAdd(currentGameTime, ticksUntilExpiry);
+        return applyTemporaryWithdrawalLimit(newLimit, currentGameTime, expiresAtGameTime, expiresAtEpochMillis, nowMillis);
+    }
+
+    private boolean applyTemporaryWithdrawalLimit(BigDecimal newLimit,
+                                                  long currentGameTime,
+                                                  long expiresAtGameTime,
+                                                  long expiresAtEpochMillis,
+                                                  long nowMillis) {
         if (newLimit == null || newLimit.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
@@ -657,9 +686,13 @@ public class AccountHolder {
         if (expiresAtGameTime <= currentGameTime) {
             return false;
         }
+        if (expiresAtEpochMillis <= nowMillis) {
+            return false;
+        }
 
         this.temporaryWithdrawalLimit = newLimit;
         this.temporaryWithdrawalLimitExpiresAtGameTime = expiresAtGameTime;
+        this.temporaryWithdrawalLimitExpiresAtEpochMillis = expiresAtEpochMillis;
         BankManager.markDirty();
         return true;
     }
@@ -670,6 +703,7 @@ public class AccountHolder {
         }
         this.temporaryWithdrawalLimit = null;
         this.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+        this.temporaryWithdrawalLimitExpiresAtEpochMillis = -1L;
         BankManager.markDirty();
     }
 
@@ -677,9 +711,31 @@ public class AccountHolder {
         if (temporaryWithdrawalLimit == null) {
             return;
         }
-        if (currentGameTime >= temporaryWithdrawalLimitExpiresAtGameTime) {
+        long nowMillis = System.currentTimeMillis();
+        boolean expiredByClock = temporaryWithdrawalLimitExpiresAtEpochMillis > 0L
+                && nowMillis >= temporaryWithdrawalLimitExpiresAtEpochMillis;
+        boolean expiredByGameTime = temporaryWithdrawalLimitExpiresAtGameTime >= 0L
+                && currentGameTime >= temporaryWithdrawalLimitExpiresAtGameTime;
+        if (expiredByClock || expiredByGameTime) {
             clearTemporaryWithdrawalLimit();
         }
+    }
+
+    private static long ticksToMillis(long ticks) {
+        if (ticks <= 0L) {
+            return 0L;
+        }
+        return ticks > Long.MAX_VALUE / 50L ? Long.MAX_VALUE : ticks * 50L;
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (right > 0L && left > Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        if (right < 0L && left < Long.MIN_VALUE - right) {
+            return Long.MIN_VALUE;
+        }
+        return left + right;
     }
 
     private void syncDailyWithdrawalWindow() {
@@ -744,6 +800,7 @@ public class AccountHolder {
         if (this.temporaryWithdrawalLimit != null) {
             tag.putString("temporaryWithdrawalLimit", this.temporaryWithdrawalLimit.toPlainString());
             tag.putLong("temporaryWithdrawalLimitExpiresAtGameTime", this.temporaryWithdrawalLimitExpiresAtGameTime);
+            tag.putLong("temporaryWithdrawalLimitExpiresAtEpochMillis", this.temporaryWithdrawalLimitExpiresAtEpochMillis);
         }
 
         // Transactions
@@ -842,9 +899,13 @@ public class AccountHolder {
             try {
                 account.temporaryWithdrawalLimit = new BigDecimal(tag.getString("temporaryWithdrawalLimit"));
                 account.temporaryWithdrawalLimitExpiresAtGameTime = tag.getLong("temporaryWithdrawalLimitExpiresAtGameTime");
+                account.temporaryWithdrawalLimitExpiresAtEpochMillis = tag.contains("temporaryWithdrawalLimitExpiresAtEpochMillis")
+                        ? tag.getLong("temporaryWithdrawalLimitExpiresAtEpochMillis")
+                        : -1L;
             } catch (NumberFormatException ignored) {
                 account.temporaryWithdrawalLimit = null;
                 account.temporaryWithdrawalLimitExpiresAtGameTime = -1L;
+                account.temporaryWithdrawalLimitExpiresAtEpochMillis = -1L;
             }
         }
 

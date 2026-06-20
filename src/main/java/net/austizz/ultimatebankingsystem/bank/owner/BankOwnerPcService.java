@@ -1761,10 +1761,7 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Choose a future temporary-limit expiration.");
         }
         long currentGameTime = currentOverworldGameTime(server);
-        long deltaMillis = Math.max(50L, expiresAtMillis - nowMillis);
-        long deltaTicks = Math.max(1L, (deltaMillis + 49L) / 50L);
-        long expiresAtGameTime = currentGameTime + deltaTicks;
-        if (!account.setTemporaryWithdrawalLimit(amount, currentGameTime, expiresAtGameTime)) {
+        if (!account.setTemporaryWithdrawalLimitUntil(amount, currentGameTime, expiresAtMillis)) {
             return new ActionResult(false, "Could not apply temporary account limit.");
         }
         return new ActionResult(true, buildAccountDetailOutput(server, centralBank, bank, account, 0, "Temporary limit applied."));
@@ -1794,7 +1791,10 @@ public final class BankOwnerPcService {
         long currentGameTime = currentOverworldGameTime(server);
         BigDecimal tempLimit = account.getTemporaryWithdrawalLimitIfActive(currentGameTime);
         long tempExpiresGameTime = account.getTemporaryWithdrawalLimitExpiresAtGameTime(currentGameTime);
-        long tempExpiresMillis = estimateEpochMillisForGameTick(currentGameTime, tempExpiresGameTime);
+        long tempExpiresMillis = account.getTemporaryWithdrawalLimitExpiresAtEpochMillis(currentGameTime);
+        if (tempExpiresMillis < 0L) {
+            tempExpiresMillis = estimateEpochMillisForGameTick(currentGameTime, tempExpiresGameTime);
+        }
         List<UserTransaction> transactions = new ArrayList<>(account.getTransactions().values());
         transactions.removeIf(tx -> tx == null || tx.getTransactionUUID() == null);
         transactions.sort(Comparator
