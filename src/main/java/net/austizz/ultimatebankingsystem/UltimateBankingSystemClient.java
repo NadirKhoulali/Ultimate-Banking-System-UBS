@@ -138,25 +138,35 @@ public class UltimateBankingSystemClient {
         }
         // Screen pass: keep shared alerts visible above desktop/ATM widgets.
         renderActionAlert(mc, event.getGuiGraphics());
-        renderShopSetupObjective(mc, event.getGuiGraphics());
         renderDeliveryInfoBoard(mc, event.getGuiGraphics());
     }
 
     @SubscribeEvent
     static void onKeyInput(InputEvent.Key event) {
-        if (event.getAction() != GLFW.GLFW_PRESS || event.getKey() != GLFW.GLFW_KEY_X) {
+        if (event.getAction() != GLFW.GLFW_PRESS) {
+            return;
+        }
+        boolean minimizeKey = event.getKey() == GLFW.GLFW_KEY_X;
+        boolean hardCloseKey = minimizeKey && (event.getModifiers() & GLFW.GLFW_MOD_SHIFT) != 0;
+        if (!minimizeKey && !hardCloseKey) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options.hideGui || !ShopSetupObjectiveClientState.isActive()) {
+        if (mc == null || mc.options.hideGui || mc.screen != null) {
             return;
         }
-        if ((event.getModifiers() & GLFW.GLFW_MOD_SHIFT) != 0) {
-            ShopSetupObjectiveClientState.dismiss();
+        if (ShopSetupObjectiveClientState.isActive()) {
+            if (hardCloseKey) {
+                ShopSetupObjectiveClientState.dismiss();
+                return;
+            }
+            ShopSetupObjectiveClientState.toggleCollapsed();
             return;
         }
-        // X toggles setup objective visibility so owners can temporarily declutter the HUD.
-        ShopSetupObjectiveClientState.toggleCollapsed();
+        if (DeliveryInfoBoardClientState.isActive()) {
+            DeliveryInfoBoardClientState.toggleCollapsed();
+            return;
+        }
     }
 
     @SubscribeEvent
@@ -249,6 +259,9 @@ public class UltimateBankingSystemClient {
             return false;
         }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.WalletScreen) {
+            return false;
+        }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen) {
             return false;
         }
         String className = screen.getClass().getName();
@@ -853,7 +866,7 @@ public class UltimateBankingSystemClient {
     }
 
     private static void renderShopSetupObjective(Minecraft mc, GuiGraphics graphics) {
-        if (!ShopSetupObjectiveClientState.isActive()) {
+        if (mc.screen != null || !ShopSetupObjectiveClientState.isActive()) {
             return;
         }
         Font font = mc.font;
@@ -970,6 +983,19 @@ public class UltimateBankingSystemClient {
         String subtitle = tr("Active Orders: ")
                 + DeliveryInfoBoardClientState.getActiveOrders()
                 + " / " + DeliveryInfoBoardClientState.getActiveCap();
+        if (DeliveryInfoBoardClientState.isCollapsed()) {
+            int collapsedW = Math.max(150, Math.min(228, guiWidth / 4));
+            int collapsedX = guiWidth - collapsedW - 8;
+            int collapsedY = panelY;
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0D, 0.0D, 1240.0D);
+            graphics.fill(collapsedX, collapsedY, collapsedX + collapsedW, collapsedY + 26, 0xD0112740);
+            graphics.fill(collapsedX, collapsedY, collapsedX + collapsedW, collapsedY + 2, 0xFF58B8FF);
+            graphics.drawString(font, fitToWidth(font, title, collapsedW - 12), collapsedX + 6, collapsedY + 5, 0xFFEAF7FF, false);
+            graphics.drawString(font, fitToWidth(font, subtitle, collapsedW - 12), collapsedX + 6, collapsedY + 15, 0xFFCBE7FF, false);
+            graphics.pose().popPose();
+            return;
+        }
         String shopLine = tr("Shop: ") + safeDeliveryField(DeliveryInfoBoardClientState.getShopName(), tr("Unknown"));
         String itemLine = tr("Item: ") + safeDeliveryField(DeliveryInfoBoardClientState.getItemName(), tr("Unknown"))
                 + " x" + Math.max(1, DeliveryInfoBoardClientState.getQuantity());
