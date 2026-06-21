@@ -2,7 +2,7 @@
 
 This wiki tracks the current UBS feature set and command surface.
 
-Current release target: `1.4.0`
+Current release target: `1.4.2`
 
 ## Start Here
 
@@ -17,7 +17,6 @@ Current release target: `1.4.0`
 - [Migration Guide](Migration-Guide.md)
 - [Developer API](Developer-API.md)
 - [Developer Integration Tutorial](Developer-Integration-Tutorial.md)
-- [Dashboard Addon API](Dashboard-Addon-API.md)
 
 ## System Overview
 
@@ -34,7 +33,6 @@ UBS provides:
 - pay request workflows in chat and ATM UI
 - payment terminal block for merchant checkout with configurable redstone outputs
 - handheld payment terminal for direct player-to-player checkout
-- web dashboard addon API for UBS-styled addon panels and component pages
 - retail/shop stack:
   - shelves, displays, coolers, tables, baskets/bags, pallet logistics, stockroom tooling
   - cashier NPC workflows and desktop shop management actions

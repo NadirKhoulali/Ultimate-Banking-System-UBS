@@ -1,6 +1,6 @@
 # Admin Commands
 
-UBS admin commands are server-operator tools for account moderation, central-bank policy, bank governance, migration, web dashboard control, shop repair, and test-data seeding.
+UBS admin commands are server-operator tools for account moderation, central-bank policy, bank governance, migration, shop repair, and test-data seeding.
 
 Required permission: Minecraft permission level `3` for players. Server console can run these commands directly.
 
@@ -11,7 +11,6 @@ Required permission: Minecraft permission level `3` for players. Server console 
 | `/ubs admin ...` | Primary UBS admin command root. |
 | `/bank admin ...` | Compatibility alias for the same command tree as `/ubs admin ...`. |
 | `/centralbank ...` | Central-bank policy, audit, report, ledger, and open-market controls. |
-| `/ubs web ...` | Top-level web dashboard control shortcut. Same actions are also available under `/ubs admin web ...`. |
 | `/ubs centralbank ...` | Central-bank panel shortcut and legacy interest-rate setter. |
 | `/ubs bank ...` | Central-bank save and rename helpers. |
 | `/ubs money ...` | Direct account balance adjustment tools. |
@@ -24,46 +23,6 @@ Parameter notes:
 - `<bankName>` is a greedy string, so names with spaces work when placed at the end of the command.
 - `<amount>` should be a positive numeric value unless the command explicitly says it can clear a value.
 - `[reason]` is optional. If omitted, UBS stores or shows a blank reason.
-
-## Dashboard and Admin Help
-
-### `/ubs admin web`
-
-Shows the web dashboard status panel. This is equivalent to `/ubs web`.
-
-Use it to confirm whether the dashboard is configured, running, which host/port it is bound to, and which URL should be opened by admins.
-
-### `/ubs admin web status`
-
-Shows the same dashboard status panel without toggling anything.
-
-This is useful after server startup or after changing dashboard config values.
-
-### `/ubs admin web on`
-
-Enables and starts the UBS web admin dashboard.
-
-If startup fails, the command tells the admin to check the server log. Typical causes are bind-port conflicts, blocked ports, or missing runtime classes.
-
-### `/ubs admin web off`
-
-Disables and stops the UBS web admin dashboard.
-
-Use this if you need to close the dashboard while the server is live or before changing dashboard config.
-
-### `/ubs admin web link`
-
-Sends clickable chat buttons for opening or copying the dashboard URL.
-
-If the dashboard is bound to `0.0.0.0`, the message reminds admins to replace `127.0.0.1` with the real server IP or domain for remote access.
-
-Top-level equivalents:
-
-- `/ubs web`
-- `/ubs web status`
-- `/ubs web on`
-- `/ubs web off`
-- `/ubs web link`
 
 ## Account and Player Moderation
 
@@ -494,9 +453,9 @@ Seeded data includes:
 - open inter-bank lending offers
 - one active inter-bank loan
 - settlement ledger and suspense rows
-- web dashboard history snapshots
+- bank history snapshots
 
-Use this on development worlds when the dashboard, bank owner PC, lending market, settlement ledger, or central-bank reports need realistic data.
+Use this on development worlds when the bank owner PC, lending market, settlement ledger, or central-bank reports need realistic data.
 
 Do not run it on a production economy unless you intentionally want test banks and test balances in that world.
 

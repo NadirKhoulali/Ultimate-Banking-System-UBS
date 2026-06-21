@@ -2,22 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.2] - 2026-06-21
+
+### Removed
+- Removed the browser-based admin panel, its server-management routes, static UI assets, embedded HTTP runtime, and addon dashboard API from the distributed mod.
+
+### Changed
+- Updated admin and developer documentation so the release no longer advertises browser-based server management features.
+
 ## [1.4.0] - 2026-06-20
 
 ### Added
 - Added the wallet item, wallet menu/screen, wallet model/texture/recipe, and wallet placeholder textures.
 - Added wallet cash and card tender support for bank teller and shop cashier payment flows.
-- Added the Dashboard Addon API (`2.0.0`) with dashboard registration, component/page definitions, widget/action handlers, addon routes, docs, and tests.
-- Added web admin host rendering for registered addon dashboards and reusable dashboard components.
-- Added bank level admin tooling, demo banking seed commands, leaderboard seed/remove commands, and dashboard diagnostics.
+- Added bank level admin tooling and demo banking seed commands.
+- Added leaderboard seed/remove commands and diagnostics for release validation.
 
 ### Changed
 - Account access checks now use centralized denial messaging for frozen source/destination accounts.
 - Primary-account updates now route through a central bank helper so only one account is primary per player.
-- Web admin and command flows now use the centralized primary-account repair path.
 
 ### Fixed
-- Preserved oversized desktop response guarding while adding the new dashboard/webadmin paths.
+- Preserved oversized desktop response guarding for large desktop payloads.
 - Kept safety deposit box, bank vault door, and iron gate work excluded from this release.
 
 ## [1.3.1] - 2026-06-20

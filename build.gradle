@@ -132,21 +132,6 @@ dependencies {
     // The group id is ignored when searching -- in this case, it is "blank"
     // implementation "blank:coolmod-${mc_version}:${coolmod_version}"
     implementation 'com.mojang:brigadier:1.0.18'
-    jarJar(implementation('io.netty:netty-codec-http')) {
-        transitive = false
-        version {
-            strictly '[4.1.97.Final, 4.1.98)'
-            prefer '4.1.97.Final'
-        }
-    }
-    jarJar(implementation('com.bucket4j:bucket4j_jdk17-core')) {
-        version {
-            strictly '[8.17.0, 9.0.0)'
-            prefer '8.17.0'
-        }
-    }
-    additionalRuntimeClasspath 'io.netty:netty-codec-http:4.1.97.Final'
-    additionalRuntimeClasspath 'com.bucket4j:bucket4j_jdk17-core:8.17.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 

@@ -184,18 +184,6 @@ UltimateBankingApi api = UltimateBankingApiProvider.get();
 String apiVersion = api.getApiVersion();
 ```
 
-Dashboard API bootstrap:
-
-```java
-import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApi;
-import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApiProvider;
-
-UltimateBankingDashboardApi dashboardApi = UltimateBankingDashboardApiProvider.get();
-String dashboardApiVersion = dashboardApi.getDashboardApiVersion();
-```
-
-Use the dashboard API when your mod wants to appear in the UBS web dashboard instead of hosting its own web server. Full step-by-step docs: [Dashboard Addon API](Dashboard-Addon-API.md).
-
 ## 10. Common usage examples
 
 ### Account read/write

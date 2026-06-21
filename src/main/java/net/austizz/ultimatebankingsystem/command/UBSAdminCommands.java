@@ -180,7 +180,6 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
-                .then(buildWebAdminLiteral())
                 .then(buildAdminLiteral());
     }
 
@@ -202,7 +201,7 @@ public class UBSAdminCommands {
         body.append(moneyLiteral("§8- §fInter-bank loans: §b" + result.loansSeeded() + "\n"));
         body.append(moneyLiteral("§8- §fSettlement rows: §b" + result.settlementsSeeded() + "\n"));
         body.append(moneyLiteral("§8- §fDashboard history points: §b" + result.historyPointsSeeded() + "\n\n"));
-        body.append(moneyLiteral("§7Open the Bank Owner PC or web dashboard to inspect the seeded market."));
+        body.append(moneyLiteral("§7Open the Bank Owner PC to inspect the seeded market."));
         if (result.playerSandboxBankName() != null && !result.playerSandboxBankName().isBlank()) {
             body.append(moneyLiteral("\n§7Player sandbox bank: §e" + result.playerSandboxBankName()));
         }
@@ -297,23 +296,6 @@ public class UBSAdminCommands {
                         .then(Commands.literal("suspense")
                                 .executes(context -> centralBankLedger(context.getSource(), true))
                         )
-                );
-    }
-
-    private static LiteralArgumentBuilder<CommandSourceStack> buildWebAdminLiteral() {
-        return Commands.literal("web")
-                .executes(context -> adminWebStatus(context.getSource()))
-                .then(Commands.literal("status")
-                        .executes(context -> adminWebStatus(context.getSource()))
-                )
-                .then(Commands.literal("on")
-                        .executes(context -> adminWebToggle(context.getSource(), true))
-                )
-                .then(Commands.literal("off")
-                        .executes(context -> adminWebToggle(context.getSource(), false))
-                )
-                .then(Commands.literal("link")
-                        .executes(context -> adminWebLink(context.getSource()))
                 );
     }
 
@@ -759,7 +741,6 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
-                .then(buildWebAdminLiteral())
                 .then(Commands.literal("flags")
                         .executes(context -> adminListFlags(context.getSource()))
                 );
@@ -1918,131 +1899,6 @@ public class UBSAdminCommands {
         }
         source.sendSystemMessage(ubsPanel(ChatFormatting.RED, "§cFraud / Flag Queue", body));
         return 1;
-    }
-
-    private static int adminWebToggle(CommandSourceStack source, boolean enable) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        boolean running = mod.setWebAdminEnabled(source.getServer(), enable);
-        if (enable && !running) {
-            source.sendSystemMessage(moneyLiteral(
-                    "§cWeb dashboard failed to start. Check latest log for dependency/startup errors."
-            ));
-            return 1;
-        }
-
-        source.sendSystemMessage(moneyLiteral(enable
-                ? "§aWeb dashboard enabled."
-                : "§eWeb dashboard disabled."
-        ));
-        return adminWebStatus(source);
-    }
-
-    private static int adminWebStatus(CommandSourceStack source) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        boolean enabled = Config.WEB_ADMIN_ENABLED.get();
-        boolean running = mod.isWebAdminRunning();
-        String bindHost = mod.getWebAdminBindHost();
-        int bindPort = mod.getWebAdminBindPort();
-        String dashboardUrl = mod.getWebAdminDisplayUrl();
-
-        MutableComponent body = Component.empty();
-        body.append(moneyLiteral("§7Configured: " + (enabled ? "§aENABLED" : "§cDISABLED") + "\n"));
-        body.append(moneyLiteral("§7Runtime: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
-        body.append(moneyLiteral("§7Bind: §f" + bindHost + ":" + bindPort + "\n"));
-        body.append(moneyLiteral("§7Dashboard: §b" + dashboardUrl + "\n"));
-        if (isWildcardHost(bindHost)) {
-            body.append(moneyLiteral("§8Note: wildcard bind detected. Replace 127.0.0.1 with your server IP for remote clients.\n"));
-        }
-        body.append(moneyLiteral("\n§7Actions: "));
-        body.append(webActionButton("§aEnable", "/ubs web on", "Enable and start web dashboard"));
-        body.append(moneyLiteral(" "));
-        body.append(webActionButton("§cDisable", "/ubs web off", "Disable and stop web dashboard"));
-        body.append(moneyLiteral(" "));
-        body.append(webActionButton("§bLink", "/ubs web link", "Send clickable dashboard link"));
-
-        source.sendSystemMessage(ubsPanel(
-                running ? ChatFormatting.GREEN : ChatFormatting.YELLOW,
-                running ? "§aWeb Dashboard" : "§eWeb Dashboard",
-                body
-        ));
-        return 1;
-    }
-
-    private static int adminWebLink(CommandSourceStack source) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        String bindHost = mod.getWebAdminBindHost();
-        String dashboardUrl = mod.getWebAdminDisplayUrl();
-        boolean running = mod.isWebAdminRunning();
-
-        MutableComponent body = Component.empty();
-        body.append(moneyLiteral("§7Status: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
-        body.append(moneyLiteral("§7URL: §b" + dashboardUrl + "\n\n"));
-        body.append(moneyLiteral("§f§l[§bOpen Dashboard§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, dashboardUrl))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Open dashboard in browser")))));
-        body.append(moneyLiteral(" "));
-        body.append(moneyLiteral("§f§l[§aCopy URL§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, dashboardUrl))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Copy dashboard URL")))));
-        if (isWildcardHost(bindHost)) {
-            body.append(moneyLiteral("\n§8For remote players, replace 127.0.0.1 with your server IP/domain."));
-        }
-
-        source.sendSystemMessage(ubsPanel(
-                running ? ChatFormatting.AQUA : ChatFormatting.GRAY,
-                "§bWeb Dashboard Link",
-                body
-        ));
-        return 1;
-    }
-
-    private static MutableComponent webActionButton(String label, String command, String hoverText) {
-        return moneyLiteral("§f§l[" + label + "§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral(hoverText))));
-    }
-
-    private static UltimateBankingSystem resolveModInstance(CommandSourceStack source) {
-        UltimateBankingSystem mod = UltimateBankingSystem.getInstance();
-        if (mod == null) {
-            source.sendSystemMessage(moneyLiteral("§cUBS mod instance is not available yet."));
-        }
-        return mod;
-    }
-
-    private static boolean isWildcardHost(String host) {
-        if (host == null || host.isBlank()) {
-            return true;
-        }
-        String cleaned = host.trim();
-        return "0.0.0.0".equals(cleaned)
-                || "::".equals(cleaned)
-                || "[::]".equals(cleaned)
-                || "*".equals(cleaned);
     }
 
     /**

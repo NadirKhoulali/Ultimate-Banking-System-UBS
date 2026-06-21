@@ -1304,7 +1304,7 @@ public final class ShopService {
 
     /**
      * Admin-oriented view over every registered shop, regardless of actor role.
-     * This is used by the embedded web dashboard to populate global shop tables.
+     * This is used by admin reports to populate global shop tables.
      */
     public static List<ShopSummary> listAllShopSummaries(CentralBank centralBank) {
         List<ShopSummary> summaries = new ArrayList<>();

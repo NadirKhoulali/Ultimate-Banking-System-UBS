@@ -545,22 +545,6 @@ public class Config {
             )
             .defineInRange("MaxCustomBankInterestRate", 100.00, 0.01, Double.MAX_VALUE);
 
-    public static final ModConfigSpec.BooleanValue WEB_ADMIN_ENABLED = BUILDER
-            .comment("Enable embedded UBS web admin panel (HTTP + WebSocket).")
-            .define("WebAdminEnabled", false);
-
-    public static final ModConfigSpec.ConfigValue<String> WEB_ADMIN_BIND_HOST = BUILDER
-            .comment("Bind host for embedded web admin server (for example: 0.0.0.0, 127.0.0.1).")
-            .define("WebAdminBindHost", "0.0.0.0");
-
-    public static final ModConfigSpec.IntValue WEB_ADMIN_PORT = BUILDER
-            .comment("Bind port for embedded web admin server.")
-            .defineInRange("WebAdminPort", 8080, 1, 65535);
-
-    public static final ModConfigSpec.BooleanValue WEB_ADMIN_WARN_UNSECURED = BUILDER
-            .comment("Log a startup warning when web admin is enabled without authentication.")
-            .define("WebAdminWarnUnsecured", true);
-
     // a list of strings that are treated as resource locations for items
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER
             .comment("A list of items to log on common setup.")
