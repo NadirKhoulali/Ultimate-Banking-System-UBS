@@ -2018,6 +2018,12 @@ public class BankOwnerPcScreen extends Screen {
     private static final int OUTPUT_PANEL_INSET = 6;
     private static final int OUTPUT_PIXEL_SCROLL_STEP = 14;
     private static final float HOVER_TOOLTIP_Z = 950.0F;
+    private static final int PC_STANDARD_GUI_WIDTH = 1020;
+    private static final int PC_STANDARD_GUI_HEIGHT = 574;
+    private static final int PC_LARGE_GUI_WIDTH = 1366;
+    private static final int PC_LARGE_GUI_HEIGHT = 768;
+    private static final int PC_LARGE_LAYOUT_TRIGGER_WIDTH = 940;
+    private static final int PC_LARGE_LAYOUT_TRIGGER_HEIGHT = 520;
     private static final int ORDER_BOARD_BG = 0xFF07111E;
     private static final int ORDER_BOARD_PANEL = 0xFF0E2338;
     private static final int ORDER_BOARD_CARD = 0xFF132C45;
@@ -2258,6 +2264,13 @@ public class BankOwnerPcScreen extends Screen {
     private boolean useVirtualScale;
     private float virtualScaleX = 1.0F;
     private float virtualScaleY = 1.0F;
+    private int actualGuiWidth;
+    private int actualGuiHeight;
+    private int virtualTargetGuiWidth;
+    private int virtualTargetGuiHeight;
+    private int actualFramebufferWidth;
+    private int actualFramebufferHeight;
+    private int effectivePcGuiScale = 1;
 
     private int utilityFrameLeft;
     private int utilityFrameTop;
@@ -2419,7 +2432,8 @@ public class BankOwnerPcScreen extends Screen {
             return;
         }
         applyForcedGuiScale();
-        this.resize(mc, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+        configureVirtualScale();
+        this.resize(mc, this.width, this.height);
     }
 
     @Override
@@ -2450,10 +2464,8 @@ public class BankOwnerPcScreen extends Screen {
                 sendShopDesktopAction("SHOP_TYPE_REPORT", "");
             }
         }
-        int scaledW = mc.getWindow().getGuiScaledWidth();
-        int scaledH = mc.getWindow().getGuiScaledHeight();
-        if (scaledW > 0 && scaledH > 0 && (this.width != scaledW || this.height != scaledH)) {
-            this.resize(mc, scaledW, scaledH);
+        if (configureVirtualScale()) {
+            rebuildWidgets();
         }
     }
 
@@ -4245,7 +4257,7 @@ public class BankOwnerPcScreen extends Screen {
             systemMonitorViewportH = viewportH;
 
             int metricsCols = viewportW >= 560 ? 2 : 1;
-            int metricsRows = (9 + metricsCols - 1) / metricsCols;
+            int metricsRows = (12 + metricsCols - 1) / metricsCols;
             int metricsBlockHeight = (metricsRows * 46) + (Math.max(0, metricsRows - 1) * 8);
             int contentHeight = metricsBlockHeight + 4;
             systemMonitorMaxScroll = Math.max(0, contentHeight - viewportH);
@@ -9548,9 +9560,13 @@ public class BankOwnerPcScreen extends Screen {
             guiScale = mc.options.guiScale().get();
         }
         String info = "UBS Commerce Desktop System Info\n"
-                + "Resolution: " + this.width + "x" + this.height + "\n"
+                + "Minecraft GUI Resolution: " + actualGuiWidth + "x" + actualGuiHeight + "\n"
+                + "Framebuffer Resolution: " + actualFramebufferWidth + "x" + actualFramebufferHeight + "\n"
+                + "PC Layout Resolution: " + this.width + "x" + this.height + "\n"
+                + "PC Target: " + virtualTargetGuiWidth + "x" + virtualTargetGuiHeight + "\n"
                 + "GUI Scale: " + guiScale + "\n"
-                + "PC UI Scale: Native\n"
+                + "Effective GUI Scale: " + effectivePcGuiScale + "\n"
+                + "PC UI Scale: " + formatPcUiScale() + "\n"
                 + "Virtual Scale Active: " + useVirtualScale + "\n"
                 + "Open Bank Windows: " + bankWindowOrder.size() + "\n"
                 + "Open Utility Windows: " + utilityWindowOrder.size() + "\n"
@@ -12107,22 +12123,7 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void applyForcedGuiScale() {
-        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
-        if (mc == null || mc.options == null || mc.options.guiScale() == null) {
-            return;
-        }
-        Integer current = mc.options.guiScale().get();
-        if (current == null) {
-            return;
-        }
-        if (!forcedGuiScaleActive) {
-            previousGuiScale = current;
-            forcedGuiScaleActive = true;
-        }
-        if (current != 2) {
-            mc.options.guiScale().set(2);
-            mc.resizeDisplay();
-        }
+        restoreForcedGuiScale();
     }
 
     private void restoreForcedGuiScale() {
@@ -12145,12 +12146,8 @@ public class BankOwnerPcScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
         applyForcedGuiScale();
-        if (mc != null && mc.getWindow() != null) {
-            int scaledW = mc.getWindow().getGuiScaledWidth();
-            int scaledH = mc.getWindow().getGuiScaledHeight();
-            if (scaledW > 0 && scaledH > 0 && (this.width != scaledW || this.height != scaledH)) {
-                this.resize(mc, scaledW, scaledH);
-            }
+        if (configureVirtualScale()) {
+            rebuildWidgets();
         }
 
         int localMouseX = (int) toLocalX(mouseX);
@@ -30030,9 +30027,13 @@ public class BankOwnerPcScreen extends Screen {
         int viewportH = systemMonitorViewportH > 0 ? systemMonitorViewportH : Math.max(1, height - 38);
         int cardStartY = viewportY + 34 - systemMonitorScroll;
         List<String[]> entries = List.of(
-                new String[]{"Resolution", this.width + "x" + this.height},
+                new String[]{"Minecraft GUI", actualGuiWidth + "x" + actualGuiHeight},
+                new String[]{"Framebuffer", actualFramebufferWidth + "x" + actualFramebufferHeight},
+                new String[]{"PC Layout", this.width + "x" + this.height},
+                new String[]{"PC Target", virtualTargetGuiWidth + "x" + virtualTargetGuiHeight},
                 new String[]{"GUI Scale", String.valueOf(guiScale)},
-                new String[]{"PC UI Scale", "Native"},
+                new String[]{"Effective Scale", String.valueOf(effectivePcGuiScale)},
+                new String[]{"PC UI Scale", formatPcUiScale()},
                 new String[]{"Virtual Scale", String.valueOf(useVirtualScale)},
                 new String[]{"Bank Windows", String.valueOf(bankWindowOrder.size())},
                 new String[]{"Utility Windows", String.valueOf(utilityWindowOrder.size())},
@@ -30425,18 +30426,191 @@ public class BankOwnerPcScreen extends Screen {
         return true;
     }
 
-    private void configureVirtualScale() {
+    private boolean configureVirtualScale() {
+        int previousWidth = this.width;
+        int previousHeight = this.height;
+        boolean previousVirtualScale = useVirtualScale;
+        float previousVirtualScaleX = virtualScaleX;
+        float previousVirtualScaleY = virtualScaleY;
+        int previousActualGuiWidth = actualGuiWidth;
+        int previousActualGuiHeight = actualGuiHeight;
+        int previousTargetGuiWidth = virtualTargetGuiWidth;
+        int previousTargetGuiHeight = virtualTargetGuiHeight;
+        int previousFramebufferWidth = actualFramebufferWidth;
+        int previousFramebufferHeight = actualFramebufferHeight;
+        int previousEffectiveScale = effectivePcGuiScale;
+
         Minecraft mc = Minecraft.getInstance();
-        if (mc != null && mc.getWindow() != null) {
-            this.width = mc.getWindow().getGuiScaledWidth();
-            this.height = mc.getWindow().getGuiScaledHeight();
+        if (mc == null || mc.getWindow() == null) {
+            disableVirtualScaleForViewport(this.width, this.height);
+            return hasVirtualScaleLayoutChanged(
+                    previousWidth,
+                    previousHeight,
+                    previousVirtualScale,
+                    previousVirtualScaleX,
+                    previousVirtualScaleY,
+                    previousActualGuiWidth,
+                    previousActualGuiHeight,
+                    previousTargetGuiWidth,
+                    previousTargetGuiHeight,
+                    previousFramebufferWidth,
+                    previousFramebufferHeight,
+                    previousEffectiveScale
+            );
         }
 
-        // Keep the PC UI bound to the actual GUI viewport dimensions.
-        // Virtual scaling caused partial-width rendering on some client setups.
+        int scaledW = mc.getWindow().getGuiScaledWidth();
+        int scaledH = mc.getWindow().getGuiScaledHeight();
+        if (scaledW <= 0 || scaledH <= 0) {
+            disableVirtualScaleForViewport(Math.max(1, scaledW), Math.max(1, scaledH));
+            return hasVirtualScaleLayoutChanged(
+                    previousWidth,
+                    previousHeight,
+                    previousVirtualScale,
+                    previousVirtualScaleX,
+                    previousVirtualScaleY,
+                    previousActualGuiWidth,
+                    previousActualGuiHeight,
+                    previousTargetGuiWidth,
+                    previousTargetGuiHeight,
+                    previousFramebufferWidth,
+                    previousFramebufferHeight,
+                    previousEffectiveScale
+            );
+        }
+
+        actualGuiWidth = scaledW;
+        actualGuiHeight = scaledH;
+        actualFramebufferWidth = Math.max(1, mc.getWindow().getWidth());
+        actualFramebufferHeight = Math.max(1, mc.getWindow().getHeight());
+        effectivePcGuiScale = effectiveGuiScale(actualFramebufferWidth, actualFramebufferHeight, scaledW, scaledH);
+
+        virtualTargetGuiWidth = pcVirtualTargetWidth(scaledW, scaledH, actualFramebufferWidth, actualFramebufferHeight, effectivePcGuiScale);
+        virtualTargetGuiHeight = pcVirtualTargetHeight(scaledW, scaledH, actualFramebufferWidth, actualFramebufferHeight, effectivePcGuiScale);
+        float scale = Math.min(1.0F, Math.min(
+                scaledW / (float) Math.max(1, virtualTargetGuiWidth),
+                scaledH / (float) Math.max(1, virtualTargetGuiHeight)
+        ));
+
+        if (scale < 0.999F) {
+            useVirtualScale = true;
+            virtualScaleX = scale;
+            virtualScaleY = scale;
+            this.width = Math.max(virtualTargetGuiWidth, Math.round(scaledW / scale));
+            this.height = Math.max(virtualTargetGuiHeight, Math.round(scaledH / scale));
+        } else {
+            useVirtualScale = false;
+            virtualScaleX = 1.0F;
+            virtualScaleY = 1.0F;
+            this.width = scaledW;
+            this.height = scaledH;
+        }
+
+        return hasVirtualScaleLayoutChanged(
+                previousWidth,
+                previousHeight,
+                previousVirtualScale,
+                previousVirtualScaleX,
+                previousVirtualScaleY,
+                previousActualGuiWidth,
+                previousActualGuiHeight,
+                previousTargetGuiWidth,
+                previousTargetGuiHeight,
+                previousFramebufferWidth,
+                previousFramebufferHeight,
+                previousEffectiveScale
+        );
+    }
+
+    private void disableVirtualScaleForViewport(int viewportW, int viewportH) {
+        int safeW = Math.max(1, viewportW);
+        int safeH = Math.max(1, viewportH);
+        actualGuiWidth = safeW;
+        actualGuiHeight = safeH;
+        virtualTargetGuiWidth = safeW;
+        virtualTargetGuiHeight = safeH;
+        actualFramebufferWidth = safeW;
+        actualFramebufferHeight = safeH;
+        effectivePcGuiScale = 1;
+        this.width = safeW;
+        this.height = safeH;
         useVirtualScale = false;
         virtualScaleX = 1.0F;
         virtualScaleY = 1.0F;
+    }
+
+    private boolean hasVirtualScaleLayoutChanged(int previousWidth,
+                                                 int previousHeight,
+                                                 boolean previousVirtualScale,
+                                                 float previousVirtualScaleX,
+                                                 float previousVirtualScaleY,
+                                                 int previousActualGuiWidth,
+                                                 int previousActualGuiHeight,
+                                                 int previousTargetGuiWidth,
+                                                 int previousTargetGuiHeight,
+                                                 int previousFramebufferWidth,
+                                                 int previousFramebufferHeight,
+                                                 int previousEffectiveScale) {
+        return this.width != previousWidth
+                || this.height != previousHeight
+                || useVirtualScale != previousVirtualScale
+                || Float.compare(virtualScaleX, previousVirtualScaleX) != 0
+                || Float.compare(virtualScaleY, previousVirtualScaleY) != 0
+                || actualGuiWidth != previousActualGuiWidth
+                || actualGuiHeight != previousActualGuiHeight
+                || virtualTargetGuiWidth != previousTargetGuiWidth
+                || virtualTargetGuiHeight != previousTargetGuiHeight
+                || actualFramebufferWidth != previousFramebufferWidth
+                || actualFramebufferHeight != previousFramebufferHeight
+                || effectivePcGuiScale != previousEffectiveScale;
+    }
+
+    private int pcVirtualTargetWidth(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        return shouldUseLargePcVirtualTarget(scaledW, scaledH, framebufferW, framebufferH, guiScale)
+                ? PC_LARGE_GUI_WIDTH
+                : PC_STANDARD_GUI_WIDTH;
+    }
+
+    private int pcVirtualTargetHeight(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        return shouldUseLargePcVirtualTarget(scaledW, scaledH, framebufferW, framebufferH, guiScale)
+                ? PC_LARGE_GUI_HEIGHT
+                : PC_STANDARD_GUI_HEIGHT;
+    }
+
+    private boolean shouldUseLargePcVirtualTarget(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        if (scaledW >= PC_LARGE_LAYOUT_TRIGGER_WIDTH && scaledH >= PC_LARGE_LAYOUT_TRIGGER_HEIGHT) {
+            return true;
+        }
+        int expectedScale = expectedSameSizeGuiScale(framebufferW, framebufferH);
+        return expectedScale > 0 && guiScale == expectedScale;
+    }
+
+    private int expectedSameSizeGuiScale(int framebufferW, int framebufferH) {
+        int shortEdge = Math.min(Math.max(1, framebufferW), Math.max(1, framebufferH));
+        if (shortEdge >= 2160) {
+            return 4;
+        }
+        if (shortEdge >= 1440) {
+            return 3;
+        }
+        if (shortEdge >= 1080) {
+            return 2;
+        }
+        return 0;
+    }
+
+    private int effectiveGuiScale(int framebufferW, int framebufferH, int scaledW, int scaledH) {
+        double scaleX = scaledW <= 0 ? 1.0D : framebufferW / (double) scaledW;
+        double scaleY = scaledH <= 0 ? 1.0D : framebufferH / (double) scaledH;
+        return Math.max(1, (int) Math.round(Math.max(scaleX, scaleY)));
+    }
+
+    private String formatPcUiScale() {
+        if (!useVirtualScale) {
+            return "Native";
+        }
+        int percent = Math.round(Math.min(virtualScaleX, virtualScaleY) * 100.0F);
+        return percent + "%";
     }
 
     private double toLocalX(double x) {

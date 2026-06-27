@@ -184,7 +184,7 @@ public class UltimateBankingSystem {
             BankManager.markDirty();
             lastInterestTick = gameTime;
         } finally {
-            // Capture rolling mod-impact timing so web admin can report UBS tick pressure.
+            // Capture rolling mod-impact timing for in-game diagnostics.
             recordPerformanceSample(System.nanoTime() - tickStartedAtNanos);
         }
     }

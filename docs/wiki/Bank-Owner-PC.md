@@ -13,7 +13,8 @@ The Bank Owner PC (displayed in-game as **Business Manager PC**) is the full-scr
 - Desktop lists all accessible bank apps as launch buttons.
 - `Create Bank` opens the in-UI bank creation flow.
 - Max banks per player is enforced by config (`PLAYER_BANKS_MAX_BANKS_PER_PLAYER`).
-- UI scale is forced to `2` while this screen is open, then restored on close.
+- The PC follows the player's Minecraft GUI scale, then normalizes the desktop canvas so common matching tiers keep the same readable layout: `1080p + GUI scale 2`, `1440p + GUI scale 3`, and `4K + GUI scale 4`.
+- Smaller viewports use the compact desktop target automatically while the app still clips and scrolls panels inside their containers.
 - Desktop, shop, order-board, and retail-webshop controls use the same dark UBS commerce theme so app chrome and modals stack consistently.
 
 Shop-capable desktop actions are role-gated (`OWNER`, `MANAGER`, `BUILDER`, `STAFF`) and validated server-side.
@@ -137,6 +138,20 @@ Payment account and delivery target selectors open modal overlays above the app 
 ## Input Assistant
 
 When focusing key fields (especially lending/limits), the output panel can show a short explanation and example input to help new players.
+
+## PC UI Scaling Diagnostics
+
+The `System Monitor` utility can copy the active desktop diagnostics to clipboard. The report includes:
+
+- Minecraft GUI resolution
+- Framebuffer resolution
+- PC layout resolution
+- PC target resolution
+- Minecraft GUI scale
+- effective GUI scale
+- PC UI scale percentage when the desktop is virtually scaled
+
+Ask players to include this report when screenshots show clipped panels, missing scroll range, or unexpectedly compact layouts.
 
 ## Permissions
 
