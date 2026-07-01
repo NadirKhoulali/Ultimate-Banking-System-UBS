@@ -6,8 +6,11 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.BankLevelService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.ModItems;
@@ -20,11 +23,14 @@ import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.item.ItemStack;
@@ -35,7 +41,10 @@ import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -48,6 +57,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class BankOwnerPcService {
+    private static final int ACCOUNT_DETAIL_HISTORY_LIMIT = 200;
+    private static final int ACCOUNT_TEMP_LIMIT_MAX_DAYS = 30;
+    private static final DateTimeFormatter ACCOUNT_DETAIL_DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public static final class ActionResult {
         private final String action;
@@ -77,6 +90,23 @@ public final class BankOwnerPcService {
         }
     }
 
+    private record SafeDashboardData(String areaCount,
+                                     String rowCapacity,
+                                     String claimedRowUnits,
+                                     String totalBoxSlots,
+                                     String assignedBoxes,
+                                     String freeBoxes,
+                                     String lockedBoxes,
+                                     String escrowCases,
+                                     String policyMode,
+                                     String policyAmount,
+                                     String rentPeriodTicks,
+                                     String overdueTicks,
+                                     List<String> areaSummaries,
+                                     List<String> boxAssignments,
+                                     List<String> lockedQueue) {
+    }
+
     private record DesktopContext(String dimensionId, int x, int y, int z, String machineId) {
         private String coordinateKey() {
             return normalizeDim(dimensionId) + "|" + x + "|" + y + "|" + z;
@@ -97,6 +127,8 @@ public final class BankOwnerPcService {
     private static final String DESKTOP_STORAGE_TAG = "ownerPcDesktopStorage";
     private static final String DESKTOP_MACHINE_INDEX_TAG = "ownerPcDesktopMachineIndex";
     private static final String DESKTOP_POWER_STATE_TAG = "poweredOn";
+    private static final String DESKTOP_SESSION_MACHINE_TAG = "desktopSessionMachineId";
+    private static final String DESKTOP_SESSION_UNLOCKED_AT_TAG = "desktopSessionUnlockedAt";
     private static final int NBT_COMPOUND = 10;
     private static final int NBT_STRING = 8;
     private static final int DESKTOP_STORAGE_MAX_BYTES = 48 * 1024;
@@ -283,7 +315,7 @@ public final class BankOwnerPcService {
         boolean pinSet = isDesktopPinConfigured(userTag);
         CompoundTag pcTag = getDesktopPcTag(centralBank, resolvedContext, false);
         boolean poweredOn = isDesktopPoweredOn(pcTag);
-        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(machineId, playerId);
+        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(centralBank, resolvedContext, machineId, playerId, userTag);
         return new OwnerPcDesktopDataPayload(
                 resolvedContext.label(),
                 machineId,
@@ -330,7 +362,7 @@ public final class BankOwnerPcService {
         Set<String> hiddenApps = readHiddenApps(userTag);
         long now = System.currentTimeMillis();
         boolean poweredOn = isDesktopPoweredOn(pcTag);
-        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(machineId, playerId);
+        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlocked(centralBank, context, machineId, playerId, userTag);
         boolean authOrPowerAction = normalizedAction.startsWith("AUTH_") || "POWER_OFF".equals(normalizedAction);
 
         if (!authOrPowerAction && !sessionUnlocked) {
@@ -490,6 +522,7 @@ public final class BankOwnerPcService {
                 userTag.putString(DESKTOP_PIN_SALT_TAG, salt);
                 userTag.putString(DESKTOP_PIN_HASH_TAG, hashDesktopSecret(password, salt));
                 userTag.putString(DESKTOP_RECOVERY_HASH_TAG, hashDesktopSecret(recoveryPhrase, salt));
+                persistDesktopSessionUnlocked(userTag, machineId);
                 writeDesktopFiles(userTag, files);
                 writeHiddenApps(userTag, hiddenApps);
                 commitDesktopUserTag(centralBank, context, playerId, userTag);
@@ -512,6 +545,8 @@ public final class BankOwnerPcService {
                     yield fail(normalizedAction, "Incorrect password.");
                 }
                 setDesktopPowerState(centralBank, context, true);
+                persistDesktopSessionUnlocked(userTag, machineId);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
                 markDesktopSessionUnlocked(machineId, playerId);
                 yield ok(normalizedAction, "Password verified.");
             }
@@ -531,6 +566,7 @@ public final class BankOwnerPcService {
                     yield fail(normalizedAction, "Recovery phrase does not match.");
                 }
                 userTag.putString(DESKTOP_PIN_HASH_TAG, hashDesktopSecret(newPassword, salt));
+                persistDesktopSessionUnlocked(userTag, machineId);
                 writeDesktopFiles(userTag, files);
                 writeHiddenApps(userTag, hiddenApps);
                 commitDesktopUserTag(centralBank, context, playerId, userTag);
@@ -540,10 +576,14 @@ public final class BankOwnerPcService {
             }
             case "AUTH_LOGOUT" -> {
                 clearDesktopSession(machineId, playerId);
+                clearPersistentDesktopSession(userTag);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
                 yield ok(normalizedAction, "Logged out of this PC.");
             }
             case "POWER_OFF" -> {
                 clearDesktopSessionsForMachine(machineId);
+                clearPersistentDesktopSession(userTag);
+                commitDesktopUserTag(centralBank, context, playerId, userTag);
                 setDesktopPowerState(centralBank, context, false);
                 yield ok(normalizedAction, "PC turned off.");
             }
@@ -552,6 +592,11 @@ public final class BankOwnerPcService {
                 yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
             }
             case "SHOP_OVERVIEW" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.overview(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CHECKOUT_DIAGNOSTIC" -> {
                 UUID shopId = parseOptionalUuid(arg2);
                 ShopService.ShopActionResult result = ShopService.overview(server, centralBank, playerId, shopId);
                 yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
@@ -656,6 +701,21 @@ public final class BankOwnerPcService {
             case "SHOP_ORDER_CLEAR_PALLET" -> {
                 UUID shopId = parseOptionalUuid(arg2);
                 ShopService.ShopActionResult result = ShopService.clearOrderPalletBinding(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_PALLET_LOCATE" -> {
+                if (server == null) {
+                    yield fail(normalizedAction, "Server context is unavailable.");
+                }
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.beginDeliveryPalletLocate(
+                        server,
+                        centralBank,
+                        playerId,
+                        shopId,
+                        player,
+                        arg1
+                );
                 yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
             }
             case "SHOP_SET_CHECKOUT_TERMINAL" -> {
@@ -940,6 +1000,46 @@ public final class BankOwnerPcService {
                 ShopService.ShopActionResult result = ShopService.setShopType(centralBank, playerId, shopId, arg1);
                 yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
             }
+            case "SHOP_TYPE_REPORT" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.shopTypeSystemReport(server, centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_TYPE_PAY_FEES" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.payShopTypeFees(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FRANCHISE_PUBLISH_OFFER" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.publishFranchiseOffer(centralBank, playerId, shopId, arg1, arg3);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FRANCHISE_CANCEL_OFFER" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.cancelFranchiseOffer(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FRANCHISE_ACCEPT_OFFER" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.acceptFranchiseOffer(server, centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_FRANCHISE_NPC_LICENSE" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.addNpcFranchisee(centralBank, playerId, shopId);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CORPORATE_ADD_BRANCH" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.addCorporateBranch(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
+            case "SHOP_CORPORATE_REMOVE_BRANCH" -> {
+                UUID shopId = parseOptionalUuid(arg2);
+                ShopService.ShopActionResult result = ShopService.removeCorporateBranch(centralBank, playerId, shopId, arg1);
+                yield result.success() ? ok(normalizedAction, result.message()) : fail(normalizedAction, result.message());
+            }
             case "SHOP_CLEAR_CHECKOUT_TERMINAL" -> {
                 UUID shopId = parseOptionalUuid(arg2);
                 ShopService.ShopActionResult result = ShopService.clearCheckoutTerminal(centralBank, playerId, shopId);
@@ -1168,6 +1268,10 @@ public final class BankOwnerPcService {
         BigDecimal dailyCap = getDailyCapForBank(bank, metadata);
         BigDecimal dailyUsed = readBigDecimal(metadata, "dailyWithdrawn").setScale(2, RoundingMode.HALF_EVEN);
         BigDecimal dailyRemaining = dailyCap.subtract(dailyUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN);
+        String singleLimit = configuredLimitValue(metadata, "limitSingle");
+        String dailyPlayerLimit = configuredLimitValue(metadata, "limitDailyPlayer");
+        String dailyBankLimit = configuredLimitValue(metadata, "limitDailyBank");
+        String tellerLimit = configuredLimitValue(metadata, "limitTeller");
 
         List<String> roles = new ArrayList<>();
         decodeUuidStringMap(metadata.getString("roles")).entrySet().stream()
@@ -1239,6 +1343,9 @@ public final class BankOwnerPcService {
                         + " | maturity " + account.getCertificateMaturityGameTime())
                 .toList();
 
+        SafeDashboardData safe = buildSafeDashboardData(server, centralBank, bankId, bank, metadata);
+        BankLevelService.BankLevelSnapshot bankLevel = BankLevelService.snapshot(centralBank, bank);
+
         return new OwnerPcBankDataPayload(
                 bankId,
                 bank.getBankName(),
@@ -1255,9 +1362,20 @@ public final class BankOwnerPcService {
                 dailyCap.toPlainString(),
                 dailyUsed.toPlainString(),
                 dailyRemaining.toPlainString(),
+                singleLimit,
+                dailyPlayerLimit,
+                dailyBankLimit,
+                tellerLimit,
                 CreditCardService.getIssueFee(centralBank, bankId).toPlainString(),
                 CreditCardService.getReplacementFee(centralBank, bankId).toPlainString(),
                 BigDecimal.valueOf(centralBank.getFederalFundsRate()).setScale(2, RoundingMode.HALF_EVEN).toPlainString(),
+                String.valueOf(bankLevel.level()),
+                String.valueOf(bankLevel.derivedLevel()),
+                bankLevel.manual() ? "true" : "false",
+                String.format(Locale.ROOT, "%.6f", bankLevel.progressRatio()),
+                String.valueOf(bankLevel.nextDepositTargetDollars()),
+                String.valueOf(bankLevel.nextAccountTarget()),
+                bankLevel.roadmapNodes(),
                 ownerView,
                 roles,
                 shares,
@@ -1267,8 +1385,172 @@ public final class BankOwnerPcService {
                 interbankOffers,
                 interbankLoans,
                 accountRoster,
-                certificateSchedule
+                certificateSchedule,
+                safe.areaCount(),
+                safe.rowCapacity(),
+                safe.claimedRowUnits(),
+                safe.totalBoxSlots(),
+                safe.assignedBoxes(),
+                safe.freeBoxes(),
+                safe.lockedBoxes(),
+                safe.escrowCases(),
+                safe.policyMode(),
+                safe.policyAmount(),
+                safe.rentPeriodTicks(),
+                safe.overdueTicks(),
+                safe.areaSummaries(),
+                safe.boxAssignments(),
+                safe.lockedQueue()
         );
+    }
+
+    private static SafeDashboardData buildSafeDashboardData(MinecraftServer server,
+                                                            CentralBank centralBank,
+                                                            UUID bankId,
+                                                            Bank bank,
+                                                            CompoundTag metadata) {
+        CompoundTag safeMetadata = metadata == null ? new CompoundTag() : metadata;
+        ListTag areas = safeMetadata.getList(SafetyDepositBoxService.AREAS_KEY, Tag.TAG_COMPOUND);
+        ListTag assignments = safeMetadata.getList(SafetyDepositBoxService.ASSIGNMENTS_KEY, Tag.TAG_COMPOUND);
+        ListTag escrow = safeMetadata.getList(SafetyDepositBoxService.ESCROW_KEY, Tag.TAG_COMPOUND);
+
+        int rowCapacity = BankLevelService.safeRowCapacity(centralBank, bank);
+        int claimedRowUnits = SafetyDepositBoxService.countClaimedRows(centralBank, bankId);
+        int loadedRows = countLoadedSafeRows(server, areas);
+        int assigned = assignments.size();
+        int tierSlots = Math.max(0, rowCapacity) * SafetyDepositBoxRowBlockEntity.DOOR_COUNT;
+        int loadedSlots = Math.max(0, loadedRows) * SafetyDepositBoxRowBlockEntity.DOOR_COUNT;
+        int totalSlots = Math.max(Math.max(tierSlots, loadedSlots), assigned);
+        int locked = 0;
+
+        List<String> areaSummaries = new ArrayList<>();
+        for (int i = 0; i < areas.size(); i++) {
+            CompoundTag area = areas.getCompound(i);
+            int units = SafetyDepositBoxService.claimedRowUnits(area);
+            String min = area.getInt("minX") + "," + area.getInt("minY") + "," + area.getInt("minZ");
+            String max = area.getInt("maxX") + "," + area.getInt("maxY") + "," + area.getInt("maxZ");
+            areaSummaries.add(safeField(area.getString("dimension"))
+                    + "|" + min
+                    + "|" + max
+                    + "|" + units
+                    + "|" + area.getLong("claimedAtMillis"));
+        }
+
+        List<String> boxAssignments = new ArrayList<>();
+        List<String> lockedQueue = new ArrayList<>();
+        for (int i = 0; i < assignments.size(); i++) {
+            CompoundTag tag = assignments.getCompound(i);
+            if (!tag.hasUUID("accountId")) {
+                continue;
+            }
+            UUID accountId = tag.getUUID("accountId");
+            AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+            String accountName = account == null ? "Missing account" : resolvePlayerName(server, account.getPlayerUUID());
+            String status = tag.getBoolean("locked") ? "LOCKED" : "ASSIGNED";
+            if ("LOCKED".equals(status)) {
+                locked++;
+            }
+            String boxNumber = tag.getString("boxNumber");
+            if (boxNumber == null || boxNumber.isBlank()) {
+                boxNumber = "SDB-" + shortId(accountId);
+            }
+            String pos = tag.getInt("x") + "," + tag.getInt("y") + "," + tag.getInt("z");
+            String row = safeField(boxNumber)
+                    + "|" + safeField(accountName)
+                    + "|" + accountId
+                    + "|" + safeField(tag.getString("dimension"))
+                    + "|" + pos
+                    + "|" + tag.getInt("doorIndex")
+                    + "|" + status
+                    + "|" + tag.getLong("assignedAtMillis");
+            boxAssignments.add(row);
+            if ("LOCKED".equals(status)) {
+                lockedQueue.add(row);
+            }
+        }
+        boxAssignments.sort(String.CASE_INSENSITIVE_ORDER);
+        lockedQueue.sort(String.CASE_INSENSITIVE_ORDER);
+
+        String mode = safeMetadata.getString(SafetyDepositBoxService.POLICY_MODE_KEY);
+        if (mode == null || mode.isBlank()) {
+            mode = "FREE";
+        } else {
+            mode = mode.trim().toUpperCase(Locale.ROOT);
+        }
+        BigDecimal policyAmount = switch (mode) {
+            case "ONE_TIME" -> readBigDecimal(safeMetadata, SafetyDepositBoxService.ONE_TIME_FEE_KEY);
+            case "RECURRING" -> readBigDecimal(safeMetadata, SafetyDepositBoxService.RENT_AMOUNT_KEY);
+            default -> BigDecimal.ZERO;
+        };
+        long rentPeriod = safeMetadata.contains(SafetyDepositBoxService.RENT_PERIOD_TICKS_KEY)
+                ? safeMetadata.getLong(SafetyDepositBoxService.RENT_PERIOD_TICKS_KEY)
+                : 7L * 24L * 60L * 60L * 20L;
+        long overduePeriod = safeMetadata.contains(SafetyDepositBoxService.OVERDUE_TICKS_KEY)
+                ? safeMetadata.getLong(SafetyDepositBoxService.OVERDUE_TICKS_KEY)
+                : 3L * 24L * 60L * 60L * 20L;
+
+        return new SafeDashboardData(
+                String.valueOf(areas.size()),
+                String.valueOf(rowCapacity),
+                String.valueOf(claimedRowUnits),
+                String.valueOf(totalSlots),
+                String.valueOf(assigned),
+                String.valueOf(Math.max(0, totalSlots - assigned)),
+                String.valueOf(locked),
+                String.valueOf(escrow.size()),
+                mode,
+                policyAmount.setScale(2, RoundingMode.HALF_EVEN).toPlainString(),
+                String.valueOf(Math.max(1L, rentPeriod)),
+                String.valueOf(Math.max(1L, overduePeriod)),
+                areaSummaries,
+                boxAssignments,
+                lockedQueue
+        );
+    }
+
+    private static int countLoadedSafeRows(MinecraftServer server, ListTag areas) {
+        if (server == null || areas == null || areas.isEmpty()) {
+            return 0;
+        }
+        int rows = 0;
+        for (int i = 0; i < areas.size(); i++) {
+            CompoundTag area = areas.getCompound(i);
+            ServerLevel level = levelForSafeDashboard(server, area.getString("dimension"));
+            if (level == null) {
+                continue;
+            }
+            for (int y = area.getInt("minY"); y <= area.getInt("maxY"); y++) {
+                for (int z = area.getInt("minZ"); z <= area.getInt("maxZ"); z++) {
+                    for (int x = area.getInt("minX"); x <= area.getInt("maxX"); x++) {
+                        BlockPos pos = new BlockPos(x, y, z);
+                        if (level.hasChunkAt(pos)
+                                && level.getBlockEntity(pos) instanceof SafetyDepositBoxRowBlockEntity) {
+                            rows++;
+                        }
+                    }
+                }
+            }
+        }
+        return rows;
+    }
+
+    private static ServerLevel levelForSafeDashboard(MinecraftServer server, String dimension) {
+        if (server == null || dimension == null || dimension.isBlank()) {
+            return null;
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            if (level.dimension().location().toString().equals(dimension)) {
+                return level;
+            }
+        }
+        return null;
+    }
+
+    private static String safeField(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.replace('|', '/').trim();
     }
 
     public static ActionResult executeAction(MinecraftServer server,
@@ -1301,14 +1583,11 @@ public final class BankOwnerPcService {
                  "SHOW_LIMITS", "SHOW_ROLES", "SHOW_SHARES", "SHOW_COFOUNDERS", "SHOW_EMPLOYEES",
                  "SHOW_LOAN_PRODUCTS", "SHOW_LOANS", "SHOW_MARKET" ->
                     buildShowActionResult(server, centralBank, bank, normalizedAction, player.getUUID(), allowCentralBankAccess);
+            case "BANK_LEVEL_ROADMAP" -> new ActionResult(normalizedAction, true, BankLevelService.levelRoadmapReport(centralBank, bank));
             case "SET_MOTTO" -> handleSetMotto(centralBank, bank, owner, arg1);
             case "SET_COLOR" -> handleSetColor(centralBank, bank, owner, arg1);
             case "SET_LIMIT" -> handleSetLimit(centralBank, bank, owner, arg1, arg2);
             case "SET_CARD_FEES" -> handleSetCardFees(centralBank, bank, owner, arg1, arg2);
-            case "ACCOUNT_DETAIL" -> handleAccountDetail(server, centralBank, bank, arg1, arg2, "");
-            case "ACCOUNT_FREEZE" -> handleAccountFreeze(server, centralBank, bank, owner, arg1, arg2);
-            case "ACCOUNT_UNFREEZE" -> handleAccountUnfreeze(server, centralBank, bank, owner, arg1);
-            case "ACCOUNT_TEMP_LIMIT" -> handleAccountTempLimit(server, centralBank, bank, owner, arg1, arg2, arg3);
             case "ROLE_ASSIGN" -> handleRoleAssign(server, centralBank, bank, owner, arg1, arg2);
             case "ROLE_REVOKE" -> handleRoleRevoke(server, centralBank, bank, owner, arg1);
             case "SHARES_SET" -> handleSharesSet(server, centralBank, bank, owner, arg1, arg2);
@@ -1322,6 +1601,14 @@ public final class BankOwnerPcService {
             case "LEND_ACCEPT" -> handleLendAccept(server, centralBank, bank, owner, arg1);
             case "APPEAL" -> handleAppeal(server, centralBank, bank, player, owner, arg1);
             case "CREATE_LOAN_PRODUCT" -> handleCreateLoanProduct(centralBank, bank, owner, arg1, arg2, arg3, arg4);
+            case "ACCOUNT_DETAIL" -> handleAccountDetail(server, centralBank, bank, arg1, arg2, "");
+            case "ACCOUNT_FREEZE" -> handleAccountFreeze(server, centralBank, bank, owner, arg1, arg2);
+            case "ACCOUNT_UNFREEZE" -> handleAccountUnfreeze(server, centralBank, bank, owner, arg1);
+            case "ACCOUNT_TEMP_LIMIT" -> handleAccountTemporaryLimit(server, centralBank, bank, owner, arg1, arg2, arg3);
+            case "SAFE_AREA_CLAIM_TOOL" -> handleSafeAreaClaimTool(server, centralBank, bank, player);
+            case "SAFE_BOX_ASSIGN" -> handleSafeBoxAssign(server, centralBank, bank, player, arg1);
+            case "SAFE_BOX_POLICY" -> handleSafeBoxPolicy(centralBank, bank, player, arg1, arg2, arg3, arg4);
+            case "SAFE_BOX_SEIZE" -> handleSafeBoxSeize(centralBank, bank, player, arg1);
             default -> new ActionResult(false, "Unknown action: " + normalizedAction);
         };
     }
@@ -1453,6 +1740,216 @@ public final class BankOwnerPcService {
         }
 
         return new ActionResult(true, header + "\n" + body);
+    }
+
+    private static ActionResult handleAccountDetail(MinecraftServer server,
+                                                    CentralBank centralBank,
+                                                    Bank bank,
+                                                    String accountIdRaw,
+                                                    String pageRaw,
+                                                    String notice) {
+        UUID accountId = parseUuid(accountIdRaw);
+        if (accountId == null) {
+            return new ActionResult(false, "Account detail failed: invalid account id.");
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !bank.getBankId().equals(account.getBankId())) {
+            return new ActionResult(false, "Account detail failed: account is not in this bank.");
+        }
+        long gameTime = currentOverworldGameTime(server);
+        account.getEffectiveWithdrawalLimit(gameTime);
+
+        List<UserTransaction> transactions = account.getTransactions().values().stream()
+                .filter(tx -> tx != null)
+                .sorted(Comparator.comparing(UserTransaction::getTimestamp, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .toList();
+        int total = transactions.size();
+        int from = 0;
+        int to = Math.min(total, ACCOUNT_DETAIL_HISTORY_LIMIT);
+
+        List<String> lines = new ArrayList<>();
+        lines.add("@account.detail");
+        if (notice != null && !notice.isBlank()) {
+            lines.add("notice=" + sanitizeLine(notice));
+        }
+        lines.add("account.id=" + account.getAccountUUID());
+        lines.add("account.player=" + sanitizeLine(resolvePlayerName(server, account.getPlayerUUID())));
+        lines.add("account.type=" + sanitizeLine(account.getAccountType() == null ? "Unknown" : account.getAccountType().label));
+        lines.add("account.balance=" + account.getBalance().toPlainString());
+        lines.add("account.bank=" + sanitizeLine(bank.getBankName()));
+        lines.add("account.created=" + formatAccountDate(account.getDateOfCreation()));
+        lines.add("account.primary=" + account.isPrimaryAccount());
+        lines.add("account.frozen=" + account.isFrozen());
+        lines.add("account.frozen_reason=" + sanitizeLine(account.getFrozenReason()));
+        lines.add("account.access_type=" + sanitizeLine(account.getAccountAccessType()));
+        lines.add("account.business_label=" + sanitizeLine(account.getBusinessLabel()));
+        lines.add("daily.limit=" + account.getConfiguredDailyWithdrawalLimit().toPlainString());
+        lines.add("daily.used=" + account.getDailyWithdrawnAmount().toPlainString());
+        lines.add("daily.remaining=" + account.getRemainingDailyWithdrawalLimit().toPlainString());
+        BigDecimal tempLimit = account.getTemporaryWithdrawalLimitIfActive(gameTime);
+        long tempExpires = account.getTemporaryWithdrawalLimitExpiresAtEpochMillis(gameTime);
+        lines.add("temp.limit=" + (tempLimit == null ? "" : tempLimit.toPlainString()));
+        lines.add("temp.expires_millis=" + Math.max(-1L, tempExpires));
+        lines.add("credit.score=" + account.getCreditScore());
+        lines.add("credit.defaulted=" + account.isDefaulted());
+        lines.add("certificate.tier=" + sanitizeLine(account.getCertificateTier()));
+        lines.add("certificate.locked=" + account.isCertificateLocked(gameTime));
+        lines.add("history.page=0");
+        lines.add("history.page_size=" + ACCOUNT_DETAIL_HISTORY_LIMIT);
+        lines.add("history.total=" + total);
+        lines.add("history.has_prev=false");
+        lines.add("history.has_next=false");
+
+        int outIndex = 0;
+        for (int i = from; i < to; i++) {
+            UserTransaction tx = transactions.get(i);
+            UUID counterparty = account.getAccountUUID().equals(tx.getSenderUUID()) ? tx.getReceiverUUID() : tx.getSenderUUID();
+            AccountHolder other = centralBank.SearchForAccountByAccountId(counterparty);
+            String direction = account.getAccountUUID().equals(tx.getSenderUUID()) ? "OUTGOING" : "INCOMING";
+            String prefix = "tx." + outIndex + ".";
+            lines.add(prefix + "id=" + tx.getTransactionUUID());
+            lines.add(prefix + "date=" + formatAccountDate(tx.getTimestamp()));
+            lines.add(prefix + "direction=" + direction);
+            lines.add(prefix + "amount=" + (tx.getAmount() == null ? "0" : tx.getAmount().toPlainString()));
+            lines.add(prefix + "description=" + sanitizeLine(tx.getTransactionDescription()));
+            lines.add(prefix + "counterparty_type=" + (other == null ? "EXTERNAL" : "ACCOUNT"));
+            lines.add(prefix + "counterparty_short=" + sanitizeLine(counterparty == null ? "unknown" : shortId(counterparty)));
+            outIndex++;
+        }
+
+        return new ActionResult("ACCOUNT_DETAIL", true, String.join("\n", lines));
+    }
+
+    private static ActionResult handleSafeAreaClaimTool(MinecraftServer server,
+                                                        CentralBank centralBank,
+                                                        Bank bank,
+                                                        ServerPlayer player) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, "Only bank owners, directors, and server operators can claim safe areas.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.startSafeAreaClaimToolSession(server, centralBank, player, bank.getBankId());
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleSafeBoxAssign(MinecraftServer server,
+                                                    CentralBank centralBank,
+                                                    Bank bank,
+                                                    ServerPlayer player,
+                                                    String accountIdRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, "Only bank owners, directors, and server operators can assign safety boxes.");
+        }
+        UUID accountId = parseUuid(accountIdRaw);
+        if (accountId == null) {
+            return new ActionResult(false, "Safety box assignment failed: invalid account id.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.assignFirstFreeBox(server, centralBank, bank.getBankId(), accountId);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleSafeBoxPolicy(CentralBank centralBank,
+                                                    Bank bank,
+                                                    ServerPlayer player,
+                                                    String modeRaw,
+                                                    String amountRaw,
+                                                    String periodTicksRaw,
+                                                    String overdueTicksRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, "Only bank owners, directors, and server operators can edit safety box pricing.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.setPricingPolicy(centralBank, bank.getBankId(), modeRaw, amountRaw, periodTicksRaw, overdueTicksRaw);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleSafeBoxSeize(CentralBank centralBank,
+                                                   Bank bank,
+                                                   ServerPlayer player,
+                                                   String accountIdRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, "Only bank owners, directors, and server operators can seize overdue safety boxes.");
+        }
+        UUID accountId = parseUuid(accountIdRaw);
+        if (accountId == null) {
+            return new ActionResult(false, "Safety box seizure failed: invalid account id.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.seizeOverdueBox(centralBank, bank.getBankId(), accountId);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleAccountFreeze(MinecraftServer server,
+                                                    CentralBank centralBank,
+                                                    Bank bank,
+                                                    boolean owner,
+                                                    String accountIdRaw,
+                                                    String reasonRaw) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can freeze accounts.");
+        }
+        AccountHolder account = resolveBankAccount(centralBank, bank, accountIdRaw);
+        if (account == null) {
+            return new ActionResult(false, "Account freeze failed: account is not in this bank.");
+        }
+        account.freeze(reasonRaw == null ? "" : reasonRaw);
+        return handleAccountDetail(server, centralBank, bank, account.getAccountUUID().toString(), "0", "Account frozen.");
+    }
+
+    private static ActionResult handleAccountUnfreeze(MinecraftServer server,
+                                                      CentralBank centralBank,
+                                                      Bank bank,
+                                                      boolean owner,
+                                                      String accountIdRaw) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can unfreeze accounts.");
+        }
+        AccountHolder account = resolveBankAccount(centralBank, bank, accountIdRaw);
+        if (account == null) {
+            return new ActionResult(false, "Account unfreeze failed: account is not in this bank.");
+        }
+        account.unfreeze();
+        return handleAccountDetail(server, centralBank, bank, account.getAccountUUID().toString(), "0", "Account unfrozen.");
+    }
+
+    private static ActionResult handleAccountTemporaryLimit(MinecraftServer server,
+                                                            CentralBank centralBank,
+                                                            Bank bank,
+                                                            boolean owner,
+                                                            String accountIdRaw,
+                                                            String amountRaw,
+                                                            String expiresRaw) {
+        if (!owner) {
+            return new ActionResult(false, "Only bank owners can set temporary account limits.");
+        }
+        AccountHolder account = resolveBankAccount(centralBank, bank, accountIdRaw);
+        if (account == null) {
+            return new ActionResult(false, "Temporary limit failed: account is not in this bank.");
+        }
+        BigDecimal amount = parsePositiveWholeAmount(amountRaw);
+        if (amount == null) {
+            return new ActionResult(false, "Temporary limit failed: enter a positive whole-dollar amount.");
+        }
+        long expiresAt;
+        try {
+            expiresAt = Long.parseLong(expiresRaw == null ? "" : expiresRaw.trim());
+        } catch (NumberFormatException ex) {
+            return new ActionResult(false, "Temporary limit failed: pick a valid expiry date and time.");
+        }
+        long now = System.currentTimeMillis();
+        long max = now + (ACCOUNT_TEMP_LIMIT_MAX_DAYS * 24L * 60L * 60L * 1000L);
+        if (expiresAt <= now) {
+            return new ActionResult(false, "Temporary limit failed: expiry must be in the future.");
+        }
+        if (expiresAt > max) {
+            return new ActionResult(false, "Temporary limit failed: expiry cannot be more than 30 days away.");
+        }
+        boolean changed = account.setTemporaryWithdrawalLimitUntil(amount, currentOverworldGameTime(server), expiresAt);
+        if (!changed) {
+            return new ActionResult(false, "Temporary limit failed: amount must be a positive whole-dollar value.");
+        }
+        return handleAccountDetail(server, centralBank, bank, account.getAccountUUID().toString(), "0", "Temporary withdrawal limit updated.");
     }
 
     public static ActionResult createBank(MinecraftServer server,
@@ -1689,232 +2186,6 @@ public final class BankOwnerPcService {
                 + ", replacement $" + replacementFee.toPlainString() + ").");
     }
 
-    private static ActionResult handleAccountDetail(MinecraftServer server,
-                                                    CentralBank centralBank,
-                                                    Bank bank,
-                                                    String accountIdRaw,
-                                                    String pageRaw,
-                                                    String notice) {
-        AccountHolder account = resolveOwnedBankAccount(bank, accountIdRaw);
-        if (account == null) {
-            return new ActionResult(false, "Account not found in this bank.");
-        }
-        int page = Math.max(0, parseIntOrDefault(pageRaw, 0));
-        return new ActionResult(true, buildAccountDetailOutput(server, centralBank, bank, account, page, notice));
-    }
-
-    private static ActionResult handleAccountFreeze(MinecraftServer server,
-                                                    CentralBank centralBank,
-                                                    Bank bank,
-                                                    boolean owner,
-                                                    String accountIdRaw,
-                                                    String reasonRaw) {
-        if (!owner) {
-            return new ActionResult(false, "Only bank owners can freeze accounts.");
-        }
-        AccountHolder account = resolveOwnedBankAccount(bank, accountIdRaw);
-        if (account == null) {
-            return new ActionResult(false, "Account not found in this bank.");
-        }
-        String reason = reasonRaw == null ? "" : reasonRaw.trim();
-        account.freeze(reason);
-        return new ActionResult(true, buildAccountDetailOutput(server, centralBank, bank, account, 0, "Account frozen."));
-    }
-
-    private static ActionResult handleAccountUnfreeze(MinecraftServer server,
-                                                      CentralBank centralBank,
-                                                      Bank bank,
-                                                      boolean owner,
-                                                      String accountIdRaw) {
-        if (!owner) {
-            return new ActionResult(false, "Only bank owners can unfreeze accounts.");
-        }
-        AccountHolder account = resolveOwnedBankAccount(bank, accountIdRaw);
-        if (account == null) {
-            return new ActionResult(false, "Account not found in this bank.");
-        }
-        account.unfreeze();
-        return new ActionResult(true, buildAccountDetailOutput(server, centralBank, bank, account, 0, "Account unfrozen."));
-    }
-
-    private static ActionResult handleAccountTempLimit(MinecraftServer server,
-                                                       CentralBank centralBank,
-                                                       Bank bank,
-                                                       boolean owner,
-                                                       String accountIdRaw,
-                                                       String amountRaw,
-                                                       String expiresAtMillisRaw) {
-        if (!owner) {
-            return new ActionResult(false, "Only bank owners can set temporary account limits.");
-        }
-        AccountHolder account = resolveOwnedBankAccount(bank, accountIdRaw);
-        if (account == null) {
-            return new ActionResult(false, "Account not found in this bank.");
-        }
-        BigDecimal amount = parsePositiveWholeAmount(amountRaw);
-        if (amount == null) {
-            return new ActionResult(false, "Temporary limit must be a positive whole dollar amount.");
-        }
-        long nowMillis = System.currentTimeMillis();
-        long expiresAtMillis = parseLongOrDefault(expiresAtMillisRaw, -1L);
-        if (expiresAtMillis <= nowMillis) {
-            return new ActionResult(false, "Choose a future temporary-limit expiration.");
-        }
-        long currentGameTime = currentOverworldGameTime(server);
-        if (!account.setTemporaryWithdrawalLimitUntil(amount, currentGameTime, expiresAtMillis)) {
-            return new ActionResult(false, "Could not apply temporary account limit.");
-        }
-        return new ActionResult(true, buildAccountDetailOutput(server, centralBank, bank, account, 0, "Temporary limit applied."));
-    }
-
-    private static AccountHolder resolveOwnedBankAccount(Bank bank, String accountIdRaw) {
-        if (bank == null) {
-            return null;
-        }
-        UUID accountId = parseUuid(accountIdRaw);
-        if (accountId == null) {
-            return null;
-        }
-        AccountHolder account = bank.getBankAccount(accountId);
-        if (account == null || account.getBankId() == null || !account.getBankId().equals(bank.getBankId())) {
-            return null;
-        }
-        return account;
-    }
-
-    private static String buildAccountDetailOutput(MinecraftServer server,
-                                                   CentralBank centralBank,
-                                                   Bank bank,
-                                                   AccountHolder account,
-                                                   int page,
-                                                   String notice) {
-        long currentGameTime = currentOverworldGameTime(server);
-        BigDecimal tempLimit = account.getTemporaryWithdrawalLimitIfActive(currentGameTime);
-        long tempExpiresGameTime = account.getTemporaryWithdrawalLimitExpiresAtGameTime(currentGameTime);
-        long tempExpiresMillis = account.getTemporaryWithdrawalLimitExpiresAtEpochMillis(currentGameTime);
-        if (tempExpiresMillis < 0L) {
-            tempExpiresMillis = estimateEpochMillisForGameTick(currentGameTime, tempExpiresGameTime);
-        }
-        List<UserTransaction> transactions = new ArrayList<>(account.getTransactions().values());
-        transactions.removeIf(tx -> tx == null || tx.getTransactionUUID() == null);
-        transactions.sort(Comparator
-                .comparing(UserTransaction::getTimestamp, Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed());
-
-        int pageSize = 25;
-        int total = transactions.size();
-        int safePage = Math.max(0, page);
-        int from = Math.min(total, safePage * pageSize);
-        int to = Math.min(total, from + pageSize);
-
-        StringBuilder builder = new StringBuilder();
-        appendAccountDetail(builder, "@account.detail", null);
-        appendAccountDetail(builder, "account.id", account.getAccountUUID());
-        appendAccountDetail(builder, "account.player", resolvePlayerName(server, account.getPlayerUUID()));
-        appendAccountDetail(builder, "account.type", account.getAccountType() == null ? "-" : account.getAccountType().label);
-        appendAccountDetail(builder, "account.balance", formatAccountMoney(account.getBalance()));
-        appendAccountDetail(builder, "account.bank", bank == null ? "-" : bank.getBankName());
-        appendAccountDetail(builder, "account.created", account.getDateOfCreation());
-        appendAccountDetail(builder, "account.primary", account.isPrimaryAccount());
-        appendAccountDetail(builder, "account.frozen", account.isFrozen());
-        appendAccountDetail(builder, "account.frozen_reason", account.getFrozenReason());
-        appendAccountDetail(builder, "account.access_type", account.getAccountAccessType());
-        appendAccountDetail(builder, "account.business_label", account.getBusinessLabel());
-        appendAccountDetail(builder, "daily.limit", formatAccountMoney(account.getConfiguredDailyWithdrawalLimit()));
-        appendAccountDetail(builder, "daily.used", formatAccountMoney(account.getDailyWithdrawnAmount()));
-        appendAccountDetail(builder, "daily.remaining", formatAccountMoney(account.getRemainingDailyWithdrawalLimit()));
-        appendAccountDetail(builder, "temp.limit", tempLimit == null ? "" : formatAccountMoney(tempLimit));
-        appendAccountDetail(builder, "temp.expires_millis", tempExpiresMillis);
-        appendAccountDetail(builder, "credit.score", account.getCreditScore());
-        appendAccountDetail(builder, "credit.defaulted", account.isDefaulted());
-        appendAccountDetail(builder, "certificate.tier", account.getCertificateTier());
-        appendAccountDetail(builder, "certificate.locked", account.isCertificateLocked(currentGameTime));
-        appendAccountDetail(builder, "history.page", safePage);
-        appendAccountDetail(builder, "history.page_size", pageSize);
-        appendAccountDetail(builder, "history.total", total);
-        appendAccountDetail(builder, "notice", notice == null ? "" : notice);
-
-        for (int i = from; i < to; i++) {
-            UserTransaction tx = transactions.get(i);
-            int row = i - from;
-            String prefix = "tx." + row + ".";
-            UUID accountId = account.getAccountUUID();
-            boolean outgoing = accountId.equals(tx.getSenderUUID());
-            boolean incoming = accountId.equals(tx.getReceiverUUID());
-            UUID counterparty = outgoing ? tx.getReceiverUUID() : tx.getSenderUUID();
-            appendAccountDetail(builder, prefix + "id", tx.getTransactionUUID());
-            appendAccountDetail(builder, prefix + "date", tx.getTimestamp() == null ? "-" : tx.getTimestamp().toString());
-            appendAccountDetail(builder, prefix + "direction", outgoing ? "OUTGOING" : incoming ? "INCOMING" : "RELATED");
-            appendAccountDetail(builder, prefix + "amount", formatAccountMoney(tx.getAmount()));
-            appendAccountDetail(builder, prefix + "description", tx.getTransactionDescription());
-            appendAccountDetail(builder, prefix + "counterparty_type", accountCounterpartyType(centralBank, counterparty));
-            appendAccountDetail(builder, prefix + "counterparty_short", accountCounterpartyShort(server, centralBank, counterparty));
-        }
-        return builder.toString();
-    }
-
-    private static void appendAccountDetail(StringBuilder builder, String key, Object value) {
-        if (builder == null || key == null || key.isBlank()) {
-            return;
-        }
-        if (value == null) {
-            builder.append(key).append('\n');
-            return;
-        }
-        builder.append(key).append('=').append(sanitizeAccountDetailValue(String.valueOf(value))).append('\n');
-    }
-
-    private static String sanitizeAccountDetailValue(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace('\n', ' ').replace('\r', ' ').trim();
-    }
-
-    private static String formatAccountMoney(BigDecimal amount) {
-        return (amount == null ? BigDecimal.ZERO : amount)
-                .setScale(2, RoundingMode.HALF_EVEN)
-                .toPlainString();
-    }
-
-    private static long estimateEpochMillisForGameTick(long currentGameTime, long expiresAtGameTime) {
-        if (expiresAtGameTime <= currentGameTime) {
-            return -1L;
-        }
-        long deltaTicks = expiresAtGameTime - currentGameTime;
-        long deltaMillis = deltaTicks > Long.MAX_VALUE / 50L ? Long.MAX_VALUE : deltaTicks * 50L;
-        long now = System.currentTimeMillis();
-        return Long.MAX_VALUE - now < deltaMillis ? Long.MAX_VALUE : now + deltaMillis;
-    }
-
-    private static String accountCounterpartyType(CentralBank centralBank, UUID counterpartyId) {
-        if (centralBank == null || counterpartyId == null) {
-            return "EXTERNAL";
-        }
-        if (centralBank.SearchForAccountByAccountId(counterpartyId) != null) {
-            return "ACCOUNT";
-        }
-        if (centralBank.getBank(counterpartyId) != null) {
-            return "BANK";
-        }
-        return "EXTERNAL";
-    }
-
-    private static String accountCounterpartyShort(MinecraftServer server, CentralBank centralBank, UUID counterpartyId) {
-        if (counterpartyId == null) {
-            return "external";
-        }
-        AccountHolder account = centralBank == null ? null : centralBank.SearchForAccountByAccountId(counterpartyId);
-        if (account != null) {
-            return resolvePlayerName(server, account.getPlayerUUID());
-        }
-        Bank bank = centralBank == null ? null : centralBank.getBank(counterpartyId);
-        if (bank != null && bank.getBankName() != null && !bank.getBankName().isBlank()) {
-            return bank.getBankName();
-        }
-        return shortId(counterpartyId);
-    }
-
     private static ActionResult handleRoleAssign(MinecraftServer server,
                                                  CentralBank centralBank,
                                                  Bank bank,
@@ -2120,7 +2391,11 @@ public final class BankOwnerPcService {
 
         CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
         Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
-        employees.remove(targetId);
+        EmployeeSpec removed = employees.remove(targetId);
+        if (removed == null) {
+            return new ActionResult(false,
+                    resolvePlayerName(server, targetId) + " is not employed at " + bank.getBankName() + ".");
+        }
         metadata.putString("employees", encodeEmployeeMap(employees));
         centralBank.putBankMetadata(bank.getBankId(), metadata);
 
@@ -2653,6 +2928,42 @@ public final class BankOwnerPcService {
         return null;
     }
 
+    private static AccountHolder resolveBankAccount(CentralBank centralBank, Bank bank, String accountIdRaw) {
+        UUID accountId = parseUuid(accountIdRaw);
+        if (centralBank == null || bank == null || accountId == null) {
+            return null;
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !bank.getBankId().equals(account.getBankId())) {
+            return null;
+        }
+        return account;
+    }
+
+    private static String sanitizeLine(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw.replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static String formatAccountDate(LocalDateTime value) {
+        if (value == null) {
+            return "-";
+        }
+        return ACCOUNT_DETAIL_DATE_FORMAT.format(value);
+    }
+
+    private static String formatAccountEpochMillis(long epochMillis) {
+        if (epochMillis <= 0L) {
+            return "-";
+        }
+        return ACCOUNT_DETAIL_DATE_FORMAT.format(LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(epochMillis),
+                ZoneId.systemDefault()
+        ));
+    }
+
     private static UUID resolvePlayerId(MinecraftServer server, String raw) {
         if (server == null || raw == null || raw.isBlank()) {
             return null;
@@ -2669,6 +2980,12 @@ public final class BankOwnerPcService {
                 return online.getUUID();
             }
         }
+        if (server.getProfileCache() != null) {
+            var cached = server.getProfileCache().get(trimmed);
+            if (cached.isPresent()) {
+                return cached.get().getId();
+            }
+        }
         return null;
     }
 
@@ -2680,28 +2997,6 @@ public final class BankOwnerPcService {
             return UUID.fromString(raw.trim());
         } catch (IllegalArgumentException ex) {
             return null;
-        }
-    }
-
-    private static int parseIntOrDefault(String raw, int fallback) {
-        if (raw == null || raw.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(raw.trim());
-        } catch (NumberFormatException ex) {
-            return fallback;
-        }
-    }
-
-    private static long parseLongOrDefault(String raw, long fallback) {
-        if (raw == null || raw.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Long.parseLong(raw.trim());
-        } catch (NumberFormatException ex) {
-            return fallback;
         }
     }
 
@@ -2884,6 +3179,14 @@ public final class BankOwnerPcService {
         return configuredCap.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN);
     }
 
+    private static String configuredLimitValue(CompoundTag metadata, String key) {
+        if (metadata == null || key == null || key.isBlank() || !metadata.contains(key)) {
+            return "";
+        }
+        BigDecimal amount = readBigDecimal(metadata, key).setScale(2, RoundingMode.HALF_EVEN);
+        return amount.compareTo(BigDecimal.ZERO) > 0 ? amount.toPlainString() : "";
+    }
+
     private static BigDecimal readBigDecimal(CompoundTag tag, String key) {
         if (tag == null || key == null || key.isBlank() || !tag.contains(key)) {
             return BigDecimal.ZERO;
@@ -3063,6 +3366,26 @@ public final class BankOwnerPcService {
         return unlocked != null && unlocked.contains(playerId);
     }
 
+    private static boolean isDesktopSessionUnlocked(CentralBank centralBank,
+                                                    DesktopContext context,
+                                                    String machineId,
+                                                    UUID playerId,
+                                                    CompoundTag userTag) {
+        if (isDesktopSessionUnlocked(machineId, playerId)) {
+            return true;
+        }
+        if (centralBank == null || context == null || machineId == null || machineId.isBlank() || playerId == null) {
+            return false;
+        }
+        CompoundTag sessionTag = userTag == null ? getDesktopUserTag(centralBank, context, playerId, false) : userTag;
+        String persistedMachine = sessionTag.getString(DESKTOP_SESSION_MACHINE_TAG);
+        if (persistedMachine == null || persistedMachine.isBlank() || !persistedMachine.equalsIgnoreCase(machineId)) {
+            return false;
+        }
+        markDesktopSessionUnlocked(machineId, playerId);
+        return true;
+    }
+
     private static void markDesktopSessionUnlocked(String machineId, UUID playerId) {
         if (machineId == null || machineId.isBlank() || playerId == null) {
             return;
@@ -3070,6 +3393,22 @@ public final class BankOwnerPcService {
         DESKTOP_UNLOCKED_SESSIONS
                 .computeIfAbsent(machineId, key -> ConcurrentHashMap.newKeySet())
                 .add(playerId);
+    }
+
+    private static void persistDesktopSessionUnlocked(CompoundTag userTag, String machineId) {
+        if (userTag == null || machineId == null || machineId.isBlank()) {
+            return;
+        }
+        userTag.putString(DESKTOP_SESSION_MACHINE_TAG, machineId);
+        userTag.putLong(DESKTOP_SESSION_UNLOCKED_AT_TAG, System.currentTimeMillis());
+    }
+
+    private static void clearPersistentDesktopSession(CompoundTag userTag) {
+        if (userTag == null) {
+            return;
+        }
+        userTag.remove(DESKTOP_SESSION_MACHINE_TAG);
+        userTag.remove(DESKTOP_SESSION_UNLOCKED_AT_TAG);
     }
 
     private static void clearDesktopSession(String machineId, UUID playerId) {
@@ -3305,12 +3644,14 @@ public final class BankOwnerPcService {
     private static ShopRoleRequirement requiredShopRoleForAction(String action) {
         return switch (action) {
             case "SHOP_OVERVIEW",
+                 "SHOP_CHECKOUT_DIAGNOSTIC",
                  "SHOP_LEVEL_ROADMAP",
                  "SHOP_ORDER_REPORT",
                  "SHOP_HOURS_LIGHTING_REPORT",
                  "SHOP_SCAN",
                  "SHOP_STOCKROOM_REPORT",
                  "SHOP_STOCKROOM_LOCATE",
+                 "SHOP_PALLET_LOCATE",
                  "SHOP_RESTOCK",
                  "SHOP_RESTOCK_SLOT",
                  "SHOP_RESTOCK_LOW",
@@ -3356,6 +3697,14 @@ public final class BankOwnerPcService {
                  "SHOP_LIGHTING_EXCLUDE_STOCKROOM",
                  "SHOP_RENAME",
                  "SHOP_SET_TYPE",
+                 "SHOP_TYPE_REPORT",
+                 "SHOP_TYPE_PAY_FEES",
+                 "SHOP_FRANCHISE_PUBLISH_OFFER",
+                 "SHOP_FRANCHISE_CANCEL_OFFER",
+                 "SHOP_FRANCHISE_ACCEPT_OFFER",
+                 "SHOP_FRANCHISE_NPC_LICENSE",
+                 "SHOP_CORPORATE_ADD_BRANCH",
+                 "SHOP_CORPORATE_REMOVE_BRANCH",
                  "SHOP_DELETE",
                  "SHOP_PERMISSIONS_SET",
                  "SHOP_PERMISSIONS_REMOVE" -> ShopRoleRequirement.OWNER;

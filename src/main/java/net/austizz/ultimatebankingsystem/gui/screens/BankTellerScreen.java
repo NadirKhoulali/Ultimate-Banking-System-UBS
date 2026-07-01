@@ -32,6 +32,7 @@ public class BankTellerScreen extends Screen {
         INSTRUMENTS("Cash & Instruments"),
         CHEQUE_REDEEM("Redeem Cashables"),
         CARD("Credit Card"),
+        SAFE_BOX("Safe Box"),
         OPEN_ACCOUNT("Open Account");
 
         private final String label;
@@ -194,7 +195,7 @@ public class BankTellerScreen extends Screen {
                 "Exit this teller terminal."
         );
 
-        int tabW = (contentWidth - (gap * 3)) / 4;
+        int tabW = (contentWidth - (gap * 4)) / 5;
         addTabButton(contentLeft, rowY, tabW, Tab.INSTRUMENTS,
                 "Cash and paper instruments",
                 "Issue cheque/note, withdraw cash, deposit exact cash, or deposit all carried bills and coins.");
@@ -204,7 +205,10 @@ public class BankTellerScreen extends Screen {
         addTabButton(contentLeft + (tabW + gap) * 2, rowY, tabW, Tab.CARD,
                 "Credit cards",
                 "Issue a first card or replace existing cards for the selected eligible account.");
-        addTabButton(contentLeft + (tabW + gap) * 3, rowY, tabW, Tab.OPEN_ACCOUNT,
+        addTabButton(contentLeft + (tabW + gap) * 3, rowY, tabW, Tab.SAFE_BOX,
+                "Safety deposit boxes",
+                "Request a physical safety deposit box for the selected account at this teller bank.");
+        addTabButton(contentLeft + (tabW + gap) * 4, rowY, tabW, Tab.OPEN_ACCOUNT,
                 "Open account",
                 "Create a new account at this teller bank. Central Bank teller account opening can be free.");
         rowY += 32;
@@ -378,6 +382,17 @@ public class BankTellerScreen extends Screen {
             boolean hasActiveCard = selected != null && selected.hasActiveCard();
             issue.active = eligible && !hasActiveCard;
             replace.active = eligible && hasActiveCard;
+            tabInfoY = rowY + 34;
+            tabContentBottomY = rowY + 24;
+        } else if (activeTab == Tab.SAFE_BOX) {
+            DesktopButton requestBox = addHintedButton(contentLeft, rowY, contentWidth, 24,
+                    "Request Safety Deposit Box", 0xFFA4D9B2, btn ->
+                            sendAction("REQUEST_SAFE_BOX", getSelectedAccountId(), "", "", false),
+                    "Request Safety Deposit Box",
+                    "Assigns the first free physical locker door in this bank's claimed safe area to the selected account.");
+            BankTellerAccountSummary selected = getSelectedAccount();
+            UUID boundBankId = payload == null ? null : payload.parseBoundBankId();
+            requestBox.active = selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
             tabInfoY = rowY + 34;
             tabContentBottomY = rowY + 24;
         } else if (activeTab == Tab.OPEN_ACCOUNT) {
@@ -555,7 +570,7 @@ public class BankTellerScreen extends Screen {
         if (accountSelectButton != null) {
             accountSelectButton.setMessage(accountCaption());
         }
-        if (activeTab == Tab.CARD || activeTab == Tab.OPEN_ACCOUNT) {
+        if (activeTab == Tab.CARD || activeTab == Tab.SAFE_BOX || activeTab == Tab.OPEN_ACCOUNT) {
             rebuildWidgets();
         }
     }
@@ -758,6 +773,26 @@ public class BankTellerScreen extends Screen {
                             ? "Account mode: teller fees debit from selected account."
                             : "Cash/Card mode: UI closes, then pay by right-clicking teller.",
                     tabInfoY + 28, 0xFFB9D8FF);
+        } else if (activeTab == Tab.SAFE_BOX) {
+            BankTellerAccountSummary selected = getSelectedAccount();
+            UUID boundBankId = payload == null ? null : payload.parseBoundBankId();
+            boolean eligible = selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
+            drawTabInfoLine(graphics,
+                    boundBankId == null
+                            ? "This teller is not bound to a bank safe area."
+                            : "Target Bank: " + safe(payload == null ? "" : payload.boundBankName()),
+                    tabInfoY,
+                    0xFFD1E7FF);
+            drawTabInfoLine(graphics,
+                    eligible
+                            ? "Request assigns the first free physical locker door in the claimed safe area."
+                            : "Select an account from this teller's bank to request a safety deposit box.",
+                    tabInfoY + 14,
+                    eligible ? 0xFF8DF0B2 : 0xFFFFB7A3);
+            drawTabInfoLine(graphics,
+                    "After assignment, click the matching locker door to animate it open and access storage.",
+                    tabInfoY + 28,
+                    0xFFB9D8FF);
         } else if (activeTab == Tab.OPEN_ACCOUNT) {
             boolean bound = payload != null && payload.parseBoundBankId() != null;
             String targetBank = bound

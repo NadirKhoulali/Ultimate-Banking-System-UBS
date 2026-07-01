@@ -21,6 +21,14 @@ public final class ModCreativeTabs {
                     .displayItems((parameters, output) -> {
                         output.accept(ModBlocks.ATM_MACHINE.get());
                         output.accept(ModBlocks.BANK_OWNER_PC.get());
+                        output.accept(ModBlocks.BANK_VAULT_DOOR.get());
+                        output.accept(ModBlocks.BANK_SAFE_IRON_BAR_GATE.get());
+                        output.accept(ModBlocks.SAFETY_DEPOSIT_BOX_ROW.get());
+                        output.accept(ModItems.SAFETY_DEPOSIT_BOX_SMALL.get());
+                        output.accept(ModItems.SAFETY_DEPOSIT_BOX_MEDIUM.get());
+                        output.accept(ModItems.SAFETY_DEPOSIT_BOX_LARGE.get());
+                        output.accept(ModItems.SAFETY_DEPOSIT_BOX_EXTRA_LARGE.get());
+                        output.accept(ModItems.SAFETY_DEPOSIT_BOX_COVER.get());
                         output.accept(ModBlocks.COLOR_BUTTON_BLOCK.get());
                         output.accept(ModBlocks.PAYMENT_TERMINAL.get());
                         output.accept(ModBlocks.TALL_WALL_SHELF.get());

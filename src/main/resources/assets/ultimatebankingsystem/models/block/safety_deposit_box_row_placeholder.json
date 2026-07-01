@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "ultimatebankingsystem:block/safety_deposit_box_row"
+  }
+}

@@ -52,7 +52,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-public class BankOwnerPcScreen extends Screen {
+public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private record AccountCardData(String player, String type, String balance, String id) {}
 
@@ -219,7 +219,7 @@ public class BankOwnerPcScreen extends Screen {
     private record BankLevelRoadmapNode(int level,
                                         long depositTargetDollars,
                                         int accountTarget,
-                                        int capacityUnits,
+                                        int safeRowCapacity,
                                         String state,
                                         List<String> unlocks) {
     }
@@ -462,39 +462,42 @@ public class BankOwnerPcScreen extends Screen {
     private void initModernBankWindowWidgets(int left, int top, int right, int bottom) {
         OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
         boolean dataReady = data != null && activeBankId != null && activeBankId.equals(data.bankId());
-        int appW = Math.max(240, right - left);
+        int appW = Math.max(1, right - left);
         boolean compact = appW < 980;
         boolean modalOpen = isModernBankActionModalOpen()
                 || isMarketDetailModalOpen()
                 || (activeSection == Section.LENDING && pendingMarketAccept != null)
                 || selectedAccountTransaction != null;
-        int sidebarW = compact ? 68 : Math.min(230, Math.max(184, appW / 6));
-        int sidebarX = left + 16;
+        int outerInset = ownerPcOuterInset(appW);
+        int sidebarW = ownerPcSidebarWidth(appW, false);
+        int sidebarX = left + outerInset;
         int sidebarY = top + 18;
         int sidebarH = Math.max(120, bottom - top - 36);
-        int contentX = sidebarX + sidebarW + (compact ? 16 : 28);
-        int contentRight = right - 18;
+        int contentX = sidebarX + sidebarW + ownerPcSidebarGap(appW);
+        int contentRight = right - outerInset;
         int headerY = top + 18;
         int headerH = 72;
+        boolean sidebarCard = shouldShowOwnerPcSidebarCard(appW, sidebarW, sidebarH);
+        int navPad = ownerPcSidebarInnerPad(sidebarW);
 
-        navViewportX = sidebarX + (compact ? 14 : 18);
-        navViewportY = sidebarY + (compact ? 86 : 202);
-        navViewportW = Math.max(36, sidebarW - (compact ? 28 : 36));
+        navViewportX = sidebarX + navPad;
+        navViewportY = sidebarY + (sidebarCard ? 202 : 78);
+        navViewportW = Math.max(64, sidebarW - (navPad * 2));
         navViewportH = Math.max(40, sidebarY + sidebarH - navViewportY - 16);
 
         if (!BANK_NAV_SECTIONS.contains(activeSection)) {
             activeSection = Section.OVERVIEW;
         }
-        int sectionH = compact ? 34 : 28;
-        int sectionGap = compact ? 12 : 8;
+        int sectionH = appW < 620 ? 24 : (compact ? 26 : 28);
+        int sectionGap = appW < 620 ? 5 : (compact ? 6 : 8);
         int totalNavHeight = (BANK_NAV_SECTIONS.size() * sectionH) + ((BANK_NAV_SECTIONS.size() - 1) * sectionGap);
-        navMaxScroll = Math.max(0, totalNavHeight - navViewportH);
+        navMaxScroll = navScrollMax(totalNavHeight, navViewportH);
         navScroll = Math.max(0, Math.min(navScroll, navMaxScroll));
         int navY = navViewportY - navScroll;
         for (int i = 0; i < BANK_NAV_SECTIONS.size(); i++) {
             Section section = BANK_NAV_SECTIONS.get(i);
             int buttonY = navY + (i * (sectionH + sectionGap));
-            String label = compact ? "" : (section == activeSection ? bankSectionLabel(section) + " *" : bankSectionLabel(section));
+            String label = section == activeSection ? bankSectionLabel(section) + " *" : bankSectionLabel(section);
             DesktopButton button = addPcButton(
                     navViewportX,
                     buttonY,
@@ -522,7 +525,7 @@ public class BankOwnerPcScreen extends Screen {
                         rebuildWidgets();
                     }
             );
-            button.setLabelOffset(compact ? -16 : 0, 1).setIconOffset(compact ? -5 : 0, 0);
+            button.setLabelOffset(6, 1).setIconOffset(1, 0);
             boolean visible = !modalOpen && buttonY >= navViewportY && (buttonY + sectionH) <= (navViewportY + navViewportH);
             button.visible = visible;
             button.active = visible;
@@ -539,16 +542,17 @@ public class BankOwnerPcScreen extends Screen {
 
         sectionViewportX = contentX;
         sectionViewportY = headerY + headerH + 18;
-        sectionViewportW = Math.max(160, contentRight - contentX);
+        int contentMinW = appW < 420 ? 72 : 120;
+        sectionViewportW = Math.max(contentMinW, contentRight - contentX);
         sectionViewportH = Math.max(80, bottom - sectionViewportY - 18);
         outputPanelX = 0;
         outputPanelY = 0;
         outputPanelW = 0;
         outputPanelH = 0;
 
-        int sectionContentW = Math.max(120, sectionViewportW - 32);
+        int sectionContentW = Math.max(contentMinW, sectionViewportW - 32);
         int contentHeight = getModernBankSectionContentHeight(dataReady ? data : null, sectionContentW);
-        sectionMaxScroll = Math.max(0, contentHeight - sectionViewportH);
+        sectionMaxScroll = pixelScrollMax(contentHeight, sectionViewportH);
         sectionScroll = Math.max(0, Math.min(sectionScroll, sectionMaxScroll));
 
         if (!dataReady) {
@@ -579,6 +583,7 @@ public class BankOwnerPcScreen extends Screen {
         switch (activeSection) {
             case OVERVIEW -> initModernBankOverviewWidgets(data, innerX, y, innerW, ownerView);
             case ACCOUNTS -> initModernBankAccountsWidgets(data, innerX, y, innerW, ownerView);
+            case SAFE -> initModernBankSafeWidgets(data, innerX, y, innerW);
             case BRANDING -> initModernBankBrandingWidgets(data, innerX, y, innerW, ownerView);
             case LIMITS -> initModernBankLimitsWidgets(data, innerX, y, innerW, ownerView);
             case GOVERNANCE -> initModernBankGovernanceWidgets(innerX, y, innerW, ownerView);
@@ -683,6 +688,65 @@ public class BankOwnerPcScreen extends Screen {
                     ensureAccountTempLimitDefaults();
                     openModernBankModal(BankActionModal.ACCOUNT_TEMP_LIMIT, ownerView);
                 });
+        addModernBankActionButton(buttonX + ((buttonW + gap) * 5), actionY, buttonW,
+                "Safe box", "SAFE_BOX_ASSIGN", selectedAccountCard.id(), "", "", "", ownerView);
+
+    }
+
+    private void initModernBankSafeWidgets(OwnerPcBankDataPayload data, int x, int y, int width) {
+        formValues.putIfAbsent("safe.assign.account", "");
+        if (data != null) {
+            formValues.putIfAbsent("safe.policy.mode", data.safePolicyMode());
+            formValues.putIfAbsent("safe.policy.amount", data.safePolicyAmount());
+            formValues.putIfAbsent("safe.policy.period", data.safeRentPeriodTicks());
+            formValues.putIfAbsent("safe.policy.overdue", data.safeOverdueTicks());
+        }
+        int gap = 10;
+        int moduleY = y + modernBankSafeKpiBlockHeight(width) + 12;
+        int mainY = moduleY + modernBankSafeModuleRailHeight() + 12;
+        boolean wide = width >= 820;
+        int sideW = wide ? Math.max(250, (width - gap) * 31 / 100) : width;
+        int mapW = wide ? Math.max(300, width - sideW - gap) : width;
+        int sideX = wide ? x + mapW + gap : x;
+        int actionY = wide ? mainY : mainY + modernBankSafeMapHeight(width) + gap;
+        int actionH = 196;
+        int policyY = actionY + actionH + gap;
+
+        int accountInputY = actionY + 78;
+        addModernBankInput("safe.assign.account", sideX + 16, accountInputY, Math.max(80, sideW - 32), "Account UUID");
+        addModernBankActionButton(sideX + 16, actionY + 108, Math.max(74, sideW - 32),
+                "Assign Box", "SAFE_BOX_ASSIGN", "@safe.assign.account", "", "", "", data != null);
+        addModernBankContentButton(sideX + 16, actionY + 138, Math.max(74, sideW - 32), 24,
+                "Claim Safe Area", ORDER_BOARD_CYAN, btn -> startSafeAreaClaimToolAndClose());
+        addModernBankContentButton(sideX + 16, actionY + 168, Math.max(74, sideW - 32), 24,
+                "Refresh", 0xFF7895B4, btn -> requestBankData(activeBankId));
+
+        addModernBankContentButton(sideX + 16, policyY + 104, Math.max(74, sideW - 32), 24,
+                "Pricing Policy", ORDER_BOARD_GOLD, btn -> openModernSafePolicyModal(data));
+
+        int lowerY = wide
+                ? mainY + Math.max(modernBankSafeMapHeight(width), actionH + gap + modernBankSafePolicyHeight()) + gap
+                : policyY + modernBankSafePolicyHeight() + gap;
+        boolean lowerWide = width >= 760;
+        int areaW = lowerWide ? Math.max(300, (width - gap) / 2) : width;
+        int queueX = lowerWide ? x + areaW + gap : x;
+        int queueY = lowerWide ? lowerY : lowerY + modernBankSafeAreaStatusHeight(width) + gap;
+        int queueW = lowerWide ? width - areaW - gap : width;
+        int rowY = queueY + 76;
+        int buttonW = Math.max(58, Math.min(88, queueW / 4));
+        List<String> locked = data == null ? List.of() : data.safeLockedQueue();
+        for (int i = 0; i < Math.min(4, locked.size()); i++) {
+            String[] fields = splitSafeRow(locked.get(i));
+            String accountId = safeRowField(fields, 2, "");
+            String boxNumber = safeRowField(fields, 0, "Safety box");
+            int currentY = rowY + (i * 31);
+            addModernBankContentButton(queueX + queueW - 16 - buttonW, currentY + 2, buttonW, 22,
+                    "Seize", ORDER_BOARD_RED, btn -> {
+                        formValues.put("safe.seize.account", accountId);
+                        formValues.put("safe.seize.box", boxNumber);
+                        openModernBankModal(BankActionModal.SAFE_SEIZE_CONFIRM, true);
+                    });
+        }
     }
 
     private void initModernBankBrandingWidgets(OwnerPcBankDataPayload data, int x, int y, int width, boolean ownerView) {
@@ -879,7 +943,7 @@ public class BankOwnerPcScreen extends Screen {
 
     private boolean bankModalRequiresOwner(BankActionModal modal) {
         return switch (modal == null ? BankActionModal.NONE : modal) {
-            case NONE -> false;
+            case NONE, SAFE_POLICY, SAFE_SEIZE_CONFIRM -> false;
             default -> true;
         };
     }
@@ -914,6 +978,22 @@ public class BankOwnerPcScreen extends Screen {
         openModernBankModal(modal, ownerView);
     }
 
+    private void openModernSafePolicyModal(OwnerPcBankDataPayload data) {
+        if (data != null) {
+            formValues.put("safe.policy.mode", data.safePolicyMode() == null || data.safePolicyMode().isBlank()
+                    ? "FREE"
+                    : data.safePolicyMode());
+            formValues.put("safe.policy.amount", data.safePolicyAmount());
+            formValues.put("safe.policy.period", data.safeRentPeriodTicks());
+            formValues.put("safe.policy.overdue", data.safeOverdueTicks());
+        }
+        formValues.putIfAbsent("safe.policy.mode", "FREE");
+        formValues.putIfAbsent("safe.policy.amount", "0.00");
+        formValues.putIfAbsent("safe.policy.period", "12096000");
+        formValues.putIfAbsent("safe.policy.overdue", "5184000");
+        openModernBankModal(BankActionModal.SAFE_POLICY, true);
+    }
+
     private void closeModernBankModal() {
         bankActionModal = BankActionModal.NONE;
         rebuildWidgets();
@@ -927,8 +1007,9 @@ public class BankOwnerPcScreen extends Screen {
             case LIMIT_AMOUNT -> 330;
             case LEND_PRODUCT -> 320;
             case GOVERNANCE_ROLE, GOVERNANCE_SHARES, STAFF_EMPLOYEE, LEND_OFFER -> 300;
+            case SAFE_POLICY -> 320;
             case CARD_ISSUE_FEE, CARD_REPLACEMENT_FEE -> 250;
-            case COMPLIANCE_APPEAL -> 250;
+            case COMPLIANCE_APPEAL, SAFE_SEIZE_CONFIRM -> 250;
             case BRANDING_MOTTO, BRANDING_COLOR, LEND_BORROW, ACCOUNT_FREEZE -> 240;
             case NONE -> 0;
         };
@@ -948,6 +1029,10 @@ public class BankOwnerPcScreen extends Screen {
             formValues.putIfAbsent("branding.color", data.color());
             formValues.putIfAbsent("limits.cardIssueFee", data.cardIssueFee());
             formValues.putIfAbsent("limits.cardReplacementFee", data.cardReplacementFee());
+            formValues.putIfAbsent("safe.policy.mode", data.safePolicyMode());
+            formValues.putIfAbsent("safe.policy.amount", data.safePolicyAmount());
+            formValues.putIfAbsent("safe.policy.period", data.safeRentPeriodTicks());
+            formValues.putIfAbsent("safe.policy.overdue", data.safeOverdueTicks());
         }
         RectHitbox modal = getModernBankModalBounds();
         int x = modal.x() + 16;
@@ -1109,6 +1194,45 @@ public class BankOwnerPcScreen extends Screen {
                         "ACCOUNT_TEMP_LIMIT", selectedAccountCard == null ? "" : selectedAccountCard.id(), "@" + ACCOUNT_TEMP_AMOUNT_KEY,
                         "@account.temp.expires_millis", "");
             }
+            case SAFE_POLICY -> {
+                formValues.putIfAbsent("safe.policy.mode", "FREE");
+                formValues.putIfAbsent("safe.policy.amount", "0.00");
+                formValues.putIfAbsent("safe.policy.period", "12096000");
+                formValues.putIfAbsent("safe.policy.overdue", "5184000");
+                int third = Math.max(58, (width - (gap * 2)) / 3);
+                String mode = formValues.getOrDefault("safe.policy.mode", "FREE").toUpperCase(Locale.ROOT);
+                addModernBankModalButton(x, y, third, "Free", "FREE".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                        btn -> {
+                            formValues.put("safe.policy.mode", "FREE");
+                            rebuildWidgets();
+                        });
+                addModernBankModalButton(x + third + gap, y, third, "One-Time", "ONE_TIME".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                        btn -> {
+                            formValues.put("safe.policy.mode", "ONE_TIME");
+                            rebuildWidgets();
+                        });
+                addModernBankModalButton(x + ((third + gap) * 2), y, third, "Recurring", "RECURRING".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                        btn -> {
+                            formValues.put("safe.policy.mode", "RECURRING");
+                            rebuildWidgets();
+                        });
+                int half = Math.max(90, (width - gap) / 2);
+                addModernBankModalInput("safe.policy.amount", x, y + 52, half, "Amount");
+                addModernBankModalInput("safe.policy.period", x + half + gap, y + 52, half, "Rent period ticks");
+                addModernBankModalInput("safe.policy.overdue", x, y + 96, half, "Overdue ticks");
+                int btnW = modernBankModalFooterButtonWidth(width, 2);
+                int startX = modernBankModalFooterStartX(x, width, 2, btnW, gap);
+                addModernBankModalButton(startX, buttonY, btnW, "Cancel", 0xFF7895B4, btn -> closeModernBankModal());
+                addModernBankModalActionButton(startX + btnW + gap, buttonY, btnW, "Save Policy", ORDER_BOARD_GOLD,
+                        "SAFE_BOX_POLICY", "@safe.policy.mode", "@safe.policy.amount", "@safe.policy.period", "@safe.policy.overdue");
+            }
+            case SAFE_SEIZE_CONFIRM -> {
+                int btnW = modernBankModalFooterButtonWidth(width, 2);
+                int startX = modernBankModalFooterStartX(x, width, 2, btnW, gap);
+                addModernBankModalButton(startX, buttonY, btnW, "Cancel", 0xFF7895B4, btn -> closeModernBankModal());
+                addModernBankModalActionButton(startX + btnW + gap, buttonY, btnW, "Seize Box", ORDER_BOARD_RED,
+                        "SAFE_BOX_SEIZE", "@safe.seize.account", "", "", "");
+            }
             case NONE -> {
             }
         }
@@ -1211,6 +1335,8 @@ public class BankOwnerPcScreen extends Screen {
             case COMPLIANCE_APPEAL -> "Open an appeal form for admin compliance review.";
             case ACCOUNT_FREEZE -> "Open account freeze controls.";
             case ACCOUNT_TEMP_LIMIT -> "Open a temporary account limit editor.";
+            case SAFE_POLICY -> "Edit the safety deposit box pricing policy.";
+            case SAFE_SEIZE_CONFIRM -> "Review a locked overdue safety box before seizure.";
             case NONE -> modernBankButtonHelp(label);
         };
     }
@@ -1246,8 +1372,8 @@ public class BankOwnerPcScreen extends Screen {
             case "submit" -> "Submit this compliance appeal to admins.";
             case "apply" -> "Apply the selected temporary setting.";
             case "claim area" -> "Claim the configured cuboid around your current player position.";
-            case "save policy" -> "Save the selected policy mode and timing values.";
-            case "seize box" -> "Confirm the selected recovery action.";
+            case "save policy" -> "Save the selected safe-box pricing mode and timing values.";
+            case "seize box" -> "Confirm seizure of the selected locked overdue safety box into escrow.";
             case "freeze" -> "Freeze the selected account with the entered reason.";
             case "borrow" -> "Submit this borrowing request.";
             case "post offer" -> "Publish this offer to the interbank market.";
@@ -1284,8 +1410,10 @@ public class BankOwnerPcScreen extends Screen {
             return "";
         }
         return switch (selected) {
-            case "dailybank" -> data.dailyCap();
-            default -> "";
+            case "single" -> data.singleLimit();
+            case "dailyplayer" -> data.dailyPlayerLimit();
+            case "teller" -> data.tellerLimit();
+            default -> data.dailyBankLimit();
         };
     }
 
@@ -1849,7 +1977,9 @@ public class BankOwnerPcScreen extends Screen {
         LEND_PRODUCT,
         COMPLIANCE_APPEAL,
         ACCOUNT_FREEZE,
-        ACCOUNT_TEMP_LIMIT
+        ACCOUNT_TEMP_LIMIT,
+        SAFE_POLICY,
+        SAFE_SEIZE_CONFIRM
     }
 
     private enum FranchiseRequirementPickerMode {
@@ -2017,6 +2147,16 @@ public class BankOwnerPcScreen extends Screen {
     private static final int LINE_HEIGHT = 11;
     private static final int OUTPUT_PANEL_INSET = 6;
     private static final int OUTPUT_PIXEL_SCROLL_STEP = 14;
+    private static final int PANEL_SCROLL_BOTTOM_PADDING = 28;
+    private static final int NAV_SCROLL_BOTTOM_PADDING = 8;
+    private static final int PC_STANDARD_GUI_WIDTH = 1020;
+    private static final int PC_STANDARD_GUI_HEIGHT = 574;
+    // 1366x768 gives a 1920x1080 display at Minecraft GUI scale 2 enough
+    // virtual PC width for the large inner shopping layouts after sidebars.
+    private static final int PC_LARGE_GUI_WIDTH = 1366;
+    private static final int PC_LARGE_GUI_HEIGHT = 768;
+    private static final int PC_LARGE_LAYOUT_TRIGGER_WIDTH = 940;
+    private static final int PC_LARGE_LAYOUT_TRIGGER_HEIGHT = 520;
     private static final float HOVER_TOOLTIP_Z = 950.0F;
     private static final int ORDER_BOARD_BG = 0xFF07111E;
     private static final int ORDER_BOARD_PANEL = 0xFF0E2338;
@@ -2089,6 +2229,7 @@ public class BankOwnerPcScreen extends Screen {
     private static final List<Section> BANK_NAV_SECTIONS = List.of(
             Section.OVERVIEW,
             Section.ACCOUNTS,
+            Section.SAFE,
             Section.BRANDING,
             Section.LIMITS,
             Section.GOVERNANCE,
@@ -2258,6 +2399,13 @@ public class BankOwnerPcScreen extends Screen {
     private boolean useVirtualScale;
     private float virtualScaleX = 1.0F;
     private float virtualScaleY = 1.0F;
+    private int actualGuiWidth;
+    private int actualGuiHeight;
+    private int virtualTargetGuiWidth;
+    private int virtualTargetGuiHeight;
+    private int actualFramebufferWidth;
+    private int actualFramebufferHeight;
+    private int effectivePcGuiScale;
 
     private int utilityFrameLeft;
     private int utilityFrameTop;
@@ -2970,20 +3118,23 @@ public class BankOwnerPcScreen extends Screen {
             return;
         }
 
-        int appW = Math.max(240, right - left);
+        int appW = Math.max(1, right - left);
         boolean compactShop = appW < 980;
-        int sidebarW = compactShop ? 74 : Math.min(230, Math.max(184, appW / 6));
-        int sidebarX = left + 16;
+        int outerInset = ownerPcOuterInset(appW);
+        int sidebarW = ownerPcSidebarWidth(appW, true);
+        int sidebarX = left + outerInset;
         int sidebarY = top + 18;
         int sidebarH = Math.max(120, bottom - top - 36);
-        int contentX = sidebarX + sidebarW + (compactShop ? 16 : 28);
-        int contentRight = right - 18;
+        int contentX = sidebarX + sidebarW + ownerPcSidebarGap(appW);
+        int contentRight = right - outerInset;
         int headerY = top + 18;
         int headerH = 72;
+        boolean sidebarCard = shouldShowOwnerPcSidebarCard(appW, sidebarW, sidebarH);
+        int navPad = ownerPcSidebarInnerPad(sidebarW);
 
-        navViewportX = sidebarX + (compactShop ? 9 : 18);
-        navViewportY = sidebarY + (compactShop ? 76 : 174);
-        navViewportW = Math.max(44, sidebarW - (compactShop ? 18 : 36));
+        navViewportX = sidebarX + navPad;
+        navViewportY = sidebarY + (sidebarCard ? 174 : 78);
+        navViewportW = Math.max(68, sidebarW - (navPad * 2));
         navViewportH = Math.max(40, sidebarY + sidebarH - navViewportY - 18);
 
         List<Section> navSections = SHOP_NAV_SECTIONS;
@@ -2991,8 +3142,8 @@ public class BankOwnerPcScreen extends Screen {
             activeSection = Section.OVERVIEW;
         }
         int sectionCount = navSections.size();
-        int sectionH = compactShop ? 21 : 24;
-        int sectionGap = compactShop ? 4 : 6;
+        int sectionH = appW < 620 ? 22 : (compactShop ? 23 : 24);
+        int sectionGap = appW < 620 ? 4 : (compactShop ? 5 : 6);
         int totalNavHeight = (sectionCount * sectionH) + ((sectionCount - 1) * sectionGap);
         int availableNavHeight = Math.max(40, navViewportH);
         if (totalNavHeight > availableNavHeight) {
@@ -3005,13 +3156,13 @@ public class BankOwnerPcScreen extends Screen {
             sectionGap = 3;
             totalNavHeight = (sectionCount * sectionH) + ((sectionCount - 1) * sectionGap);
         }
-        navMaxScroll = Math.max(0, totalNavHeight - availableNavHeight);
+        navMaxScroll = navScrollMax(totalNavHeight, availableNavHeight);
         navScroll = Math.max(0, Math.min(navScroll, navMaxScroll));
         int sectionY = navViewportY - navScroll;
 
         int i = 0;
         for (Section section : navSections) {
-            String label = compactShop ? shopSectionShortLabel(section) : shopSectionLabel(section);
+            String label = shopSectionLabel(section);
             int buttonY = sectionY + (i * (sectionH + sectionGap));
             DesktopButton button = addPcButton(
                     navViewportX,
@@ -3075,8 +3226,8 @@ public class BankOwnerPcScreen extends Screen {
                         rebuildWidgets();
                     }
             );
-            button.setLabelOffset(compactShop ? 5 : 14, compactShop ? 2 : 3)
-                    .setIconOffset(compactShop ? 0 : 4, compactShop ? 2 : 3);
+            button.setLabelOffset(6, 2)
+                    .setIconOffset(1, 2);
             boolean visible = buttonY >= navViewportY && (buttonY + sectionH) <= (navViewportY + navViewportH);
             button.visible = visible;
             button.active = visible && activeSection != section;
@@ -3133,10 +3284,11 @@ public class BankOwnerPcScreen extends Screen {
 
         int areaX = contentX;
         int areaY = headerY + headerH + 18;
-        int areaWidth = Math.max(180, contentRight - contentX);
+        int contentMinW = appW < 420 ? 72 : 120;
+        int areaWidth = Math.max(contentMinW, contentRight - contentX);
         sectionViewportX = areaX;
         sectionViewportY = areaY;
-        sectionViewportW = Math.max(120, areaWidth);
+        sectionViewportW = Math.max(contentMinW, areaWidth);
         sectionViewportH = Math.max(80, bottom - sectionViewportY - 18);
         sectionScroll = Math.max(0, Math.min(sectionScroll, sectionMaxScroll));
 
@@ -3429,6 +3581,18 @@ public class BankOwnerPcScreen extends Screen {
         createShopWindowOpen = true;
     }
 
+    private int utilityToolbarButtonWidth(int frameWidth) {
+        return Math.max(58, Math.min(90, (Math.max(140, frameWidth) - 36) / 2));
+    }
+
+    private int utilityToolbarGap(int frameWidth) {
+        return frameWidth < 420 ? 4 : 8;
+    }
+
+    private boolean useStackedPaintControls(int width, int height) {
+        return width < 420 || height < 220;
+    }
+
     private void initUtilityWindowWidgets() {
         if (activeUtilityApp == null) {
             activeUtilityApp = UtilityApp.CALCULATOR;
@@ -3445,12 +3609,12 @@ public class BankOwnerPcScreen extends Screen {
         utilityFrameBottom = bottom;
         utilityContentX = left + 12;
         utilityContentY = top + 38;
-        utilityContentW = Math.max(180, right - left - 24);
+        utilityContentW = Math.max(80, right - left - 24);
         utilityContentH = Math.max(120, bottom - utilityContentY - 10);
 
         int toolbarY = top + 4;
-        int toolbarButtonWidth = 90;
-        int toolbarGap = 8;
+        int toolbarButtonWidth = utilityToolbarButtonWidth(Math.max(1, right - left));
+        int toolbarGap = utilityToolbarGap(Math.max(1, right - left));
         int minimizeX = right - 8 - toolbarButtonWidth;
         int closeX = minimizeX - toolbarGap - toolbarButtonWidth;
 
@@ -3499,7 +3663,7 @@ public class BankOwnerPcScreen extends Screen {
 
     private void initCalculatorWidgets() {
         int gap = 6;
-        int gridW = Math.min(360, utilityContentW - 16);
+        int gridW = Math.max(80, Math.min(360, utilityContentW - 16));
         int gridX = utilityContentX + Math.max(0, (utilityContentW - gridW) / 2);
         int gridY = utilityContentY + 46;
         int buttonW = (gridW - (gap * 3)) / 4;
@@ -3530,9 +3694,9 @@ public class BankOwnerPcScreen extends Screen {
     private void initNotepadWidgets() {
         int controlsY = utilityContentY + 4;
         int gap = 6;
-        int availableW = Math.max(120, utilityContentW - 8);
-        int columns = availableW >= 540 ? 5 : availableW >= 400 ? 3 : 2;
-        int btnW = Math.max(70, (availableW - (gap * (columns - 1))) / columns);
+        int availableW = Math.max(80, utilityContentW - 8);
+        int columns = availableW >= 540 ? 5 : availableW >= 400 ? 3 : availableW >= 220 ? 2 : 1;
+        int btnW = Math.max(48, (availableW - (gap * (columns - 1))) / columns);
         int btnH = 22;
 
         String[] labels = {"Copy All", "Paste", "Timestamp", "Save", "Clear"};
@@ -3558,11 +3722,11 @@ public class BankOwnerPcScreen extends Screen {
         notepadAreaX = utilityContentX + 4;
         int controlRows = (labels.length + columns - 1) / columns;
         notepadAreaY = controlsY + (controlRows * (btnH + gap));
-        notepadAreaW = Math.max(120, utilityContentW - 8);
+        notepadAreaW = Math.max(80, utilityContentW - 8);
         notepadAreaH = Math.max(64, (utilityContentY + utilityContentH) - notepadAreaY - 4);
 
         if (notepadSaveModalOpen) {
-            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalW = Math.min(340, Math.max(120, utilityContentW - 24));
             int modalH = 108;
             int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
             int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
@@ -3589,7 +3753,7 @@ public class BankOwnerPcScreen extends Screen {
     private void initFileExplorerWidgets() {
         int panelX = utilityContentX + 4;
         int panelY = utilityContentY + 4;
-        int panelW = Math.max(140, utilityContentW - 8);
+        int panelW = Math.max(80, utilityContentW - 8);
         int gap = 6;
 
         DesktopEditBox fileNameInput = addFormInput(
@@ -3671,43 +3835,91 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void initPaintWidgets() {
-        int sideW = Math.min(166, Math.max(132, utilityContentW / 4));
-        int sideX = utilityContentX + utilityContentW - sideW;
-        int y = utilityContentY + 4;
-        int labelW = sideW - 8;
         int gap = 4;
         int rowStep = 26;
-        int paletteRows = (paintPalette.length + 1) / 2;
-        int controlsContentHeight = (rowStep * 5) + 30 + (paletteRows * rowStep);
-
-        paintControlsX = sideX + 4;
-        paintControlsY = utilityContentY + 4;
-        paintControlsW = labelW;
-        paintControlsH = Math.max(40, utilityContentH - 8);
-        paintControlsMaxScroll = Math.max(0, controlsContentHeight - paintControlsH);
+        int rowH = 22;
+        boolean stackedControls = useStackedPaintControls(utilityContentW, utilityContentH);
+        int controlColumns = stackedControls
+                ? (utilityContentW >= 330 ? 3 : utilityContentW >= 230 ? 2 : 1)
+                : 2;
+        int actionCount = 5 + paintPalette.length;
+        int controlsContentHeight;
+        int controlButtonW;
+        if (stackedControls) {
+            paintControlsX = utilityContentX + 4;
+            paintControlsY = utilityContentY + 4;
+            paintControlsW = Math.max(80, utilityContentW - 8);
+            paintControlsH = Math.min(
+                    Math.max(54, utilityContentH / 3),
+                    Math.max(54, utilityContentH - 86)
+            );
+            controlButtonW = Math.max(56, (paintControlsW - (gap * (controlColumns - 1))) / controlColumns);
+            int controlRows = (actionCount + controlColumns - 1) / controlColumns;
+            controlsContentHeight = (controlRows * rowStep) + 2;
+        } else {
+            int sideW = Math.min(166, Math.max(132, utilityContentW / 4));
+            int sideX = utilityContentX + utilityContentW - sideW;
+            int labelW = sideW - 8;
+            int paletteRows = (paintPalette.length + 1) / 2;
+            paintControlsX = sideX + 4;
+            paintControlsY = utilityContentY + 4;
+            paintControlsW = labelW;
+            paintControlsH = Math.max(40, utilityContentH - 8);
+            controlButtonW = Math.max(40, (labelW - gap) / 2);
+            controlsContentHeight = (rowStep * 5) + 30 + (paletteRows * rowStep);
+        }
+        paintControlsMaxScroll = pixelScrollMax(controlsContentHeight, paintControlsH);
         paintControlsScroll = Math.max(0, Math.min(paintControlsScroll, paintControlsMaxScroll));
 
         if (!paintSaveModalOpen) {
-            addPaintControlButton(sideX + 4, 0, labelW, 22, "Save Canvas", btn -> onPaintSavePressed()).setLabelOffset(4, 1);
-            addPaintControlButton(sideX + 4, rowStep, labelW, 22, "Brush -", btn -> paintBrushSize = Math.max(1, paintBrushSize - 1)).setLabelOffset(4, 1);
-            addPaintControlButton(sideX + 4, rowStep * 2, labelW, 22, "Brush +", btn -> paintBrushSize = Math.min(8, paintBrushSize + 1)).setLabelOffset(4, 1);
-            addPaintControlButton(sideX + 4, rowStep * 3, labelW, 22, "Eraser", btn -> paintSelectedColor = 0xFFFFFFFF).setLabelOffset(4, 1);
-            addPaintControlButton(sideX + 4, rowStep * 4, labelW, 22, "Clear Canvas", btn -> Arrays.fill(paintPixels, 0xFFFFFFFF)).setLabelOffset(4, 1);
+            if (stackedControls) {
+                String[] actionLabels = {"Save Canvas", "Brush -", "Brush +", "Eraser", "Clear Canvas"};
+                for (int i = 0; i < actionLabels.length; i++) {
+                    int index = i;
+                    int col = index % controlColumns;
+                    int row = index / controlColumns;
+                    int bx = paintControlsX + (col * (controlButtonW + gap));
+                    int by = row * rowStep;
+                    addPaintControlButton(bx, by, controlButtonW, rowH, actionLabels[i], btn -> {
+                        switch (index) {
+                            case 0 -> onPaintSavePressed();
+                            case 1 -> paintBrushSize = Math.max(1, paintBrushSize - 1);
+                            case 2 -> paintBrushSize = Math.min(8, paintBrushSize + 1);
+                            case 3 -> paintSelectedColor = 0xFFFFFFFF;
+                            default -> Arrays.fill(paintPixels, 0xFFFFFFFF);
+                        }
+                    }).setLabelOffset(4, 1);
+                }
+                for (int i = 0; i < paintPalette.length; i++) {
+                    int index = 5 + i;
+                    int col = index % controlColumns;
+                    int row = index / controlColumns;
+                    int bx = paintControlsX + (col * (controlButtonW + gap));
+                    int by = row * rowStep;
+                    final int color = paintPalette[i];
+                    addPaintControlButton(bx, by, controlButtonW, rowH, paintColorLabel(color), color, btn -> paintSelectedColor = color).setLabelOffset(4, 1);
+                }
+            } else {
+                addPaintControlButton(paintControlsX, 0, paintControlsW, rowH, "Save Canvas", btn -> onPaintSavePressed()).setLabelOffset(4, 1);
+                addPaintControlButton(paintControlsX, rowStep, paintControlsW, rowH, "Brush -", btn -> paintBrushSize = Math.max(1, paintBrushSize - 1)).setLabelOffset(4, 1);
+                addPaintControlButton(paintControlsX, rowStep * 2, paintControlsW, rowH, "Brush +", btn -> paintBrushSize = Math.min(8, paintBrushSize + 1)).setLabelOffset(4, 1);
+                addPaintControlButton(paintControlsX, rowStep * 3, paintControlsW, rowH, "Eraser", btn -> paintSelectedColor = 0xFFFFFFFF).setLabelOffset(4, 1);
+                addPaintControlButton(paintControlsX, rowStep * 4, paintControlsW, rowH, "Clear Canvas", btn -> Arrays.fill(paintPixels, 0xFFFFFFFF)).setLabelOffset(4, 1);
 
-            int paletteStartY = (rowStep * 5) + 30;
-            for (int i = 0; i < paintPalette.length; i++) {
-                int col = i % 2;
-                int row = i / 2;
-                int swW = (labelW - gap) / 2;
-                int swX = sideX + 4 + (col * (swW + gap));
-                int swContentY = paletteStartY + (row * rowStep);
-                final int color = paintPalette[i];
-                addPaintControlButton(swX, swContentY, swW, 22, paintColorLabel(color), color, btn -> paintSelectedColor = color).setLabelOffset(4, 1);
+                int paletteStartY = (rowStep * 5) + 30;
+                for (int i = 0; i < paintPalette.length; i++) {
+                    int col = i % controlColumns;
+                    int row = i / controlColumns;
+                    int swX = paintControlsX + (col * (controlButtonW + gap));
+                    int swContentY = paletteStartY + (row * rowStep);
+                    final int color = paintPalette[i];
+                    addPaintControlButton(swX, swContentY, controlButtonW, rowH, paintColorLabel(color), color, btn -> paintSelectedColor = color).setLabelOffset(4, 1);
+                }
             }
         }
 
         if (paintSaveModalOpen) {
-            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalW = Math.min(340, Math.max(120, utilityContentW - 24));
             int modalH = 108;
             int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
             int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
@@ -3730,7 +3942,7 @@ public class BankOwnerPcScreen extends Screen {
     private void initShopManagerWidgets() {
         int panelX = utilityContentX + 8;
         int panelY = utilityContentY + 8;
-        int panelW = Math.max(140, utilityContentW - 16);
+        int panelW = Math.max(80, utilityContentW - 16);
         int gap = 6;
 
         addFormInput("shop.name", panelX, panelY, panelW, "Shop name");
@@ -3738,7 +3950,7 @@ public class BankOwnerPcScreen extends Screen {
         int y = panelY + 54;
 
         int cols = panelW >= 560 ? 3 : panelW >= 380 ? 2 : 1;
-        int buttonW = Math.max(100, (panelW - (gap * (cols - 1))) / cols);
+        int buttonW = Math.max(64, (panelW - (gap * (cols - 1))) / cols);
         int buttonH = 22;
         String[] labels = {
                 "Create Shop",
@@ -3808,7 +4020,7 @@ public class BankOwnerPcScreen extends Screen {
         if (snapshot != null) {
             // Shop Overview output includes KPI/chart payload; scroll by pixel height in dashboard mode.
             int dashboardContentHeight = getShopDashboardContentHeight(panelW, shopManagerViewportH, Section.OVERVIEW);
-            shopManagerMaxScroll = Math.max(0, dashboardContentHeight - shopManagerViewportH);
+            shopManagerMaxScroll = pixelScrollMax(dashboardContentHeight, shopManagerViewportH);
         } else {
             List<String> lines = getWrappedShopManagerLines(panelW);
             int visible = Math.max(1, (shopManagerViewportH - 8) / LINE_HEIGHT);
@@ -3822,7 +4034,7 @@ public class BankOwnerPcScreen extends Screen {
         formValues.putIfAbsent(ORDER_BOARD_HISTORY_SEARCH_KEY, "");
         int panelX = utilityContentX + 8;
         int panelY = utilityContentY + 8;
-        int panelW = Math.max(140, utilityContentW - 16);
+        int panelW = Math.max(80, utilityContentW - 16);
         int gap = 6;
 
         boolean sideNav = panelW >= 620;
@@ -3902,7 +4114,7 @@ public class BankOwnerPcScreen extends Screen {
         List<OrderBoardCardData> cards = parseOrderBoardCards(raw);
         List<OrderBoardRankRow> ranks = parseOrderBoardRankRows(raw);
         int contentHeight = getOrderBoardCardsContentHeight(orderBoardViewportW, orderBoardViewportH, cards, ranks, summary);
-        orderBoardMaxScroll = Math.max(0, contentHeight - orderBoardViewportH);
+        orderBoardMaxScroll = pixelScrollMax(contentHeight, orderBoardViewportH);
         orderBoardScroll = Math.max(0, Math.min(orderBoardScroll, orderBoardMaxScroll));
         initOrderBoardPageControls(orderBoardViewportX + 8, orderBoardViewportY + 96 - orderBoardScroll, orderBoardViewportW - 16);
     }
@@ -4155,7 +4367,7 @@ public class BankOwnerPcScreen extends Screen {
         webshopViewportH = Math.max(80, (utilityContentY + utilityContentH) - panelTop - 4);
 
         int contentHeight = getWebshopContentHeight(webshopViewportW, webshopViewportH, output);
-        webshopMaxScroll = Math.max(0, contentHeight - webshopViewportH);
+        webshopMaxScroll = pixelScrollMax(contentHeight, webshopViewportH);
         webshopScroll = Math.max(0, Math.min(webshopScroll, webshopMaxScroll));
 
         if (webshopPage == WebshopPage.PRODUCT_DETAIL) {
@@ -4215,18 +4427,22 @@ public class BankOwnerPcScreen extends Screen {
     private void initSystemMonitorWidgets() {
         int topY = utilityContentY + 6;
         if (!systemHideAppsMenuOpen) {
+            int actionW = utilityContentW >= 330 ? Math.max(96, Math.min(160, (utilityContentW - 22) / 2)) : Math.max(80, utilityContentW - 16);
+            int actionGap = utilityContentW >= 330 ? 8 : 4;
+            int hideX = utilityContentW >= 330 ? utilityContentX + 8 + actionW + actionGap : utilityContentX + 8;
+            int hideY = utilityContentW >= 330 ? topY : topY + 26;
             addPcButton(
                     utilityContentX + 8,
                     topY,
-                    160,
+                    actionW,
                     22,
                     "Copy System Info",
                     btn -> copySystemInfoToClipboard()
             ).setLabelOffset(4, 1);
             addPcButton(
-                    utilityContentX + 176,
-                    topY,
-                    132,
+                    hideX,
+                    hideY,
+                    actionW,
                     22,
                     "Hide Apps",
                     btn -> {
@@ -4236,8 +4452,8 @@ public class BankOwnerPcScreen extends Screen {
                     }
             ).setLabelOffset(4, 1);
             int viewportX = utilityContentX + 4;
-            int viewportY = topY + 28;
-            int viewportW = Math.max(120, utilityContentW - 8);
+            int viewportY = topY + (utilityContentW >= 330 ? 28 : 54);
+            int viewportW = Math.max(80, utilityContentW - 8);
             int viewportH = Math.max(1, utilityContentH - (viewportY - utilityContentY) - 4);
             systemMonitorViewportX = viewportX;
             systemMonitorViewportY = viewportY;
@@ -4245,10 +4461,10 @@ public class BankOwnerPcScreen extends Screen {
             systemMonitorViewportH = viewportH;
 
             int metricsCols = viewportW >= 560 ? 2 : 1;
-            int metricsRows = (9 + metricsCols - 1) / metricsCols;
+            int metricsRows = (12 + metricsCols - 1) / metricsCols;
             int metricsBlockHeight = (metricsRows * 46) + (Math.max(0, metricsRows - 1) * 8);
             int contentHeight = metricsBlockHeight + 4;
-            systemMonitorMaxScroll = Math.max(0, contentHeight - viewportH);
+            systemMonitorMaxScroll = pixelScrollMax(contentHeight, viewportH);
             systemMonitorScroll = Math.max(0, Math.min(systemMonitorScroll, systemMonitorMaxScroll));
             return;
         }
@@ -4552,7 +4768,7 @@ public class BankOwnerPcScreen extends Screen {
             initShopSectionWidgets(innerX, y, innerWidth);
             int contentHeight = Math.max(0, sectionControlsBottomY - sectionViewportY + 4);
             int viewportHeight = Math.max(40, sectionViewportH);
-            sectionMaxScroll = Math.max(0, contentHeight - viewportHeight);
+            sectionMaxScroll = pixelScrollMax(contentHeight, viewportHeight);
             return;
         }
 
@@ -4567,7 +4783,7 @@ public class BankOwnerPcScreen extends Screen {
             ).setLabelOffset(4, 1);
             int contentHeight = Math.max(0, sectionControlsBottomY - sectionViewportY + 4);
             int viewportHeight = Math.max(40, sectionViewportH);
-            sectionMaxScroll = Math.max(0, contentHeight - viewportHeight);
+            sectionMaxScroll = pixelScrollMax(contentHeight, viewportHeight);
             return;
         }
 
@@ -5154,7 +5370,7 @@ public class BankOwnerPcScreen extends Screen {
 
         int contentHeight = Math.max(0, sectionControlsBottomY - sectionViewportY + 4);
         int viewportHeight = Math.max(40, sectionViewportH);
-        int newMaxScroll = Math.max(0, contentHeight - viewportHeight);
+        int newMaxScroll = pixelScrollMax(contentHeight, viewportHeight);
         sectionMaxScroll = newMaxScroll;
         if (sectionScroll > sectionMaxScroll) {
             sectionScroll = sectionMaxScroll;
@@ -5167,7 +5383,7 @@ public class BankOwnerPcScreen extends Screen {
         int fullX = sectionViewportX;
         int fullY = sectionViewportY;
         int fullW = sectionViewportW;
-        int contentHeight = getFigmaShopSectionContentHeight(fullW, sectionViewportH);
+        int contentHeight = scrollableContentHeight(getFigmaShopSectionContentHeight(fullW, sectionViewportH), sectionViewportH);
         markSectionControl(fullY + contentHeight - 1, 1);
 
         switch (activeSection) {
@@ -5209,9 +5425,9 @@ public class BankOwnerPcScreen extends Screen {
             }
             case BRANDING -> {
                 boolean wide = fullW >= 840;
-                int panelY = fullY + 94 + 14;
+                int panelY = fullY + shopCheckoutLaneHeight(fullW) + 14;
                 int panelW = wide ? (fullW - (gap * 2)) / 3 : fullW;
-                int panelH = wide ? 206 : 166;
+                int panelH = shopCheckoutPanelHeight(fullW);
                 int testX = wide ? fullX + panelW + gap : fullX;
                 int testY = wide ? panelY : panelY + panelH + gap;
                 int diagX = wide ? fullX + ((panelW + gap) * 2) : fullX;
@@ -5352,6 +5568,7 @@ public class BankOwnerPcScreen extends Screen {
                 }
                 int stripY = fullY + 52;
                 int builderH = fullW >= 760 ? 116 : 148;
+                List<ShopOrderCardData> orders = parseShopOrderCards(ClientOwnerPcData.getActionOutputLines());
                 if (fullW >= 760) {
                     int buttonW = Math.max(120, (fullW - 52) / 3);
                     addSectionPcButton(fullX + 14, stripY, buttonW, 22, "Create order",
@@ -5369,7 +5586,9 @@ public class BankOwnerPcScreen extends Screen {
                     addSectionPcButton(fullX + 12, stripY + 32, Math.max(80, fullW - 24), 22,
                             "Select pallet", btn -> openShopOrderPalletPicker()).setLabelOffset(6, 1);
                 }
-                int colH = fullW >= 900 ? 178 : 132;
+                int colH = fullW >= 900
+                        ? 178
+                        : Math.max(178, Math.max(shopOrderColumnHeight(orders, "OPEN"), shopOrderColumnHeight(orders, "ACTIVE")));
                 int railY = fullY + (fullW >= 900
                         ? builderH + gap + colH + gap
                         : builderH + gap + (colH * 3) + (gap * 3));
@@ -5463,9 +5682,10 @@ public class BankOwnerPcScreen extends Screen {
                     break;
                 }
                 boolean wide = fullW >= 820;
+                int employeeCount = parseShopEmployeeCards(ClientOwnerPcData.getActionOutputLines()).size();
                 int rosterW = wide ? Math.max(340, (fullW * 2) / 3) : fullW;
                 int sideX = wide ? fullX + rosterW + gap : fullX;
-                int sideY = wide ? fullY : fullY + 330;
+                int sideY = wide ? fullY : fullY + compactShopStaffRosterHeight(employeeCount) + gap;
                 int sideW = wide ? fullW - rosterW - gap : fullW;
                 int btnY = sideY + 44;
                 addSectionPcButton(sideX + 14, btnY, Math.max(80, sideW - 28), 22, "Hire Cashier NPC",
@@ -5598,7 +5818,10 @@ public class BankOwnerPcScreen extends Screen {
                 boolean wide = fullW >= 820;
                 int sideW = wide ? Math.max(180, fullW - Math.max(420, (fullW * 2) / 3) - gap) : fullW;
                 int sideX = wide ? fullX + Math.max(420, (fullW * 2) / 3) + gap : fullX;
-                int sideY = wide ? fullY : fullY + 300;
+                int memberCount = filterShopPermissionMemberCards(
+                        parseShopPermissionMemberCards(ClientOwnerPcData.getActionOutputLines())).size();
+                int panelH = wide ? Math.max(270, sectionViewportH - 10) : compactShopPermissionsPanelHeight(memberCount);
+                int sideY = wide ? fullY : fullY + panelH + gap;
                 addSectionFormInput(SHOP_PERMISSIONS_PICK_SEARCH_KEY, fullX + 14, fullY + 48,
                         Math.min(260, Math.max(100, fullW - 28)), "Search players");
                 int roleY = sideY + 108;
@@ -5661,7 +5884,10 @@ public class BankOwnerPcScreen extends Screen {
                 boolean wide = fullW >= 820;
                 int consoleW = wide ? Math.max(240, fullW - Math.max(420, (fullW * 2) / 3) - gap) : fullW;
                 int consoleX = wide ? fullX + Math.max(420, (fullW * 2) / 3) + gap : fullX;
-                int consoleY = wide ? fullY : fullY + 330;
+                List<String> raw = ClientOwnerPcData.getActionOutputLines();
+                int eventCount = buildShopComplianceEvents(parseShopDashboardSnapshot(raw), raw).size();
+                int panelH = wide ? Math.max(270, sectionViewportH - 10) : compactShopCompliancePanelHeight(eventCount);
+                int consoleY = wide ? fullY : fullY + panelH + gap;
                 addSectionFormInput("shop.settings.name", consoleX + 14, consoleY + 112,
                         Math.max(80, consoleW - 28), "Rename shop");
                 addSectionPcButton(consoleX + 14, consoleY + 146, Math.max(80, (consoleW - 38) / 2), 22, "Rename shop",
@@ -5700,7 +5926,7 @@ public class BankOwnerPcScreen extends Screen {
                 int bodyY = fullY + 2 + figmaShopKpiRowHeight(fullW, 4) + gap2;
                 int sideW = wide ? Math.max(250, (fullW - gap2) / 3) : fullW;
                 int sideX = wide ? fullX + fullW - sideW : fullX;
-                int panelH = wide ? Math.max(240, sectionViewportH - (bodyY - fullY) - 8) : 250;
+                int panelH = wide ? Math.max(240, sectionViewportH - (bodyY - fullY) - 8) : compactShopClaimsPanelHeight(fullW);
                 int sideY = wide ? bodyY : bodyY + panelH + gap2;
                 int buttonY = sideY + 52;
                 int cols = sideW >= 290 ? 2 : 1;
@@ -9120,6 +9346,11 @@ public class BankOwnerPcScreen extends Screen {
         closeEntirePcUi();
     }
 
+    private void startSafeAreaClaimToolAndClose() {
+        sendOwnerPcAction("SAFE_AREA_CLAIM_TOOL", "", "", "", "");
+        closeEntirePcUi();
+    }
+
     private void startShopCashierLinkAndClose() {
         sendShopDesktopAction("SHOP_LINK_CASHIER_TERMINAL", "");
         closeEntirePcUi();
@@ -9548,9 +9779,13 @@ public class BankOwnerPcScreen extends Screen {
             guiScale = mc.options.guiScale().get();
         }
         String info = "UBS Commerce Desktop System Info\n"
-                + "Resolution: " + this.width + "x" + this.height + "\n"
+                + "Minecraft GUI Resolution: " + actualGuiWidth + "x" + actualGuiHeight + "\n"
+                + "Framebuffer Resolution: " + actualFramebufferWidth + "x" + actualFramebufferHeight + "\n"
+                + "PC Layout Resolution: " + this.width + "x" + this.height + "\n"
+                + "PC Target Resolution: " + virtualTargetGuiWidth + "x" + virtualTargetGuiHeight + "\n"
                 + "GUI Scale: " + guiScale + "\n"
-                + "PC UI Scale: Native\n"
+                + "Effective GUI Scale: " + effectivePcGuiScale + "\n"
+                + "PC UI Scale: " + (useVirtualScale ? String.format(Locale.ROOT, "%.3f", virtualScaleX) : "Native") + "\n"
                 + "Virtual Scale Active: " + useVirtualScale + "\n"
                 + "Open Bank Windows: " + bankWindowOrder.size() + "\n"
                 + "Open Utility Windows: " + utilityWindowOrder.size() + "\n"
@@ -10271,7 +10506,7 @@ public class BankOwnerPcScreen extends Screen {
                 } else if (shopVaultPlanEditOpen) {
                     contentHeight = getShopVaultPlanEditorContentHeight(contentW, contentH);
                 }
-                int maxScroll = Math.max(0, contentHeight - contentH);
+                int maxScroll = pixelScrollMax(contentHeight, contentH);
                 if (maxScroll > 0) {
                     int previous = outputScroll;
                     int step = OUTPUT_PIXEL_SCROLL_STEP;
@@ -10641,11 +10876,11 @@ public class BankOwnerPcScreen extends Screen {
                             : null;
                     if (snapshot != null) {
                         int contentHeight = getShopDashboardContentHeight(bodyWidth, bodyHeight);
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (shopSettlementPickerOpen && activeSection == Section.LENDING) {
                         int contentHeight = getShopOwnerAccountCardsContentHeight(bodyWidth, bodyHeight, ownerAccounts.size());
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (activeSection == Section.PERMISSIONS) {
                         int contentHeight = getShopPermissionRoleCardsContentHeight(
@@ -10654,17 +10889,17 @@ public class BankOwnerPcScreen extends Screen {
                                 permissionHeaders,
                                 filterShopPermissionMemberCards(permissionMembers)
                         );
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (shopVaultPlanEditOpen && activeSection == Section.LENDING) {
                         int contentHeight = getShopVaultPlanEditorContentHeight(bodyWidth, bodyHeight);
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (activeSection == Section.LIMITS) {
                         int contentHeight = shopStockroomViewOpen
                                 ? getShopStockroomCardsContentHeight(bodyWidth, bodyHeight, stockroomCards.size())
                                 : getShopInventoryCardsContentHeight(bodyWidth, bodyHeight, inventoryCards);
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (activeSection == Section.GOVERNANCE) {
                         int contentHeight = getShopOrderManagerContentHeight(
@@ -10675,19 +10910,19 @@ public class BankOwnerPcScreen extends Screen {
                                 orderPickCards.size(),
                                 orderSummary
                         );
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (!employeeCards.isEmpty()) {
                         int contentHeight = getShopEmployeeCardsContentHeight(bodyWidth, bodyHeight, employeeCards.size());
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (financeSnapshot != null) {
                         int contentHeight = getShopFinanceContentHeight(bodyWidth, bodyHeight);
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else if (vaultSnapshot != null) {
                         int contentHeight = getShopVaultContentHeight(bodyWidth, bodyHeight, vaultSnapshot.counts().size());
-                        maxScroll = Math.max(0, contentHeight - bodyHeight);
+                        maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                         step = OUTPUT_PIXEL_SCROLL_STEP;
                     } else {
                         List<String> lines = getWrappedOutputLines();
@@ -10713,7 +10948,7 @@ public class BankOwnerPcScreen extends Screen {
                         && isOverviewMetricsAction(overviewDetailAction)
                         && data != null) {
                     int contentHeight = getOverviewDashboardContentHeight(bodyWidth, bodyHeight);
-                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                     step = OUTPUT_PIXEL_SCROLL_STEP;
                 } else if (activeSection == Section.OVERVIEW
                         && overviewDetailOpen
@@ -10721,7 +10956,7 @@ public class BankOwnerPcScreen extends Screen {
                         && accountProfileOpen
                         && selectedAccountCard != null) {
                     int contentHeight = getAccountProfileContentHeight(bodyWidth, bodyHeight);
-                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                     step = OUTPUT_PIXEL_SCROLL_STEP;
                 } else if (activeSection == Section.OVERVIEW
                         && overviewDetailOpen
@@ -10738,7 +10973,7 @@ public class BankOwnerPcScreen extends Screen {
                         && (activeSection == Section.LIMITS
                         || (activeSection == Section.LENDING && !lendingMarketOpen))) {
                     int contentHeight = getInputHelpContentHeight(help, bodyWidth, bodyHeight);
-                    maxScroll = Math.max(0, contentHeight - bodyHeight);
+                    maxScroll = pixelScrollMax(contentHeight, bodyHeight);
                     step = OUTPUT_PIXEL_SCROLL_STEP;
                 } else {
                     List<String> wrapped = getWrappedOutputLines();
@@ -10854,7 +11089,7 @@ public class BankOwnerPcScreen extends Screen {
                 int visible = Math.max(1, (bodyHeight - 8) / LINE_HEIGHT);
                 return Math.max(0, lines.size() - visible);
             }
-            return Math.max(0, contentHeight - bodyHeight);
+            return pixelScrollMax(contentHeight, bodyHeight);
         }
         if (activeSection == Section.LENDING && lendingMarketOpen) {
             int listHeight = Math.max(32, bodyHeight - 30);
@@ -10870,7 +11105,7 @@ public class BankOwnerPcScreen extends Screen {
                 && isOverviewMetricsAction(overviewDetailAction)
                 && data != null) {
             int contentHeight = getOverviewDashboardContentHeight(bodyWidth, bodyHeight);
-            return Math.max(0, contentHeight - bodyHeight);
+            return pixelScrollMax(contentHeight, bodyHeight);
         }
         if (activeSection == Section.OVERVIEW
                 && overviewDetailOpen
@@ -10878,7 +11113,7 @@ public class BankOwnerPcScreen extends Screen {
                 && accountProfileOpen
                 && selectedAccountCard != null) {
             int contentHeight = getAccountProfileContentHeight(bodyWidth, bodyHeight);
-            return Math.max(0, contentHeight - bodyHeight);
+            return pixelScrollMax(contentHeight, bodyHeight);
         }
         if (activeSection == Section.OVERVIEW
                 && overviewDetailOpen
@@ -10895,7 +11130,7 @@ public class BankOwnerPcScreen extends Screen {
         if (help != null && (activeSection == Section.LIMITS
                 || (activeSection == Section.LENDING && !lendingMarketOpen))) {
             int contentHeight = getInputHelpContentHeight(help, bodyWidth, bodyHeight);
-            return Math.max(0, contentHeight - bodyHeight);
+            return pixelScrollMax(contentHeight, bodyHeight);
         }
         List<String> wrapped = getWrappedOutputLines();
         int visible = Math.max(1, (outputPanelH - 10) / LINE_HEIGHT);
@@ -12107,22 +12342,10 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void applyForcedGuiScale() {
-        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
-        if (mc == null || mc.options == null || mc.options.guiScale() == null) {
-            return;
-        }
-        Integer current = mc.options.guiScale().get();
-        if (current == null) {
-            return;
-        }
-        if (!forcedGuiScaleActive) {
-            previousGuiScale = current;
-            forcedGuiScaleActive = true;
-        }
-        if (current != 2) {
-            mc.options.guiScale().set(2);
-            mc.resizeDisplay();
-        }
+        // The PC app must follow the player's Minecraft GUI scale. Older builds
+        // forced scale 2 here, which made small-screen layouts diverge from the
+        // rest of the client and cut off responsive panels.
+        restoreForcedGuiScale();
     }
 
     private void restoreForcedGuiScale() {
@@ -12143,14 +12366,9 @@ public class BankOwnerPcScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
         applyForcedGuiScale();
-        if (mc != null && mc.getWindow() != null) {
-            int scaledW = mc.getWindow().getGuiScaledWidth();
-            int scaledH = mc.getWindow().getGuiScaledHeight();
-            if (scaledW > 0 && scaledH > 0 && (this.width != scaledW || this.height != scaledH)) {
-                this.resize(mc, scaledW, scaledH);
-            }
+        if (configureVirtualScale()) {
+            rebuildWidgets();
         }
 
         int localMouseX = (int) toLocalX(mouseX);
@@ -12699,16 +12917,18 @@ public class BankOwnerPcScreen extends Screen {
 
         OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
         boolean dataReady = data != null && activeBankId != null && activeBankId.equals(data.bankId());
-        int appW = Math.max(240, right - left);
+        int appW = Math.max(1, right - left);
         boolean compact = appW < 980;
-        int sidebarW = compact ? 68 : Math.min(230, Math.max(184, appW / 6));
-        int sidebarX = left + 16;
+        int outerInset = ownerPcOuterInset(appW);
+        int sidebarW = ownerPcSidebarWidth(appW, false);
+        int sidebarX = left + outerInset;
         int sidebarY = top + 18;
         int sidebarH = Math.max(120, bottom - top - 36);
-        int contentX = sidebarX + sidebarW + (compact ? 16 : 28);
-        int contentRight = right - 18;
+        int contentX = sidebarX + sidebarW + ownerPcSidebarGap(appW);
+        int contentRight = right - outerInset;
         int headerY = top + 18;
         int headerH = 72;
+        boolean sidebarCard = shouldShowOwnerPcSidebarCard(appW, sidebarW, sidebarH);
 
         graphics.fill(left - 2, top - 2, right + 2, bottom + 2, 0xEE07111F);
         graphics.fill(left, top, right, bottom, 0xFF07111F);
@@ -12716,11 +12936,10 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(left + 1, top + 1, right - 1, top + 2, 0x884A7EA8);
 
         drawModernBankPanel(graphics, sidebarX, sidebarY, sidebarW, sidebarH, 0xFF0B1727, 0xFF1F3D5E);
-        if (compact) {
-            graphics.drawCenteredString(this.font, "UBS", sidebarX + (sidebarW / 2), sidebarY + 28, 0xFFFFFFFF);
-        } else {
-            graphics.drawString(this.font, tr("UBS Bank"), sidebarX + 20, sidebarY + 22, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, tr("Owner PC bank app"), sidebarX + 20, sidebarY + 42, 0xFF9FB8D2, false);
+        int sidebarTextX = sidebarX + ownerPcSidebarInnerPad(sidebarW);
+        graphics.drawString(this.font, fitToWidth(tr("UBS Bank"), sidebarW - (ownerPcSidebarInnerPad(sidebarW) * 2)), sidebarTextX, sidebarY + 22, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Owner PC bank app"), sidebarW - (ownerPcSidebarInnerPad(sidebarW) * 2)), sidebarTextX, sidebarY + 42, 0xFF9FB8D2, false);
+        if (sidebarCard) {
             int cardX = sidebarX + 18;
             int cardY = sidebarY + 92;
             int cardW = sidebarW - 36;
@@ -12792,6 +13011,7 @@ public class BankOwnerPcScreen extends Screen {
         switch (activeSection) {
             case OVERVIEW -> drawModernBankOverview(graphics, data, x, y, width);
             case ACCOUNTS -> drawModernBankAccounts(graphics, data, x, y, width);
+            case SAFE -> drawModernBankSafe(graphics, data, x, y, width);
             case BRANDING -> drawModernBankBranding(graphics, data, x, y, width);
             case LIMITS -> drawModernBankLimits(graphics, data, x, y, width);
             case GOVERNANCE -> drawModernBankGovernance(graphics, data, x, y, width);
@@ -12815,9 +13035,9 @@ public class BankOwnerPcScreen extends Screen {
         int kpiCols = modernBankOverviewKpiColumns(width);
         int kpiW = kpiCols <= 1 ? width : Math.max(120, (width - (gap * (kpiCols - 1))) / kpiCols);
         int kpiH = modernBankOverviewKpiHeight(width);
-        String[] labels = {"Accounts", "Reserve", "Deposits", "Reserve Ratio", "Daily Used", "Federal Rate"};
+        String[] labels = {"Bank Level", "Reserve", "Deposits", "Reserve Ratio", "Daily Used", "Federal Rate"};
         String[] values = {
-                data.accountsCount(),
+                "Level " + data.bankLevel(),
                 "$" + compactCurrency(data.reserve()),
                 "$" + compactCurrency(data.deposits()),
                 data.reserveRatio() + "%",
@@ -12825,7 +13045,7 @@ public class BankOwnerPcScreen extends Screen {
                 data.federalFundsRate() + "%"
         };
         String[] subs = {
-                "Active accounts",
+                "Safe rows " + data.safeRowCapacity(),
                 "Minimum $" + compactCurrency(data.minReserve()),
                 data.accountsCount() + " active accounts",
                 reserve.compareTo(minReserve) < 0 ? "Below requirement" : "Requirement met",
@@ -13042,7 +13262,7 @@ public class BankOwnerPcScreen extends Screen {
                     nodeCardW,
                     nodeCardH,
                     "Bank Level " + node.level() + " | " + stateLine,
-                    "Capacity units: " + Math.max(0, node.capacityUnits()),
+                    "Safe row capacity: " + Math.max(0, node.safeRowCapacity()),
                     bankRoadmapNodeDescription(node, snapshot)
             ));
         }
@@ -13254,7 +13474,7 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         int contentH = (detail.transactions().size() * (rowH + rowGap)) - rowGap;
-        accountHistoryMaxScroll = Math.max(0, contentH - listH);
+        accountHistoryMaxScroll = pixelScrollMax(contentH, listH);
         accountHistoryScroll = Math.max(0, Math.min(accountHistoryScroll, accountHistoryMaxScroll));
         boolean listScissorEnabled = tryEnableScaledScissor(graphics, listX, listY, listX + listW, listY + listH);
         if (listScissorEnabled) {
@@ -13298,11 +13518,239 @@ public class BankOwnerPcScreen extends Screen {
         }
     }
 
+    private void drawModernBankSafe(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
+        int gap = 10;
+        drawModernSafeKpis(graphics, data, x, y, width);
+        int moduleY = y + modernBankSafeKpiBlockHeight(width) + 12;
+        drawModernSafeModuleRail(graphics, x, moduleY, width);
+
+        int mainY = moduleY + modernBankSafeModuleRailHeight() + 12;
+        boolean wide = width >= 820;
+        int sideW = wide ? Math.max(250, (width - gap) * 31 / 100) : width;
+        int mapW = wide ? Math.max(300, width - sideW - gap) : width;
+        int sideX = wide ? x + mapW + gap : x;
+        int mapH = modernBankSafeMapHeight(width);
+        int actionY = wide ? mainY : mainY + mapH + gap;
+        int actionH = 196;
+        int policyY = actionY + actionH + gap;
+
+        drawModernSafeBoxWallMap(graphics, data, x, mainY, mapW, mapH);
+        drawModernSafeActionCenter(graphics, data, sideX, actionY, sideW, actionH);
+        drawModernSafePolicyCard(graphics, data, sideX, policyY, sideW, modernBankSafePolicyHeight());
+
+        int lowerY = wide
+                ? mainY + Math.max(mapH, actionH + gap + modernBankSafePolicyHeight()) + gap
+                : policyY + modernBankSafePolicyHeight() + gap;
+        boolean lowerWide = width >= 760;
+        int areaW = lowerWide ? Math.max(300, (width - gap) / 2) : width;
+        int queueX = lowerWide ? x + areaW + gap : x;
+        int queueY = lowerWide ? lowerY : lowerY + modernBankSafeAreaStatusHeight(width) + gap;
+        int queueW = lowerWide ? width - areaW - gap : width;
+        drawModernSafeAreaStatus(graphics, data, x, lowerY, areaW, modernBankSafeAreaStatusHeight(width));
+        drawModernSafeLockedQueue(graphics, data, queueX, queueY, queueW, modernBankSafeLockedQueueHeight(width));
+
+        drawModernActionFeedback(graphics, x, y + modernBankSafeContentHeight(width), width);
+    }
+
+    private void drawModernSafeKpis(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
+        int cols = modernBankSafeKpiColumns(width);
+        int gap = 10;
+        int cardW = cols <= 1 ? width : Math.max(120, (width - (gap * (cols - 1))) / cols);
+        String[] labels = {"Safe areas", "Row capacity", "Box slots", "Assigned", "Locked overdue"};
+        String[] values = {
+                data.safeAreaCount(),
+                data.safeClaimedRowUnits() + " / " + data.safeRowCapacity(),
+                data.safeFreeBoxes() + " free",
+                data.safeAssignedBoxes() + " assigned",
+                data.safeLockedBoxes()
+        };
+        String[] subs = {
+                "Protected claims",
+                "Claimed row units",
+                data.safeTotalBoxSlots() + " total slots",
+                "Physical doors in use",
+                data.safeEscrowCases() + " escrow cases"
+        };
+        int[] accents = {ORDER_BOARD_CYAN, ORDER_BOARD_VIOLET, 0xFF22C55E, ORDER_BOARD_GOLD, ORDER_BOARD_RED};
+        for (int i = 0; i < labels.length; i++) {
+            int col = i % cols;
+            int row = i / cols;
+            drawModernKpiCard(graphics, x + (col * (cardW + gap)), y + (row * 86), cardW, 76,
+                    labels[i], values[i], subs[i], accents[i]);
+        }
+    }
+
+    private void drawModernSafeModuleRail(GuiGraphics graphics, int x, int y, int width) {
+        drawModernBankPanel(graphics, x, y, width, modernBankSafeModuleRailHeight(), 0xFF0F2035, 0xFF244B73);
+        String[] labels = {"Deposit Boxes", "Access Logs", "Alarms", "Vault Storage"};
+        int chipX = x + 14;
+        int chipY = y + 12;
+        for (int i = 0; i < labels.length; i++) {
+            String label = labels[i];
+            int chipW = Math.max(74, Math.min(136, this.font.width(tr(label)) + 24));
+            if (chipX + chipW > x + width - 14) {
+                break;
+            }
+            boolean active = i == 0;
+            int fill = active ? 0xFF163955 : 0xAA0B1727;
+            int accent = active ? ORDER_BOARD_CYAN : 0xFF7895B4;
+            graphics.fill(chipX, chipY, chipX + chipW, chipY + 22, fill);
+            graphics.fill(chipX, chipY, chipX + chipW, chipY + 1, accent);
+            graphics.drawCenteredString(this.font, fitToWidth(tr(label), chipW - 12), chipX + (chipW / 2), chipY + 7,
+                    active ? 0xFFE7F3FF : 0xFF9FB8D2);
+            chipX += chipW + 8;
+        }
+    }
+
+    private void drawModernSafeBoxWallMap(GuiGraphics graphics,
+                                          OwnerPcBankDataPayload data,
+                                          int x,
+                                          int y,
+                                          int width,
+                                          int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Box Wall Map"), x + 16, y + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Free, assigned, locked, and selected deposit-box doors."), width - 32),
+                x + 16, y + 36, 0xFF9FB8D2, false);
+
+        int totalSlots = Math.max(16, safeParseInt(data.safeTotalBoxSlots()));
+        int slotPreviewCap = width >= 560 ? 80 : width >= 390 ? 48 : 24;
+        int visibleSlots = Math.min(slotPreviewCap, totalSlots);
+        int cols = width >= 560 ? 10 : width >= 390 ? 8 : 4;
+        int rows = Math.max(1, (visibleSlots + cols - 1) / cols);
+        int gridX = x + 18;
+        int gridY = y + 72;
+        int gridW = Math.max(60, width - 36);
+        int cellGap = 4;
+        int cellW = Math.max(18, Math.min(48, (gridW - (cellGap * (cols - 1))) / cols));
+        int cellH = Math.max(18, Math.min(34, (height - 122 - (cellGap * (rows - 1))) / Math.max(1, rows)));
+        List<String> assignments = data.safeBoxAssignments();
+        for (int i = 0; i < visibleSlots; i++) {
+            int col = i % cols;
+            int row = i / cols;
+            int cellX = gridX + (col * (cellW + cellGap));
+            int cellY = gridY + (row * (cellH + cellGap));
+            String status = i < assignments.size() ? safeRowField(splitSafeRow(assignments.get(i)), 6, "ASSIGNED") : "FREE";
+            int border = safeBoxStatusColor(status);
+            int fill = "FREE".equalsIgnoreCase(status) ? 0xFF142A3B : ("LOCKED".equalsIgnoreCase(status) ? 0xFF3A1622 : 0xFF2A2F39);
+            graphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, border);
+            graphics.fill(cellX + 1, cellY + 1, cellX + cellW - 1, cellY + cellH - 1, fill);
+            if ("LOCKED".equalsIgnoreCase(status)) {
+                graphics.fill(cellX + 3, cellY + 3, cellX + cellW - 3, cellY + 5, ORDER_BOARD_RED);
+            } else if (!"FREE".equalsIgnoreCase(status)) {
+                graphics.fill(cellX + 3, cellY + cellH - 5, cellX + cellW - 3, cellY + cellH - 3, ORDER_BOARD_GOLD);
+            }
+        }
+        int legendY = y + height - 34;
+        drawSafeLegendItem(graphics, x + 18, legendY, "Free", 0xFF22C55E);
+        drawSafeLegendItem(graphics, x + 86, legendY, "Assigned", ORDER_BOARD_GOLD);
+        drawSafeLegendItem(graphics, x + 178, legendY, "Locked", ORDER_BOARD_RED);
+        if (safeParseInt(data.safeTotalBoxSlots()) > visibleSlots) {
+            graphics.drawString(this.font, fitToWidth(tr("Showing first " + visibleSlots + " of " + data.safeTotalBoxSlots() + " slots."), width - 290),
+                    x + 270, legendY + 4, 0xFF9FB8D2, false);
+        }
+    }
+
+    private void drawModernSafeActionCenter(GuiGraphics graphics,
+                                            OwnerPcBankDataPayload data,
+                                            int x,
+                                            int y,
+                                            int width,
+                                            int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Action Center"), x + 16, y + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Assign boxes, claim protected safe space, and refresh live capacity."), width - 32),
+                x + 16, y + 36, 0xFF9FB8D2, false);
+        drawModernMiniInfo(graphics, x + 16, y + 60, width - 32,
+                "Account ID for next available deposit box", 0xFFC8DAEC);
+    }
+
+    private void drawModernSafePolicyCard(GuiGraphics graphics,
+                                          OwnerPcBankDataPayload data,
+                                          int x,
+                                          int y,
+                                          int width,
+                                          int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Policy Card"), x + 16, y + 18, 0xFFFFFFFF, false);
+        String mode = safePolicyModeLabel(data.safePolicyMode());
+        graphics.drawString(this.font, fitToWidth(tr(mode + " policy"), width - 32), x + 16, y + 40, 0xFFE7F3FF, false);
+        String amount = "$" + compactCurrency(data.safePolicyAmount());
+        String period = safeTicksLabel(data.safeRentPeriodTicks());
+        String overdue = safeTicksLabel(data.safeOverdueTicks());
+        drawModernMiniInfo(graphics, x + 16, y + 64, width - 32,
+                "Fee/rent: " + amount, 0xFFC8DAEC);
+        drawModernMiniInfo(graphics, x + 16, y + 80, width - 32,
+                "Rent period: " + period + " | Overdue: " + overdue, 0xFF9FB8D2);
+    }
+
+    private void drawModernSafeAreaStatus(GuiGraphics graphics,
+                                          OwnerPcBankDataPayload data,
+                                          int x,
+                                          int y,
+                                          int width,
+                                          int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Safe Area Status"), x + 16, y + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Protected build regions and capacity consumption."), width - 32),
+                x + 16, y + 36, 0xFF9FB8D2, false);
+        int rowY = y + 66;
+        List<String> areas = data.safeAreaSummaries();
+        if (areas.isEmpty()) {
+            graphics.drawString(this.font, tr("No protected safe area has been claimed yet."), x + 16, rowY, 0xFFB7CBE3, false);
+            return;
+        }
+        int visible = Math.min(4, areas.size());
+        for (int i = 0; i < visible; i++) {
+            String[] fields = splitSafeRow(areas.get(i));
+            int currentY = rowY + (i * 30);
+            graphics.fill(x + 16, currentY, x + width - 16, currentY + 24, 0xAA0B1727);
+            graphics.fill(x + 16, currentY, x + 19, currentY + 24, ORDER_BOARD_CYAN);
+            String dim = safeRowField(fields, 0, "dimension");
+            String units = safeRowField(fields, 3, "0");
+            graphics.drawString(this.font, fitToWidth(dim, Math.max(90, width / 3)), x + 28, currentY + 8, 0xFFE7F3FF, false);
+            graphics.drawString(this.font, fitToWidth("Units " + units, 74), x + Math.max(120, width / 3), currentY + 8, 0xFFC8DAEC, false);
+            graphics.drawString(this.font,
+                    fitToWidth(safeRowField(fields, 1, "?") + " -> " + safeRowField(fields, 2, "?"),
+                            Math.max(80, width - Math.max(210, width / 2) - 26)),
+                    x + Math.max(210, width / 2), currentY + 8, 0xFF9FB8D2, false);
+        }
+    }
+
+    private void drawModernSafeLockedQueue(GuiGraphics graphics,
+                                           OwnerPcBankDataPayload data,
+                                           int x,
+                                           int y,
+                                           int width,
+                                           int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Locked Queue"), x + 16, y + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Overdue boxes ready for review and seizure confirmation."), width - 32),
+                x + 16, y + 36, 0xFF9FB8D2, false);
+        List<String> locked = data.safeLockedQueue();
+        int rowY = y + 76;
+        if (locked.isEmpty()) {
+            graphics.drawString(this.font, tr("No locked overdue boxes."), x + 16, rowY, 0xFFB7F3D1, false);
+            return;
+        }
+        int buttonReserve = Math.max(78, width / 5);
+        for (int i = 0; i < Math.min(4, locked.size()); i++) {
+            String[] fields = splitSafeRow(locked.get(i));
+            int currentY = rowY + (i * 31);
+            graphics.fill(x + 16, currentY, x + width - 16, currentY + 25, 0xAA2B1020);
+            graphics.fill(x + 16, currentY, x + 19, currentY + 25, ORDER_BOARD_RED);
+            graphics.drawString(this.font, fitToWidth(safeRowField(fields, 0, "SDB"), Math.max(70, width / 4)),
+                    x + 28, currentY + 8, 0xFFFFDDE5, false);
+            graphics.drawString(this.font, fitToWidth(safeRowField(fields, 1, "Account"), Math.max(80, width - buttonReserve - 128)),
+                    x + Math.max(106, width / 4), currentY + 8, 0xFFE7F3FF, false);
+        }
+    }
+
     private void drawModernBankLimits(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
-        String singleLimit = "";
-        String dailyPlayerLimit = "";
-        String dailyBankLimit = data.dailyCap();
-        String tellerLimit = "";
+        String singleLimit = data.singleLimit();
+        String dailyPlayerLimit = data.dailyPlayerLimit();
+        String dailyBankLimit = data.dailyBankLimit();
+        String tellerLimit = data.tellerLimit();
         String[] labels = {"Single Withdrawal", "Daily Player", "Daily Bank"};
         String[] values = {
                 modernBankLimitValue(singleLimit),
@@ -13903,6 +14351,15 @@ public class BankOwnerPcScreen extends Screen {
                 drawModernFieldLabel(graphics, x, y + 32, "Hour");
                 drawModernFieldLabel(graphics, x + quarter + gap, y + 32, "Minute");
             }
+            case SAFE_POLICY -> {
+                int half = Math.max(80, (width - gap) / 2);
+                drawModernFieldLabel(graphics, x, y - 12, "Pricing mode");
+                drawModernFieldLabel(graphics, x, y + 40, "Amount");
+                drawModernFieldLabel(graphics, x + half + gap, y + 40, "Rent period");
+                drawModernFieldLabel(graphics, x, y + 84, "Overdue period");
+            }
+            case SAFE_SEIZE_CONFIRM -> {
+            }
             case NONE -> {
             }
         }
@@ -13913,6 +14370,44 @@ public class BankOwnerPcScreen extends Screen {
                                                     int modalX,
                                                     int modalY,
                                                     int modalW) {
+        if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal) == BankActionModal.SAFE_POLICY) {
+            int x = modalX + 16;
+            int y = modalY + 206;
+            int width = Math.max(80, modalW - 32);
+            String mode = safePolicyModeLabel(formValues.getOrDefault("safe.policy.mode", "FREE"));
+            String period = safeTicksLabel(formValues.getOrDefault("safe.policy.period", "12096000"));
+            String overdue = safeTicksLabel(formValues.getOrDefault("safe.policy.overdue", "5184000"));
+            graphics.fill(x, y, x + width, y + 42, 0x662B1020);
+            graphics.fill(x, y, x + width, y + 1, ORDER_BOARD_GOLD);
+            graphics.fill(x, y, x + 3, y + 42, ORDER_BOARD_GOLD);
+            graphics.drawString(this.font, fitToWidth(tr("Preview: " + mode + " | period " + period + " | overdue " + overdue), width - 26),
+                    x + 14, y + 14, 0xFFFFF3C4, false);
+            return;
+        }
+        if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal) == BankActionModal.SAFE_SEIZE_CONFIRM) {
+            int x = modalX + 16;
+            int y = modalY + 82;
+            int width = Math.max(80, modalW - 32);
+            String box = formValues.getOrDefault("safe.seize.box", "selected box");
+            String account = formValues.getOrDefault("safe.seize.account", "");
+            graphics.fill(x, y, x + width, y + 92, 0x992B1020);
+            graphics.fill(x, y, x + width, y + 1, ORDER_BOARD_RED);
+            graphics.fill(x, y, x + 3, y + 92, ORDER_BOARD_RED);
+            graphics.drawString(this.font, fitToWidth(tr("Seize " + box + "?"), width - 26), x + 14, y + 16, 0xFFFFDDE5, false);
+            graphics.drawString(this.font, fitToWidth(tr("Account: " + (account.isBlank() ? "unknown" : account)), width - 26),
+                    x + 14, y + 34, 0xFFE7F3FF, false);
+            List<String> lines = wrapLines(List.of("Contents move into bank escrow. This action is only valid for locked overdue boxes."),
+                    Math.max(80, width - 26));
+            int lineY = y + 56;
+            for (String line : lines) {
+                if (lineY > y + 76) {
+                    break;
+                }
+                graphics.drawString(this.font, fitToWidth(tr(line), width - 26), x + 14, lineY, 0xFFB7CBE3, false);
+                lineY += LINE_HEIGHT;
+            }
+            return;
+        }
         if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal) == BankActionModal.ACCOUNT_TEMP_LIMIT) {
             int x = modalX + 16;
             int y = modalY + 162;
@@ -13996,6 +14491,8 @@ public class BankOwnerPcScreen extends Screen {
             case COMPLIANCE_APPEAL -> 0xFFE1A84E;
             case ACCOUNT_FREEZE -> ORDER_BOARD_RED;
             case ACCOUNT_TEMP_LIMIT -> ORDER_BOARD_GOLD;
+            case SAFE_POLICY -> ORDER_BOARD_GOLD;
+            case SAFE_SEIZE_CONFIRM -> ORDER_BOARD_RED;
             case NONE -> ORDER_BOARD_CYAN;
         };
     }
@@ -14016,6 +14513,8 @@ public class BankOwnerPcScreen extends Screen {
             case COMPLIANCE_APPEAL -> "Submit Compliance Appeal";
             case ACCOUNT_FREEZE -> "Freeze Account";
             case ACCOUNT_TEMP_LIMIT -> "Temporary Withdrawal Limit";
+            case SAFE_POLICY -> "Safety Box Pricing";
+            case SAFE_SEIZE_CONFIRM -> "Confirm Seizure";
             case NONE -> "";
         };
     }
@@ -14036,6 +14535,8 @@ public class BankOwnerPcScreen extends Screen {
             case COMPLIANCE_APPEAL -> "Explain the change you made before requesting review.";
             case ACCOUNT_FREEZE -> "Frozen accounts cannot send or receive money until a bank owner unlocks them.";
             case ACCOUNT_TEMP_LIMIT -> "Set a customer-specific withdrawal cap that expires automatically.";
+            case SAFE_POLICY -> "Choose free, one-time, or recurring rent for assigned boxes.";
+            case SAFE_SEIZE_CONFIRM -> "Destructive action for locked overdue boxes only.";
             case NONE -> "";
         };
     }
@@ -14246,11 +14747,11 @@ public class BankOwnerPcScreen extends Screen {
             case "credit" -> "Credit score or default signal for the selected account." + suffix;
             case "open offers" -> "Interbank offers currently visible to this bank." + suffix;
             case "certificates" -> "Certificate schedule rows currently tracked for this bank." + suffix;
-            case "safe areas" -> "Claimed protected regions reported for this bank." + suffix;
+            case "safe areas" -> "Protected bank safe regions claimed for this bank." + suffix;
             case "row capacity" -> "Tier-derived row-unit capacity compared with protected area usage." + suffix;
-            case "box slots" -> "Capacity slots discovered in loaded claimed areas." + suffix;
-            case "assigned" -> "Assigned capacity slots currently tied to customer accounts." + suffix;
-            case "locked overdue" -> "Assigned entries currently locked by overdue status." + suffix;
+            case "box slots" -> "Safety deposit box doors discovered in loaded claimed areas." + suffix;
+            case "assigned" -> "Safety deposit box doors assigned to customer accounts." + suffix;
+            case "locked overdue" -> "Assigned safety boxes currently locked for overdue rent." + suffix;
             default -> (subtext == null || subtext.isBlank()
                     ? "Bank metric used by this panel."
                     : subtext) + suffix;
@@ -14318,6 +14819,56 @@ public class BankOwnerPcScreen extends Screen {
         graphics.drawString(this.font, fitToWidth(tr(text), width), x, y, color, false);
     }
 
+    private void drawSafeLegendItem(GuiGraphics graphics, int x, int y, String label, int color) {
+        graphics.fill(x, y + 3, x + 10, y + 13, color);
+        graphics.fill(x + 1, y + 4, x + 9, y + 12, 0xFF102238);
+        graphics.drawString(this.font, tr(label), x + 14, y + 4, 0xFFC8DAEC, false);
+    }
+
+    private int safeBoxStatusColor(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "LOCKED" -> ORDER_BOARD_RED;
+            case "ASSIGNED" -> ORDER_BOARD_GOLD;
+            default -> 0xFF22C55E;
+        };
+    }
+
+    private String safePolicyModeLabel(String mode) {
+        String normalized = mode == null ? "FREE" : mode.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "ONE_TIME" -> "One-time";
+            case "RECURRING" -> "Recurring rent";
+            default -> "Free";
+        };
+    }
+
+    private String safeTicksLabel(String rawTicks) {
+        long ticks = safeParseLong(rawTicks);
+        if (ticks <= 0L) {
+            return "not set";
+        }
+        long dayTicks = 24L * 60L * 60L * 20L;
+        long days = ticks / dayTicks;
+        if (days > 0L) {
+            return days + " day" + (days == 1L ? "" : "s");
+        }
+        long hours = Math.max(1L, ticks / (60L * 60L * 20L));
+        return hours + " hour" + (hours == 1L ? "" : "s");
+    }
+
+    private String[] splitSafeRow(String row) {
+        return row == null ? new String[0] : row.split("\\|", -1);
+    }
+
+    private String safeRowField(String[] fields, int index, String fallback) {
+        if (fields == null || index < 0 || index >= fields.length) {
+            return fallback == null ? "" : fallback;
+        }
+        String value = fields[index];
+        return value == null || value.isBlank() ? (fallback == null ? "" : fallback) : value;
+    }
+
     private String bankSectionLabel(Section section) {
         if (section == null) {
             return "Overview";
@@ -14325,7 +14876,7 @@ public class BankOwnerPcScreen extends Screen {
         return switch (section) {
             case OVERVIEW -> "Overview";
             case ACCOUNTS -> "Accounts";
-            case SAFE -> "Claiming";
+            case SAFE -> "Safe";
             case BRANDING -> "Branding";
             case LIMITS -> "Limits";
             case GOVERNANCE -> "Governance";
@@ -14341,7 +14892,7 @@ public class BankOwnerPcScreen extends Screen {
     private String bankSectionTitle(Section section) {
         return switch (section) {
             case ACCOUNTS -> "Accounts";
-            case SAFE -> "Claiming";
+            case SAFE -> "Safe operations";
             case BRANDING -> "Bank branding";
             case LIMITS -> "Withdrawal and card fee limits";
             case GOVERNANCE -> "Roles, shares, and cofounders";
@@ -14355,7 +14906,7 @@ public class BankOwnerPcScreen extends Screen {
     private String bankSectionSubtitle(Section section) {
         return switch (section) {
             case ACCOUNTS -> "Customer account directory and selected profile.";
-            case SAFE -> "Protected areas and claiming tools.";
+            case SAFE -> "Protected areas, safety deposit boxes, rent policy, and locked-box review.";
             case BRANDING -> "Public identity, color, and motto.";
             case LIMITS -> "Permanent controls are cards; editing happens in modals.";
             case GOVERNANCE -> "Separate role management from read-only ownership reporting.";
@@ -14372,11 +14923,111 @@ public class BankOwnerPcScreen extends Screen {
         return (rows * 66) + (Math.max(0, rows - 1) * 10);
     }
 
+    private int modernBankSafeKpiColumns(int width) {
+        return width >= 1040 ? 5 : width >= 760 ? 3 : width >= 430 ? 2 : 1;
+    }
+
+    private int modernBankSafeKpiBlockHeight(int width) {
+        int cols = modernBankSafeKpiColumns(width);
+        int rows = (5 + cols - 1) / cols;
+        return (rows * 76) + (Math.max(0, rows - 1) * 10);
+    }
+
+    private int modernBankSafeModuleRailHeight() {
+        return 46;
+    }
+
+    private int modernBankSafeMapHeight(int width) {
+        return width >= 820 ? 318 : 300;
+    }
+
+    private int modernBankSafePolicyHeight() {
+        return 140;
+    }
+
+    private int modernBankSafeAreaStatusHeight(int width) {
+        return width >= 430 ? 210 : 236;
+    }
+
+    private int modernBankSafeLockedQueueHeight(int width) {
+        return width >= 430 ? 210 : 236;
+    }
+
+    private int modernBankSafeContentHeight(int width) {
+        int gap = 10;
+        int kpis = modernBankSafeKpiBlockHeight(width);
+        int mainY = kpis + 12 + modernBankSafeModuleRailHeight() + 12;
+        boolean wide = width >= 820;
+        int sideStack = 196 + gap + modernBankSafePolicyHeight();
+        int main = wide
+                ? Math.max(modernBankSafeMapHeight(width), sideStack)
+                : modernBankSafeMapHeight(width) + gap + sideStack;
+        boolean lowerWide = width >= 760;
+        int lower = lowerWide
+                ? Math.max(modernBankSafeAreaStatusHeight(width), modernBankSafeLockedQueueHeight(width))
+                : modernBankSafeAreaStatusHeight(width) + gap + modernBankSafeLockedQueueHeight(width);
+        return mainY + main + gap + lower + 20;
+    }
+
     private int toolbarButtonWForRender(int headerContentW, boolean compact) {
         if (!compact) {
             return 86;
         }
         return Math.max(36, Math.min(70, (Math.max(1, headerContentW) - 38) / 3));
+    }
+
+    private int ownerPcSidebarWidth(int appWidth, boolean shopApp) {
+        int safeWidth = Math.max(1, appWidth);
+        if (safeWidth < 360) {
+            return Math.max(88, Math.min(shopApp ? 116 : 108, Math.max(1, safeWidth / 3)));
+        }
+        if (safeWidth < 520) {
+            return Math.max(112, Math.min(shopApp ? 148 : 140, safeWidth / 3));
+        }
+        if (safeWidth < 760) {
+            return Math.max(142, Math.min(shopApp ? 178 : 168, safeWidth / 4));
+        }
+        int preferred = shopApp ? 220 : 210;
+        int max = shopApp ? 250 : 240;
+        return Math.min(max, Math.max(preferred, safeWidth / 5));
+    }
+
+    private int ownerPcSidebarGap(int appWidth) {
+        return appWidth < 420 ? 6 : (appWidth < 640 ? 10 : (appWidth < 980 ? 16 : 24));
+    }
+
+    private int ownerPcOuterInset(int appWidth) {
+        return appWidth < 420 ? 8 : (appWidth < 520 ? 10 : 16);
+    }
+
+    private int ownerPcSidebarInnerPad(int sidebarWidth) {
+        return sidebarWidth < 120 ? 6 : (sidebarWidth < 150 ? 8 : 14);
+    }
+
+    private boolean shouldShowOwnerPcSidebarCard(int appWidth, int sidebarWidth, int sidebarHeight) {
+        return appWidth >= 700 && sidebarWidth >= 180 && sidebarHeight >= 270;
+    }
+
+    private int scrollableContentHeight(int contentHeight, int viewportHeight) {
+        int safeContent = Math.max(0, contentHeight);
+        int safeViewport = Math.max(1, viewportHeight);
+        if (safeContent <= safeViewport) {
+            return safeContent;
+        }
+        return safeContent + PANEL_SCROLL_BOTTOM_PADDING;
+    }
+
+    private int pixelScrollMax(int contentHeight, int viewportHeight) {
+        return Math.max(0, scrollableContentHeight(contentHeight, viewportHeight) - Math.max(1, viewportHeight));
+    }
+
+    private int navScrollMax(int contentHeight, int viewportHeight) {
+        int safeContent = Math.max(0, contentHeight);
+        int safeViewport = Math.max(1, viewportHeight);
+        if (safeContent <= safeViewport) {
+            return 0;
+        }
+        return Math.max(0, safeContent + NAV_SCROLL_BOTTOM_PADDING - safeViewport);
     }
 
     private int modernBankOverviewContentHeight(int width) {
@@ -14476,7 +15127,7 @@ public class BankOwnerPcScreen extends Screen {
             case ACCOUNTS -> accountProfileOpen && selectedAccountCard != null
                     ? summaryBlock + (width >= 740 ? 780 : 1030) + feedback
                     : summaryBlock + (width >= 760 ? 350 : 592) + feedback;
-            case SAFE -> 260;
+            case SAFE -> modernBankSafeContentHeight(width) + feedback;
             case BRANDING -> summaryBlock + 230 + feedback;
             case LIMITS -> modernBankLimitsContentHeight(width) + feedback;
             case GOVERNANCE -> modernBankGovernanceContentHeight(width) + feedback;
@@ -14489,17 +15140,19 @@ public class BankOwnerPcScreen extends Screen {
 
     private void drawModernShopWindowFrame(GuiGraphics graphics, int left, int top, int right, int bottom) {
         OwnerPcBankAppSummary app = getActiveShopAppSummary();
-        int appW = Math.max(240, right - left);
+        int appW = Math.max(1, right - left);
         boolean compact = appW < 980;
-        int sidebarW = compact ? 74 : Math.min(230, Math.max(184, appW / 6));
-        int sidebarX = left + 16;
+        int outerInset = ownerPcOuterInset(appW);
+        int sidebarW = ownerPcSidebarWidth(appW, true);
+        int sidebarX = left + outerInset;
         int sidebarY = top + 18;
         int sidebarH = Math.max(120, bottom - top - 36);
-        int contentX = sidebarX + sidebarW + (compact ? 16 : 28);
-        int contentRight = right - 18;
+        int contentX = sidebarX + sidebarW + ownerPcSidebarGap(appW);
+        int contentRight = right - outerInset;
         int headerY = top + 18;
         int headerH = 72;
         int contentW = Math.max(1, contentRight - contentX);
+        boolean sidebarCard = shouldShowOwnerPcSidebarCard(appW, sidebarW, sidebarH);
 
         graphics.fill(left - 2, top - 2, right + 2, bottom + 2, 0xEE06111D);
         graphics.fill(left, top, right, bottom, 0xFF07111F);
@@ -14507,12 +15160,11 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(left + 1, top + 1, right - 1, top + 2, 0x884A7EA8);
 
         drawModernBankPanel(graphics, sidebarX, sidebarY, sidebarW, sidebarH, 0xFF0B1727, 0xFF1F3D5E);
-        if (compact) {
-            graphics.drawCenteredString(this.font, "UBS", sidebarX + (sidebarW / 2), sidebarY + 22, 0xFFFFFFFF);
-            graphics.drawCenteredString(this.font, "Shop", sidebarX + (sidebarW / 2), sidebarY + 36, 0xFF9FB8D2);
-        } else {
-            graphics.drawString(this.font, tr("UBS Shop"), sidebarX + 20, sidebarY + 22, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, tr("Owner PC shop app"), sidebarX + 20, sidebarY + 42, 0xFF9FB8D2, false);
+        int sidebarTextX = sidebarX + ownerPcSidebarInnerPad(sidebarW);
+        int sidebarTextW = sidebarW - (ownerPcSidebarInnerPad(sidebarW) * 2);
+        graphics.drawString(this.font, fitToWidth(tr("UBS Shop"), sidebarTextW), sidebarTextX, sidebarY + 22, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Owner PC shop app"), sidebarTextW), sidebarTextX, sidebarY + 42, 0xFF9FB8D2, false);
+        if (sidebarCard) {
             int cardX = sidebarX + 18;
             int cardY = sidebarY + 92;
             int cardW = sidebarW - 36;
@@ -14627,7 +15279,7 @@ public class BankOwnerPcScreen extends Screen {
         if (width <= 0 || height <= 0) {
             return;
         }
-        int contentHeight = Math.max(height, getFigmaShopSectionContentHeight(width, height));
+        int contentHeight = scrollableContentHeight(Math.max(height, getFigmaShopSectionContentHeight(width, height)), height);
         sectionMaxScroll = Math.max(0, contentHeight - height);
         sectionScroll = Math.max(0, Math.min(sectionScroll, sectionMaxScroll));
         int canvasY = y - sectionScroll;
@@ -14660,13 +15312,12 @@ public class BankOwnerPcScreen extends Screen {
         boolean narrow = width < 700;
         int base = switch (activeSection) {
             case OVERVIEW -> shopLevelRoadmapOpen ? (width < 900 ? 700 : 500) : (width < 900 ? 1420 : 820);
-            case BRANDING -> narrow ? 820 : 410;
+            case BRANDING -> Math.max(narrow ? 820 : 410, shopCheckoutContentHeight(width));
             case LIMITS -> narrow ? 1480 : 1060;
-            case GOVERNANCE -> narrow ? 1200 : 630;
+            case GOVERNANCE -> Math.max(narrow ? 1200 : 630, shopOrdersContentHeight(width));
             case STAFFING -> {
                 int employeeRows = parseShopEmployeeCards(ClientOwnerPcData.getActionOutputLines()).size();
-                int rosterNeed = 82 + (Math.max(1, employeeRows) * 58);
-                yield Math.max(narrow ? 720 : 390, rosterNeed + (narrow ? 280 : 24));
+                yield Math.max(narrow ? 720 : 390, shopStaffContentHeight(width, employeeRows));
             }
             case LENDING -> width < 560 ? 1120 : (narrow ? 860 : 520);
             case BUSINESS -> getShopBusinessPanelContentHeight(
@@ -14677,14 +15328,152 @@ public class BankOwnerPcScreen extends Screen {
             case PERMISSIONS -> {
                 int memberRows = filterShopPermissionMemberCards(
                         parseShopPermissionMemberCards(ClientOwnerPcData.getActionOutputLines())).size();
-                int matrixNeed = 120 + (Math.max(1, memberRows) * 38);
-                yield Math.max(narrow ? 650 : 410, matrixNeed + (narrow ? 360 : 36));
+                yield Math.max(narrow ? 650 : 410, shopPermissionsContentHeight(width, memberRows));
             }
-            case COMPLIANCE -> narrow ? 650 : 390;
-            case ACCOUNTS -> narrow ? 820 : 470;
-            case SAFE -> narrow ? 820 : 470;
+            case COMPLIANCE -> {
+                List<String> raw = ClientOwnerPcData.getActionOutputLines();
+                int eventRows = buildShopComplianceEvents(parseShopDashboardSnapshot(raw), raw).size();
+                yield Math.max(narrow ? 650 : 390, shopComplianceContentHeight(width, eventRows));
+            }
+            case ACCOUNTS -> Math.max(narrow ? 820 : 470, shopClaimsContentHeight(width, viewportHeight));
+            case SAFE -> Math.max(narrow ? 820 : 470, shopClaimsContentHeight(width, viewportHeight));
         };
         return Math.max(viewportHeight, base);
+    }
+
+    private int shopCheckoutLaneHeight(int width) {
+        int nodeCols = width >= 560 ? 4 : width >= 360 ? 2 : 1;
+        int nodeRows = Math.max(1, (4 + nodeCols - 1) / nodeCols);
+        int nodeH = 34;
+        int rowGap = 10;
+        return 42 + (nodeRows * nodeH) + ((nodeRows - 1) * rowGap) + 18;
+    }
+
+    private int shopCheckoutPanelHeight(int width) {
+        return width >= 840 ? 206 : 226;
+    }
+
+    private int shopCheckoutContentHeight(int width) {
+        int gap = 12;
+        int laneH = shopCheckoutLaneHeight(width);
+        int panelH = shopCheckoutPanelHeight(width);
+        if (width >= 840) {
+            return laneH + 14 + panelH + 24;
+        }
+        return laneH + 14 + (panelH * 3) + (gap * 2) + 24;
+    }
+
+    private int compactShopClaimsPanelHeight(int width) {
+        int actionCols = width >= 290 ? 2 : 1;
+        int actionRows = Math.max(1, (7 + actionCols - 1) / actionCols);
+        int actionNeed = 52 + (actionRows * 30) + 8 + 42 + 58 + 14;
+        int workflowNeed = 54 + 192 + 28 + 16;
+        return Math.max(width < 290 ? 392 : 312, Math.max(actionNeed, workflowNeed));
+    }
+
+    private int shopClaimsContentHeight(int width, int viewportHeight) {
+        int kpiH = figmaShopKpiRowHeight(width, 4);
+        int bodyY = 2 + kpiH + 12;
+        if (width >= 850) {
+            return Math.max(viewportHeight, bodyY + 288);
+        }
+        int panelH = compactShopClaimsPanelHeight(width);
+        return bodyY + panelH + 12 + panelH + 24;
+    }
+
+    private int shopOrdersContentHeight(int width) {
+        if (shopOrderPickerOpen) {
+            return (width >= 760 ? 148 : 178) + 12 + 520;
+        }
+        if (shopOrderPalletPickerOpen) {
+            return (width >= 760 ? 116 : 146) + 12 + 520;
+        }
+        if (shopOrderCreateModalOpen) {
+            return 360;
+        }
+        List<ShopOrderCardData> orders = parseShopOrderCards(ClientOwnerPcData.getActionOutputLines());
+        int gap = 12;
+        int builderH = width >= 760 ? 116 : 148;
+        boolean wide = width >= 900;
+        int openH = shopOrderColumnHeight(orders, "OPEN");
+        int activeH = shopOrderColumnHeight(orders, "ACTIVE");
+        int colH = wide ? 178 : Math.max(178, Math.max(openH, activeH));
+        int railH = wide ? 284 : (width < 520 ? 392 : 348);
+        if (wide) {
+            return builderH + gap + colH + gap + railH + 24;
+        }
+        return builderH + gap + (colH * 3) + (gap * 3) + railH + 24;
+    }
+
+    private int shopOrderColumnHeight(List<ShopOrderCardData> orders, String mode) {
+        int matches = countShopOrdersForMode(orders, mode);
+        return Math.max(132, 42 + (Math.max(1, matches) * 44) + 18);
+    }
+
+    private int countShopOrdersForMode(List<ShopOrderCardData> orders, String mode) {
+        int count = 0;
+        for (ShopOrderCardData order : orders == null ? List.<ShopOrderCardData>of() : orders) {
+            if (shopOrderMatchesMode(order, mode)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean shopOrderMatchesMode(ShopOrderCardData order, String mode) {
+        if (order == null) {
+            return false;
+        }
+        String status = order.status() == null ? "" : order.status().toUpperCase(Locale.ROOT);
+        return switch (mode) {
+            case "OPEN" -> status.contains("OPEN") || status.contains("WAIT");
+            case "ACTIVE" -> status.contains("ACTIVE") || status.contains("ACCEPT") || status.contains("FAILED");
+            default -> true;
+        };
+    }
+
+    private int compactShopStaffRosterHeight(int employeeCount) {
+        return Math.max(318, 54 + (Math.max(1, employeeCount) * 58) + 42);
+    }
+
+    private int compactShopStaffMapHeight(int employeeCount) {
+        return Math.max(172, 58 + (Math.max(1, employeeCount) * 25) + 28);
+    }
+
+    private int shopStaffContentHeight(int width, int employeeCount) {
+        if (width >= 820) {
+            int rosterNeed = 82 + (Math.max(1, employeeCount) * 58);
+            return Math.max(390, rosterNeed + 24);
+        }
+        int rosterH = compactShopStaffRosterHeight(employeeCount);
+        int actionPanelH = 166;
+        int mapH = compactShopStaffMapHeight(employeeCount);
+        return rosterH + 12 + actionPanelH + 14 + mapH + 24;
+    }
+
+    private int compactShopPermissionsPanelHeight(int memberCount) {
+        return Math.max(300, 120 + (Math.max(1, memberCount) * 38) + 28);
+    }
+
+    private int shopPermissionsContentHeight(int width, int memberCount) {
+        if (width >= 820) {
+            int matrixNeed = 120 + (Math.max(1, memberCount) * 38);
+            return Math.max(410, matrixNeed + 36);
+        }
+        int panelH = compactShopPermissionsPanelHeight(memberCount);
+        return panelH + 12 + panelH + 24;
+    }
+
+    private int compactShopCompliancePanelHeight(int eventCount) {
+        return Math.max(300, 56 + (Math.max(1, eventCount) * 54) + 24);
+    }
+
+    private int shopComplianceContentHeight(int width, int eventCount) {
+        if (width >= 820) {
+            return Math.max(390, compactShopCompliancePanelHeight(eventCount));
+        }
+        int panelH = compactShopCompliancePanelHeight(eventCount);
+        return panelH + 12 + panelH + 24;
     }
 
     private void drawFigmaShopPanel(GuiGraphics graphics,
@@ -14928,7 +15717,7 @@ public class BankOwnerPcScreen extends Screen {
                 : events;
         int rowH = 20;
         int contentH = Math.max(listH, (safeEvents.size() * rowH) + 4);
-        shopTimelineMaxScroll = Math.max(0, contentH - listH);
+        shopTimelineMaxScroll = pixelScrollMax(contentH, listH);
         shopTimelineScroll = Math.max(0, Math.min(shopTimelineScroll, shopTimelineMaxScroll));
         enableScaledScissor(graphics, listX, listY, listX + listW, listY + listH);
         int rowY = listY + 2 - shopTimelineScroll;
@@ -15061,7 +15850,7 @@ public class BankOwnerPcScreen extends Screen {
         boolean wide = width >= 850;
         int mainW = wide ? Math.max(360, (width * 2) / 3) : width;
         int sideW = wide ? width - mainW - gap : width;
-        int panelH = wide ? Math.max(240, height - (bodyY - y) - 8) : 250;
+        int panelH = wide ? Math.max(240, height - (bodyY - y) - 8) : compactShopClaimsPanelHeight(width);
         drawFigmaShopPanel(graphics, x, bodyY, mainW, panelH, "Claim workflow map",
                 "Claiming controls where checkout, stockroom pulls, and delivery pallets are allowed to operate.", ORDER_BOARD_GREEN);
         int cardX = x + 16;
@@ -15080,12 +15869,10 @@ public class BankOwnerPcScreen extends Screen {
                 "Assigned " + assignedPallets + " of " + palletCap + " pallet slot(s). Open the pallet board, then trace live pallets in-world.",
                 availablePallets > 0 ? ORDER_BOARD_VIOLET : ORDER_BOARD_GOLD);
         int progressY = cardY + 192;
-        if (progressY + 28 < bodyY + panelH) {
-            drawFigmaShopProgress(graphics, cardX, progressY, cardW,
-                    "Claim capacity", claimCap <= 0 ? "0 / 0 blocks" : usedBlocks + " / " + claimCap + " blocks",
-                    claimCap <= 0L ? 0.0F : usedBlocks / (float) Math.max(1L, claimCap),
-                    usedBlocks <= claimCap ? 0xFF22C55E : ORDER_BOARD_RED);
-        }
+        drawFigmaShopProgress(graphics, cardX, progressY, cardW,
+                "Claim capacity", claimCap <= 0 ? "0 / 0 blocks" : usedBlocks + " / " + claimCap + " blocks",
+                claimCap <= 0L ? 0.0F : usedBlocks / (float) Math.max(1L, claimCap),
+                usedBlocks <= claimCap ? 0xFF22C55E : ORDER_BOARD_RED);
 
         int sideX = wide ? x + mainW + gap : x;
         int sideY = wide ? bodyY : bodyY + panelH + gap;
@@ -15095,22 +15882,18 @@ public class BankOwnerPcScreen extends Screen {
         int actionCount = 7;
         int actionRows = Math.max(1, (actionCount + actionCols - 1) / actionCols);
         int routeY = sideY + 52 + (actionRows * 30) + 8;
-        if (routeY + 24 < sideY + panelH) {
-            graphics.drawString(this.font,
-                    fitToWidth("Trace pallet closes the PC and draws an in-world route to a selected or first live delivery pallet.",
-                            sideW - 28),
-                    sideX + 14, routeY, 0xFFBBD2EA, false);
-        }
+        graphics.drawString(this.font,
+                fitToWidth("Trace pallet closes the PC and draws an in-world route to a selected or first live delivery pallet.",
+                        sideW - 28),
+                sideX + 14, routeY, 0xFFBBD2EA, false);
         int noteY = routeY + 42;
-        if (noteY + 58 < sideY + panelH) {
-            graphics.fill(sideX + 14, noteY, sideX + sideW - 14, noteY + 54, 0x6618324E);
-            graphics.fill(sideX + 14, noteY, sideX + 17, noteY + 54, shelves > 0 ? 0xFF22C55E : ORDER_BOARD_GOLD);
-            graphics.drawString(this.font, fitToWidth("What counts as ready", sideW - 38), sideX + 24, noteY + 8, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, fitToWidth("Displays count after they sit inside the claimed shop plot.", sideW - 38),
-                    sideX + 24, noteY + 22, 0xFFBBD2EA, false);
-            graphics.drawString(this.font, fitToWidth("Stockroom chests count only when inside a claimed stockroom.", sideW - 38),
-                    sideX + 24, noteY + 36, 0xFFBBD2EA, false);
-        }
+        graphics.fill(sideX + 14, noteY, sideX + sideW - 14, noteY + 54, 0x6618324E);
+        graphics.fill(sideX + 14, noteY, sideX + 17, noteY + 54, shelves > 0 ? 0xFF22C55E : ORDER_BOARD_GOLD);
+        graphics.drawString(this.font, fitToWidth("What counts as ready", sideW - 38), sideX + 24, noteY + 8, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth("Displays count after they sit inside the claimed shop plot.", sideW - 38),
+                sideX + 24, noteY + 22, 0xFFBBD2EA, false);
+        graphics.drawString(this.font, fitToWidth("Stockroom chests count only when inside a claimed stockroom.", sideW - 38),
+                sideX + 24, noteY + 36, 0xFFBBD2EA, false);
     }
 
     private void drawClaimWorkflowCard(GuiGraphics graphics,
@@ -15140,11 +15923,13 @@ public class BankOwnerPcScreen extends Screen {
                 ? s.settlementAccountLabel()
                 : "-";
         boolean bagsReady = snapshotLoaded && shoppingBags > 0;
-        int laneH = 94;
+        int laneH = shopCheckoutLaneHeight(width);
         drawFigmaShopPanel(graphics, x, y, width, laneH, "Checkout lane map",
                 "Payment must move through cashier, terminal, settlement account, and bag stock.", ORDER_BOARD_CYAN);
         int gap = 12;
-        int nodeW = Math.max(96, (width - 56 - (gap * 3)) / 4);
+        int nodeCols = width >= 560 ? 4 : width >= 360 ? 2 : 1;
+        int nodeW = Math.max(80, (width - 36 - (gap * (nodeCols - 1))) / nodeCols);
+        int nodeH = 34;
         int nodeY = y + 42;
         String[][] nodes = {
                 {"Cashier NPC", cashierLinked ? "linked" : "missing", cashierLinked ? "OK" : "risk"},
@@ -15153,20 +15938,23 @@ public class BankOwnerPcScreen extends Screen {
                 {"Shopping bags", bagsReady ? shoppingBags + " ready" : (snapshotLoaded ? "none" : "unknown"), bagsReady ? "OK" : "risk"}
         };
         for (int i = 0; i < nodes.length; i++) {
-            int nx = x + 18 + (i * (nodeW + gap));
+            int row = i / nodeCols;
+            int col = i % nodeCols;
+            int nx = x + 18 + (col * (nodeW + gap));
+            int ny = nodeY + (row * (nodeH + 10));
             int accent = "OK".equals(nodes[i][2]) ? 0xFF22C55E : ("warn".equals(nodes[i][2]) ? ORDER_BOARD_VIOLET : ORDER_BOARD_RED);
-            drawModernBankPanel(graphics, nx, nodeY, nodeW, 34, 0xFF102238, accent);
-            graphics.drawString(this.font, fitToWidth(nodes[i][0], nodeW - 12), nx + 6, nodeY + 6, 0xFFFFFFFF, false);
-            graphics.drawString(this.font, fitToWidth(nodes[i][1], nodeW - 12), nx + 6, nodeY + 18, accent, false);
-            if (i < nodes.length - 1) {
-                graphics.fill(nx + nodeW + 2, nodeY + 16, nx + nodeW + gap - 2, nodeY + 18, 0x887FB8E8);
+            drawModernBankPanel(graphics, nx, ny, nodeW, nodeH, 0xFF102238, accent);
+            graphics.drawString(this.font, fitToWidth(nodes[i][0], nodeW - 12), nx + 6, ny + 6, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, fitToWidth(nodes[i][1], nodeW - 12), nx + 6, ny + 18, accent, false);
+            if (nodeCols == 4 && i < nodes.length - 1) {
+                graphics.fill(nx + nodeW + 2, ny + 16, nx + nodeW + gap - 2, ny + 18, 0x887FB8E8);
             }
         }
 
         boolean wide = width >= 840;
         int panelY = y + laneH + 14;
         int panelW = wide ? (width - (gap * 2)) / 3 : width;
-        int panelH = wide ? 206 : 166;
+        int panelH = shopCheckoutPanelHeight(width);
         drawFigmaShopPanel(graphics, x, panelY, panelW, panelH, "Lane readiness checklist", "", 0xFF22C55E);
         String[] checks = {
                 (terminalBound ? "[x] " : "[ ] ") + "Checkout terminal is valid",
@@ -15221,10 +16009,8 @@ public class BankOwnerPcScreen extends Screen {
                 : "Hours: unknown";
         graphics.drawString(this.font, fitToWidth("Shopping bags: " + bagEstimate + " | " + hoursText, panelW - 28), testX + 14, testY + 98, 0xFFC8DAEC, false);
         drawFigmaShopPill(graphics, testX + 14, testY + 116, Math.max(80, panelW - 28), checkoutState, checkoutAccent);
-        if (panelH >= 190) {
-            graphics.drawString(this.font, fitToWidth("Use diagnostics when the lane state looks wrong.", panelW - 28),
-                    testX + 14, testY + 146, 0xFF9FB8D2, false);
-        }
+        graphics.drawString(this.font, fitToWidth("Use diagnostics when the lane state looks wrong.", panelW - 28),
+                testX + 14, testY + 146, 0xFF9FB8D2, false);
 
         int diagX = wide ? testX + panelW + gap : x;
         int diagY = wide ? panelY : testY + panelH + gap;
@@ -15256,7 +16042,7 @@ public class BankOwnerPcScreen extends Screen {
             failures.add(new String[]{"No checkout blockers detected", "ok"});
         }
         int fy = diagY + 44;
-        for (int i = 0; i < Math.min(3, failures.size()); i++) {
+        for (int i = 0; i < failures.size(); i++) {
             String failure = failures.get(i)[0];
             String kind = failures.get(i)[1];
             int accent = "ok".equals(kind) ? 0xFF22C55E : ("risk".equals(kind) ? ORDER_BOARD_RED : ORDER_BOARD_GOLD);
@@ -15306,7 +16092,7 @@ public class BankOwnerPcScreen extends Screen {
         shopInventoryMapViewportHitbox = new RectHitbox(gridX, gridY, gridW, gridH);
         int totalRows = shelves.isEmpty() ? 1 : ((shelves.size() + cols - 1) / cols);
         int gridContentH = Math.max(gridH, (totalRows * cellH) + (Math.max(0, totalRows - 1) * 8));
-        shopInventoryMapMaxScroll = Math.max(0, gridContentH - gridH);
+        shopInventoryMapMaxScroll = pixelScrollMax(gridContentH, gridH);
         shopInventoryMapScroll = Math.max(0, Math.min(shopInventoryMapScroll, shopInventoryMapMaxScroll));
         if (!useVirtualScale) {
             enableScaledScissor(graphics, gridX, gridY, gridX + gridW, gridY + gridH);
@@ -15484,7 +16270,7 @@ public class BankOwnerPcScreen extends Screen {
         int rowHeight = 54;
         int rowGap = 6;
         int contentHeight = getShopStockroomCardsContentHeight(width, height, items == null ? 0 : items.size());
-        shopStockroomPanelMaxScroll = Math.max(0, contentHeight - height);
+        shopStockroomPanelMaxScroll = pixelScrollMax(contentHeight, height);
         shopStockroomPanelScroll = Math.max(0, Math.min(shopStockroomPanelScroll, shopStockroomPanelMaxScroll));
         if (items == null || items.isEmpty()) {
             graphics.fill(x, y, x + width, y + Math.min(54, height), 0x6618324E);
@@ -15621,7 +16407,8 @@ public class BankOwnerPcScreen extends Screen {
         int gap = 12;
         int boardY = y + builderH + gap;
         int colW = wide ? (width - (gap * 2)) / 3 : width;
-        int colH = wide ? 178 : 132;
+        int colH = wide ? 178 : Math.max(178,
+                Math.max(shopOrderColumnHeight(orders, "OPEN"), shopOrderColumnHeight(orders, "ACTIVE")));
         drawFigmaShopPanel(graphics, x, boardY, colW, colH, "Order setup summary",
                 "The create modal owns quantity, reward, timeout, and pallet mode.", ORDER_BOARD_GOLD);
         int setupY = boardY + 46;
@@ -15731,15 +16518,10 @@ public class BankOwnerPcScreen extends Screen {
         int rowY = y + 42;
         int drawn = 0;
         for (ShopOrderCardData order : orders == null ? List.<ShopOrderCardData>of() : orders) {
-            String status = order.status() == null ? "" : order.status().toUpperCase(Locale.ROOT);
-            boolean matches = switch (mode) {
-                case "OPEN" -> status.contains("OPEN") || status.contains("WAIT");
-                case "ACTIVE" -> status.contains("ACTIVE") || status.contains("ACCEPT") || status.contains("FAILED");
-                default -> drawn < 1;
-            };
-            if (!matches) {
+            if (!shopOrderMatchesMode(order, mode)) {
                 continue;
             }
+            String status = order.status() == null ? "" : order.status().toUpperCase(Locale.ROOT);
             int rowH = 36;
             if (rowY + rowH > y + height - 10) {
                 break;
@@ -16086,7 +16868,7 @@ public class BankOwnerPcScreen extends Screen {
         int gap = 12;
         int rosterW = wide ? Math.max(340, (width * 2) / 3) : width;
         int sideW = wide ? width - rosterW - gap : width;
-        int rosterH = wide ? Math.max(270, height - 10) : 318;
+        int rosterH = wide ? Math.max(270, height - 10) : compactShopStaffRosterHeight(employees.size());
         drawFigmaShopPanel(graphics, x, y, rosterW, rosterH, "Cashier roster",
                 "Employees become actionable cards with terminal links, positions, and firing/copy-id actions.", ORDER_BOARD_CYAN);
         int rowY = y + 54;
@@ -16098,7 +16880,7 @@ public class BankOwnerPcScreen extends Screen {
         for (int i = 0; i < employees.size(); i++) {
             ShopEmployeeCardData employee = employees.get(i);
             int rowH = 48;
-            if (rowY + rowH > y + rosterH - 14) {
+            if (wide && rowY + rowH > y + rosterH - 14) {
                 break;
             }
             int accent = employee.terminalLabel() == null || employee.terminalLabel().isBlank() ? ORDER_BOARD_GOLD : 0xFF22C55E;
@@ -16130,14 +16912,14 @@ public class BankOwnerPcScreen extends Screen {
                     x + 14, Math.max(y + 58, y + rosterH - 24), 0xFFFFD166, false);
         }
         int sideX = wide ? x + rosterW + gap : x;
-        int sideY = wide ? y : y + 330;
+        int sideY = wide ? y : y + rosterH + gap;
         int actionPanelH = 166;
         drawFigmaShopPanel(graphics, sideX, sideY, sideW, actionPanelH, "Action center",
                 "Hire, scan, and link cashiers. Click a roster card for employee-specific actions.", 0xFF22C55E);
         graphics.drawString(this.font, fitToWidth("Selected employee actions live in the card modal, not raw command output.", sideW - 28),
                 sideX + 14, sideY + 132, 0xFF9FB8D2, false);
         int mapY = sideY + actionPanelH + 14;
-        int mapH = 172;
+        int mapH = wide ? 172 : compactShopStaffMapHeight(employees.size());
         drawFigmaShopPanel(graphics, sideX, mapY, sideW, mapH, "POS floor map",
                 "Read cashier world position and terminal readiness from the latest server scan.", ORDER_BOARD_CYAN);
         int pinY = mapY + 58;
@@ -16145,7 +16927,7 @@ public class BankOwnerPcScreen extends Screen {
             graphics.drawString(this.font, fitToWidth("No scanned cashier positions yet.", sideW - 28),
                     sideX + 14, pinY, 0xFF9FB8D2, false);
         }
-        int visiblePins = Math.min(4, employees.size());
+        int visiblePins = wide ? Math.min(4, employees.size()) : employees.size();
         for (int i = 0; i < visiblePins; i++) {
             ShopEmployeeCardData employee = employees.get(i);
             int row = i;
@@ -16433,7 +17215,7 @@ public class BankOwnerPcScreen extends Screen {
         boolean wide = width >= 820;
         int gap = 12;
         int matrixW = wide ? Math.max(420, (width * 2) / 3) : width;
-        int panelH = wide ? Math.max(270, height - 10) : 300;
+        int panelH = wide ? Math.max(270, height - 10) : compactShopPermissionsPanelHeight(members.size());
         drawFigmaShopPanel(graphics, x, y, matrixW, panelH, "Permission matrix",
                 "Rows are player cards; columns are OWNER, MANAGER, BUILDER, STAFF, and Guest groups.", ORDER_BOARD_CYAN);
         String[] roles = {"Owner", "Manager", "Builder", "Staff", "Guest"};
@@ -16459,7 +17241,7 @@ public class BankOwnerPcScreen extends Screen {
         int drawnMembers = 0;
         for (int r = 0; r < members.size(); r++) {
             ShopPermissionMemberCardData member = members.get(r);
-            if (rowY + 28 > y + panelH - 14) {
+            if (wide && rowY + 28 > y + panelH - 14) {
                 break;
             }
             graphics.fill(tableX, rowY, tableX + tableW, rowY + 28, 0x6618324E);
@@ -16514,10 +17296,10 @@ public class BankOwnerPcScreen extends Screen {
         boolean wide = width >= 820;
         int gap = 12;
         int timelineW = wide ? Math.max(420, (width * 2) / 3) : width;
-        int panelH = wide ? Math.max(270, height - 10) : 300;
+        List<String[]> events = buildShopComplianceEvents(snapshot, rawLines);
+        int panelH = wide ? Math.max(270, height - 10) : compactShopCompliancePanelHeight(events.size());
         drawFigmaShopPanel(graphics, x, y, timelineW, panelH, "Shop audit timeline",
                 "Warnings explain what to fix before changing or deleting shop infrastructure.", ORDER_BOARD_RED);
-        List<String[]> events = buildShopComplianceEvents(snapshot, rawLines);
         int rowY = y + 56;
         for (String[] event : events) {
             int accent = "green".equals(event[3]) ? 0xFF22C55E : "blue".equals(event[3]) ? ORDER_BOARD_CYAN : ORDER_BOARD_RED;
@@ -16899,7 +17681,7 @@ public class BankOwnerPcScreen extends Screen {
                 && data != null) {
             visibleAccountCards.clear();
             int contentHeight = getOverviewDashboardContentHeight(bodyW, bodyH);
-            int maxScroll = Math.max(0, contentHeight - bodyH);
+            int maxScroll = pixelScrollMax(contentHeight, bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawOverviewDashboard(graphics, data, overviewDetailAction, bodyX, bodyY - outputScroll, bodyW, contentHeight);
@@ -16915,7 +17697,7 @@ public class BankOwnerPcScreen extends Screen {
             if ("SHOW_ACCOUNTS".equalsIgnoreCase(overviewDetailAction) && accountProfileOpen && selectedAccountCard != null) {
                 visibleAccountCards.clear();
                 int contentHeight = getAccountProfileContentHeight(bodyW, bodyH);
-                int maxScroll = Math.max(0, contentHeight - bodyH);
+                int maxScroll = pixelScrollMax(contentHeight, bodyH);
                 outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
                 drawAccountProfilePanel(graphics, selectedAccountCard, bodyX, bodyY - outputScroll, bodyW, contentHeight);
                 graphics.disableScissor();
@@ -16937,7 +17719,7 @@ public class BankOwnerPcScreen extends Screen {
         InputHelp help = getFocusedInputHelp();
         if (help != null && activeSection == Section.LIMITS) {
             int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
-            int maxScroll = Math.max(0, contentHeight - bodyH);
+            int maxScroll = pixelScrollMax(contentHeight, bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
@@ -16947,7 +17729,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         if (help != null && activeSection == Section.LENDING && !lendingMarketOpen) {
             int contentHeight = getInputHelpContentHeight(help, bodyW, bodyH);
-            int maxScroll = Math.max(0, contentHeight - bodyH);
+            int maxScroll = pixelScrollMax(contentHeight, bodyH);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             enableScaledScissor(graphics, bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
             drawInputHelpPanel(graphics, help, bodyX, bodyY - outputScroll, bodyW, contentHeight);
@@ -17053,15 +17835,12 @@ public class BankOwnerPcScreen extends Screen {
         ShopBusinessSnapshot snapshot = parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines());
         int contentW = Math.max(1, width - 12);
         int contentH = getShopBusinessPanelContentHeight(snapshot, contentW);
-        int maxScroll = Math.max(0, contentH - height + 12);
+        int maxScroll = pixelScrollMax(contentH, height);
         sectionScroll = Math.max(0, Math.min(sectionScroll, maxScroll));
 
-        graphics.fill(x, y, x + width, y + height, 0xFF071B2C);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xFF0B2841);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 2, 0xFF386B94);
-        graphics.fill(x + 1, y + height - 2, x + width - 1, y + height - 1, 0xFF1D496C);
-        graphics.fill(x + 1, y + 1, x + 2, y + height - 1, 0xFF1D496C);
-        graphics.fill(x + width - 2, y + 1, x + width - 1, y + height - 1, 0xFF1D496C);
+        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, ORDER_BOARD_PANEL);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, ORDER_BOARD_CYAN);
         if (!useVirtualScale) {
             enableScaledScissor(graphics, x + 1, y + 1, x + width - 1, y + height - 1);
         }
@@ -17081,8 +17860,9 @@ public class BankOwnerPcScreen extends Screen {
         int gap = 8;
         int cursorY = y;
 
+        int headerH = getBusinessHeaderHeight(width);
         drawBusinessHeader(graphics, snapshot, x, cursorY, width);
-        cursorY += 64;
+        cursorY += headerH + 8;
 
         drawBusinessMetricRow(graphics, snapshot, x, cursorY, width);
         cursorY += getBusinessMetricRowHeight(width) + 16;
@@ -17184,42 +17964,84 @@ public class BankOwnerPcScreen extends Screen {
     private void drawBusinessHeader(GuiGraphics graphics, ShopBusinessSnapshot snapshot, int x, int y, int width) {
         String type = normalizeBusinessShopType(snapshot.shopType());
         int accent = businessAccentColor(type);
-        graphics.fill(x - 1, y - 1, x + width + 1, y + 57, 0xFF2E5A80);
-        graphics.fill(x, y, x + width, y + 56, 0xEE14334F);
-        graphics.fill(x + 2, y + 2, x + width - 2, y + 4, accent);
-        graphics.fill(x, y + 55, x + width, y + 56, 0xFF2F5F86);
+        int headerH = getBusinessHeaderHeight(width);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + headerH + 1, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x, y, x + width, y + headerH, ORDER_BOARD_CARD);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, accent);
 
-        graphics.drawString(this.font, fitToWidth("Business Type", 120), x + 12, y + 14, 0xFFFFFFFF, false);
         String chipLabel = prettifyShopType(type);
-        int chipW = Math.min(width >= 760 ? 118 : 92, Math.max(72, this.font.width(chipLabel.toUpperCase(Locale.ROOT)) + 16));
-        drawBusinessChip(graphics, x + 148, y + 12, chipW, chipLabel, accent);
-        int subtitleX = x + 160 + chipW;
-        int buttonAreaW = width >= 780 ? 350 : 250;
-        graphics.drawString(this.font,
-                fitToWidth(businessTypeSubtitle(type), Math.max(60, width - (subtitleX - x) - buttonAreaW - 10)),
-                subtitleX,
-                y + 10,
-                0xFFAAC7DE,
-                false);
+        int chipW = Math.min(Math.max(72, width / 3), Math.max(72, this.font.width(chipLabel.toUpperCase(Locale.ROOT)) + 16));
+        if (width >= 620) {
+            graphics.drawString(this.font, fitToWidth("Business Type", 120), x + 12, y + 13, ORDER_BOARD_TEXT, false);
+            drawBusinessChip(graphics, x + 122, y + 11, chipW, chipLabel, accent);
+            int subtitleX = x + 134 + chipW;
+            int buttonAreaW = Math.min(326, Math.max(238, width / 3));
+            graphics.drawString(this.font,
+                    fitToWidth(businessTypeSubtitle(type), Math.max(60, width - (subtitleX - x) - buttonAreaW - 12)),
+                    subtitleX,
+                    y + 13,
+                    ORDER_BOARD_MUTED,
+                    false);
 
-        int buttonW = width >= 780 ? 98 : 76;
+            int buttonW = width >= 780 ? 98 : 82;
+            int buttonH = 24;
+            int buttonY = y + 12;
+            int right = x + width - 12;
+            drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Change type", "CHANGE_TYPE", true, ORDER_BOARD_CYAN);
+            right -= buttonW + 8;
+            drawBusinessButton(graphics,
+                    right - buttonW,
+                    buttonY,
+                    buttonW,
+                    buttonH,
+                    "Pay fees",
+                    "PAY_FEES_MODAL",
+                    snapshot.payableCents() > 0L,
+                    ORDER_BOARD_GOLD,
+                    "No shop-type fees are due right now.");
+            right -= buttonW + 8;
+            drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Refresh", "REFRESH_TYPE", true, ORDER_BOARD_CYAN);
+            return;
+        }
+
+        graphics.drawString(this.font, fitToWidth("Business Type", Math.max(70, width - chipW - 34)), x + 12, y + 11, ORDER_BOARD_TEXT, false);
+        drawBusinessChip(graphics, x + width - chipW - 12, y + 10, chipW, chipLabel, accent);
+        List<String> subtitleLines = wrapLines(List.of(businessTypeSubtitle(type)), Math.max(80, width - 24));
+        int subtitleY = y + 31;
+        for (int i = 0; i < Math.min(2, subtitleLines.size()); i++) {
+            graphics.drawString(this.font, fitToWidth(subtitleLines.get(i), width - 24), x + 12, subtitleY + (i * LINE_HEIGHT), ORDER_BOARD_MUTED, false);
+        }
+
+        String[][] actions = {
+                {"Refresh", "REFRESH_TYPE"},
+                {"Pay fees", "PAY_FEES_MODAL"},
+                {"Change type", "CHANGE_TYPE"}
+        };
+        int cols = width >= 360 ? 2 : 1;
+        int gap = 6;
         int buttonH = 24;
-        int buttonY = y + 11;
-        int right = x + width - 12;
-        drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Change type", "CHANGE_TYPE", true, 0xFF68B7EF);
-        right -= buttonW + 8;
-        drawBusinessButton(graphics,
-                right - buttonW,
-                buttonY,
-                buttonW,
-                buttonH,
-                "Pay fees",
-                "PAY_FEES_MODAL",
-                snapshot.payableCents() > 0L,
-                0xFFE1A84E,
-                "No shop-type fees are due right now.");
-        right -= buttonW + 8;
-        drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Refresh", "REFRESH_TYPE", true, 0xFF6EB9FF);
+        int buttonW = Math.max(86, (width - 24 - (gap * (cols - 1))) / cols);
+        int firstButtonY = y + headerH - ((3 + cols - 1) / cols * (buttonH + gap)) - 4;
+        for (int i = 0; i < actions.length; i++) {
+            int col = i % cols;
+            int row = i / cols;
+            String label = actions[i][0];
+            String action = actions[i][1];
+            boolean enabled = !"PAY_FEES_MODAL".equals(action) || snapshot.payableCents() > 0L;
+            int actionAccent = "PAY_FEES_MODAL".equals(action) ? ORDER_BOARD_GOLD : ORDER_BOARD_CYAN;
+            drawBusinessButton(
+                    graphics,
+                    x + 12 + (col * (buttonW + gap)),
+                    firstButtonY + (row * (buttonH + gap)),
+                    buttonW,
+                    buttonH,
+                    label,
+                    action,
+                    enabled,
+                    actionAccent,
+                    "No shop-type fees are due right now."
+            );
+        }
     }
 
     private void drawBusinessKpiCard(GuiGraphics graphics,
@@ -17232,12 +18054,12 @@ public class BankOwnerPcScreen extends Screen {
                                       String subtitle,
                                       int accent,
                                       String tooltipDescription) {
-        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFF315C82);
-        graphics.fill(x, y, x + width, y + height, 0xDE12304B);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_ROW);
         graphics.fill(x, y, x + 3, y + height, accent);
-        graphics.drawString(this.font, fitToWidth(label, width - 14), x + 10, y + 8, 0xFF9EBAD3, false);
-        graphics.drawString(this.font, fitToWidth(value, width - 14), x + 10, y + 23, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(subtitle, width - 14), x + 10, y + 39, 0xFFAFCBE2, false);
+        graphics.drawString(this.font, fitToWidth(label, width - 14), x + 10, y + 8, ORDER_BOARD_MUTED, false);
+        graphics.drawString(this.font, fitToWidth(value, width - 14), x + 10, y + 23, ORDER_BOARD_TEXT, false);
+        graphics.drawString(this.font, fitToWidth(subtitle, width - 14), x + 10, y + 39, ORDER_BOARD_MUTED, false);
         if (tooltipDescription != null && !tooltipDescription.isBlank()) {
             visibleKpiCards.add(new KpiCardHitbox(x, y, width, height, label, value, tooltipDescription));
         }
@@ -17245,8 +18067,8 @@ public class BankOwnerPcScreen extends Screen {
 
     private void drawBusinessChip(GuiGraphics graphics, int x, int y, int width, String label, int accent) {
         graphics.fill(x, y, x + width, y + 14, accent);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 13, 0xEE12304B);
-        graphics.drawCenteredString(this.font, fitToWidth(label.toUpperCase(Locale.ROOT), width - 6), x + (width / 2), y + 3, 0xFFFFD466);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 13, ORDER_BOARD_ROW);
+        graphics.drawCenteredString(this.font, fitToWidth(label.toUpperCase(Locale.ROOT), width - 6), x + (width / 2), y + 3, ORDER_BOARD_TEXT);
     }
 
     private void drawBusinessButton(GuiGraphics graphics,
@@ -17271,8 +18093,8 @@ public class BankOwnerPcScreen extends Screen {
                                     boolean enabled,
                                     int accent,
                                     String disabledReason) {
-        int border = enabled ? accent : 0xFF637083;
-        int fill = enabled ? 0xD91C4A73 : 0xCC37404D;
+        int border = enabled ? accent : ORDER_BOARD_BORDER;
+        int fill = enabled ? ORDER_BOARD_CARD : 0xFF263344;
         graphics.fill(x, y, x + width, y + height, border);
         graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, fill);
         graphics.fill(x + 3, y + 4, x + 5, y + height - 4, enabled ? accent : 0xFF8798AA);
@@ -17281,7 +18103,7 @@ public class BankOwnerPcScreen extends Screen {
                 fitToWidth(label, width - 18),
                 x + 11,
                 y + Math.max(2, (height - 8) / 2),
-                enabled ? 0xFFFFFFFF : 0xFFAAB6C4,
+                enabled ? ORDER_BOARD_TEXT : 0xFFAAB6C4,
                 false
         );
         if (action != null && !action.isBlank()) {
@@ -17329,12 +18151,12 @@ public class BankOwnerPcScreen extends Screen {
                                         boolean enabled,
                                         int accent,
                                         String disabledReason) {
-        int border = enabled ? 0xFF315C82 : 0xFF3F5064;
+        int border = enabled ? ORDER_BOARD_BORDER_HI : ORDER_BOARD_BORDER;
         graphics.fill(x, y, x + width, y + height, border);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, enabled ? 0xD8112C45 : 0xAA253546);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, enabled ? ORDER_BOARD_ROW : 0xFF202E3D);
         graphics.fill(x + 1, y + 1, x + 4, y + height - 1, enabled ? accent : 0xFF7B8797);
-        graphics.drawString(this.font, fitToWidth(title, width - 18), x + 11, y + 8, enabled ? 0xFFFFFFFF : 0xFFB3BECA, false);
-        graphics.drawString(this.font, fitToWidth(subtitle, width - 18), x + 11, y + 22, enabled ? 0xFF9EBAD3 : 0xFF8D9BA9, false);
+        graphics.drawString(this.font, fitToWidth(title, width - 18), x + 11, y + 8, enabled ? ORDER_BOARD_TEXT : 0xFFB3BECA, false);
+        graphics.drawString(this.font, fitToWidth(subtitle, width - 18), x + 11, y + 22, enabled ? ORDER_BOARD_MUTED : 0xFF8D9BA9, false);
         if (action != null && !action.isBlank()) {
             visibleShopBusinessActions.add(new ShopBusinessActionHitbox(
                     x,
@@ -17421,11 +18243,11 @@ public class BankOwnerPcScreen extends Screen {
                                       String title,
                                       String subtitle,
                                       int accent) {
-        graphics.fill(x, y, x + width, y + height, 0xFF2F587D);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xB8112C45);
+        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, ORDER_BOARD_ROW);
         graphics.fill(x + 1, y + 1, x + 4, y + height - 1, accent);
-        graphics.drawString(this.font, fitToWidth(title, width - 18), x + 10, y + 8, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(subtitle, width - 18), x + 10, y + 22, 0xFFAAC7DE, false);
+        graphics.drawString(this.font, fitToWidth(title, width - 18), x + 10, y + 8, ORDER_BOARD_TEXT, false);
+        graphics.drawString(this.font, fitToWidth(subtitle, width - 18), x + 10, y + 22, ORDER_BOARD_MUTED, false);
     }
 
     private void drawBusinessLabeledProgress(GuiGraphics graphics,
@@ -17437,11 +18259,11 @@ public class BankOwnerPcScreen extends Screen {
                                              double ratio,
                                              int accent) {
         double clamped = Math.max(0.0D, Math.min(1.0D, ratio));
-        graphics.drawString(this.font, fitToWidth(label, Math.max(40, width / 2)), x, y, 0xFF9EBAD3, false);
-        graphics.drawString(this.font, fitToWidth(value, Math.max(40, width / 2)), x + Math.max(0, width - this.font.width(fitToWidth(value, Math.max(40, width / 2)))), y, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(label, Math.max(40, width / 2)), x, y, ORDER_BOARD_MUTED, false);
+        graphics.drawString(this.font, fitToWidth(value, Math.max(40, width / 2)), x + Math.max(0, width - this.font.width(fitToWidth(value, Math.max(40, width / 2)))), y, ORDER_BOARD_TEXT, false);
         int barY = y + 15;
-        graphics.fill(x, barY, x + width, barY + 5, 0xFF1A3A55);
-        graphics.fill(x + 1, barY + 1, x + width - 1, barY + 4, 0xFF092033);
+        graphics.fill(x, barY, x + width, barY + 5, ORDER_BOARD_BORDER);
+        graphics.fill(x + 1, barY + 1, x + width - 1, barY + 4, ORDER_BOARD_BG);
         int fillW = (int) Math.round((width - 2) * clamped);
         if (fillW > 0) {
             graphics.fill(x + 1, barY + 1, x + 1 + fillW, barY + 4, accent);
@@ -17985,7 +18807,7 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         graphics.disableScissor();
-        franchiseRequirementMaxScroll = Math.max(0, cursorY + Math.max(0, franchiseRequirementScroll) - listTop - listH + 10);
+        franchiseRequirementMaxScroll = Math.max(0, cursorY + Math.max(0, franchiseRequirementScroll) - listTop - listH + PANEL_SCROLL_BOTTOM_PADDING);
         franchiseRequirementScroll = Math.max(0, Math.min(franchiseRequirementScroll, franchiseRequirementMaxScroll));
         if (franchiseRequirementMaxScroll > 0) {
             String scroll = "Scroll " + Math.min(franchiseRequirementMaxScroll, franchiseRequirementScroll)
@@ -18051,7 +18873,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         graphics.disableScissor();
 
-        franchiseRequirementDetailMaxScroll = Math.max(0, cursorY + Math.max(0, franchiseRequirementDetailScroll) - listTop - listH + 8);
+        franchiseRequirementDetailMaxScroll = Math.max(0, cursorY + Math.max(0, franchiseRequirementDetailScroll) - listTop - listH + PANEL_SCROLL_BOTTOM_PADDING);
         franchiseRequirementDetailScroll = Math.max(0, Math.min(franchiseRequirementDetailScroll, franchiseRequirementDetailMaxScroll));
         if (franchiseRequirementDetailMaxScroll > 0) {
             graphics.drawString(this.font,
@@ -19013,25 +19835,26 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void drawBusinessCard(GuiGraphics graphics, int x, int y, int width, int height, String title, int accent) {
-        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFF2E4D6D);
-        graphics.fill(x, y, x + width, y + height, 0xB812304B);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_PANEL);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, accent);
         graphics.fill(x, y, x + 3, y + height, accent);
-        graphics.drawString(this.font, fitToWidth(title, width - 20), x + 12, y + 10, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(title, width - 20), x + 12, y + 10, ORDER_BOARD_TEXT, false);
         registerShopBusinessHelp(x, y, width, height, title, businessCardHelpDescription(title));
     }
 
     private void drawBusinessSubCard(GuiGraphics graphics, int x, int y, int width, int height, String title, int accent) {
-        graphics.fill(x, y, x + width, y + height, 0xFF2B4768);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xAA12263A);
+        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, ORDER_BOARD_ROW);
         graphics.fill(x + 1, y + 1, x + 4, y + height - 1, accent);
-        graphics.drawString(this.font, fitToWidth(title, width - 16), x + 8, y + 6, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(title, width - 16), x + 8, y + 6, ORDER_BOARD_TEXT, false);
     }
 
     private void drawBusinessPill(GuiGraphics graphics, int x, int y, int width, String label, int accent) {
         graphics.fill(x, y, x + width, y + 16, ORDER_BOARD_BORDER_HI);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 15, 0xAA12263A);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 15, ORDER_BOARD_ROW);
         graphics.fill(x + 1, y + 1, x + 3, y + 15, accent);
-        graphics.drawString(this.font, fitToWidth(label, width - 8), x + 5, y + 4, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(label, width - 8), x + 5, y + 4, ORDER_BOARD_TEXT, false);
     }
 
     private void drawBusinessChecklistLine(GuiGraphics graphics, int x, int y, int width, String label, boolean complete) {
@@ -19354,6 +20177,15 @@ public class BankOwnerPcScreen extends Screen {
         return width >= 640;
     }
 
+    private int getBusinessHeaderHeight(int width) {
+        if (width >= 620) {
+            return 64;
+        }
+        int cols = width >= 360 ? 2 : 1;
+        int rows = (3 + cols - 1) / cols;
+        return 58 + (rows * 24) + (Math.max(0, rows - 1) * 6) + 8;
+    }
+
     private int getBusinessMetricRowHeight(int width) {
         int cols = width >= 560 ? 4 : width >= 330 ? 2 : 1;
         int rows = (4 + cols - 1) / cols;
@@ -19422,7 +20254,7 @@ public class BankOwnerPcScreen extends Screen {
         int mainW = wide ? Math.max(120, width - getShopBusinessActionColumnWidth(width) - 8) : width;
         int mainHeight = getShopBusinessTypeSpecificHeight(safe, mainW);
         int actionHeight = getShopBusinessActionCenterMinHeight(type);
-        int height = 6 + 64 + getBusinessMetricRowHeight(width) + 16;
+        int height = 6 + getBusinessHeaderHeight(width) + 8 + getBusinessMetricRowHeight(width) + 16;
         if (wide) {
             height += Math.max(mainHeight, actionHeight) + 12;
         } else {
@@ -19555,7 +20387,7 @@ public class BankOwnerPcScreen extends Screen {
             case HOURS -> "Hours & Lighting";
             case COMPLIANCE -> "Compliance";
             case PERMISSIONS -> "Permissions";
-            case SAFE -> "Claiming";
+            case SAFE -> "Safe";
         };
         if (isActiveShopApp()) {
             if (activeSection == Section.OVERVIEW && shopLevelRoadmapOpen) {
@@ -21251,7 +22083,7 @@ public class BankOwnerPcScreen extends Screen {
         boolean clip = !useVirtualScale;
         if (snapshot != null) {
             int contentHeight = getShopDashboardContentHeight(width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             if (clip) {
                 enableScaledScissor(graphics, x + 1, y + 1, x + width - 1, y + height - 1);
@@ -21265,21 +22097,21 @@ public class BankOwnerPcScreen extends Screen {
         }
         if (shopSettlementPickerOpen && activeSection == Section.LENDING) {
             int contentHeight = drawShopOwnerAccountCards(graphics, ownerAccounts, x, y, width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
         }
         if (activeSection == Section.PERMISSIONS) {
             int contentHeight = drawShopPermissionRoleCards(graphics, permissionHeaders, permissionMembers, x, y, width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
         }
         if (shopVaultPlanEditOpen && activeSection == Section.LENDING) {
             int contentHeight = drawShopVaultPlanEditor(graphics, vaultSnapshot, x, y, width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
@@ -21288,7 +22120,7 @@ public class BankOwnerPcScreen extends Screen {
             int contentHeight = shopStockroomViewOpen
                     ? drawShopStockroomCards(graphics, stockroomCards, x, y, width, height)
                     : drawShopInventoryCards(graphics, inventoryCards, x, y, width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
@@ -21305,21 +22137,21 @@ public class BankOwnerPcScreen extends Screen {
                     width,
                     height
             );
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
         }
         if (!employeeCards.isEmpty()) {
             int contentHeight = drawShopEmployeeCards(graphics, employeeCards, x, y, width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             drawOutputScrollbar(graphics, outputPanelX, outputPanelY, outputPanelW, outputPanelH, outputScroll, maxScroll);
             return;
         }
         if (financeSnapshot != null) {
             int contentHeight = getShopFinanceContentHeight(width, height);
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             if (clip) {
                 enableScaledScissor(graphics, x + 1, y + 1, x + width - 1, y + height - 1);
@@ -21333,7 +22165,7 @@ public class BankOwnerPcScreen extends Screen {
         }
         if (vaultSnapshot != null) {
             int contentHeight = getShopVaultContentHeight(width, height, vaultSnapshot.counts().size());
-            int maxScroll = Math.max(0, contentHeight - height);
+            int maxScroll = pixelScrollMax(contentHeight, height);
             outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
             if (clip) {
                 enableScaledScissor(graphics, x + 1, y + 1, x + width - 1, y + height - 1);
@@ -21768,7 +22600,50 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private BankLevelRoadmapSnapshot parseBankLevelRoadmapSnapshot(OwnerPcBankDataPayload data) {
-        return null;
+        if (data == null) {
+            return null;
+        }
+        List<String> rawNodes = data.bankLevelRoadmap() == null ? List.of() : data.bankLevelRoadmap();
+        List<BankLevelRoadmapNode> nodes = new ArrayList<>();
+        for (String raw : rawNodes) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String[] parts = raw.split("\\|", -1);
+            if (parts.length < 5) {
+                continue;
+            }
+            int level = parseIntMetricToken(parts[0]);
+            if (level <= 0) {
+                continue;
+            }
+            String state = parts[4] == null || parts[4].isBlank() ? "LOCKED" : parts[4].trim().toUpperCase(Locale.ROOT);
+            nodes.add(new BankLevelRoadmapNode(
+                    level,
+                    Math.max(0L, parseLongMetricToken(parts[1])),
+                    Math.max(0, parseIntMetricToken(parts[2])),
+                    Math.max(0, parseIntMetricToken(parts[3])),
+                    state,
+                    parts.length >= 6 ? parseRoadmapBusinessUnlocks(parts[5]) : List.of()
+            ));
+        }
+        if (nodes.isEmpty()) {
+            return null;
+        }
+        nodes.sort(java.util.Comparator.comparingInt(BankLevelRoadmapNode::level));
+        return new BankLevelRoadmapSnapshot(
+                data.bankName() == null || data.bankName().isBlank() ? "Bank" : data.bankName(),
+                Math.max(1, safeParseInt(data.bankLevel())),
+                Math.max(1, safeParseInt(data.bankLevelDerived())),
+                Boolean.parseBoolean(data.bankLevelManual()),
+                Math.max(0L, parseMoneyStringAsWholeDollars(data.deposits())),
+                Math.max(0, safeParseInt(data.accountsCount())),
+                Math.max(0L, parseLongMetricToken(data.bankLevelNextDepositTarget())),
+                Math.max(0, safeParseInt(data.bankLevelNextAccountTarget())),
+                Math.max(0.0D, Math.min(1.0D, safeParseDouble(data.bankLevelProgressRatio()))),
+                Math.max(1, nodes.get(nodes.size() - 1).level()),
+                nodes
+        );
     }
 
     private long parseMoneyStringAsWholeDollars(String value) {
@@ -21805,9 +22680,9 @@ public class BankOwnerPcScreen extends Screen {
             default -> "Locked milestone";
         };
         String target = "$" + compactCurrency(String.valueOf(Math.max(0L, node.depositTargetDollars())));
-        String unlocks = "Unlocks capacity "
-                + Math.max(0, node.capacityUnits())
-                + " unit(s).";
+        String unlocks = "Unlocks safe row capacity "
+                + Math.max(0, node.safeRowCapacity())
+                + " row units (" + (Math.max(0, node.safeRowCapacity()) * 4) + " deposit boxes).";
         if (node.unlocks() != null && !node.unlocks().isEmpty()) {
             unlocks += " " + String.join(", ", node.unlocks()) + ".";
         }
@@ -21867,7 +22742,8 @@ public class BankOwnerPcScreen extends Screen {
         String[] rows = {
                 "Deposit target: $" + compactCurrency(String.valueOf(Math.max(0L, node.depositTargetDollars()))),
                 "Account target: " + Math.max(0, node.accountTarget()) + " active accounts",
-                "Capacity units: " + Math.max(0, node.capacityUnits()),
+                "Safe row capacity: " + Math.max(0, node.safeRowCapacity()) + " row units",
+                "Deposit box capacity: " + (Math.max(0, node.safeRowCapacity()) * 4) + " boxes",
                 "Derived level: " + (snapshot == null ? node.level() : snapshot.derivedLevel())
                         + (snapshot != null && snapshot.manual() ? " | Manual override active" : "")
         };
@@ -22843,7 +23719,7 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         int contentHeight = getShopInventoryCardsContentHeight(width, height, shelves);
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -23079,7 +23955,7 @@ public class BankOwnerPcScreen extends Screen {
         int rowHeight = 54;
         int rowGap = 6;
         int contentHeight = Math.max(height, 8 + (items.size() * rowHeight) + (Math.max(0, items.size() - 1) * rowGap) + 8);
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -23253,7 +24129,7 @@ public class BankOwnerPcScreen extends Screen {
                 safePicks.size(),
                 summary
         );
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -24088,7 +24964,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(viewX, viewY, viewX + viewW, viewY + viewH, ORDER_BOARD_BG);
 
         int contentHeight = getOrderBoardCardsContentHeight(viewW, viewH, cards, rankRows, summary);
-        orderBoardMaxScroll = Math.max(0, contentHeight - viewH);
+        orderBoardMaxScroll = pixelScrollMax(contentHeight, viewH);
         orderBoardScroll = Math.max(0, Math.min(orderBoardScroll, orderBoardMaxScroll));
 
         if (!useVirtualScale) {
@@ -25942,7 +26818,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(viewX, viewY, viewX + viewW, viewY + 2, ORDER_BOARD_CYAN);
 
         int contentHeight = getWebshopContentHeight(viewW, viewH, raw);
-        webshopMaxScroll = Math.max(0, contentHeight - viewH);
+        webshopMaxScroll = pixelScrollMax(contentHeight, viewH);
         webshopScroll = Math.max(0, Math.min(webshopScroll, webshopMaxScroll));
 
         if (!useVirtualScale) {
@@ -27023,7 +27899,7 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(viewX, viewY, viewX + viewW, viewY + 2, ORDER_BOARD_CYAN);
 
         int contentHeight = getWebshopContentHeight(viewW, viewH, raw);
-        webshopMaxScroll = Math.max(0, contentHeight - viewH);
+        webshopMaxScroll = pixelScrollMax(contentHeight, viewH);
         webshopScroll = Math.max(0, Math.min(webshopScroll, webshopMaxScroll));
 
         if (!useVirtualScale) {
@@ -28114,7 +28990,7 @@ public class BankOwnerPcScreen extends Screen {
         int cardW = Math.max(210, (width - (gap * (cols - 1))) / cols);
         int cardH = 92;
         int contentHeight = getShopEmployeeCardsContentHeight(width, height, employees.size());
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -28336,7 +29212,7 @@ public class BankOwnerPcScreen extends Screen {
         int cardW = Math.max(220, (width - (gap * (cols - 1))) / cols);
         int cardH = 78;
         int contentHeight = getShopOwnerAccountCardsContentHeight(width, height, cards.size());
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -28443,7 +29319,7 @@ public class BankOwnerPcScreen extends Screen {
         int headerH = 24;
         int headerGap = 6;
         int contentHeight = getShopPermissionRoleCardsContentHeight(width, height, safeHeaders, filteredMembers);
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -28569,7 +29445,7 @@ public class BankOwnerPcScreen extends Screen {
         int cardW = Math.max(220, (width - (gap * (cols - 1))) / cols);
         int cardH = 54;
         int contentHeight = getShopVaultPlanEditorContentHeight(width, height);
-        int maxScroll = Math.max(0, contentHeight - height);
+        int maxScroll = pixelScrollMax(contentHeight, height);
         outputScroll = Math.max(0, Math.min(outputScroll, maxScroll));
 
         if (!useVirtualScale) {
@@ -29633,8 +30509,12 @@ public class BankOwnerPcScreen extends Screen {
         graphics.fill(left, top, right, bottom, ORDER_BOARD_BG);
         graphics.fill(left, top, right, top + 28, ORDER_BOARD_CARD);
 
+        int frameW = Math.max(1, right - left);
+        int toolbarButtonW = utilityToolbarButtonWidth(frameW);
+        int toolbarGap = utilityToolbarGap(frameW);
+        int titleMaxW = Math.max(56, frameW - ((toolbarButtonW * 2) + toolbarGap + 28));
         String title = "Utilities / " + utilityWindowTitle(activeUtilityApp);
-        graphics.drawString(this.font, fitToWidth(title, right - left - 20), left + 8, top + 10, ORDER_BOARD_TEXT, false);
+        graphics.drawString(this.font, fitToWidth(title, titleMaxW), left + 8, top + 10, ORDER_BOARD_TEXT, false);
 
         int contentX = utilityContentX > 0 ? utilityContentX : left + 12;
         int contentY = utilityContentY > 0 ? utilityContentY : top + 38;
@@ -29760,7 +30640,7 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         if (notepadSaveModalOpen) {
-            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalW = Math.min(340, Math.max(120, utilityContentW - 24));
             int modalH = 108;
             int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
             int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
@@ -29811,11 +30691,24 @@ public class BankOwnerPcScreen extends Screen {
     }
 
     private void drawPaintApp(GuiGraphics graphics, int x, int y, int width, int height) {
-        int sideW = Math.min(166, Math.max(132, width / 4));
+        boolean stackedControls = useStackedPaintControls(width + 8, height + 8);
         int canvasAreaX = x + 6;
-        int canvasAreaY = y + 30;
-        int canvasAreaW = Math.max(120, width - sideW - 14);
-        int canvasAreaH = Math.max(80, height - 36);
+        int canvasAreaY;
+        int canvasAreaW;
+        int canvasAreaH;
+        int statusY;
+        if (stackedControls) {
+            statusY = paintControlsY + paintControlsH + 8;
+            canvasAreaY = statusY + 16;
+            canvasAreaW = Math.max(80, width - 12);
+            canvasAreaH = Math.max(56, (y + height) - canvasAreaY - 4);
+        } else {
+            int sideW = Math.min(166, Math.max(132, width / 4));
+            statusY = y + 10;
+            canvasAreaY = y + 30;
+            canvasAreaW = Math.max(80, width - sideW - 14);
+            canvasAreaH = Math.max(64, height - 36);
+        }
 
         paintCellSize = Math.max(2, Math.min(canvasAreaW / paintCanvasW, canvasAreaH / paintCanvasH));
         int pixelW = paintCanvasW * paintCellSize;
@@ -29824,9 +30717,9 @@ public class BankOwnerPcScreen extends Screen {
         paintCanvasY = canvasAreaY + Math.max(0, (canvasAreaH - pixelH) / 2);
 
         graphics.drawString(this.font,
-                "Brush: " + paintBrushSize + "   Color: " + paintColorLabel(paintSelectedColor),
+                fitToWidth("Brush: " + paintBrushSize + "   Color: " + paintColorLabel(paintSelectedColor), Math.max(80, width - 12)),
                 x + 6,
-                y + 10,
+                statusY,
                 ORDER_BOARD_TEXT,
                 false);
 
@@ -29873,7 +30766,7 @@ public class BankOwnerPcScreen extends Screen {
         }
 
         if (paintSaveModalOpen) {
-            int modalW = Math.min(340, Math.max(180, utilityContentW - 40));
+            int modalW = Math.min(340, Math.max(120, utilityContentW - 24));
             int modalH = 108;
             int modalX = utilityContentX + Math.max(0, (utilityContentW - modalW) / 2);
             int modalY = utilityContentY + Math.max(0, (utilityContentH - modalH) / 2);
@@ -29912,7 +30805,7 @@ public class BankOwnerPcScreen extends Screen {
             int contentY = listY + 2 - shopManagerScroll;
             int contentW = Math.max(120, listW - 4);
             int contentH = getShopDashboardContentHeight(contentW, listH, Section.OVERVIEW);
-            int maxScroll = Math.max(0, contentH - listH);
+            int maxScroll = pixelScrollMax(contentH, listH);
             shopManagerMaxScroll = maxScroll;
             shopManagerScroll = Math.max(0, Math.min(shopManagerScroll, maxScroll));
 
@@ -30030,9 +30923,13 @@ public class BankOwnerPcScreen extends Screen {
         int viewportH = systemMonitorViewportH > 0 ? systemMonitorViewportH : Math.max(1, height - 38);
         int cardStartY = viewportY + 34 - systemMonitorScroll;
         List<String[]> entries = List.of(
-                new String[]{"Resolution", this.width + "x" + this.height},
+                new String[]{"Minecraft GUI", actualGuiWidth + "x" + actualGuiHeight},
+                new String[]{"Framebuffer", actualFramebufferWidth + "x" + actualFramebufferHeight},
+                new String[]{"PC Layout", this.width + "x" + this.height},
+                new String[]{"PC Target", virtualTargetGuiWidth + "x" + virtualTargetGuiHeight},
                 new String[]{"GUI Scale", String.valueOf(guiScale)},
-                new String[]{"PC UI Scale", "Native"},
+                new String[]{"Effective Scale", String.valueOf(effectivePcGuiScale)},
+                new String[]{"PC UI Scale", useVirtualScale ? String.format(Locale.ROOT, "%.3f", virtualScaleX) : "Native"},
                 new String[]{"Virtual Scale", String.valueOf(useVirtualScale)},
                 new String[]{"Bank Windows", String.valueOf(bankWindowOrder.size())},
                 new String[]{"Utility Windows", String.valueOf(utilityWindowOrder.size())},
@@ -30425,18 +31322,153 @@ public class BankOwnerPcScreen extends Screen {
         return true;
     }
 
-    private void configureVirtualScale() {
+    private boolean configureVirtualScale() {
+        int oldWidth = this.width;
+        int oldHeight = this.height;
+        boolean oldUseVirtualScale = useVirtualScale;
+        float oldScaleX = virtualScaleX;
+        float oldScaleY = virtualScaleY;
+        int oldActualGuiWidth = actualGuiWidth;
+        int oldActualGuiHeight = actualGuiHeight;
+        int oldVirtualTargetGuiWidth = virtualTargetGuiWidth;
+        int oldVirtualTargetGuiHeight = virtualTargetGuiHeight;
+        int oldActualFramebufferWidth = actualFramebufferWidth;
+        int oldActualFramebufferHeight = actualFramebufferHeight;
+        int oldEffectivePcGuiScale = effectivePcGuiScale;
+
         Minecraft mc = Minecraft.getInstance();
-        if (mc != null && mc.getWindow() != null) {
-            this.width = mc.getWindow().getGuiScaledWidth();
-            this.height = mc.getWindow().getGuiScaledHeight();
+        if (mc == null || mc.getWindow() == null) {
+            useVirtualScale = false;
+            virtualScaleX = 1.0F;
+            virtualScaleY = 1.0F;
+            actualGuiWidth = this.width;
+            actualGuiHeight = this.height;
+            virtualTargetGuiWidth = this.width;
+            virtualTargetGuiHeight = this.height;
+            actualFramebufferWidth = this.width;
+            actualFramebufferHeight = this.height;
+            effectivePcGuiScale = 1;
+            return oldUseVirtualScale
+                    || oldScaleX != virtualScaleX
+                    || oldScaleY != virtualScaleY
+                    || oldActualGuiWidth != actualGuiWidth
+                    || oldActualGuiHeight != actualGuiHeight
+                    || oldVirtualTargetGuiWidth != virtualTargetGuiWidth
+                    || oldVirtualTargetGuiHeight != virtualTargetGuiHeight
+                    || oldActualFramebufferWidth != actualFramebufferWidth
+                    || oldActualFramebufferHeight != actualFramebufferHeight
+                    || oldEffectivePcGuiScale != effectivePcGuiScale;
         }
 
-        // Keep the PC UI bound to the actual GUI viewport dimensions.
-        // Virtual scaling caused partial-width rendering on some client setups.
-        useVirtualScale = false;
-        virtualScaleX = 1.0F;
-        virtualScaleY = 1.0F;
+        int scaledW = mc.getWindow().getGuiScaledWidth();
+        int scaledH = mc.getWindow().getGuiScaledHeight();
+        if (scaledW <= 0 || scaledH <= 0) {
+            useVirtualScale = false;
+            virtualScaleX = 1.0F;
+            virtualScaleY = 1.0F;
+            actualGuiWidth = Math.max(1, scaledW);
+            actualGuiHeight = Math.max(1, scaledH);
+            virtualTargetGuiWidth = actualGuiWidth;
+            virtualTargetGuiHeight = actualGuiHeight;
+            actualFramebufferWidth = actualGuiWidth;
+            actualFramebufferHeight = actualGuiHeight;
+            effectivePcGuiScale = 1;
+            this.width = actualGuiWidth;
+            this.height = actualGuiHeight;
+            return oldWidth != this.width
+                    || oldHeight != this.height
+                    || oldUseVirtualScale
+                    || oldScaleX != virtualScaleX
+                    || oldScaleY != virtualScaleY
+                    || oldActualGuiWidth != actualGuiWidth
+                    || oldActualGuiHeight != actualGuiHeight
+                    || oldVirtualTargetGuiWidth != virtualTargetGuiWidth
+                    || oldVirtualTargetGuiHeight != virtualTargetGuiHeight
+                    || oldActualFramebufferWidth != actualFramebufferWidth
+                    || oldActualFramebufferHeight != actualFramebufferHeight
+                    || oldEffectivePcGuiScale != effectivePcGuiScale;
+        }
+
+        actualGuiWidth = scaledW;
+        actualGuiHeight = scaledH;
+        actualFramebufferWidth = Math.max(1, mc.getWindow().getWidth());
+        actualFramebufferHeight = Math.max(1, mc.getWindow().getHeight());
+        effectivePcGuiScale = effectiveGuiScale(actualFramebufferWidth, actualFramebufferHeight, scaledW, scaledH);
+        virtualTargetGuiWidth = pcVirtualTargetWidth(scaledW, scaledH, actualFramebufferWidth, actualFramebufferHeight, effectivePcGuiScale);
+        virtualTargetGuiHeight = pcVirtualTargetHeight(scaledW, scaledH, actualFramebufferWidth, actualFramebufferHeight, effectivePcGuiScale);
+        float scale = Math.min(
+                1.0F,
+                Math.min(
+                        scaledW / (float) virtualTargetGuiWidth,
+                        scaledH / (float) virtualTargetGuiHeight
+                )
+        );
+        if (scale < 0.999F) {
+            useVirtualScale = true;
+            virtualScaleX = scale;
+            virtualScaleY = scale;
+            this.width = Math.max(virtualTargetGuiWidth, Math.round(scaledW / scale));
+            this.height = Math.max(virtualTargetGuiHeight, Math.round(scaledH / scale));
+        } else {
+            useVirtualScale = false;
+            virtualScaleX = 1.0F;
+            virtualScaleY = 1.0F;
+            this.width = scaledW;
+            this.height = scaledH;
+        }
+
+        return oldWidth != this.width
+                || oldHeight != this.height
+                || oldUseVirtualScale != useVirtualScale
+                || Float.compare(oldScaleX, virtualScaleX) != 0
+                || Float.compare(oldScaleY, virtualScaleY) != 0
+                || oldActualGuiWidth != actualGuiWidth
+                || oldActualGuiHeight != actualGuiHeight
+                || oldVirtualTargetGuiWidth != virtualTargetGuiWidth
+                || oldVirtualTargetGuiHeight != virtualTargetGuiHeight
+                || oldActualFramebufferWidth != actualFramebufferWidth
+                || oldActualFramebufferHeight != actualFramebufferHeight
+                || oldEffectivePcGuiScale != effectivePcGuiScale;
+    }
+
+    private int pcVirtualTargetWidth(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        return shouldUseLargePcVirtualTarget(scaledW, scaledH, framebufferW, framebufferH, guiScale)
+                ? PC_LARGE_GUI_WIDTH
+                : PC_STANDARD_GUI_WIDTH;
+    }
+
+    private int pcVirtualTargetHeight(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        return shouldUseLargePcVirtualTarget(scaledW, scaledH, framebufferW, framebufferH, guiScale)
+                ? PC_LARGE_GUI_HEIGHT
+                : PC_STANDARD_GUI_HEIGHT;
+    }
+
+    private boolean shouldUseLargePcVirtualTarget(int scaledW, int scaledH, int framebufferW, int framebufferH, int guiScale) {
+        if (scaledW >= PC_LARGE_LAYOUT_TRIGGER_WIDTH && scaledH >= PC_LARGE_LAYOUT_TRIGGER_HEIGHT) {
+            return true;
+        }
+        int expectedScale = expectedSameSizeGuiScale(framebufferW, framebufferH);
+        return expectedScale > 0 && guiScale == expectedScale;
+    }
+
+    private int effectiveGuiScale(int framebufferW, int framebufferH, int scaledW, int scaledH) {
+        double scaleX = scaledW <= 0 ? 1.0D : framebufferW / (double) scaledW;
+        double scaleY = scaledH <= 0 ? 1.0D : framebufferH / (double) scaledH;
+        return Math.max(1, (int) Math.round(Math.max(scaleX, scaleY)));
+    }
+
+    private int expectedSameSizeGuiScale(int framebufferW, int framebufferH) {
+        int shortEdge = Math.min(Math.max(1, framebufferW), Math.max(1, framebufferH));
+        if (shortEdge >= 2160) {
+            return 4;
+        }
+        if (shortEdge >= 1440) {
+            return 3;
+        }
+        if (shortEdge >= 1080) {
+            return 2;
+        }
+        return 0;
     }
 
     private double toLocalX(double x) {

@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "modded_entity",
+    "box_uv": false
+  },
+  "name": "SafetyDepositBoxRow",
+  "geometry_name": "SafetyDepositBoxRow",
+  "visible_box": [1, 1, 1],
+  "resolution": {
+    "width": 128,
+    "height": 128
+  },
+  "elements": [
+    {"uuid": "back_panel", "name": "back_panel", "from": [0, 0, 14.75], "to": [16, 16, 16], "color": 3},
+    {"uuid": "left_trim", "name": "left_trim", "from": [0, 0, 0], "to": [1.05, 16, 16], "color": 4},
+    {"uuid": "right_trim", "name": "right_trim", "from": [14.95, 0, 0], "to": [16, 16, 16], "color": 4},
+    {"uuid": "top_trim", "name": "top_trim", "from": [0, 15, 0], "to": [16, 16, 16], "color": 4},
+    {"uuid": "bottom_plinth", "name": "bottom_plinth", "from": [0, 0, 0], "to": [16, 1, 16], "color": 4},
+    {"uuid": "separator_0", "name": "separator_0", "from": [0.55, 11.75, -0.45], "to": [15.45, 12.17, 14.2], "color": 5},
+    {"uuid": "separator_1", "name": "separator_1", "from": [0.55, 7.75, -0.45], "to": [15.45, 8.17, 14.2], "color": 5},
+    {"uuid": "separator_2", "name": "separator_2", "from": [0.55, 3.75, -0.45], "to": [15.45, 4.17, 14.2], "color": 5},
+    {"uuid": "door_0_face", "name": "door_0_face", "from": [0.78, 11.05, -1.25], "to": [15.23, 14.09, -0.45], "color": 1},
+    {"uuid": "door_0_inset", "name": "door_0_inset", "from": [1.23, 11.49, -1.72], "to": [14.58, 13.65, -1.36], "color": 2},
+    {"uuid": "door_0_number", "name": "door_0_number", "from": [1.64, 12.05, -2.05], "to": [4.29, 12.77, -1.69], "color": 6},
+    {"uuid": "door_0_locks", "name": "door_0_locks", "from": [11.43, 12.01, -2.12], "to": [14.1, 12.63, -1.7], "color": 6},
+    {"uuid": "tray_0_floor", "name": "tray_0_floor", "from": [1.15, 11.43, 1.2], "to": [14.85, 11.77, 12.45], "color": 2},
+    {"uuid": "tray_0_left_wall", "name": "tray_0_left_wall", "from": [1.15, 11.43, 1.2], "to": [1.57, 14.0, 12.45], "color": 2},
+    {"uuid": "tray_0_right_wall", "name": "tray_0_right_wall", "from": [14.43, 11.43, 1.2], "to": [14.85, 14.0, 12.45], "color": 2},
+    {"uuid": "tray_0_front_lip", "name": "tray_0_front_lip", "from": [1.0, 11.43, 1.0], "to": [15.0, 12.29, 1.48], "color": 5},
+    {"uuid": "door_1_face", "name": "door_1_face", "from": [0.78, 7.5, -1.25], "to": [15.23, 10.54, -0.45], "color": 1},
+    {"uuid": "door_1_inset", "name": "door_1_inset", "from": [1.23, 7.94, -1.72], "to": [14.58, 10.1, -1.36], "color": 2},
+    {"uuid": "door_1_number", "name": "door_1_number", "from": [1.64, 8.5, -2.05], "to": [4.29, 9.22, -1.69], "color": 6},
+    {"uuid": "door_1_locks", "name": "door_1_locks", "from": [11.43, 8.46, -2.12], "to": [14.1, 9.08, -1.7], "color": 6},
+    {"uuid": "tray_1_floor", "name": "tray_1_floor", "from": [1.15, 7.88, 1.2], "to": [14.85, 8.22, 12.45], "color": 2},
+    {"uuid": "tray_1_left_wall", "name": "tray_1_left_wall", "from": [1.15, 7.88, 1.2], "to": [1.57, 10.45, 12.45], "color": 2},
+    {"uuid": "tray_1_right_wall", "name": "tray_1_right_wall", "from": [14.43, 7.88, 1.2], "to": [14.85, 10.45, 12.45], "color": 2},
+    {"uuid": "tray_1_front_lip", "name": "tray_1_front_lip", "from": [1.0, 7.88, 1.0], "to": [15.0, 8.74, 1.48], "color": 5},
+    {"uuid": "door_2_face", "name": "door_2_face", "from": [0.78, 3.95, -1.25], "to": [15.23, 6.99, -0.45], "color": 1},
+    {"uuid": "door_2_inset", "name": "door_2_inset", "from": [1.23, 4.39, -1.72], "to": [14.58, 6.55, -1.36], "color": 2},
+    {"uuid": "door_2_number", "name": "door_2_number", "from": [1.64, 4.95, -2.05], "to": [4.29, 5.67, -1.69], "color": 6},
+    {"uuid": "door_2_locks", "name": "door_2_locks", "from": [11.43, 4.91, -2.12], "to": [14.1, 5.53, -1.7], "color": 6},
+    {"uuid": "tray_2_floor", "name": "tray_2_floor", "from": [1.15, 4.33, 1.2], "to": [14.85, 4.67, 12.45], "color": 2},
+    {"uuid": "tray_2_left_wall", "name": "tray_2_left_wall", "from": [1.15, 4.33, 1.2], "to": [1.57, 6.9, 12.45], "color": 2},
+    {"uuid": "tray_2_right_wall", "name": "tray_2_right_wall", "from": [14.43, 4.33, 1.2], "to": [14.85, 6.9, 12.45], "color": 2},
+    {"uuid": "tray_2_front_lip", "name": "tray_2_front_lip", "from": [1.0, 4.33, 1.0], "to": [15.0, 5.19, 1.48], "color": 5},
+    {"uuid": "door_3_face", "name": "door_3_face", "from": [0.78, 0.4, -1.25], "to": [15.23, 3.44, -0.45], "color": 1},
+    {"uuid": "door_3_inset", "name": "door_3_inset", "from": [1.23, 0.84, -1.72], "to": [14.58, 3.0, -1.36], "color": 2},
+    {"uuid": "door_3_number", "name": "door_3_number", "from": [1.64, 1.4, -2.05], "to": [4.29, 2.12, -1.69], "color": 6},
+    {"uuid": "door_3_locks", "name": "door_3_locks", "from": [11.43, 1.36, -2.12], "to": [14.1, 1.98, -1.7], "color": 6},
+    {"uuid": "tray_3_floor", "name": "tray_3_floor", "from": [1.15, 0.78, 1.2], "to": [14.85, 1.12, 12.45], "color": 2},
+    {"uuid": "tray_3_left_wall", "name": "tray_3_left_wall", "from": [1.15, 0.78, 1.2], "to": [1.57, 3.35, 12.45], "color": 2},
+    {"uuid": "tray_3_right_wall", "name": "tray_3_right_wall", "from": [14.43, 0.78, 1.2], "to": [14.85, 3.35, 12.45], "color": 2},
+    {"uuid": "tray_3_front_lip", "name": "tray_3_front_lip", "from": [1.0, 0.78, 1.0], "to": [15.0, 1.64, 1.48], "color": 5}
+  ],
+  "outliner": [
+    {
+      "name": "root",
+      "origin": [8, 0, 8],
+      "children": [
+        "back_panel",
+        "left_trim",
+        "right_trim",
+        "top_trim",
+        "bottom_plinth",
+        "separator_0",
+        "separator_1",
+        "separator_2",
+        {"name": "door_0", "origin": [0.78, 12.57, -0.45], "children": ["door_0_face", "door_0_inset", "door_0_number", "door_0_locks"]},
+        {"name": "tray_0", "origin": [8, 12.72, 1.2], "children": ["tray_0_floor", "tray_0_left_wall", "tray_0_right_wall", "tray_0_front_lip"]},
+        {"name": "door_1", "origin": [0.78, 9.02, -0.45], "children": ["door_1_face", "door_1_inset", "door_1_number", "door_1_locks"]},
+        {"name": "tray_1", "origin": [8, 9.17, 1.2], "children": ["tray_1_floor", "tray_1_left_wall", "tray_1_right_wall", "tray_1_front_lip"]},
+        {"name": "door_2", "origin": [0.78, 5.47, -0.45], "children": ["door_2_face", "door_2_inset", "door_2_number", "door_2_locks"]},
+        {"name": "tray_2", "origin": [8, 5.62, 1.2], "children": ["tray_2_floor", "tray_2_left_wall", "tray_2_right_wall", "tray_2_front_lip"]},
+        {"name": "door_3", "origin": [0.78, 1.92, -0.45], "children": ["door_3_face", "door_3_inset", "door_3_number", "door_3_locks"]},
+        {"name": "tray_3", "origin": [8, 2.07, 1.2], "children": ["tray_3_floor", "tray_3_left_wall", "tray_3_right_wall", "tray_3_front_lip"]}
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "path": "textures/block/safety_deposit_box_row.png",
+      "name": "safety_deposit_box_row.png",
+      "folder": "block",
+      "namespace": "ultimatebankingsystem",
+      "id": "0",
+      "particle": true,
+      "render_mode": "solid"
+    }
+  ]
+}

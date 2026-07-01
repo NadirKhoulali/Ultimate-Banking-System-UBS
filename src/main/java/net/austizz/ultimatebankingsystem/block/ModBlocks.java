@@ -3,12 +3,15 @@ package net.austizz.ultimatebankingsystem.block;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.custom.ATMBlock;
 import net.austizz.ultimatebankingsystem.block.custom.BankOwnerPcBlock;
+import net.austizz.ultimatebankingsystem.block.custom.BankSafeIronBarGateBlock;
+import net.austizz.ultimatebankingsystem.block.custom.BankVaultDoorBlock;
 import net.austizz.ultimatebankingsystem.block.custom.CardboardBoxBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ColorButtonBlock;
 import net.austizz.ultimatebankingsystem.block.custom.GlassCounterDisplayBlock;
 import net.austizz.ultimatebankingsystem.block.custom.InvisibleDisplayBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ModularWallDisplayBlock;
 import net.austizz.ultimatebankingsystem.block.custom.PalletBlock;
+import net.austizz.ultimatebankingsystem.block.custom.SafetyDepositBoxRowBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableLargeBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShoppingBasketBlock;
@@ -46,6 +49,24 @@ public class ModBlocks {
             () -> new BankOwnerPcBlock(BlockBehaviour.Properties.of()
                     .noOcclusion()
                     .strength(3.5f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> BANK_VAULT_DOOR = registerBlock("bank_vault_door",
+            () -> new BankVaultDoorBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(8.0f, 1200.0f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> BANK_SAFE_IRON_BAR_GATE = registerBlock("bank_safe_iron_bar_gate",
+            () -> new BankSafeIronBarGateBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(8.0f, 1200.0f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> SAFETY_DEPOSIT_BOX_ROW = registerBlock("safety_deposit_box_row",
+            () -> new SafetyDepositBoxRowBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(5.0f, 1200.0f)
                     .sound(SoundType.METAL)
             ));
     public static final DeferredBlock<Block> COLOR_BUTTON_BLOCK = registerBlock("color_button_block",

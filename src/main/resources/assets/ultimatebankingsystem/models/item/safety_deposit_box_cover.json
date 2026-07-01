@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "ultimatebankingsystem:block/safety_deposit_box_row"
+  }
+}

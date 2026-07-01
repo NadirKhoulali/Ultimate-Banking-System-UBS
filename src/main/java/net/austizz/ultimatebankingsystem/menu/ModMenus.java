@@ -33,6 +33,10 @@ public final class ModMenus {
                     IMenuTypeExtension.create((windowId, playerInventory, data) ->
                             WalletMenu.forItem(windowId, playerInventory, data.readEnum(InteractionHand.class))));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<SafetyDepositBoxMenu>> SAFETY_DEPOSIT_BOX =
+            MENUS.register("safety_deposit_box", () ->
+                    IMenuTypeExtension.create(SafetyDepositBoxMenu::fromNetwork));
+
     private ModMenus() {
     }
 

@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.item;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -28,6 +29,16 @@ public class ModItems {
     public static final DeferredItem<Item> CREDIT_CARD = ITEMS.register("credit_card", () -> new Item(new Item.Properties().stacksTo(1)));
     public static final DeferredItem<Item> WALLET = ITEMS.register("wallet", WalletItem::new);
     public static final DeferredItem<Item> SMARTPHONE = ITEMS.register("smartphone", SmartphoneItem::new);
+    public static final DeferredItem<Item> SAFETY_DEPOSIT_BOX_SMALL = ITEMS.register("safety_deposit_box_small",
+            () -> new SafetyDepositBoxInsertItem(SafetyDepositBoxRowBlockEntity.ModuleType.SMALL));
+    public static final DeferredItem<Item> SAFETY_DEPOSIT_BOX_MEDIUM = ITEMS.register("safety_deposit_box_medium",
+            () -> new SafetyDepositBoxInsertItem(SafetyDepositBoxRowBlockEntity.ModuleType.MEDIUM));
+    public static final DeferredItem<Item> SAFETY_DEPOSIT_BOX_LARGE = ITEMS.register("safety_deposit_box_large",
+            () -> new SafetyDepositBoxInsertItem(SafetyDepositBoxRowBlockEntity.ModuleType.LARGE));
+    public static final DeferredItem<Item> SAFETY_DEPOSIT_BOX_EXTRA_LARGE = ITEMS.register("safety_deposit_box_extra_large",
+            () -> new SafetyDepositBoxInsertItem(SafetyDepositBoxRowBlockEntity.ModuleType.EXTRA_LARGE));
+    public static final DeferredItem<Item> SAFETY_DEPOSIT_BOX_COVER = ITEMS.register("safety_deposit_box_cover",
+            () -> new SafetyDepositBoxInsertItem(SafetyDepositBoxRowBlockEntity.ModuleType.COVER));
     public static final DeferredItem<Item> HANDHELD_PAYMENT_TERMINAL = ITEMS.register("handheld_payment_terminal", HandheldPaymentTerminalItem::new);
     public static final DeferredItem<Item> BANK_TELLER_SPAWN_EGG = ITEMS.register("bank_teller_spawn_egg", BankTellerSpawnEggItem::new);
     public static final DeferredItem<Item> CASHIER_SPAWN_EGG = ITEMS.register("cashier_spawn_egg", CashierSpawnEggItem::new);

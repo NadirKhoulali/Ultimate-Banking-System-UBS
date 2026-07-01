@@ -2,9 +2,12 @@ package net.austizz.ultimatebankingsystem.block.entity;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.entity.custom.BankSafeIronBarGateBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.BankVaultDoorBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.GlassCounterDisplayBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ModularWallDisplayBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.PalletBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.CardboardBoxBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopSellingTableBlockEntity;
@@ -27,6 +30,27 @@ public final class ModBlockEntities {
                     BlockEntityType.Builder.of(
                             ShopTerminalBlockEntity::new,
                             ModBlocks.PAYMENT_TERMINAL.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BankVaultDoorBlockEntity>> BANK_VAULT_DOOR =
+            BLOCK_ENTITY_TYPES.register("bank_vault_door", () ->
+                    BlockEntityType.Builder.of(
+                            BankVaultDoorBlockEntity::new,
+                            ModBlocks.BANK_VAULT_DOOR.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BankSafeIronBarGateBlockEntity>> BANK_SAFE_IRON_BAR_GATE =
+            BLOCK_ENTITY_TYPES.register("bank_safe_iron_bar_gate", () ->
+                    BlockEntityType.Builder.of(
+                            BankSafeIronBarGateBlockEntity::new,
+                            ModBlocks.BANK_SAFE_IRON_BAR_GATE.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SafetyDepositBoxRowBlockEntity>> SAFETY_DEPOSIT_BOX_ROW =
+            BLOCK_ENTITY_TYPES.register("safety_deposit_box_row", () ->
+                    BlockEntityType.Builder.of(
+                            SafetyDepositBoxRowBlockEntity::new,
+                            ModBlocks.SAFETY_DEPOSIT_BOX_ROW.get()
                     ).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TallWallShelfBlockEntity>> TALL_WALL_SHELF =

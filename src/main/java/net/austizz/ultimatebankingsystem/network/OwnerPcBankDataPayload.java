@@ -26,9 +26,20 @@ public record OwnerPcBankDataPayload(
         String dailyCap,
         String dailyUsed,
         String dailyRemaining,
+        String singleLimit,
+        String dailyPlayerLimit,
+        String dailyBankLimit,
+        String tellerLimit,
         String cardIssueFee,
         String cardReplacementFee,
         String federalFundsRate,
+        String bankLevel,
+        String bankLevelDerived,
+        String bankLevelManual,
+        String bankLevelProgressRatio,
+        String bankLevelNextDepositTarget,
+        String bankLevelNextAccountTarget,
+        List<String> bankLevelRoadmap,
         boolean ownerView,
         List<String> roles,
         List<String> shares,
@@ -38,7 +49,22 @@ public record OwnerPcBankDataPayload(
         List<String> interbankOffers,
         List<String> interbankLoans,
         List<String> accountRoster,
-        List<String> certificateSchedule
+        List<String> certificateSchedule,
+        String safeAreaCount,
+        String safeRowCapacity,
+        String safeClaimedRowUnits,
+        String safeTotalBoxSlots,
+        String safeAssignedBoxes,
+        String safeFreeBoxes,
+        String safeLockedBoxes,
+        String safeEscrowCases,
+        String safePolicyMode,
+        String safePolicyAmount,
+        String safeRentPeriodTicks,
+        String safeOverdueTicks,
+        List<String> safeAreaSummaries,
+        List<String> safeBoxAssignments,
+        List<String> safeLockedQueue
 ) implements CustomPacketPayload {
 
     private static final StreamCodec<RegistryFriendlyByteBuf, UUID> UUID_CODEC =
@@ -71,9 +97,20 @@ public record OwnerPcBankDataPayload(
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyCap());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyUsed());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyRemaining());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.singleLimit());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyPlayerLimit());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.dailyBankLimit());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.tellerLimit());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardIssueFee());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardReplacementFee());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.federalFundsRate());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevel());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevelDerived());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevelManual());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevelProgressRatio());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevelNextDepositTarget());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.bankLevelNextAccountTarget());
+                        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.bankLevelRoadmap());
                         ByteBufCodecs.BOOL.encode(buf, payload.ownerView());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).encode(buf, payload.roles());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).encode(buf, payload.shares());
@@ -84,6 +121,21 @@ public record OwnerPcBankDataPayload(
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).encode(buf, payload.interbankLoans());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.accountRoster());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.certificateSchedule());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeAreaCount());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeRowCapacity());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeClaimedRowUnits());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeTotalBoxSlots());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeAssignedBoxes());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeFreeBoxes());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeLockedBoxes());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeEscrowCases());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safePolicyMode());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safePolicyAmount());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeRentPeriodTicks());
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.safeOverdueTicks());
+                        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeAreaSummaries());
+                        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeBoxAssignments());
+                        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeLockedQueue());
                     },
                     buf -> new OwnerPcBankDataPayload(
                             UUID_CODEC.decode(buf),
@@ -104,6 +156,17 @@ public record OwnerPcBankDataPayload(
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
                             ByteBufCodecs.BOOL.decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).decode(buf),
@@ -112,6 +175,21 @@ public record OwnerPcBankDataPayload(
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(256)).decode(buf),
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.decode(buf),
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf)
                     )

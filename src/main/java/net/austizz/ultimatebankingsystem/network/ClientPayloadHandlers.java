@@ -11,12 +11,12 @@ import net.austizz.ultimatebankingsystem.client.ShelfTransformPreviewClientState
 import net.austizz.ultimatebankingsystem.client.SmartphoneClientState;
 import net.austizz.ultimatebankingsystem.client.StockroomLocateClientState;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
-import net.austizz.ultimatebankingsystem.gui.screens.BankOwnerPcScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.BankTellerScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientOwnerPcData;
 import net.austizz.ultimatebankingsystem.gui.screens.HandheldTerminalScreen;
+import net.austizz.ultimatebankingsystem.gui.screens.OwnerPcClientScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.OwnerPcScreenHelper;
 import net.austizz.ultimatebankingsystem.gui.screens.ShelfScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ShopTerminalScreen;
@@ -210,7 +210,8 @@ final class ClientPayloadHandlers {
 
     static void handleOwnerPcBootstrap(OwnerPcBootstrapPayload payload) {
         ClientOwnerPcData.setApps(payload.apps(), payload.ownedCount(), payload.maxBanks());
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ClientOwnerPcData.consumeSuppressNextOwnerPcAutoOpen();
             ownerScreen.refreshFromNetwork();
         } else {
@@ -223,7 +224,8 @@ final class ClientPayloadHandlers {
 
     static void handleOwnerPcDesktopData(OwnerPcDesktopDataPayload payload) {
         ClientOwnerPcData.setDesktopData(payload);
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ownerScreen.refreshFromNetwork();
         }
     }
@@ -268,7 +270,8 @@ final class ClientPayloadHandlers {
         } else {
             ClientOwnerPcData.setToast(payload.success(), payload.message());
         }
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ownerScreen.handleDesktopActionResponse(payload);
             ownerScreen.refreshFromNetwork();
         }
@@ -276,7 +279,8 @@ final class ClientPayloadHandlers {
 
     static void handleOwnerPcBankData(OwnerPcBankDataPayload payload) {
         ClientOwnerPcData.setCurrentBankData(payload);
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ownerScreen.refreshFromNetwork();
         }
     }
@@ -292,16 +296,22 @@ final class ClientPayloadHandlers {
                     : raw.substring(0, firstNewline).trim();
         }
         ClientOwnerPcData.setToast(payload.success(), toastMessage);
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ownerScreen.refreshFromNetwork();
         }
     }
 
     static void handleOwnerPcCreateBankResponse(OwnerPcCreateBankResponsePayload payload) {
         ClientOwnerPcData.setToast(payload.success(), payload.message());
-        if (Minecraft.getInstance().screen instanceof BankOwnerPcScreen ownerScreen) {
+        OwnerPcClientScreen ownerScreen = currentOwnerPcScreen();
+        if (ownerScreen != null) {
             ownerScreen.refreshFromNetwork();
         }
+    }
+
+    private static OwnerPcClientScreen currentOwnerPcScreen() {
+        return Minecraft.getInstance().screen instanceof OwnerPcClientScreen ownerScreen ? ownerScreen : null;
     }
 
     static void handlePinAuthResponse(PinAuthResponsePayload payload) {

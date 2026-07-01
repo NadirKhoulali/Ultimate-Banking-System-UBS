@@ -3,6 +3,7 @@ package net.austizz.ultimatebankingsystem.client;
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen;
+import net.austizz.ultimatebankingsystem.gui.screens.SafetyDepositBoxScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ShoppingBagScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.WalletScreen;
 import net.austizz.ultimatebankingsystem.menu.ModMenus;
@@ -38,6 +39,7 @@ public final class ClientModBusEvents {
         event.register(ModMenus.SHOPPING_BAG.get(), ShoppingBagScreen::new);
         event.register(ModMenus.SHOPPING_BAG_ITEM.get(), ShoppingBagScreen::new);
         event.register(ModMenus.WALLET.get(), WalletScreen::new);
+        event.register(ModMenus.SAFETY_DEPOSIT_BOX.get(), SafetyDepositBoxScreen::new);
     }
 
     @SubscribeEvent

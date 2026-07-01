@@ -10,6 +10,7 @@ import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
@@ -236,6 +237,7 @@ public final class BankTellerService {
             case "ISSUE_CARD" -> handleIssueCard(server, centralBank, player, teller, accountIdRaw, paymentMode, externalFeePayment);
             case "REPLACE_CARD" -> handleReplaceCard(server, centralBank, player, teller, accountIdRaw, confirmed, paymentMode, externalFeePayment);
             case "OPEN_ACCOUNT" -> handleOpenAccountAtTeller(server, centralBank, player, teller, accountIdRaw, amountRaw, recipientRaw, paymentMode, externalFeePayment);
+            case "REQUEST_SAFE_BOX" -> handleRequestSafeBox(server, centralBank, player, teller, accountIdRaw);
             default -> ActionResult.fail("Unknown teller action.");
         };
     }
@@ -950,6 +952,28 @@ public final class BankTellerService {
                         ? " | Fee paid via " + safePaymentLabel(externalFeePayment)
                         : "")
         );
+    }
+
+    private static ActionResult handleRequestSafeBox(MinecraftServer server,
+                                                     CentralBank centralBank,
+                                                     ServerPlayer player,
+                                                     BankTellerEntity teller,
+                                                     String accountIdRaw) {
+        AccountHolder account = resolveOwnedAccount(centralBank, player, accountIdRaw);
+        if (account == null) {
+            return ActionResult.fail("Select one of your accounts first.");
+        }
+        UUID tellerBankId = teller.getBoundBankId();
+        if (tellerBankId == null) {
+            return ActionResult.fail("This teller is not linked to a bank with safe-deposit boxes.");
+        }
+        if (!tellerBankId.equals(account.getBankId())) {
+            return ActionResult.fail("This teller can only request safety boxes for accounts at "
+                    + resolveBankName(centralBank, tellerBankId) + ".");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.assignFirstFreeBox(server, centralBank, tellerBankId, account.getAccountUUID());
+        return result.success() ? ActionResult.ok(result.message()) : ActionResult.fail(result.message());
     }
 
     private static AccountHolder resolveOwnedAccount(CentralBank centralBank, ServerPlayer player, String accountIdRaw) {

@@ -169,7 +169,10 @@ public class UltimateBankingSystemClient {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options.hideGui || mc.screen != null) {
+        if (mc == null || mc.options.hideGui) {
+            return;
+        }
+        if (mc.screen != null) {
             return;
         }
         if (ShopSetupObjectiveClientState.isActive()) {
@@ -349,10 +352,13 @@ public class UltimateBankingSystemClient {
             return false;
         }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.BankOwnerPcScreen) {
-            // BankOwnerPcScreen already handles its own force/restore cycle.
+            // The owner PC is responsive and follows the player's configured GUI scale.
             return false;
         }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.WalletScreen) {
+            return false;
+        }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.SafetyDepositBoxScreen) {
             return false;
         }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen) {
@@ -979,7 +985,7 @@ public class UltimateBankingSystemClient {
             String stepText = tr("Step") + " " + ShopSetupObjectiveClientState.getStep()
                     + " / " + ShopSetupObjectiveClientState.getTotalSteps();
             String objectiveTitle = tr(ShopSetupObjectiveClientState.getObjectiveTitle());
-            String expandHint = tr("Press X to expand | Shift+X to close");
+            String expandHint = tr("Press S to expand");
             int compactWidth = Math.max(176, Math.min(236, panelWidth));
             int compactHeight = 42;
             int compactX = guiWidth - compactWidth - 8;

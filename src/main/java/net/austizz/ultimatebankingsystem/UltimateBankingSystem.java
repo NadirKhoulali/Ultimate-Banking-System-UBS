@@ -6,6 +6,7 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.austizz.ultimatebankingsystem.block.entity.custom.CardboardBoxBlockEntity;
@@ -282,6 +283,7 @@ public class UltimateBankingSystem {
             BankTellerPaymentInteractionManager.tick(server);
             ShopCashierInteractionManager.tick(server);
             ShopService.tickSessions(server);
+            SafetyDepositBoxService.tickSessions(server);
             ShelfBasketSessionService.tick(server);
             PickpocketService.tick(server);
             WorldCashEconomyService.tick(server);

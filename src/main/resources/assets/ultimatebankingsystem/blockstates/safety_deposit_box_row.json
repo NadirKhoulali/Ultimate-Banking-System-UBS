@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "ultimatebankingsystem:block/safety_deposit_box_row_placeholder"
+      }
+    }
+  ]
+}

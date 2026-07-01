@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "ultimatebankingsystem:block/bank_safe_iron_bar_gate_placeholder"
+      }
+    }
+  ]
+}
