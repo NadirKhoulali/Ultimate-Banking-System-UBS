@@ -63,6 +63,7 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.CHEQUE.get());
                         output.accept(ModItems.CREDIT_CARD.get());
                         output.accept(ModItems.WALLET.get());
+                        output.accept(ModItems.SMARTPHONE.get());
                         output.accept(ModItems.BANK_TELLER_SPAWN_EGG.get());
                         output.accept(ModItems.CASHIER_SPAWN_EGG.get());
                     })

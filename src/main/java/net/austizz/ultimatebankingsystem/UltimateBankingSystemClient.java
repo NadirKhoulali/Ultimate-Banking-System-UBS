@@ -5,6 +5,9 @@ import net.austizz.ultimatebankingsystem.client.DeliveryInfoBoardClientState;
 import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketKeyMappings;
+import net.austizz.ultimatebankingsystem.client.SmartphoneClientState;
+import net.austizz.ultimatebankingsystem.client.SmartphoneKeyMappings;
+import net.austizz.ultimatebankingsystem.client.SmartphoneOverlay;
 import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.austizz.ultimatebankingsystem.client.DeliveryPalletLabelsClientState;
 import net.austizz.ultimatebankingsystem.client.ShopSetupObjectiveClientState;
@@ -31,6 +34,7 @@ import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -106,6 +110,7 @@ public class UltimateBankingSystemClient {
     private static UUID pickpocketRequestedTargetId;
     private static boolean forcedMenuGuiScaleActive;
     private static Integer forcedMenuPreviousGuiScale;
+    private static int smartphoneInputScreenOpenBlockTicks;
 
     private record PickpocketTarget(Player player, double distanceToEyeSq) {
     }
@@ -128,6 +133,7 @@ public class UltimateBankingSystemClient {
         renderHandheldTerminalOverlay(mc, graphics);
         renderPickpocketOverlay(mc, graphics);
         renderShelfOverlay(mc, graphics);
+        SmartphoneOverlay.render(mc, graphics);
     }
 
     @SubscribeEvent
@@ -143,6 +149,17 @@ public class UltimateBankingSystemClient {
 
     @SubscribeEvent
     static void onKeyInput(InputEvent.Key event) {
+        if (SmartphoneClientState.isInteractive()) {
+            boolean wasTextInputFocused = SmartphoneClientState.isTextInputFocused();
+            if (event.getAction() == GLFW.GLFW_PRESS || event.getAction() == GLFW.GLFW_REPEAT) {
+                SmartphoneClientState.handleKey(event.getKey(), event.getAction());
+            }
+            if (wasTextInputFocused || SmartphoneClientState.isTextInputFocused()) {
+                smartphoneInputScreenOpenBlockTicks = 2;
+                suppressGameplayKeybinds(Minecraft.getInstance());
+            }
+            return;
+        }
         if (event.getAction() != GLFW.GLFW_PRESS) {
             return;
         }
@@ -170,12 +187,71 @@ public class UltimateBankingSystemClient {
     }
 
     @SubscribeEvent
+    static void onScreenOpening(ScreenEvent.Opening event) {
+        if (smartphoneInputScreenOpenBlockTicks > 0 || SmartphoneClientState.isTextInputFocused()) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    static void onInteractionKeyMappingTriggered(InputEvent.InteractionKeyMappingTriggered event) {
+        if (SmartphoneClientState.isTextInputFocused()) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    static void onMouseButton(InputEvent.MouseButton.Pre event) {
+        if (SmartphoneClientState.isTextInputFocused() && event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            event.setCanceled(true);
+            return;
+        }
+        if (!SmartphoneClientState.isInteractive()) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) {
+            return;
+        }
+        double mouseX = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
+        double mouseY = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
+        if (SmartphoneClientState.handleMouseButton(mouseX, mouseY, event.getButton(), event.getAction())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (SmartphoneClientState.isTextInputFocused()) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        if (SmartphoneClientState.handleScroll(event.getScrollDeltaY())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
     static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) {
             return;
         }
+        if (smartphoneInputScreenOpenBlockTicks > 0) {
+            smartphoneInputScreenOpenBlockTicks--;
+        }
         tickUbsMenuGuiScaleGuard(mc);
+        SmartphoneClientState.tick(mc);
+        if (SmartphoneClientState.isTextInputFocused()) {
+            suppressGameplayKeybinds(mc);
+            sendPickpocketCancelIfNeeded();
+            return;
+        }
+        while (SmartphoneKeyMappings.OPEN_PHONE.consumeClick()) {
+            if (mc.screen == null && !mc.options.hideGui) {
+                SmartphoneClientState.requestOpen();
+            }
+        }
 
         PickpocketClientState.tickClient();
 
@@ -212,6 +288,24 @@ public class UltimateBankingSystemClient {
         if (!targetId.equals(pickpocketRequestedTargetId)) {
             // Retargeting while holding forces a fresh start request to keep server state deterministic.
             sendPickpocketCancelIfNeeded();
+        }
+    }
+
+    private static void suppressGameplayKeybinds(Minecraft mc) {
+        if (mc == null || mc.options == null || mc.options.keyMappings == null) {
+            return;
+        }
+        for (KeyMapping mapping : mc.options.keyMappings) {
+            if (mapping == null) {
+                continue;
+            }
+            mapping.setDown(false);
+            while (mapping.consumeClick()) {
+                // Drain queued keybind clicks produced by typing inside the phone input field.
+            }
+        }
+        if (mc.player != null) {
+            mc.player.setSprinting(false);
         }
     }
 

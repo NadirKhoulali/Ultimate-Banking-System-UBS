@@ -8,6 +8,7 @@ import net.austizz.ultimatebankingsystem.client.HudClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketClientState;
 import net.austizz.ultimatebankingsystem.client.ShopSetupObjectiveClientState;
 import net.austizz.ultimatebankingsystem.client.ShelfTransformPreviewClientState;
+import net.austizz.ultimatebankingsystem.client.SmartphoneClientState;
 import net.austizz.ultimatebankingsystem.client.StockroomLocateClientState;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
 import net.austizz.ultimatebankingsystem.gui.screens.BankOwnerPcScreen;
@@ -41,6 +42,13 @@ final class ClientPayloadHandlers {
 
     static void handlePickpocketState(PickpocketStatePayload payload) {
         PickpocketClientState.apply(payload);
+    }
+
+    static void handleSmartphoneSnapshot(SmartphoneSnapshotPayload payload) {
+        SmartphoneClientState.applySnapshot(payload);
+        if (payload != null && payload.statusMessage() != null && !payload.statusMessage().isBlank()) {
+            pushActionAlert(payload.open(), payload.statusMessage(), "Phone");
+        }
     }
 
     static void handleStockroomLocateRender(StockroomLocateRenderPayload payload) {
@@ -297,6 +305,7 @@ final class ClientPayloadHandlers {
     }
 
     static void handlePinAuthResponse(PinAuthResponsePayload payload) {
+        SmartphoneClientState.handlePinAuthResponse(payload);
         if (Minecraft.getInstance().screen instanceof BankScreen bs
                 && bs.getTopLayer() instanceof PinEntryLayer layer) {
             layer.updateAuthResult(payload);
@@ -378,6 +387,7 @@ final class ClientPayloadHandlers {
     }
 
     static void handleChangePinResponse(ChangePinResponsePayload payload) {
+        SmartphoneClientState.handleChangePinResponse(payload);
         if (Minecraft.getInstance().screen instanceof BankScreen bs
                 && bs.getTopLayer() instanceof AccountSettingsLayer layer) {
             layer.updatePinResult(payload);
@@ -398,6 +408,7 @@ final class ClientPayloadHandlers {
     }
 
     static void handlePayRequestInboxResponse(PayRequestInboxResponsePayload payload) {
+        SmartphoneClientState.handlePayRequestInboxResponse(payload);
         if (Minecraft.getInstance().screen instanceof BankScreen bs
                 && bs.getTopLayer() instanceof PayRequestsLayer layer) {
             layer.updateInbox(payload.requests(), payload.primaryAccountLabel());
@@ -405,6 +416,7 @@ final class ClientPayloadHandlers {
     }
 
     static void handlePayRequestActionResponse(PayRequestActionResponsePayload payload) {
+        SmartphoneClientState.handlePayRequestActionResponse(payload);
         if (Minecraft.getInstance().screen instanceof BankScreen bs
                 && bs.getTopLayer() instanceof PayRequestsLayer layer) {
             layer.updateActionResult(payload);

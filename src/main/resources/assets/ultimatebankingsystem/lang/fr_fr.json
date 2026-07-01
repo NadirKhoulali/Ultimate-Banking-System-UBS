@@ -1220,6 +1220,8 @@
   "item.ultimatebankingsystem.cheque.description": "Chèque signé, encaissable auprès de la banque indiquée.",
   "item.ultimatebankingsystem.credit_card": "Carte de crédit",
   "item.ultimatebankingsystem.credit_card.description": "Carte de paiement émise par la banque et liée à un compte précis.",
+  "item.ultimatebankingsystem.smartphone": "Smartphone",
+  "item.ultimatebankingsystem.smartphone.description": "Téléphone de poche pour banque, contacts, messages, notes, peinture, calculatrice et Tap to Pay.",
   "item.ultimatebankingsystem.dime_coin": "Pièce de dix cents",
   "item.ultimatebankingsystem.fifty_dollar_bill": "Billet de 50 dollars",
   "item.ultimatebankingsystem.five_dollar_bill": "Billet de 5 dollars",

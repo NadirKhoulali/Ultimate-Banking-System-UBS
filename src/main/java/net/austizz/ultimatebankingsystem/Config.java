@@ -476,6 +476,10 @@ public class Config {
             .comment("Global maximum outgoing transaction volume per bank per day.")
             .defineInRange("GlobalMaxDailyBankVolume", 1000000, 1, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.ConfigValue<String> PHONE_ACCESS_MODE = BUILDER
+            .comment("Smartphone access mode. OWNER_LOCKED binds each phone to its first owner. OPEN_ACCESS lets whoever holds the phone use it.")
+            .define("PhoneAccessMode", "OWNER_LOCKED");
+
     public static final ModConfigSpec.IntValue SAFEBOX_SLOTS_CHECKING = BUILDER
             .comment("Safe deposit slot count for checking accounts.")
             .defineInRange("SafeBoxSlotsChecking", 9, 1, 54);

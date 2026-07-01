@@ -43,5 +43,6 @@ public final class ClientModBusEvents {
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         PickpocketKeyMappings.register(event);
+        SmartphoneKeyMappings.register(event);
     }
 }

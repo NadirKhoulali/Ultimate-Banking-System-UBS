@@ -1,0 +1,940 @@
+package net.austizz.ultimatebankingsystem.phone;
+
+import net.austizz.ultimatebankingsystem.Config;
+import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
+import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
+import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
+import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
+import net.austizz.ultimatebankingsystem.item.SmartphoneData;
+import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
+import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.SmartphoneSnapshotPayload;
+import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
+import net.austizz.ultimatebankingsystem.util.MoneyText;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+public final class SmartphoneService {
+    private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm")
+            .withZone(ZoneId.systemDefault());
+
+    private SmartphoneService() {
+    }
+
+    public static void openPhone(ServerPlayer player, boolean animate) {
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            ServerActionAlert.send(player, "Phone", "No smartphone found in your inventory.",
+                    DeliveryAlertPayload.AlertTone.ERROR, 3800);
+            return;
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            ServerActionAlert.send(player, "Phone",
+                    "This phone belongs to " + SmartphoneData.getOwnerName(phone) + ".",
+                    DeliveryAlertPayload.AlertTone.ERROR, 4600);
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, buildSnapshot(player, phone, animate));
+    }
+
+    public static SmartphoneSnapshotPayload handleAction(ServerPlayer player, String action, String p1, String p2, String p3) {
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            return SmartphoneSnapshotPayload.closed("No smartphone found in inventory.");
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            return SmartphoneSnapshotPayload.closed("This phone belongs to " + SmartphoneData.getOwnerName(phone) + ".");
+        }
+
+        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        String status = switch (normalized) {
+            case "SET_THEME" -> handleSetTheme(phone, p1, p2);
+            case "SET_PROFILE_NAME" -> handleSetProfileName(phone, p1);
+            case "SET_TAP_ACCOUNT" -> handleSetTapAccount(player, phone, p1);
+            case "SET_PRIMARY" -> handleSetPrimary(player, p1);
+            case "OPEN_DEFAULT_ACCOUNT" -> handleOpenDefaultAccount(player, p1);
+            case "REMEMBER_PAYMENT_TARGET" -> handleRememberPaymentTarget(player, p1, p2);
+            case "TRANSFER" -> handleTransfer(player, p1, p2, p3);
+            case "REQUEST_MONEY" -> handleRequestMoney(player, p1, p2, p3);
+            case "BANK_HIRE" -> handleBankStaffAction(player, "HIRE", p1, p2, p3);
+            case "BANK_FIRE" -> handleBankStaffAction(player, "FIRE", p1, p2, p3);
+            case "DISBAND_BANK" -> handleDisbandBank(player, p1, p2);
+            case "SAVE_NOTE" -> handleSaveNote(phone, p1, p2);
+            case "DELETE_NOTE" -> handleDeleteNote(phone, p1);
+            case "SAVE_PAINTING" -> handleSavePainting(phone, p1, p2);
+            case "SEND_MESSAGE" -> handleSendMessage(player, p1, p2);
+            case "READ_CONVERSATION" -> handleReadConversation(player, p1);
+            case "FAVORITE_CONTACT" -> handleFavorite(player, p1, true);
+            case "UNFAVORITE_CONTACT" -> handleFavorite(player, p1, false);
+            case "MUTE_CONTACT" -> handleMute(player, p1, true);
+            case "UNMUTE_CONTACT" -> handleMute(player, p1, false);
+            case "BLOCK_CONTACT" -> handleBlock(player, p1, true);
+            case "UNBLOCK_CONTACT" -> handleBlock(player, p1, false);
+            case "REPORT_CONTACT" -> handleReport(player, p1, p2);
+            default -> "Unknown phone action.";
+        };
+        SmartphoneSnapshotPayload snapshot = buildSnapshot(player, phone, false);
+        return new SmartphoneSnapshotPayload(snapshot.open(), snapshot.animate(), status, snapshot.lines());
+    }
+
+    public static ItemStack findUsablePhone(ServerPlayer player) {
+        return SmartphoneData.findInventoryPhone(player);
+    }
+
+    public static UUID resolveTapAccountId(ServerPlayer player) {
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            return null;
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            return null;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null) {
+            return null;
+        }
+        AccountHolder account = resolveTapAccount(player, centralBank, phone);
+        return account == null ? null : account.getAccountUUID();
+    }
+
+    public static boolean canUsePhone(ItemStack phone, ServerPlayer player) {
+        if (phone == null || phone.isEmpty() || player == null) {
+            return false;
+        }
+        String mode = Config.PHONE_ACCESS_MODE.get();
+        if ("OPEN_ACCESS".equalsIgnoreCase(mode)) {
+            return true;
+        }
+        return SmartphoneData.isOwner(phone, player);
+    }
+
+    private static SmartphoneSnapshotPayload buildSnapshot(ServerPlayer player, ItemStack phone, boolean animate) {
+        List<String> lines = new ArrayList<>();
+        lines.add(token("owner", player.getUUID(), player.getGameProfile().getName(), SmartphoneData.getOwnerName(phone)));
+        lines.add(token("theme", SmartphoneData.getAccent(phone), SmartphoneData.getWallpaper(phone), SmartphoneData.getLayout(phone)));
+        lines.add(token("app", "banking", "Banking", "UBS accounts and payments"));
+        lines.add(token("app", "tap", "Tap to Pay", "Default phone payment card"));
+        lines.add(token("app", "calculator", "Calculator", "Fast arithmetic"));
+        lines.add(token("app", "paint", "Paint", "Pixel sketch pad"));
+        lines.add(token("app", "contacts", "Contacts", "Server player directory"));
+        lines.add(token("app", "messenger", "Messenger", "Private phone messages"));
+        lines.add(token("app", "notes", "Notes", "Private phone notes"));
+        lines.add(token("app", "settings", "Settings", "Phone customization"));
+        if (isModLoaded("journeymap")) {
+            lines.add(token("app", "journeymap", "JourneyMap", "Open JourneyMap"));
+        }
+        if (isModLoaded("ultimate_auction_system")) {
+            lines.add(token("app", "auction", "Auction House", "Open auction house"));
+        }
+        if (isModLoaded("ucs")) {
+            lines.add(token("app", "realestate", "Real Estate", "Claims and properties"));
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank != null) {
+            List<AccountHolder> accounts = new ArrayList<>(centralBank.SearchForAccount(player.getUUID()).values());
+            accounts.sort(Comparator
+                    .comparing(AccountHolder::isPrimaryAccount).reversed()
+                    .thenComparing(account -> bankName(centralBank, account))
+                    .thenComparing(account -> String.valueOf(account.getAccountType())));
+            lines.add(token("bank_state", accounts.size(), centralBank.getBankName(), centralBank.getBankId()));
+            AccountHolder tap = resolveTapAccount(player, centralBank, phone);
+            for (AccountHolder account : accounts) {
+                lines.add(token("app",
+                        "account:" + account.getAccountUUID(),
+                        bankName(centralBank, account) + " " + accountType(account),
+                        MoneyText.abbreviateWithDollar(account.getBalance())));
+                lines.add(token("account",
+                        account.getAccountUUID(),
+                        bankName(centralBank, account),
+                        accountType(account),
+                        MoneyText.abbreviateWithDollar(account.getBalance()),
+                        account.getBalance().toPlainString(),
+                        account.isPrimaryAccount(),
+                        account.isFrozen(),
+                        account.getCreditScore(),
+                        account.getAccountAccessType(),
+                        account.getBusinessLabel(),
+                        account.getRole(player.getUUID()),
+                        tap != null && tap.getAccountUUID().equals(account.getAccountUUID()),
+                        SmartphoneData.getOrCreateVirtualCardNumber(phone, account.getAccountUUID()),
+                        account.hasPin()));
+            }
+            for (AccountHolder account : accounts) {
+                account.getTransactions().values().stream()
+                        .filter(UserTransaction.class::isInstance)
+                        .map(UserTransaction.class::cast)
+                        .sorted(Comparator.<UserTransaction, LocalDateTime>comparing(tx ->
+                                tx.getTimestamp() == null ? LocalDateTime.MIN : tx.getTimestamp()).reversed())
+                        .limit(120)
+                        .forEach(tx -> lines.add(token("tx",
+                                account.getAccountUUID(),
+                                tx.getTransactionUUID(),
+                                signedAmount(account, tx),
+                                tx.getTransactionDescription(),
+                                tx.getTimestamp() == null ? "" : tx.getTimestamp().format(DateTimeFormatter.ofPattern("MM/dd HH:mm")),
+                                txMillis(tx),
+                                tx.getSenderUUID() != null && tx.getSenderUUID().equals(account.getAccountUUID()) ? "OUT" : "IN",
+                                counterpartyLabel(player.getServer(), centralBank, account, tx),
+                                tx.getSenderUUID(),
+                                tx.getReceiverUUID())));
+            }
+
+            Bank ownedBank = resolveOwnedBank(centralBank, player.getUUID());
+            if (ownedBank != null) {
+                CompoundTag metadata = centralBank.getOrCreateBankMetadata(ownedBank.getBankId());
+                lines.add(token("owned_bank",
+                        ownedBank.getBankId(),
+                        ownedBank.getBankName(),
+                        metadata.getString("status").isBlank() ? "ACTIVE" : metadata.getString("status"),
+                        countEncodedEntries(metadata.getString("employees"))));
+                decodeEmployeeMap(metadata.getString("employees")).forEach((employeeId, spec) ->
+                        lines.add(token("bank_staff",
+                                employeeId,
+                                resolvePlayerName(player.getServer(), employeeId),
+                                spec.role(),
+                                MoneyText.abbreviateWithDollar(spec.salary()))));
+            }
+        }
+
+        SmartphoneSavedData savedData = SmartphoneSavedData.get(player.getServer());
+        SmartphoneSavedData.PlayerPrefs prefs = savedData.prefs(player.getUUID());
+        if (centralBank != null) {
+            appendPaymentRecipients(player, centralBank, prefs, lines);
+        }
+        player.getServer().getPlayerList().getPlayers().stream()
+                .sorted(Comparator.comparing(serverPlayer -> serverPlayer.getGameProfile().getName(), String.CASE_INSENSITIVE_ORDER))
+                .forEach(serverPlayer -> lines.add(token("contact",
+                        serverPlayer.getUUID(),
+                        serverPlayer.getGameProfile().getName(),
+                        true,
+                        prefs.favorites.contains(serverPlayer.getUUID()),
+                        prefs.muted.contains(serverPlayer.getUUID()),
+                        prefs.blocked.contains(serverPlayer.getUUID()),
+                        prefs.unread.getOrDefault(serverPlayer.getUUID(), 0))));
+        for (UUID known : prefs.knownContacts) {
+            if (player.getServer().getPlayerList().getPlayer(known) == null) {
+                lines.add(token("contact", known, "Offline Player", false,
+                        prefs.favorites.contains(known), prefs.muted.contains(known),
+                        prefs.blocked.contains(known), prefs.unread.getOrDefault(known, 0)));
+            }
+        }
+        for (UUID other : prefs.knownContacts) {
+            List<SmartphoneSavedData.MessageEntry> messages = new ArrayList<>(savedData.conversation(player.getUUID(), other));
+            messages.sort(Comparator
+                    .comparingLong(SmartphoneSavedData.MessageEntry::createdAt)
+                    .thenComparing(message -> message.id().toString()));
+            int from = Math.max(0, messages.size() - 120);
+            for (int i = from; i < messages.size(); i++) {
+                SmartphoneSavedData.MessageEntry message = messages.get(i);
+                lines.add(token("message",
+                        other,
+                        message.id(),
+                        message.senderId(),
+                        message.senderName(),
+                        message.body(),
+                        SHORT_TIME.format(Instant.ofEpochMilli(message.createdAt())),
+                        message.createdAt()));
+            }
+        }
+
+        List<String> notes = SmartphoneData.getNotes(phone);
+        for (int i = 0; i < notes.size(); i++) {
+            lines.add(token("note", i, notes.get(i)));
+        }
+        List<String> paintings = SmartphoneData.getPaintings(phone);
+        for (int i = 0; i < paintings.size(); i++) {
+            lines.add(token("painting", i, paintings.get(i)));
+        }
+        return new SmartphoneSnapshotPayload(true, animate, "", lines);
+    }
+
+    private static AccountHolder resolveTapAccount(ServerPlayer player, CentralBank centralBank, ItemStack phone) {
+        UUID selected = SmartphoneData.getTapAccount(phone);
+        if (selected != null) {
+            AccountHolder account = centralBank.SearchForAccountByAccountId(selected);
+            if (account != null && player.getUUID().equals(account.getPlayerUUID())) {
+                return account;
+            }
+        }
+        return centralBank.SearchForAccount(player.getUUID()).values().stream()
+                .filter(AccountHolder::isPrimaryAccount)
+                .findFirst()
+                .or(() -> centralBank.SearchForAccount(player.getUUID()).values().stream().findFirst())
+                .orElse(null);
+    }
+
+    private static String handleSetTheme(ItemStack phone, String accent, String wallpaper) {
+        SmartphoneData.setTheme(phone, accent, wallpaper);
+        return "Phone theme updated.";
+    }
+
+    private static String handleSetProfileName(ItemStack phone, String name) {
+        if (name == null || name.isBlank()) {
+            return "Profile name cannot be empty.";
+        }
+        SmartphoneData.setOwnerName(phone, name);
+        return "Banking profile updated.";
+    }
+
+    private static String handleSetTapAccount(ServerPlayer player, ItemStack phone, String accountIdRaw) {
+        UUID accountId = parseUuid(accountIdRaw);
+        if (accountId == null) {
+            return "Select a valid account first.";
+        }
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        AccountHolder account = centralBank == null ? null : centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !player.getUUID().equals(account.getPlayerUUID())) {
+            return "That account does not belong to this phone user.";
+        }
+        SmartphoneData.setTapAccount(phone, accountId);
+        return "Tap to Pay now uses " + accountType(account) + ".";
+    }
+
+    private static String handleSetPrimary(ServerPlayer player, String accountIdRaw) {
+        UUID accountId = parseUuid(accountIdRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || accountId == null) {
+            return "Account data is unavailable.";
+        }
+        AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+        if (account == null || !player.getUUID().equals(account.getPlayerUUID())) {
+            return "That account does not belong to you.";
+        }
+        if (!centralBank.setPrimaryAccountForPlayer(player.getUUID(), accountId, true)) {
+            return "Could not set primary account.";
+        }
+        return "Primary account updated.";
+    }
+
+    private static String handleOpenDefaultAccount(ServerPlayer player, String pinRaw) {
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null) {
+            return "Central Bank is unavailable.";
+        }
+        String pin = pinRaw == null ? "" : pinRaw.trim();
+        if (!pin.matches("\\d{4}")) {
+            return "Choose a 4-digit PIN to create your account.";
+        }
+
+        AccountHolder existing = centralBank.SearchForAccount(player.getUUID()).values().stream()
+                .filter(account -> account != null && centralBank.getBankId().equals(account.getBankId()))
+                .filter(account -> account.getAccountType() == AccountTypes.CheckingAccount)
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            if (existing.hasPin()) {
+                if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+                    existing.setPrimaryAccount(true);
+                }
+                BankManager.markDirty();
+                return "Central Bank checking account already exists. Sign in with its PIN.";
+            }
+            existing.setPin(pin);
+            if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+                existing.setPrimaryAccount(true);
+            }
+            BankManager.markDirty();
+            return "Central Bank checking account ready.";
+        }
+
+        AccountHolder account = new AccountHolder(
+                player.getUUID(),
+                BigDecimal.ZERO,
+                AccountTypes.CheckingAccount,
+                pin,
+                centralBank.getBankId(),
+                null
+        );
+        if (!centralBank.AddAccount(account)) {
+            return "You already have a Central Bank checking account.";
+        }
+        if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+            account.setPrimaryAccount(true);
+        }
+        BankManager.markDirty();
+        return "Created Central Bank checking account.";
+    }
+
+    private static String handleRememberPaymentTarget(ServerPlayer player, String targetRaw, String flowRaw) {
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null) {
+            return "Bank data is unavailable.";
+        }
+        PaymentDestination resolved = resolvePaymentDestination(player, centralBank, targetRaw);
+        if (resolved.account() == null) {
+            return resolved.message();
+        }
+        boolean requestFlow = "request".equalsIgnoreCase(flowRaw);
+        if (requestFlow && (resolved.accountIdDirect() || resolved.playerId() == null
+                || player.getServer().getPlayerList().getPlayer(resolved.playerId()) == null)) {
+            return "Requests need an online player with a primary account.";
+        }
+        rememberPaymentTarget(player, resolved.account(), resolved.accountIdDirect());
+        return "Recipient added.";
+    }
+
+    private static String handleTransfer(ServerPlayer player, String fromRaw, String toRaw, String amountRaw) {
+        UUID from = parseUuid(fromRaw);
+        BigDecimal amount = parseAmount(amountRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || from == null || amount == null) {
+            return "Transfer needs source, destination, and amount.";
+        }
+        AccountHolder source = centralBank.SearchForAccountByAccountId(from);
+        PaymentDestination resolved = resolvePaymentDestination(player, centralBank, toRaw);
+        AccountHolder destination = resolved.account();
+        if (source == null || destination == null) {
+            return resolved.message();
+        }
+        if (!player.getUUID().equals(source.getPlayerUUID()) && !source.canWithdraw(player.getUUID())) {
+            return "You do not have withdrawal access on the source account.";
+        }
+        if (from.equals(destination.getAccountUUID())) {
+            return "You cannot transfer to the same account.";
+        }
+        boolean success = new UserTransaction(from, destination.getAccountUUID(), amount, LocalDateTime.now(), "PHONE_TRANSFER").makeTransaction(player.getServer());
+        if (!success) {
+            return "Transfer failed.";
+        }
+        rememberPaymentTarget(player, destination, resolved.accountIdDirect());
+        return "Transferred " + MoneyText.abbreviateWithDollar(amount) + ".";
+    }
+
+    private static String handleRequestMoney(ServerPlayer player, String accountRaw, String targetRaw, String amountRaw) {
+        UUID destinationAccountId = parseUuid(accountRaw);
+        BigDecimal amount = parseAmount(amountRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || destinationAccountId == null || amount == null) {
+            return "Request needs destination account, player, and amount.";
+        }
+        AccountHolder destination = centralBank.SearchForAccountByAccountId(destinationAccountId);
+        if (destination == null || !player.getUUID().equals(destination.getPlayerUUID())) {
+            return "Choose one of your accounts as the request destination.";
+        }
+        PaymentDestination payerTarget = resolvePaymentDestination(player, centralBank, targetRaw);
+        if (payerTarget.account() == null) {
+            return payerTarget.message() == null || payerTarget.message().isBlank()
+                    ? "Requests need an online player with a primary account."
+                    : payerTarget.message();
+        }
+        if (payerTarget.playerId() == null) {
+            return "Requests need an account with a player owner.";
+        }
+        ServerPlayer payer = player.getServer().getPlayerList().getPlayer(payerTarget.playerId());
+        if (payer == null) {
+            return "Player is not online.";
+        }
+        if (payer.getUUID().equals(player.getUUID())) {
+            return "You cannot request money from yourself.";
+        }
+        if (!payerTarget.accountIdDirect() && findPrimaryAccount(centralBank, payer.getUUID()) == null) {
+            return payer.getGameProfile().getName() + " has no primary account.";
+        }
+
+        PayRequestManager.createRequest(player.getUUID(), payer.getUUID(), destination.getAccountUUID(), amount);
+        rememberPaymentTarget(player, payerTarget.account(), payerTarget.accountIdDirect());
+        ServerActionAlert.send(payer, "Pay Request",
+                player.getGameProfile().getName() + " requested " + MoneyText.abbreviateWithDollar(amount) + ".",
+                DeliveryAlertPayload.AlertTone.INFO, 5200);
+        return "Pay request sent to " + payer.getGameProfile().getName() + ".";
+    }
+
+    private static String handleBankStaffAction(ServerPlayer player, String action, String bankRaw, String arg1, String arg2) {
+        UUID bankId = parseUuid(bankRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || bankId == null) {
+            return "Bank data is unavailable.";
+        }
+        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        String role = arg2;
+        String salary = "0";
+        if ("HIRE".equals(normalized) && arg2 != null) {
+            int split = arg2.indexOf('|');
+            if (split >= 0) {
+                role = arg2.substring(0, split);
+                salary = arg2.substring(split + 1);
+            }
+        }
+        BankOwnerPcService.ActionResult result = BankOwnerPcService.executeAction(
+                player.getServer(),
+                centralBank,
+                player,
+                bankId,
+                normalized,
+                arg1,
+                role,
+                "HIRE".equals(normalized) ? salary : "",
+                ""
+        );
+        return result.message();
+    }
+
+    private static String handleDisbandBank(ServerPlayer player, String bankRaw, String confirmationRaw) {
+        UUID bankId = parseUuid(bankRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || bankId == null) {
+            return "Bank data is unavailable.";
+        }
+        Bank bank = centralBank.getBank(bankId);
+        if (bank == null || bank.getBankId().equals(centralBank.getBankId())) {
+            return "That bank cannot be dissolved.";
+        }
+        if (!player.getUUID().equals(bank.getBankOwnerId())) {
+            return "Only the bank owner can dissolve this bank.";
+        }
+        String confirmation = confirmationRaw == null ? "" : confirmationRaw.trim();
+        if (!"DISSOLVE".equalsIgnoreCase(confirmation)) {
+            return "Type DISSOLVE to confirm bank removal.";
+        }
+
+        BigDecimal movedAmount = BigDecimal.ZERO;
+        int movedAccounts = 0;
+        for (AccountHolder account : new ArrayList<>(bank.getBankAccounts().values())) {
+            if (account == null) {
+                continue;
+            }
+            BigDecimal balance = account.getBalance();
+            if (balance.compareTo(BigDecimal.ZERO) > 0) {
+                AccountHolder destination = findOrCreateCentralCheckingAccount(centralBank, account.getPlayerUUID());
+                if (destination != null && account.forceRemoveBalance(balance) && destination.forceAddBalance(balance)) {
+                    movedAmount = movedAmount.add(balance);
+                    movedAccounts++;
+                }
+            }
+            bank.RemoveAccount(account);
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        metadata.putString("status", "DISBANDED");
+        metadata.putString("revokeReason", "Owner dissolved bank from phone app");
+        metadata.putLong("revokedAtMillis", System.currentTimeMillis());
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        centralBank.removeBank(bank);
+        return "Dissolved " + bank.getBankName() + ". Moved " + MoneyText.abbreviateWithDollar(movedAmount)
+                + " across " + movedAccounts + " account(s).";
+    }
+
+    private static void appendPaymentRecipients(ServerPlayer player,
+                                                CentralBank centralBank,
+                                                SmartphoneSavedData.PlayerPrefs prefs,
+                                                List<String> lines) {
+        Set<UUID> emittedPlayers = new HashSet<>();
+        for (UUID recentPlayer : prefs.paymentRecentPlayers) {
+            ServerPlayer online = player.getServer().getPlayerList().getPlayer(recentPlayer);
+            if (online == null || online.getUUID().equals(player.getUUID())) {
+                continue;
+            }
+            AccountHolder primary = findPrimaryAccount(centralBank, online.getUUID());
+            if (primary != null) {
+                emittedPlayers.add(online.getUUID());
+                lines.add(token("payment_contact", online.getUUID(), online.getGameProfile().getName(),
+                        true, primary.getAccountUUID(), true, "player"));
+            }
+        }
+
+        for (UUID accountId : prefs.paymentRecentAccounts) {
+            AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
+            if (account != null && !account.getPlayerUUID().equals(player.getUUID())) {
+                lines.add(token("payment_contact", accountId, "Acct " + shortId(accountId),
+                        false, accountId, true, "account"));
+            }
+        }
+
+        player.getServer().getPlayerList().getPlayers().stream()
+                .filter(online -> !online.getUUID().equals(player.getUUID()))
+                .sorted(Comparator.comparing(online -> online.getGameProfile().getName(), String.CASE_INSENSITIVE_ORDER))
+                .forEach(online -> {
+                    if (emittedPlayers.contains(online.getUUID())) {
+                        return;
+                    }
+                    AccountHolder primary = findPrimaryAccount(centralBank, online.getUUID());
+                    if (primary != null) {
+                        lines.add(token("payment_contact", online.getUUID(), online.getGameProfile().getName(),
+                                true, primary.getAccountUUID(), false, "player"));
+                    }
+                });
+    }
+
+    private static PaymentDestination resolvePaymentDestination(ServerPlayer actor, CentralBank centralBank, String raw) {
+        String target = raw == null ? "" : raw.trim();
+        if (target.isBlank()) {
+            return PaymentDestination.error("Choose a player or account ID.");
+        }
+
+        UUID id = parseUuid(target);
+        if (id != null) {
+            AccountHolder directAccount = centralBank.SearchForAccountByAccountId(id);
+            if (directAccount != null) {
+                return new PaymentDestination(directAccount, directAccount.getPlayerUUID(), true, "");
+            }
+            ServerPlayer byId = actor.getServer().getPlayerList().getPlayer(id);
+            if (byId != null) {
+                return resolvePlayerPrimary(centralBank, byId);
+            }
+        }
+
+        ServerPlayer byName = actor.getServer().getPlayerList().getPlayerByName(target);
+        if (byName == null) {
+            return PaymentDestination.error("Player is not online or account ID is invalid.");
+        }
+        return resolvePlayerPrimary(centralBank, byName);
+    }
+
+    private static PaymentDestination resolvePlayerPrimary(CentralBank centralBank, ServerPlayer player) {
+        AccountHolder primary = findPrimaryAccount(centralBank, player.getUUID());
+        if (primary == null) {
+            return new PaymentDestination(null, player.getUUID(), false,
+                    player.getGameProfile().getName() + " has no primary account.");
+        }
+        return new PaymentDestination(primary, player.getUUID(), false, "");
+    }
+
+    private static void rememberPaymentTarget(ServerPlayer player, AccountHolder destination, boolean accountIdDirect) {
+        if (destination == null) {
+            return;
+        }
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        if (accountIdDirect) {
+            data.rememberPaymentAccount(player.getUUID(), destination.getAccountUUID());
+        } else {
+            data.rememberPaymentPlayer(player.getUUID(), destination.getPlayerUUID());
+        }
+    }
+
+    private static AccountHolder findPrimaryAccount(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return null;
+        }
+        List<AccountHolder> accounts = new ArrayList<>(centralBank.SearchForAccount(playerId).values());
+        if (accounts.isEmpty()) {
+            return null;
+        }
+        return accounts.stream()
+                .filter(AccountHolder::isPrimaryAccount)
+                .findFirst()
+                .orElse(accounts.size() == 1 ? accounts.get(0) : null);
+    }
+
+    private static AccountHolder findOrCreateCentralCheckingAccount(CentralBank centralBank, UUID playerId) {
+        if (centralBank == null || playerId == null) {
+            return null;
+        }
+        AccountHolder existing = centralBank.SearchForAccount(playerId).values().stream()
+                .filter(account -> account != null && centralBank.getBankId().equals(account.getBankId()))
+                .filter(account -> account.getAccountType() == AccountTypes.CheckingAccount)
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        AccountHolder account = new AccountHolder(playerId, BigDecimal.ZERO, AccountTypes.CheckingAccount, "",
+                centralBank.getBankId(), null);
+        if (!centralBank.AddAccount(account)) {
+            return null;
+        }
+        if (findPrimaryAccount(centralBank, playerId) == null) {
+            account.setPrimaryAccount(true);
+        }
+        return account;
+    }
+
+    private static Bank resolveOwnedBank(CentralBank centralBank, UUID ownerId) {
+        if (centralBank == null || ownerId == null || centralBank.getBanks() == null) {
+            return null;
+        }
+        return centralBank.getBanks().values().stream()
+                .filter(bank -> bank != null && !bank.getBankId().equals(centralBank.getBankId()))
+                .filter(bank -> ownerId.equals(bank.getBankOwnerId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static String signedAmount(AccountHolder account, UserTransaction tx) {
+        if (tx == null || tx.getAmount() == null) {
+            return "$0";
+        }
+        String amount = MoneyText.abbreviateWithDollar(tx.getAmount());
+        if (account != null && account.getAccountUUID().equals(tx.getSenderUUID())) {
+            return "-" + amount;
+        }
+        return amount.startsWith("+") ? amount : "+" + amount;
+    }
+
+    private static long txMillis(UserTransaction tx) {
+        if (tx == null || tx.getTimestamp() == null) {
+            return 0L;
+        }
+        return tx.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    private static String counterpartyLabel(net.minecraft.server.MinecraftServer server,
+                                            CentralBank centralBank,
+                                            AccountHolder account,
+                                            UserTransaction tx) {
+        if (tx == null || account == null) {
+            return "";
+        }
+        UUID otherAccountId = account.getAccountUUID().equals(tx.getSenderUUID())
+                ? tx.getReceiverUUID()
+                : tx.getSenderUUID();
+        AccountHolder other = centralBank.SearchForAccountByAccountId(otherAccountId);
+        if (other == null) {
+            return shortId(otherAccountId);
+        }
+        ServerPlayer online = server.getPlayerList().getPlayer(other.getPlayerUUID());
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        Bank bank = centralBank.getBank(other.getBankId());
+        return (bank == null ? "Account" : bank.getBankName()) + " " + shortId(otherAccountId);
+    }
+
+    private static int countEncodedEntries(String encoded) {
+        if (encoded == null || encoded.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (String row : encoded.split(";")) {
+            if (!row.isBlank()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static Map<UUID, EmployeeSpec> decodeEmployeeMap(String encoded) {
+        Map<UUID, EmployeeSpec> result = new HashMap<>();
+        if (encoded == null || encoded.isBlank()) {
+            return result;
+        }
+        for (String entry : encoded.split(";")) {
+            String raw = entry.trim();
+            if (raw.isBlank() || !raw.contains("=") || !raw.contains(":")) {
+                continue;
+            }
+            String[] uuidAndRest = raw.split("=", 2);
+            String[] roleAndSalary = uuidAndRest[1].split(":", 2);
+            if (roleAndSalary.length < 2) {
+                continue;
+            }
+            try {
+                UUID id = UUID.fromString(uuidAndRest[0].trim());
+                String role = roleAndSalary[0].trim().toUpperCase(Locale.ROOT);
+                BigDecimal salary = new BigDecimal(roleAndSalary[1].trim());
+                if (salary.compareTo(BigDecimal.ZERO) >= 0) {
+                    result.put(id, new EmployeeSpec(role, salary));
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return result;
+    }
+
+    private static String resolvePlayerName(net.minecraft.server.MinecraftServer server, UUID id) {
+        if (id == null) {
+            return "Unknown";
+        }
+        if (server != null) {
+            ServerPlayer online = server.getPlayerList().getPlayer(id);
+            if (online != null) {
+                return online.getGameProfile().getName();
+            }
+            if (server.getProfileCache() != null) {
+                var cached = server.getProfileCache().get(id);
+                if (cached.isPresent()
+                        && cached.get().getName() != null
+                        && !cached.get().getName().isBlank()) {
+                    return cached.get().getName();
+                }
+            }
+        }
+        return shortId(id);
+    }
+
+    private static String shortId(UUID id) {
+        String value = id == null ? "" : id.toString();
+        return value.length() <= 8 ? value : value.substring(0, 8);
+    }
+
+    private record PaymentDestination(AccountHolder account, UUID playerId, boolean accountIdDirect, String message) {
+        static PaymentDestination error(String message) {
+            return new PaymentDestination(null, null, false, message);
+        }
+    }
+
+    private record EmployeeSpec(String role, BigDecimal salary) {
+    }
+
+    private static String handleSaveNote(ItemStack phone, String indexRaw, String body) {
+        SmartphoneData.saveNote(phone, parseInt(indexRaw, 0), body);
+        return "Note saved.";
+    }
+
+    private static String handleDeleteNote(ItemStack phone, String indexRaw) {
+        SmartphoneData.deleteNote(phone, parseInt(indexRaw, 0));
+        return "Note deleted.";
+    }
+
+    private static String handleSavePainting(ItemStack phone, String indexRaw, String body) {
+        SmartphoneData.savePainting(phone, parseInt(indexRaw, 0), body);
+        return "Painting saved.";
+    }
+
+    private static String handleSendMessage(ServerPlayer player, String recipientRaw, String body) {
+        UUID recipient = parseUuid(recipientRaw);
+        if (recipient == null || body == null || body.isBlank()) {
+            return "Choose a contact and write a message.";
+        }
+        ServerPlayer target = player.getServer().getPlayerList().getPlayer(recipient);
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        boolean sent = data.sendMessage(player.getUUID(), player.getGameProfile().getName(), recipient,
+                target == null ? "Offline Player" : target.getGameProfile().getName(), body);
+        if (!sent) {
+            return "Message sent.";
+        }
+        if (target != null && !data.prefs(recipient).muted.contains(player.getUUID())) {
+            ServerActionAlert.send(target, "Phone", "New message from " + player.getGameProfile().getName(),
+                    DeliveryAlertPayload.AlertTone.INFO, 4400);
+        }
+        return "Message sent.";
+    }
+
+    private static String handleReadConversation(ServerPlayer player, String otherRaw) {
+        UUID other = parseUuid(otherRaw);
+        if (other != null) {
+            SmartphoneSavedData.get(player.getServer()).markRead(player.getUUID(), other);
+        }
+        return "";
+    }
+
+    private static String handleFavorite(ServerPlayer player, String otherRaw, boolean favorite) {
+        UUID other = parseUuid(otherRaw);
+        if (other == null) {
+            return "Choose a contact first.";
+        }
+        SmartphoneSavedData.get(player.getServer()).favorite(player.getUUID(), other, favorite);
+        return favorite ? "Contact favorited." : "Contact removed from favorites.";
+    }
+
+    private static String handleMute(ServerPlayer player, String otherRaw, boolean mute) {
+        UUID other = parseUuid(otherRaw);
+        if (other == null) {
+            return "Choose a contact first.";
+        }
+        SmartphoneSavedData.get(player.getServer()).mute(player.getUUID(), other, mute);
+        return mute ? "Contact muted." : "Contact unmuted.";
+    }
+
+    private static String handleBlock(ServerPlayer player, String otherRaw, boolean block) {
+        UUID other = parseUuid(otherRaw);
+        if (other == null) {
+            return "Choose a contact first.";
+        }
+        SmartphoneSavedData.get(player.getServer()).block(player.getUUID(), other, block);
+        return block ? "Contact blocked." : "Contact unblocked.";
+    }
+
+    private static String handleReport(ServerPlayer player, String otherRaw, String reason) {
+        UUID other = parseUuid(otherRaw);
+        if (other == null) {
+            return "Choose a contact first.";
+        }
+        ServerPlayer target = player.getServer().getPlayerList().getPlayer(other);
+        SmartphoneSavedData.ReportEntry report = SmartphoneSavedData.get(player.getServer()).report(
+                player.getUUID(),
+                player.getGameProfile().getName(),
+                other,
+                target == null ? "Offline Player" : target.getGameProfile().getName(),
+                reason == null || reason.isBlank() ? "Phone report" : reason
+        );
+        return "Report filed: " + report.id().toString().substring(0, 8) + ".";
+    }
+
+    private static String bankName(CentralBank centralBank, AccountHolder account) {
+        Bank bank = centralBank == null || account == null ? null : centralBank.getBank(account.getBankId());
+        return bank == null ? "Unknown Bank" : bank.getBankName();
+    }
+
+    private static String accountType(AccountHolder account) {
+        if (account == null || account.getAccountType() == null) {
+            return "Account";
+        }
+        String raw = account.getAccountType().name().replace("Account", " Account");
+        return raw.replaceAll("([a-z])([A-Z])", "$1 $2");
+    }
+
+    private static boolean isModLoaded(String modId) {
+        try {
+            return ModList.get().isLoaded(modId);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static String token(Object... values) {
+        List<String> encoded = new ArrayList<>();
+        for (Object value : values) {
+            encoded.add(encode(String.valueOf(value == null ? "" : value)));
+        }
+        return String.join("|", encoded);
+    }
+
+    private static String encode(String value) {
+        return value == null ? "" : value
+                .replace("%", "%25")
+                .replace("|", "%7C")
+                .replace("\n", "%0A")
+                .replace("\r", "");
+    }
+
+    private static UUID parseUuid(String raw) {
+        try {
+            return raw == null || raw.isBlank() ? null : UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private static BigDecimal parseAmount(String raw) {
+        try {
+            BigDecimal amount = new BigDecimal(raw == null ? "" : raw.trim().replace("$", ""));
+            return amount.compareTo(BigDecimal.ZERO) > 0 ? amount : null;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static int parseInt(String raw, int fallback) {
+        try {
+            return Integer.parseInt(raw == null ? "" : raw.trim());
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+}

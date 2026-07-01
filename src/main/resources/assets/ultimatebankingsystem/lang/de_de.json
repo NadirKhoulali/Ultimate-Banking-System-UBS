@@ -1220,6 +1220,8 @@
   "item.ultimatebankingsystem.cheque.description": "Schriftlicher Scheckgegenstand, der ausgestellt und eingelöst werden kann.",
   "item.ultimatebankingsystem.credit_card": "Kreditkarte",
   "item.ultimatebankingsystem.credit_card.description": "Von einer Bank ausgestellte Zahlungskarte, die mit einem bestimmten Konto verknüpft ist.",
+  "item.ultimatebankingsystem.smartphone": "Smartphone",
+  "item.ultimatebankingsystem.smartphone.description": "Taschenhandy für Banking, Kontakte, Nachrichten, Notizen, Malen, Rechner und Tap to Pay.",
   "item.ultimatebankingsystem.dime_coin": "Dime",
   "item.ultimatebankingsystem.fifty_dollar_bill": "50-Dollar-Schein",
   "item.ultimatebankingsystem.five_dollar_bill": "5-Dollar-Schein",

@@ -1220,6 +1220,8 @@
   "item.ultimatebankingsystem.cheque.description": "Schriftelijk cheque-item dat kan worden uitgegeven en ingewisseld.",
   "item.ultimatebankingsystem.credit_card": "Creditcard",
   "item.ultimatebankingsystem.credit_card.description": "Door een bank uitgegeven betaalkaart gekoppeld aan een specifieke rekening.",
+  "item.ultimatebankingsystem.smartphone": "Smartphone",
+  "item.ultimatebankingsystem.smartphone.description": "Zaktelefoon voor bankieren, contacten, berichten, notities, tekenen, calculator en Tap to Pay.",
   "item.ultimatebankingsystem.dime_coin": "Dubbeltje",
   "item.ultimatebankingsystem.fifty_dollar_bill": "Biljet van 50 dollar",
   "item.ultimatebankingsystem.five_dollar_bill": "5 dollarbiljet",

@@ -30,6 +30,7 @@ import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
+import net.austizz.ultimatebankingsystem.phone.SmartphoneService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfBasketSessionService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfDisplayRules;
@@ -193,6 +194,9 @@ public final class ModPayloads {
         registrar.playToServer(PickpocketStartPayload.TYPE, PickpocketStartPayload.STREAM_CODEC, ModPayloads::handlePickpocketStart);
         registrar.playToServer(PickpocketCancelPayload.TYPE, PickpocketCancelPayload.STREAM_CODEC, ModPayloads::handlePickpocketCancel);
         registrar.playToClient(PickpocketStatePayload.TYPE, PickpocketStatePayload.STREAM_CODEC, ModPayloads::handlePickpocketState);
+        registrar.playToServer(SmartphoneOpenRequestPayload.TYPE, SmartphoneOpenRequestPayload.STREAM_CODEC, ModPayloads::handleSmartphoneOpenRequest);
+        registrar.playToServer(SmartphoneActionPayload.TYPE, SmartphoneActionPayload.STREAM_CODEC, ModPayloads::handleSmartphoneAction);
+        registrar.playToClient(SmartphoneSnapshotPayload.TYPE, SmartphoneSnapshotPayload.STREAM_CODEC, ModPayloads::handleSmartphoneSnapshot);
     }
 
     private static void handleHudState(HudStatePayload payload, IPayloadContext context) {
@@ -241,6 +245,35 @@ public final class ModPayloads {
 
     private static void handlePickpocketState(PickpocketStatePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handlePickpocketState", payload));
+    }
+
+    private static void handleSmartphoneOpenRequest(SmartphoneOpenRequestPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player != null) {
+                SmartphoneService.openPhone(player, payload == null || payload.animate());
+            }
+        });
+    }
+
+    private static void handleSmartphoneAction(SmartphoneActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null) {
+                return;
+            }
+            PacketDistributor.sendToPlayer(player, SmartphoneService.handleAction(
+                    player,
+                    payload.action(),
+                    payload.param1(),
+                    payload.param2(),
+                    payload.param3()
+            ));
+        });
+    }
+
+    private static void handleSmartphoneSnapshot(SmartphoneSnapshotPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSmartphoneSnapshot", payload));
     }
 
     // ─── OpenATM ────────────────────────────────────────────────────────
