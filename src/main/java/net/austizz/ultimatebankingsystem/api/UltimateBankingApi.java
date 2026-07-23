@@ -90,6 +90,42 @@ public interface UltimateBankingApi {
 
     List<ApiAlertTone> getSupportedUiAlertTones();
 
+    @ApiStatus.AvailableSince("1.3.0")
+    ApiNotificationResult sendNotification(UUID playerId, ApiNotificationRequest request);
+
+    @ApiStatus.AvailableSince("1.3.0")
+    ApiNotificationResult dismissNotification(UUID playerId, String notificationId);
+
+    @ApiStatus.AvailableSince("1.3.0")
+    ApiNotificationResult clearNotificationChannel(UUID playerId, String channel);
+
+    @ApiStatus.AvailableSince("1.3.0")
+    ApiNotificationResult clearNotifications(UUID playerId);
+
+    @ApiStatus.AvailableSince("1.3.0")
+    List<ApiNotificationType> getSupportedNotificationTypes();
+
+    @ApiStatus.AvailableSince("1.3.0")
+    List<ApiNotificationPriority> getSupportedNotificationPriorities();
+
+    @ApiStatus.AvailableSince("1.3.0")
+    List<ApiNotificationPlacement> getSupportedNotificationPlacements();
+
+    @ApiStatus.AvailableSince("1.4.1")
+    ApiShopPriceStatistics getItemShopPriceStatistics(ItemStack item, ApiShopPriceScope scope);
+
+    @ApiStatus.AvailableSince("1.4.1")
+    ApiShopPriceStatistics getRegularShopPriceStatistics(ItemStack item);
+
+    @ApiStatus.AvailableSince("1.4.1")
+    ApiShopPriceStatistics getAllShelfPriceStatistics(ItemStack item);
+
+    @ApiStatus.AvailableSince("1.4.1")
+    ApiShopPriceStatistics getNonCreativeShelfPriceStatistics(ItemStack item);
+
+    @ApiStatus.AvailableSince("1.4.1")
+    ApiShopPriceStatistics getCreativeShelfPriceStatistics(ItemStack item);
+
     ApiResult shopPurchase(UUID accountId, long amount, String shopName);
     ApiResult shopPurchase(UUID payerAccountId, UUID merchantAccountId, long amount, String shopName, String reference);
 
@@ -155,6 +191,24 @@ public interface UltimateBankingApi {
     boolean playerOwnsAccount(UUID playerId, UUID accountId);
 
     boolean playerOwnsBank(UUID playerId, UUID bankId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    boolean playerOwnsAnyBank(UUID playerId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    List<ApiBankSnapshot> getPlayerOwnedBanks(UUID playerId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    boolean shopExists(UUID shopId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    boolean playerOwnsShop(UUID playerId, UUID shopId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    boolean playerOwnsAnyShop(UUID playerId);
+
+    @ApiStatus.AvailableSince("2.0.0")
+    List<UUID> getPlayerOwnedShopIds(UUID playerId);
 
     boolean accountBelongsToBank(UUID accountId, UUID bankId);
 

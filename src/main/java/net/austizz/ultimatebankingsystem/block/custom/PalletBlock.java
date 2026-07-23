@@ -4,7 +4,7 @@ import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.custom.PalletBlockEntity;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.minecraft.core.BlockPos;
@@ -411,10 +411,10 @@ public class PalletBlock extends Block implements EntityBlock {
             return;
         }
         // Keep chat output for compatibility while also pushing the shared HUD alert card.
-        String normalized = ServerActionAlert.stripLegacyFormatting(message);
+        String normalized = ServerNotification.stripLegacyFormatting(message);
         player.sendSystemMessage(UbsTranslations.literal(normalized));
         if (player instanceof ServerPlayer serverPlayer) {
-            ServerActionAlert.sendLegacy(
+            ServerNotification.sendLegacy(
                     serverPlayer,
                     "Pallet",
                     normalized,

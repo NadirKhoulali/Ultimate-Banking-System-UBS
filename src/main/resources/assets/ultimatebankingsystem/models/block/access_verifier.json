@@ -1,0 +1,63 @@
+{
+  "credit": "Created for Ultimate Banking System",
+  "parent": "minecraft:block/block",
+  "textures": {
+    "panel": "ultimatebankingsystem:block/access_verifier",
+    "bezel": "ultimatebankingsystem:block/access_verifier_keypad_bezel",
+    "body": "ultimatebankingsystem:block/access_verifier_body",
+    "particle": "ultimatebankingsystem:block/access_verifier_body"
+  },
+  "elements": [
+    {
+      "name": "full_body",
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#body" },
+        "east": { "uv": [0, 0, 16, 16], "texture": "#body" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#body" },
+        "west": { "uv": [0, 0, 16, 16], "texture": "#body" },
+        "up": { "uv": [0, 0, 16, 16], "texture": "#body" },
+        "down": { "uv": [0, 0, 16, 16], "texture": "#body" }
+      }
+    },
+    {
+      "name": "raised_keypad_face",
+      "from": [2, 2, -2],
+      "to": [14, 15, 1],
+      "faces": {
+        "north": { "uv": [0, 0, 12, 13], "texture": "#panel" },
+        "east": { "uv": [13, 2, 16, 15], "texture": "#body" },
+        "south": { "uv": [2, 2, 14, 15], "texture": "#body" },
+        "west": { "uv": [0, 2, 3, 15], "texture": "#body" },
+        "up": { "uv": [2, 0, 14, 3], "texture": "#body" },
+        "down": { "uv": [2, 13, 14, 16], "texture": "#body" }
+      }
+    },
+    {
+      "name": "display_bezel",
+      "from": [4, 12.2, -2.8],
+      "to": [12, 14.4, -1.6],
+      "faces": {
+        "north": { "uv": [0, 0, 8, 2], "texture": "#bezel" },
+        "east": { "uv": [0, 3, 1, 5], "texture": "#bezel" },
+        "south": { "uv": [0, 0, 8, 2], "texture": "#bezel" },
+        "west": { "uv": [0, 3, 1, 5], "texture": "#bezel" },
+        "up": { "uv": [8, 3, 0, 2], "texture": "#bezel" },
+        "down": { "uv": [8, 2, 0, 3], "texture": "#bezel" }
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [75, 45, 0],
+      "translation": [0, 2.5, 0],
+      "scale": [0.38, 0.38, 0.38]
+    },
+    "gui": {
+      "rotation": [30, 225, 0],
+      "translation": [0, 0, 0],
+      "scale": [0.62, 0.62, 0.62]
+    }
+  }
+}

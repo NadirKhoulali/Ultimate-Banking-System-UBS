@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "ultimatebankingsystem:item/empty_display"
+    "layer0": "ultimatebankingsystem:item/creative_invisible_display_small"
   }
 }

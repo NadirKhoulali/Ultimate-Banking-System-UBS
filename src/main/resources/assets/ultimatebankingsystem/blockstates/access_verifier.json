@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "ultimatebankingsystem:block/access_verifier"
+    },
+    "facing=east": {
+      "model": "ultimatebankingsystem:block/access_verifier",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "ultimatebankingsystem:block/access_verifier",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "ultimatebankingsystem:block/access_verifier",
+      "y": 270
+    }
+  }
+}

@@ -3,7 +3,7 @@
 ## Getting Started
 
 1. Create an account:
-   - `/account open checking "Central Bank"`
+   - `/account open`
 2. Open an ATM block.
 3. Select an account.
 4. Complete PIN flow:
@@ -117,11 +117,25 @@ See:
 
 If disabled, you are immune and also cannot pickpocket others.
 
-## HUD and Safe Box
+## HUD and Safety Deposit Boxes
 
 - `/account hud toggle`
 - `/account hud primary`
 - `/account hud account <accountId>`
+- `/account hud move <top-right|top-left|middle-right|middle-left|bottom-right|bottom-left>`
+
+A bank's physical `Safe Box` teller tab is enabled only after its owner completes the vault setup. To inspect an assigned box:
+
+1. Select an account at that bank's teller.
+2. Open `Safe Box` and choose `Request to Open Safe Box`.
+3. UBS reserves a private viewing room and moves you and the teller to it.
+4. Use the full-size physical tray for your exact assigned box.
+5. Interact with the teller and confirm when finished; UBS restores the box and returns you.
+
+Only the selected account's exact assigned box is accessible. Other interactions inside the viewing room are blocked. The session closes on completion, timeout, disconnect, death, dimension change, or server recovery. If service is unavailable, the bank owner must restore the missing premise exit, vault door, full row, viewing room, or Safe Access requirement; assignments and contents remain preserved.
+
+Legacy safebox commands remain available where enabled:
+
 - `/account safebox list`
 - `/account safebox deposit`
 - `/account safebox withdraw <slot>`
@@ -133,6 +147,21 @@ Depending on server config, UBS can add:
 - structure chest cash loot
 - cash drops from mobs/villagers
 - forced percentage cash drop on player death
+
+## Smartphone
+
+- Right-click a smartphone or press the rebindable phone key (default `[`).
+- The phone does not pause the game and supports banking, per-account login, contacts, realtime/offline messages, pay requests, gifts, notes, settings, and Tap to Pay.
+- First use requires a phone password.
+- `Esc` navigates back, then puts the phone away from Home.
+
+See [Smartphone](Smartphone.md).
+
+## Bank Heists
+
+Open the multiplayer heist planner with `/heist`. Build a crew, select an eligible bank premise, ready up, breach physical security, fill duffel bags, and extract before the timer expires. Use `/heist abandon` to leave.
+
+See [Bank Heists](Bank-Heists.md).
 
 ## Limits and Security
 
@@ -150,4 +179,5 @@ Depending on server config, UBS can add:
 - `/account shop pay <amount> [shop]`
 - `/bank reserve`
 - `/bank dashboard`
-- `/bank heist start <bankName>` (Coming Soon)
+- `/heist`
+- `/heist abandon`

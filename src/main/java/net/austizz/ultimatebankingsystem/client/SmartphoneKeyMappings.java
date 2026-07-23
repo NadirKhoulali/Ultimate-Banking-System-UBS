@@ -11,7 +11,7 @@ public final class SmartphoneKeyMappings {
     public static final KeyMapping OPEN_PHONE = new KeyMapping(
             "key.ultimatebankingsystem.smartphone",
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_P,
+            GLFW.GLFW_KEY_LEFT_BRACKET,
             CATEGORY
     );
 

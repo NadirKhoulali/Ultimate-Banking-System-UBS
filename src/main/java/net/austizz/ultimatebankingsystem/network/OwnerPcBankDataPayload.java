@@ -64,7 +64,17 @@ public record OwnerPcBankDataPayload(
         String safeOverdueTicks,
         List<String> safeAreaSummaries,
         List<String> safeBoxAssignments,
-        List<String> safeLockedQueue
+        List<String> safeLockedQueue,
+        List<OwnerPcPlayerEmployeePayload> playerEmployees,
+        List<OwnerPcBankTellerPayload> bankTellers,
+        List<OwnerPcVaultSetupPayload> vaultSetups,
+        OwnerPcSetupObjectivePayload safeSetupObjective,
+        List<OwnerPcPremisePayload> premises,
+        int viewingRoomCapacity,
+        List<OwnerPcViewingRoomPayload> viewingRooms,
+        List<OwnerPcSafeAccessLogPayload> safeAccessLogs,
+        OwnerPcSafeAlarmPayload safeAlarm,
+        List<OwnerPcVaultStorageClaimPayload> vaultStorageClaims
 ) implements CustomPacketPayload {
 
     private static final StreamCodec<RegistryFriendlyByteBuf, UUID> UUID_CODEC =
@@ -136,6 +146,23 @@ public record OwnerPcBankDataPayload(
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeAreaSummaries());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeBoxAssignments());
                         ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).encode(buf, payload.safeLockedQueue());
+                        OwnerPcPlayerEmployeePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
+                                .encode(buf, payload.playerEmployees());
+                        OwnerPcBankTellerPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
+                                .encode(buf, payload.bankTellers());
+                        OwnerPcVaultSetupPayload.STREAM_CODEC.apply(ByteBufCodecs.list(512))
+                                .encode(buf, payload.vaultSetups());
+                        OwnerPcSetupObjectivePayload.STREAM_CODEC.encode(buf, payload.safeSetupObjective());
+                        OwnerPcPremisePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
+                                .encode(buf, payload.premises());
+                        buf.writeVarInt(payload.viewingRoomCapacity());
+                        OwnerPcViewingRoomPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
+                                .encode(buf, payload.viewingRooms());
+                        OwnerPcSafeAccessLogPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
+                                .encode(buf, payload.safeAccessLogs());
+                        OwnerPcSafeAlarmPayload.STREAM_CODEC.encode(buf, payload.safeAlarm());
+                        OwnerPcVaultStorageClaimPayload.STREAM_CODEC.apply(ByteBufCodecs.list(128))
+                                .encode(buf, payload.vaultStorageClaims());
                     },
                     buf -> new OwnerPcBankDataPayload(
                             UUID_CODEC.decode(buf),
@@ -191,9 +218,54 @@ public record OwnerPcBankDataPayload(
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
                             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
-                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf)
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(512)).decode(buf),
+                            OwnerPcPlayerEmployeePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            OwnerPcBankTellerPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            OwnerPcVaultSetupPayload.STREAM_CODEC.apply(ByteBufCodecs.list(512)).decode(buf),
+                            OwnerPcSetupObjectivePayload.STREAM_CODEC.decode(buf),
+                            OwnerPcPremisePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            buf.readVarInt(),
+                            OwnerPcViewingRoomPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            OwnerPcSafeAccessLogPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            OwnerPcSafeAlarmPayload.STREAM_CODEC.decode(buf),
+                            OwnerPcVaultStorageClaimPayload.STREAM_CODEC.apply(ByteBufCodecs.list(128)).decode(buf)
                     )
             );
+
+    public OwnerPcBankDataPayload {
+        bankLevelRoadmap = copy(bankLevelRoadmap);
+        roles = copy(roles);
+        shares = copy(shares);
+        cofounders = copy(cofounders);
+        employees = copy(employees);
+        loanProducts = copy(loanProducts);
+        interbankOffers = copy(interbankOffers);
+        interbankLoans = copy(interbankLoans);
+        accountRoster = copy(accountRoster);
+        certificateSchedule = copy(certificateSchedule);
+        safeAreaSummaries = copy(safeAreaSummaries);
+        safeBoxAssignments = copy(safeBoxAssignments);
+        safeLockedQueue = copy(safeLockedQueue);
+        playerEmployees = playerEmployees == null ? List.of() : List.copyOf(playerEmployees);
+        bankTellers = bankTellers == null ? List.of() : List.copyOf(bankTellers);
+        vaultSetups = vaultSetups == null ? List.of() : List.copyOf(vaultSetups);
+        safeSetupObjective = safeSetupObjective == null
+                ? OwnerPcSetupObjectivePayload.unavailable()
+                : safeSetupObjective;
+        premises = premises == null ? List.of() : List.copyOf(premises);
+        viewingRoomCapacity = Math.max(0, viewingRoomCapacity);
+        viewingRooms = viewingRooms == null ? List.of() : List.copyOf(viewingRooms);
+        safeAccessLogs = safeAccessLogs == null ? List.of() : List.copyOf(safeAccessLogs);
+        safeAlarm = safeAlarm == null
+                ? new OwnerPcSafeAlarmPayload(true, "minecraft:block.note_block.bell",
+                2.0F, 0.55F, 0.8F, 40, false, "", 0)
+                : safeAlarm;
+        vaultStorageClaims = vaultStorageClaims == null ? List.of() : List.copyOf(vaultStorageClaims);
+    }
+
+    private static List<String> copy(List<String> values) {
+        return values == null ? List.of() : List.copyOf(values);
+    }
 
     @Override
     public Type<OwnerPcBankDataPayload> type() {

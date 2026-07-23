@@ -1,0 +1,44 @@
+﻿{
+    "credit":  "Made with Blockbench MCP template for Ultimate Banking System",
+    "parent":  "minecraft:block/block",
+    "ambientocclusion":  false,
+    "textures":  {
+                     "front":  "ultimatebankingsystem:item/ten_dollar_american",
+                     "particle":  "ultimatebankingsystem:item/ten_dollar_american"
+                 },
+    "elements":  [
+                     {
+                         "name":  "bill_layer_1",
+                         "from":  [
+                                      2,
+                                      0,
+                                      3
+                                  ],
+                         "to":  [
+                                    14,
+                                    0.08,
+                                    13
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#front"
+                                                }
+                                   }
+                     }
+                 ]
+}

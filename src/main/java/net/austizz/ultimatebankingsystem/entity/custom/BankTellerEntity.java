@@ -3,10 +3,12 @@ package net.austizz.ultimatebankingsystem.entity.custom;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.SafeBoxViewingCoordinator;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
+import net.austizz.ultimatebankingsystem.npc.BankTellerUseLease;
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
@@ -44,6 +46,9 @@ public class BankTellerEntity extends PathfinderMob {
     public static final int VARIANT_FEMALE = 1;
     public static final int MAX_TELLERS_PER_BANK = 5;
     public static final String EGG_BOUND_BANK_ID_TAG = "ubs_teller_bank_id";
+    private static final double ESCORT_MOVEMENT_SPEED = 0.35D;
+    private static final double CUSTOMER_USE_DISTANCE_SQ = 8.0D * 8.0D;
+    private static final long CUSTOMER_USE_LEASE_TICKS = 20L * 10L;
 
     private static final EntityDataAccessor<Optional<UUID>> OWNER_UUID =
             SynchedEntityData.defineId(BankTellerEntity.class, EntityDataSerializers.OPTIONAL_UUID);
@@ -62,6 +67,8 @@ public class BankTellerEntity extends PathfinderMob {
 
     private UUID pendingRemovePlayer;
     private long pendingRemoveUntilTick;
+    private UUID escortMovementLease;
+    private final BankTellerUseLease customerUseLease = new BankTellerUseLease(CUSTOMER_USE_LEASE_TICKS);
 
     public BankTellerEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
@@ -92,12 +99,21 @@ public class BankTellerEntity extends PathfinderMob {
     @Override
     public void tick() {
         super.tick();
-        this.setDeltaMovement(Vec3.ZERO);
-        this.setNoAi(true);
+        if (escortMovementLease == null) {
+            this.setDeltaMovement(Vec3.ZERO);
+            this.setNoAi(true);
+            setMovementSpeed(0.0D);
+            applyBodyRotation(this.entityData.get(FIXED_YAW));
+        } else {
+            this.setNoAi(false);
+            setMovementSpeed(ESCORT_MOVEMENT_SPEED);
+        }
         this.setInvulnerable(true);
-        applyBodyRotation(this.entityData.get(FIXED_YAW));
         if (this.getHealth() < this.getMaxHealth()) {
             this.setHealth(this.getMaxHealth());
+        }
+        if (!level().isClientSide()) {
+            clearInvalidCustomerUse();
         }
     }
 
@@ -133,7 +149,51 @@ public class BankTellerEntity extends PathfinderMob {
 
     @Override
     public void travel(Vec3 travelVector) {
-        // No-op: teller cannot move.
+        if (escortMovementLease != null) {
+            super.travel(travelVector);
+        }
+    }
+
+    public boolean beginEscortMovementLease(UUID sessionId) {
+        if (sessionId == null) {
+            return false;
+        }
+        if (escortMovementLease != null) {
+            return escortMovementLease.equals(sessionId);
+        }
+        escortMovementLease = sessionId;
+        this.setNoAi(false);
+        setMovementSpeed(ESCORT_MOVEMENT_SPEED);
+        return true;
+    }
+
+    public boolean hasEscortMovementLease(UUID sessionId) {
+        return sessionId != null && sessionId.equals(escortMovementLease);
+    }
+
+    public boolean endEscortMovementLease(UUID sessionId) {
+        if (!hasEscortMovementLease(sessionId)) {
+            return false;
+        }
+        restoreStationaryState();
+        return true;
+    }
+
+    private void restoreStationaryState() {
+        escortMovementLease = null;
+        this.getNavigation().stop();
+        this.setNoAi(true);
+        setMovementSpeed(0.0D);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.setInvulnerable(true);
+        applyBodyRotation(this.entityData.get(FIXED_YAW));
+    }
+
+    private void setMovementSpeed(double speed) {
+        var attribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (attribute != null) {
+            attribute.setBaseValue(speed);
+        }
     }
 
     @Override
@@ -149,6 +209,13 @@ public class BankTellerEntity extends PathfinderMob {
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
         if (!(player instanceof ServerPlayer serverPlayer)) {
             return InteractionResult.SUCCESS;
+        }
+
+        if (!isCashier()) {
+            InteractionResult viewingResult = handleViewingInteraction(serverPlayer);
+            if (viewingResult != null) {
+                return viewingResult;
+            }
         }
 
         if (isCashier()) {
@@ -175,6 +242,12 @@ public class BankTellerEntity extends PathfinderMob {
             return InteractionResult.CONSUME;
         }
 
+        if (!tryBeginCustomerUse(serverPlayer)) {
+            serverPlayer.sendSystemMessage(UbsTranslations.literal(
+                    "§eThis bank teller is currently assisting another customer."));
+            return InteractionResult.CONSUME;
+        }
+
         if (BankTellerPaymentInteractionManager.handleInteract(serverPlayer, this, hand)) {
             return InteractionResult.CONSUME;
         }
@@ -182,15 +255,40 @@ public class BankTellerEntity extends PathfinderMob {
         sendBankMottoMessage(serverPlayer);
         MinecraftServer server = serverPlayer.getServer();
         if (server == null) {
+            endCustomerUse(serverPlayer.getUUID());
             serverPlayer.sendSystemMessage(UbsTranslations.literal("§cBank teller service is unavailable."));
             return InteractionResult.CONSUME;
         }
         CentralBank centralBank = BankManager.getCentralBank(server);
         if (centralBank == null) {
+            endCustomerUse(serverPlayer.getUUID());
             serverPlayer.sendSystemMessage(UbsTranslations.literal("§cBank data is unavailable right now."));
             return InteractionResult.CONSUME;
         }
         PacketDistributor.sendToPlayer(serverPlayer, BankTellerService.buildOpenPayload(server, centralBank, serverPlayer, this));
+        return InteractionResult.CONSUME;
+    }
+
+    private InteractionResult handleViewingInteraction(ServerPlayer player) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return null;
+        }
+        boolean playerActive = SafeBoxViewingCoordinator.isPlayerActive(server, player.getUUID());
+        boolean tellerActive = SafeBoxViewingCoordinator.isTellerActive(server, this.getUUID());
+        if (!playerActive && !tellerActive) {
+            return null;
+        }
+        SafeBoxViewingCoordinator.TellerInteraction status =
+                SafeBoxViewingCoordinator.handleTellerInteraction(
+                        server, player.getUUID(), this.getUUID());
+        String message = switch (status) {
+            case CONFIRM_REQUIRED -> "§eInteract with this teller again within 10 seconds to finish viewing.";
+            case FINISHED -> "§aPrivate box viewing finished. Everything has been returned.";
+            case WRONG_TELLER -> "§cFinish the session with the teller who brought your box.";
+            case NOT_ACTIVE -> "§eThis teller is currently assisting another customer.";
+        };
+        player.sendSystemMessage(UbsTranslations.literal(message));
         return InteractionResult.CONSUME;
     }
 
@@ -215,6 +313,7 @@ public class BankTellerEntity extends PathfinderMob {
             BankTellerInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             BankTellerPaymentInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             ShopCashierInteractionManager.cancelForCashier(this.getUUID(), "Cashier removed.");
+            clearCustomerUse();
             this.discard();
             player.sendSystemMessage(UbsTranslations.literal("§a" + (isCashier() ? "Cashier" : "Bank Teller")
                     + " removed and spawn egg returned."));
@@ -230,6 +329,48 @@ public class BankTellerEntity extends PathfinderMob {
     private boolean canRemove(ServerPlayer player) {
         UUID owner = getOwnerUUID();
         return (owner != null && owner.equals(player.getUUID())) || player.hasPermissions(2);
+    }
+
+    public boolean tryBeginCustomerUse(ServerPlayer player) {
+        if (player == null || isCashier() || player.level() != level()
+                || player.distanceToSqr(this) > CUSTOMER_USE_DISTANCE_SQ) {
+            return false;
+        }
+        clearInvalidCustomerUse();
+        return customerUseLease.acquire(player.getUUID(), level().getGameTime());
+    }
+
+    public boolean refreshCustomerUse(ServerPlayer player) {
+        if (player == null || isCashier() || player.level() != level()
+                || player.distanceToSqr(this) > CUSTOMER_USE_DISTANCE_SQ) {
+            return false;
+        }
+        clearInvalidCustomerUse();
+        return customerUseLease.refresh(player.getUUID(), level().getGameTime());
+    }
+
+    public boolean isCustomerUseHeldBy(UUID playerId) {
+        return playerId != null && playerId.equals(customerUseLease.holder(level().getGameTime()));
+    }
+
+    public boolean endCustomerUse(UUID playerId) {
+        return customerUseLease.release(playerId);
+    }
+
+    public void clearCustomerUse() {
+        customerUseLease.clear();
+    }
+
+    private void clearInvalidCustomerUse() {
+        UUID holderId = customerUseLease.holder(level().getGameTime());
+        if (holderId == null || !(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        ServerPlayer holder = serverLevel.getServer().getPlayerList().getPlayer(holderId);
+        if (holder == null || !holder.isAlive() || holder.level() != level()
+                || holder.distanceToSqr(this) > CUSTOMER_USE_DISTANCE_SQ) {
+            customerUseLease.clear();
+        }
     }
 
     public UUID getOwnerUUID() {
@@ -284,6 +425,7 @@ public class BankTellerEntity extends PathfinderMob {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
+        tag.putBoolean("NoAI", true);
         UUID owner = getOwnerUUID();
         if (owner != null) {
             tag.putUUID("Owner", owner);
@@ -339,9 +481,7 @@ public class BankTellerEntity extends PathfinderMob {
         } else {
             setBoundBankId(null);
         }
-        this.setNoAi(true);
-        this.setInvulnerable(true);
-        applyBodyRotation(this.entityData.get(FIXED_YAW));
+        restoreStationaryState();
         updateDisplayNameFromBank();
     }
 

@@ -9,11 +9,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,6 +26,7 @@ public class SmartphoneSavedData extends SavedData {
     private final ConcurrentHashMap<String, Conversation> conversations = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, PlayerPrefs> prefs = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, ReportEntry> reports = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, GiftEntry> gifts = new ConcurrentHashMap<>();
 
     public static SmartphoneSavedData get(MinecraftServer server) {
         if (server == null) {
@@ -40,7 +44,11 @@ public class SmartphoneSavedData extends SavedData {
     }
 
     public PlayerPrefs prefs(UUID playerId) {
-        return prefs.computeIfAbsent(playerId, ignored -> new PlayerPrefs());
+        PlayerPrefs playerPrefs = prefs.computeIfAbsent(playerId, ignored -> new PlayerPrefs());
+        if (normalizePrefs(playerPrefs)) {
+            setDirty();
+        }
+        return playerPrefs;
     }
 
     public List<MessageEntry> conversation(UUID left, UUID right) {
@@ -78,8 +86,8 @@ public class SmartphoneSavedData extends SavedData {
         while (conversation.messages.size() > 200) {
             conversation.messages.remove(0);
         }
-        recipientPrefs.knownContacts.add(senderId);
-        senderPrefs.knownContacts.add(recipientId);
+        moveToFront(recipientPrefs.knownContacts, senderId, 120);
+        moveToFront(senderPrefs.knownContacts, recipientId, 120);
         recipientPrefs.unread.merge(senderId, 1, Integer::sum);
         setDirty();
         return true;
@@ -90,6 +98,50 @@ public class SmartphoneSavedData extends SavedData {
         if (prefs.unread.remove(other) != null) {
             setDirty();
         }
+    }
+
+    public void queueNotification(UUID owner, String title, String message, int toneCode, int durationMs) {
+        if (owner == null || message == null || message.isBlank()) {
+            return;
+        }
+        PlayerPrefs prefs = prefs(owner);
+        QueuedNotification notification = new QueuedNotification(
+                UUID.randomUUID(),
+                clamp(title == null || title.isBlank() ? "UBS Phone" : title, 40),
+                clamp(message, 180),
+                toneCode,
+                Math.max(1800, Math.min(12000, durationMs)),
+                Instant.now().toEpochMilli()
+        );
+        prefs.notifications.add(notification);
+        prefs.notifications.sort(Comparator.comparingLong(QueuedNotification::createdAt));
+        while (prefs.notifications.size() > 24) {
+            prefs.notifications.remove(0);
+        }
+        setDirty();
+    }
+
+    public List<QueuedNotification> queuedNotifications(UUID owner) {
+        if (owner == null) {
+            return List.of();
+        }
+        List<QueuedNotification> notifications = new ArrayList<>(prefs(owner).notifications);
+        notifications.sort(Comparator.comparingLong(QueuedNotification::createdAt));
+        return notifications;
+    }
+
+    public List<QueuedNotification> consumeNotifications(UUID owner) {
+        if (owner == null) {
+            return List.of();
+        }
+        PlayerPrefs prefs = prefs(owner);
+        List<QueuedNotification> notifications = new ArrayList<>(prefs.notifications);
+        notifications.sort(Comparator.comparingLong(QueuedNotification::createdAt));
+        if (!prefs.notifications.isEmpty()) {
+            prefs.notifications.clear();
+            setDirty();
+        }
+        return notifications;
     }
 
     public void rememberPaymentPlayer(UUID owner, UUID other) {
@@ -166,6 +218,55 @@ public class SmartphoneSavedData extends SavedData {
         return true;
     }
 
+    public GiftEntry createGift(UUID senderId, UUID recipientId, UUID sourceAccountId, BigDecimal amount) {
+        if (senderId == null || recipientId == null || sourceAccountId == null
+                || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        GiftEntry gift = new GiftEntry(UUID.randomUUID(), senderId, recipientId, sourceAccountId,
+                amount.toPlainString(), Instant.now().toEpochMilli(), "PENDING");
+        gifts.put(gift.id(), gift);
+        setDirty();
+        return gift;
+    }
+
+    public GiftEntry gift(UUID giftId) {
+        return giftId == null ? null : gifts.get(giftId);
+    }
+
+    public boolean markGiftStatus(UUID giftId, String nextStatus) {
+        if (giftId == null || nextStatus == null || nextStatus.isBlank()) {
+            return false;
+        }
+        GiftEntry gift = gifts.get(giftId);
+        if (gift == null || !"PENDING".equalsIgnoreCase(gift.status())) {
+            return false;
+        }
+        gifts.put(giftId, gift.withStatus(nextStatus));
+        setDirty();
+        return true;
+    }
+
+    public List<GiftEntry> expirePendingGifts(long nowMillis, long timeoutMillis) {
+        List<GiftEntry> expired = new ArrayList<>();
+        long timeout = Math.max(1L, timeoutMillis);
+        for (GiftEntry gift : gifts.values()) {
+            if (gift == null || !"PENDING".equalsIgnoreCase(gift.status())) {
+                continue;
+            }
+            if (nowMillis - gift.createdAt() <= timeout) {
+                continue;
+            }
+            GiftEntry expiredGift = gift.withStatus("EXPIRED");
+            gifts.put(gift.id(), expiredGift);
+            expired.add(expiredGift);
+        }
+        if (!expired.isEmpty()) {
+            setDirty();
+        }
+        return expired;
+    }
+
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag conversationsTag = new ListTag();
@@ -196,6 +297,12 @@ public class SmartphoneSavedData extends SavedData {
             reportsTag.add(report.save());
         }
         tag.put("reports", reportsTag);
+
+        ListTag giftsTag = new ListTag();
+        for (GiftEntry gift : gifts.values()) {
+            giftsTag.add(gift.save());
+        }
+        tag.put("gifts", giftsTag);
         return tag;
     }
 
@@ -231,6 +338,14 @@ public class SmartphoneSavedData extends SavedData {
             ReportEntry report = ReportEntry.load(reportsTag.getCompound(i));
             if (report != null) {
                 data.reports.put(report.id(), report);
+            }
+        }
+
+        ListTag giftsTag = tag.getList("gifts", Tag.TAG_COMPOUND);
+        for (int i = 0; i < giftsTag.size(); i++) {
+            GiftEntry gift = GiftEntry.load(giftsTag.getCompound(i));
+            if (gift != null) {
+                data.gifts.put(gift.id(), gift);
             }
         }
         return data;
@@ -286,12 +401,61 @@ public class SmartphoneSavedData extends SavedData {
                 && message.body().equals(body);
     }
 
-    private static void moveToFront(List<UUID> values, UUID value, int maxSize) {
-        values.remove(value);
+    private static boolean normalizePrefs(PlayerPrefs prefs) {
+        if (prefs == null) {
+            return false;
+        }
+        boolean changed = false;
+        changed |= dedupeUuidList(prefs.knownContacts, 120);
+        changed |= dedupeUuidList(prefs.favorites, 120);
+        changed |= dedupeUuidList(prefs.muted, 120);
+        changed |= dedupeUuidList(prefs.blocked, 120);
+        changed |= dedupeUuidList(prefs.paymentRecentPlayers, 12);
+        changed |= dedupeUuidList(prefs.paymentRecentAccounts, 12);
+        return changed;
+    }
+
+    private static boolean dedupeUuidList(List<UUID> values, int maxSize) {
+        if (values == null || values.isEmpty()) {
+            return false;
+        }
+        Set<UUID> seen = new HashSet<>();
+        List<UUID> unique = new ArrayList<>(Math.min(values.size(), Math.max(1, maxSize)));
+        boolean changed = false;
+        for (UUID value : values) {
+            if (value == null || !seen.add(value)) {
+                changed = true;
+                continue;
+            }
+            if (unique.size() < maxSize) {
+                unique.add(value);
+            } else {
+                changed = true;
+            }
+        }
+        if (!changed && unique.size() == values.size()) {
+            return false;
+        }
+        values.clear();
+        values.addAll(unique);
+        return true;
+    }
+
+    private static boolean moveToFront(List<UUID> values, UUID value, int maxSize) {
+        if (values == null || value == null) {
+            return false;
+        }
+        boolean alreadyFirst = !values.isEmpty() && value.equals(values.get(0));
+        int beforeSize = values.size();
+        values.removeIf(value::equals);
+        int removed = beforeSize - values.size();
         values.add(0, value);
+        boolean trimmed = false;
         while (values.size() > maxSize) {
             values.remove(values.size() - 1);
+            trimmed = true;
         }
+        return !alreadyFirst || removed != 1 || trimmed;
     }
 
     private record Conversation(UUID left, UUID right, List<MessageEntry> messages) {
@@ -311,6 +475,7 @@ public class SmartphoneSavedData extends SavedData {
         public final List<UUID> blocked = new ArrayList<>();
         public final List<UUID> paymentRecentPlayers = new ArrayList<>();
         public final List<UUID> paymentRecentAccounts = new ArrayList<>();
+        public final List<QueuedNotification> notifications = new ArrayList<>();
         public final ConcurrentHashMap<UUID, Integer> unread = new ConcurrentHashMap<>();
 
         CompoundTag save() {
@@ -321,6 +486,11 @@ public class SmartphoneSavedData extends SavedData {
             tag.put("blocked", saveUuidList(blocked));
             tag.put("paymentRecentPlayers", saveUuidList(paymentRecentPlayers));
             tag.put("paymentRecentAccounts", saveUuidList(paymentRecentAccounts));
+            ListTag notificationsTag = new ListTag();
+            for (QueuedNotification notification : notifications) {
+                notificationsTag.add(notification.save());
+            }
+            tag.put("notifications", notificationsTag);
             ListTag unreadTag = new ListTag();
             for (var entry : unread.entrySet()) {
                 CompoundTag row = new CompoundTag();
@@ -340,6 +510,13 @@ public class SmartphoneSavedData extends SavedData {
             prefs.blocked.addAll(loadUuidList(tag.getList("blocked", Tag.TAG_COMPOUND)));
             prefs.paymentRecentPlayers.addAll(loadUuidList(tag.getList("paymentRecentPlayers", Tag.TAG_COMPOUND)));
             prefs.paymentRecentAccounts.addAll(loadUuidList(tag.getList("paymentRecentAccounts", Tag.TAG_COMPOUND)));
+            ListTag notificationsTag = tag.getList("notifications", Tag.TAG_COMPOUND);
+            for (int i = 0; i < notificationsTag.size(); i++) {
+                QueuedNotification notification = QueuedNotification.load(notificationsTag.getCompound(i));
+                if (notification != null) {
+                    prefs.notifications.add(notification);
+                }
+            }
             ListTag unreadTag = tag.getList("unread", Tag.TAG_COMPOUND);
             for (int i = 0; i < unreadTag.size(); i++) {
                 CompoundTag row = unreadTag.getCompound(i);
@@ -365,10 +542,49 @@ public class SmartphoneSavedData extends SavedData {
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag row = list.getCompound(i);
                 if (row.hasUUID("id")) {
-                    values.add(row.getUUID("id"));
+                    UUID value = row.getUUID("id");
+                    if (!values.contains(value)) {
+                        values.add(value);
+                    }
                 }
             }
             return values;
+        }
+    }
+
+    public record QueuedNotification(UUID id,
+                                     String title,
+                                     String message,
+                                     int toneCode,
+                                     int durationMs,
+                                     long createdAt) {
+        CompoundTag save() {
+            CompoundTag tag = new CompoundTag();
+            tag.putUUID("id", id == null ? UUID.randomUUID() : id);
+            tag.putString("title", title == null || title.isBlank() ? "UBS Phone" : title);
+            tag.putString("message", message == null ? "" : message);
+            tag.putInt("toneCode", toneCode);
+            tag.putInt("durationMs", durationMs);
+            tag.putLong("createdAt", createdAt);
+            return tag;
+        }
+
+        static QueuedNotification load(CompoundTag tag) {
+            if (tag == null || !tag.hasUUID("id")) {
+                return null;
+            }
+            String message = tag.getString("message");
+            if (message == null || message.isBlank()) {
+                return null;
+            }
+            return new QueuedNotification(
+                    tag.getUUID("id"),
+                    tag.getString("title").isBlank() ? "UBS Phone" : tag.getString("title"),
+                    message,
+                    tag.getInt("toneCode"),
+                    Math.max(1800, Math.min(12000, tag.getInt("durationMs"))),
+                    tag.getLong("createdAt")
+            );
         }
     }
 
@@ -434,6 +650,53 @@ public class SmartphoneSavedData extends SavedData {
 
         public String statusLabel() {
             return resolved ? "RESOLVED" : "OPEN";
+        }
+    }
+
+    public record GiftEntry(UUID id,
+                            UUID senderId,
+                            UUID recipientId,
+                            UUID sourceAccountId,
+                            String amount,
+                            long createdAt,
+                            String status) {
+        public GiftEntry withStatus(String nextStatus) {
+            return new GiftEntry(id, senderId, recipientId, sourceAccountId, amount, createdAt,
+                    nextStatus == null || nextStatus.isBlank() ? status : nextStatus.trim().toUpperCase(Locale.ROOT));
+        }
+
+        public BigDecimal amountDecimal() {
+            try {
+                return new BigDecimal(amount == null || amount.isBlank() ? "0" : amount);
+            } catch (NumberFormatException ex) {
+                return BigDecimal.ZERO;
+            }
+        }
+
+        CompoundTag save() {
+            CompoundTag tag = new CompoundTag();
+            tag.putUUID("id", id);
+            tag.putUUID("senderId", senderId);
+            tag.putUUID("recipientId", recipientId);
+            tag.putUUID("sourceAccountId", sourceAccountId);
+            tag.putString("amount", amount == null ? "0" : amount);
+            tag.putLong("createdAt", createdAt);
+            tag.putString("status", status == null || status.isBlank() ? "PENDING" : status);
+            return tag;
+        }
+
+        static GiftEntry load(CompoundTag tag) {
+            if (!tag.hasUUID("id") || !tag.hasUUID("senderId")
+                    || !tag.hasUUID("recipientId") || !tag.hasUUID("sourceAccountId")) {
+                return null;
+            }
+            String status = tag.getString("status");
+            if (status == null || status.isBlank()) {
+                status = "PENDING";
+            }
+            return new GiftEntry(tag.getUUID("id"), tag.getUUID("senderId"), tag.getUUID("recipientId"),
+                    tag.getUUID("sourceAccountId"), tag.getString("amount"), tag.getLong("createdAt"),
+                    status.trim().toUpperCase(Locale.ROOT));
         }
     }
 }

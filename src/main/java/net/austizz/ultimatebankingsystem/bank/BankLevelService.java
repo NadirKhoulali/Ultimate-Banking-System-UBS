@@ -29,14 +29,21 @@ public final class BankLevelService {
         if (centralBank == null || bank == null) {
             return BankLevelSnapshot.empty();
         }
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        return snapshot(bank, centralBank.readBankMetadata(bank.getBankId()));
+    }
+
+    public static BankLevelSnapshot snapshot(Bank bank, CompoundTag metadata) {
+        if (bank == null) {
+            return BankLevelSnapshot.empty();
+        }
+        CompoundTag safeMetadata = metadata == null ? new CompoundTag() : metadata;
         BigDecimal deposits = bank.getTotalDeposits() == null ? BigDecimal.ZERO : bank.getTotalDeposits();
         int accounts = bank.getBankAccounts() == null ? 0 : bank.getBankAccounts().size();
         long score = bankScore(deposits, accounts);
         int derivedLevel = levelForScore(score);
-        boolean manual = metadata.getBoolean(LEVEL_MANUAL_KEY);
-        int level = manual && metadata.contains(LEVEL_KEY)
-                ? clampLevel(metadata.getInt(LEVEL_KEY))
+        boolean manual = safeMetadata.getBoolean(LEVEL_MANUAL_KEY);
+        int level = manual && safeMetadata.contains(LEVEL_KEY)
+                ? clampLevel(safeMetadata.getInt(LEVEL_KEY))
                 : derivedLevel;
         double progress = progressRatioForLevel(score, level);
         long currentFloorScore = requiredScoreForLevel(level);
@@ -54,6 +61,7 @@ public final class BankLevelService {
                 accountTargetForScore(nextScore),
                 progress,
                 safeRowCapacityForLevel(level),
+                viewingRoomCapacityForLevel(level),
                 buildRoadmap(level)
         );
     }
@@ -69,6 +77,14 @@ public final class BankLevelService {
     public static int safeRowCapacityForLevel(int level) {
         int safeLevel = clampLevel(level);
         return BASE_SAFE_ROW_UNITS + ((safeLevel - 1) * SAFE_ROW_UNITS_PER_LEVEL);
+    }
+
+    public static int viewingRoomCapacity(CentralBank centralBank, Bank bank) {
+        return viewingRoomCapacityForLevel(effectiveLevel(centralBank, bank));
+    }
+
+    public static int viewingRoomCapacityForLevel(int level) {
+        return 1 + (clampLevel(level) / 5);
     }
 
     public static String levelRoadmapReport(CentralBank centralBank, Bank bank) {
@@ -93,6 +109,7 @@ public final class BankLevelService {
         lines.add("@bank_roadmap.progress_ratio=" + String.format(Locale.ROOT, "%.6f", snapshot.progressRatio()));
         lines.add("@bank_roadmap.max_level=" + MAX_LEVEL);
         lines.add("@bank_roadmap.safe_row_capacity=" + snapshot.safeRowCapacity());
+        lines.add("@bank_roadmap.viewing_room_capacity=" + snapshot.viewingRoomCapacity());
         for (String node : snapshot.roadmapNodes()) {
             lines.add("@bank_roadmap.node=" + node);
         }
@@ -104,6 +121,7 @@ public final class BankLevelService {
                 + " | deposit-only target $" + snapshot.nextDepositTargetDollars()
                 + " | account-only target " + snapshot.nextAccountTarget());
         lines.add("- Safe row capacity: " + snapshot.safeRowCapacity() + " row units.");
+        lines.add("- Viewing-room capacity: " + snapshot.viewingRoomCapacity() + ".");
         return String.join("\n", lines);
     }
 
@@ -300,6 +318,7 @@ public final class BankLevelService {
                                     int nextAccountTarget,
                                     double progressRatio,
                                     int safeRowCapacity,
+                                    int viewingRoomCapacity,
                                     List<String> roadmapNodes) {
         private static BankLevelSnapshot empty() {
             return new BankLevelSnapshot(
@@ -315,6 +334,7 @@ public final class BankLevelService {
                     accountTargetForScore(SCORE_PER_LEVEL),
                     0.0D,
                     safeRowCapacityForLevel(1),
+                    viewingRoomCapacityForLevel(1),
                     buildRoadmap(1)
             );
         }

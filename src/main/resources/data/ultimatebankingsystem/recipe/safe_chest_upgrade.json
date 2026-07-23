@@ -1,0 +1,23 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "pattern": [
+  "III",
+  "CAC",
+  "III"
+ ],
+ "key": {
+  "I": {
+   "item": "minecraft:iron_ingot"
+  },
+  "C": {
+   "item": "minecraft:chest"
+  },
+  "A": {
+   "item": "ultimatebankingsystem:access_verifier"
+  }
+ },
+ "result": {
+  "id": "ultimatebankingsystem:safe_chest_upgrade",
+  "count": 1
+ }
+}

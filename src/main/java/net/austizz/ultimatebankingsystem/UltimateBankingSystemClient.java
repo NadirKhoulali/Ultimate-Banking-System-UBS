@@ -1,8 +1,19 @@
 package net.austizz.ultimatebankingsystem;
 
 import net.austizz.ultimatebankingsystem.client.ActionAlertClientState;
+import net.austizz.ultimatebankingsystem.client.BalanceHudRenderer;
+import net.austizz.ultimatebankingsystem.client.ClaimModeClientState;
+import net.austizz.ultimatebankingsystem.client.ClaimModeOutlineRenderer;
 import net.austizz.ultimatebankingsystem.client.DeliveryInfoBoardClientState;
-import net.austizz.ultimatebankingsystem.client.HudClientState;
+import net.austizz.ultimatebankingsystem.client.DallasMaskAnimationClientState;
+import net.austizz.ultimatebankingsystem.client.DallasMaskKeyMappings;
+import net.austizz.ultimatebankingsystem.client.HeistClientState;
+import net.austizz.ultimatebankingsystem.client.HeistExfillBorderClientState;
+import net.austizz.ultimatebankingsystem.client.HeistExfillBorderRenderer;
+import net.austizz.ultimatebankingsystem.client.HeistWorldHologramRenderer;
+import net.austizz.ultimatebankingsystem.client.NotificationClientState;
+import net.austizz.ultimatebankingsystem.client.NotificationRenderer;
+import net.austizz.ultimatebankingsystem.client.PhoneNotificationClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketKeyMappings;
 import net.austizz.ultimatebankingsystem.client.SmartphoneClientState;
@@ -12,10 +23,14 @@ import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
 import net.austizz.ultimatebankingsystem.client.DeliveryPalletLabelsClientState;
 import net.austizz.ultimatebankingsystem.client.ShopSetupObjectiveClientState;
 import net.austizz.ultimatebankingsystem.client.StockroomLocateClientState;
+import net.austizz.ultimatebankingsystem.client.SafeBoxEscortMarkerClientState;
+import net.austizz.ultimatebankingsystem.client.renderer.DallasMaskFirstPersonRenderer;
+import net.austizz.ultimatebankingsystem.client.renderer.Ove9000SawFirstPersonRenderer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.custom.ModularWallDisplayBlock;
 import net.austizz.ultimatebankingsystem.block.custom.PalletBlock;
+import net.austizz.ultimatebankingsystem.block.custom.SafetyDepositBoxRowBlock;
 import net.austizz.ultimatebankingsystem.block.entity.custom.PalletBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShoppingBagDataKeys;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayBlockEntity;
@@ -25,6 +40,8 @@ import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.PickpocketCancelPayload;
 import net.austizz.ultimatebankingsystem.network.PickpocketStartPayload;
+import net.austizz.ultimatebankingsystem.network.DallasMaskTogglePayload;
+import net.austizz.ultimatebankingsystem.network.HeistActionHoldPayload;
 import net.austizz.ultimatebankingsystem.network.ShopSetupObjectivePayload;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
@@ -70,6 +87,7 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import org.joml.Matrix4f;
@@ -88,6 +106,8 @@ public class UltimateBankingSystemClient {
     private static final int STOCKROOM_LINE_SEGMENTS = 28;
     private static final double STOCKROOM_LINE_START_OFFSET = 0.42D;
     private static final double STOCKROOM_LINE_MAX_ARC = 0.34D;
+    private static final double SAFE_BOX_LINE_START_OFFSET = 0.42D;
+    private static final float SAFE_BOX_LABEL_SCALE = 0.018F;
     private static final int PALLET_LOCATE_SLOT_BASE = 10_000;
     private static final int PALLET_LOCATE_SLOT_COUNT = 27;
     private static final double PALLET_BOX_BASE_Y = 0.5625D;
@@ -108,6 +128,7 @@ public class UltimateBankingSystemClient {
     private static final double PICKPOCKET_TARGET_RANGE_BLOCKS = 1.0D;
     private static boolean pickpocketHoldSent;
     private static UUID pickpocketRequestedTargetId;
+    private static boolean heistActionHoldSent;
     private static boolean forcedMenuGuiScaleActive;
     private static Integer forcedMenuPreviousGuiScale;
     private static int smartphoneInputScreenOpenBlockTicks;
@@ -118,7 +139,7 @@ public class UltimateBankingSystemClient {
     @SubscribeEvent
     static void onRenderHud(RenderGuiEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui) {
+        if (mc.player == null || mc.options.hideGui || ClaimModeClientState.active()) {
             return;
         }
 
@@ -126,11 +147,14 @@ public class UltimateBankingSystemClient {
         // HUD pass only: when a screen is open we draw alerts in the screen post pass so they stay above UI.
         if (mc.screen == null) {
             renderActionAlert(mc, graphics);
+            renderPhoneNotification(mc, graphics);
+            NotificationRenderer.render(mc, graphics);
             renderShopSetupObjective(mc, graphics);
             renderDeliveryInfoBoard(mc, graphics);
         }
         renderBalanceHud(mc, graphics);
         renderHandheldTerminalOverlay(mc, graphics);
+        renderHeistHud(mc, graphics);
         renderPickpocketOverlay(mc, graphics);
         renderShelfOverlay(mc, graphics);
         SmartphoneOverlay.render(mc, graphics);
@@ -144,11 +168,17 @@ public class UltimateBankingSystemClient {
         }
         // Screen pass: keep shared alerts visible above desktop/ATM widgets.
         renderActionAlert(mc, event.getGuiGraphics());
+        renderPhoneNotification(mc, event.getGuiGraphics());
+        NotificationRenderer.render(mc, event.getGuiGraphics());
         renderDeliveryInfoBoard(mc, event.getGuiGraphics());
     }
 
     @SubscribeEvent
     static void onKeyInput(InputEvent.Key event) {
+        if (ClaimModeClientState.active()) {
+            ClaimModeClientState.handleKey(event.getKey(), event.getAction(), event.getModifiers());
+            return;
+        }
         if (SmartphoneClientState.isInteractive()) {
             boolean wasTextInputFocused = SmartphoneClientState.isTextInputFocused();
             if (event.getAction() == GLFW.GLFW_PRESS || event.getAction() == GLFW.GLFW_REPEAT) {
@@ -161,6 +191,12 @@ public class UltimateBankingSystemClient {
             return;
         }
         if (event.getAction() != GLFW.GLFW_PRESS) {
+            return;
+        }
+        if (event.getKey() == GLFW.GLFW_KEY_RIGHT_BRACKET
+                && ShopSetupObjectiveClientState.isActive()
+                && ShopSetupObjectiveClientState.getProjectCount() > 1) {
+            ShopSetupObjectiveClientState.cycleProject();
             return;
         }
         boolean minimizeKey = event.getKey() == GLFW.GLFW_KEY_X;
@@ -191,20 +227,35 @@ public class UltimateBankingSystemClient {
 
     @SubscribeEvent
     static void onScreenOpening(ScreenEvent.Opening event) {
-        if (smartphoneInputScreenOpenBlockTicks > 0 || SmartphoneClientState.isTextInputFocused()) {
+        if (ClaimModeClientState.active()
+                || smartphoneInputScreenOpenBlockTicks > 0
+                || SmartphoneClientState.isTextInputFocused()) {
             event.setCanceled(true);
         }
     }
 
     @SubscribeEvent
     static void onInteractionKeyMappingTriggered(InputEvent.InteractionKeyMappingTriggered event) {
-        if (SmartphoneClientState.isTextInputFocused()) {
+        if (ClaimModeClientState.active() || SmartphoneClientState.isTextInputFocused()) {
             event.setCanceled(true);
         }
     }
 
     @SubscribeEvent
     static void onMouseButton(InputEvent.MouseButton.Pre event) {
+        if (ClaimModeClientState.active()) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.getWindow() != null) {
+                double mouseX = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth()
+                        / mc.getWindow().getScreenWidth();
+                double mouseY = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight()
+                        / mc.getWindow().getScreenHeight();
+                ClaimModeClientState.handleMouse(mouseX, mouseY,
+                        event.getButton(), event.getAction());
+            }
+            event.setCanceled(true);
+            return;
+        }
         if (SmartphoneClientState.isTextInputFocused() && event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             event.setCanceled(true);
             return;
@@ -229,6 +280,10 @@ public class UltimateBankingSystemClient {
 
     @SubscribeEvent
     static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        if (ClaimModeClientState.active()) {
+            event.setCanceled(true);
+            return;
+        }
         if (SmartphoneClientState.handleScroll(event.getScrollDeltaY())) {
             event.setCanceled(true);
         }
@@ -240,6 +295,14 @@ public class UltimateBankingSystemClient {
         if (mc == null) {
             return;
         }
+        ClaimModeClientState.tick(mc);
+        if (ClaimModeClientState.active()) {
+            suppressClaimModeKeybinds(mc, ClaimModeClientState.cursorMode());
+            sendHeistActionCancelIfNeeded();
+            sendPickpocketCancelIfNeeded();
+            return;
+        }
+        SafeBoxEscortMarkerClientState.onLevelAvailabilityChanged(mc.level != null);
         if (smartphoneInputScreenOpenBlockTicks > 0) {
             smartphoneInputScreenOpenBlockTicks--;
         }
@@ -259,14 +322,34 @@ public class UltimateBankingSystemClient {
         PickpocketClientState.tickClient();
 
         if (mc.player == null || mc.level == null) {
+            sendHeistActionCancelIfNeeded();
             sendPickpocketCancelIfNeeded();
             PickpocketClientState.clear();
             return;
         }
 
+        while (DallasMaskKeyMappings.TOGGLE_MASK.consumeClick()) {
+            if (mc.screen == null && !mc.options.hideGui) {
+                PacketDistributor.sendToServer(new DallasMaskTogglePayload());
+            }
+        }
+
         if (mc.screen != null || mc.options.hideGui) {
+            sendHeistActionCancelIfNeeded();
             sendPickpocketCancelIfNeeded();
             return;
+        }
+
+        boolean heistAction = HeistClientState.actionable() && PickpocketKeyMappings.isHeistActionDown();
+        if (heistAction) {
+            mc.options.keySwapOffhand.setDown(false);
+            while (mc.options.keySwapOffhand.consumeClick()) {
+                // F belongs to the contextual heist action while this prompt is visible.
+            }
+            PacketDistributor.sendToServer(new HeistActionHoldPayload(true));
+            heistActionHoldSent = true;
+        } else {
+            sendHeistActionCancelIfNeeded();
         }
 
         PickpocketTarget target = resolvePickpocketTarget(mc, PICKPOCKET_TARGET_RANGE_BLOCKS);
@@ -294,6 +377,17 @@ public class UltimateBankingSystemClient {
         }
     }
 
+    @SubscribeEvent
+    static void onClientLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ClaimModeClientState.clear();
+        ClaimModeOutlineRenderer.clearCache();
+        SafeBoxEscortMarkerClientState.onClientDisconnect();
+        DallasMaskAnimationClientState.clear();
+        HeistExfillBorderClientState.clear();
+        HeistExfillBorderRenderer.clearCache();
+        NotificationClientState.clear();
+    }
+
     private static void suppressGameplayKeybinds(Minecraft mc) {
         if (mc == null || mc.options == null || mc.options.keyMappings == null) {
             return;
@@ -310,6 +404,34 @@ public class UltimateBankingSystemClient {
         if (mc.player != null) {
             mc.player.setSprinting(false);
         }
+    }
+
+    private static void suppressClaimModeKeybinds(Minecraft mc, boolean freezeMovement) {
+        if (mc == null || mc.options == null || mc.options.keyMappings == null) {
+            return;
+        }
+        for (KeyMapping mapping : mc.options.keyMappings) {
+            if (mapping == null || !freezeMovement && isClaimMovementKey(mc, mapping)) {
+                continue;
+            }
+            mapping.setDown(false);
+            while (mapping.consumeClick()) {
+                // Claim mode owns all non-movement input; drain queued gameplay actions.
+            }
+        }
+        if (freezeMovement && mc.player != null) {
+            mc.player.setSprinting(false);
+        }
+    }
+
+    private static boolean isClaimMovementKey(Minecraft mc, KeyMapping mapping) {
+        return mapping == mc.options.keyUp
+                || mapping == mc.options.keyDown
+                || mapping == mc.options.keyLeft
+                || mapping == mc.options.keyRight
+                || mapping == mc.options.keyJump
+                || mapping == mc.options.keyShift
+                || mapping == mc.options.keySprint;
     }
 
     private static void tickUbsMenuGuiScaleGuard(Minecraft mc) {
@@ -361,7 +483,19 @@ public class UltimateBankingSystemClient {
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.SafetyDepositBoxScreen) {
             return false;
         }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.SecureSafeScreen) {
+            return false;
+        }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.SecureSafeAccessScreen) {
+            return false;
+        }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.RfidScannerScreen) {
+            return false;
+        }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen) {
+            return false;
+        }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.HeistDuffelScreen) {
             return false;
         }
         String className = screen.getClass().getName();
@@ -378,8 +512,16 @@ public class UltimateBankingSystemClient {
             return;
         }
 
+        if (ClaimModeClientState.active()) {
+            ClaimModeOutlineRenderer.render(event, mc);
+            return;
+        }
+
         renderStockroomLocateLine(event, mc);
+        renderSafeBoxEscortMarker(event, mc);
         renderShoppingBagTimers(event, mc);
+        HeistExfillBorderRenderer.render(event, mc);
+        HeistWorldHologramRenderer.render(event, mc);
     }
 
     private static void renderStockroomLocateLine(RenderLevelStageEvent event, Minecraft mc) {
@@ -456,6 +598,120 @@ public class UltimateBankingSystemClient {
 
         pose.popPose();
         buffers.endBatch(RenderType.lines());
+    }
+
+    private static void renderSafeBoxEscortMarker(RenderLevelStageEvent event, Minecraft mc) {
+        SafeBoxEscortMarkerClientState.Snapshot marker = SafeBoxEscortMarkerClientState.snapshot();
+        String dimensionId = mc.level.dimension().location().toString();
+        if (!marker.shouldRenderIn(dimensionId)) {
+            return;
+        }
+
+        BlockPos rowPos = new BlockPos(marker.rowX(), marker.rowY(), marker.rowZ());
+        boolean chunkLoaded = mc.level.hasChunkAt(rowPos);
+        boolean validRow = false;
+        SafeBoxEscortMarkerClientState.Facing facing = null;
+        if (chunkLoaded) {
+            BlockState rowState = mc.level.getBlockState(rowPos);
+            if (rowState.getBlock() instanceof SafetyDepositBoxRowBlock
+                    && rowState.hasProperty(SafetyDepositBoxRowBlock.FACING)) {
+                validRow = true;
+                facing = safeBoxMarkerFacing(rowState.getValue(SafetyDepositBoxRowBlock.FACING));
+            }
+        }
+
+        SafeBoxEscortMarkerClientState.RenderTarget renderTarget = marker.resolveRenderTarget(
+                new SafeBoxEscortMarkerClientState.RenderContext(
+                        dimensionId, chunkLoaded, validRow, facing)
+        ).orElse(null);
+        if (renderTarget == null) {
+            return;
+        }
+        SafeBoxEscortMarkerClientState.DoorGeometry geometry = renderTarget.geometry();
+        float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        Vec3 cameraForward = mc.player.getViewVector(partialTick);
+        if (cameraForward.lengthSqr() < 0.000001D) {
+            var lookVector = event.getCamera().getLookVector();
+            cameraForward = new Vec3(lookVector.x(), lookVector.y(), lookVector.z());
+        }
+        if (cameraForward.lengthSqr() < 0.000001D) {
+            cameraForward = new Vec3(0.0D, 0.0D, 1.0D);
+        }
+        Vec3 from = mc.player.getEyePosition(partialTick)
+                .add(cameraForward.normalize().scale(SAFE_BOX_LINE_START_OFFSET));
+        Vec3 to = new Vec3(geometry.anchorX(), geometry.anchorY(), geometry.anchorZ());
+        if (from.distanceToSqr(to) < 0.0001D) {
+            return;
+        }
+
+        Vec3 camera = event.getCamera().getPosition();
+        PoseStack pose = event.getPoseStack();
+        pose.pushPose();
+        pose.translate(-camera.x, -camera.y, -camera.z);
+
+        MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+        drawSafeBoxDirectionalLine(pose, lines, from, to);
+        LevelRenderer.renderLineBox(
+                pose,
+                lines,
+                geometry.minX(),
+                geometry.minY(),
+                geometry.minZ(),
+                geometry.maxX(),
+                geometry.maxY(),
+                geometry.maxZ(),
+                0.72F,
+                0.38F,
+                1.0F,
+                1.0F
+        );
+
+        pose.popPose();
+        buffers.endBatch(RenderType.lines());
+
+        drawSafeBoxMarkerLabel(pose, buffers, mc, camera, geometry, renderTarget.boxLabel());
+        buffers.endBatch();
+    }
+
+    private static SafeBoxEscortMarkerClientState.Facing safeBoxMarkerFacing(Direction facing) {
+        return switch (facing) {
+            case NORTH -> SafeBoxEscortMarkerClientState.Facing.NORTH;
+            case SOUTH -> SafeBoxEscortMarkerClientState.Facing.SOUTH;
+            case WEST -> SafeBoxEscortMarkerClientState.Facing.WEST;
+            case EAST -> SafeBoxEscortMarkerClientState.Facing.EAST;
+            default -> null;
+        };
+    }
+
+    private static void drawSafeBoxMarkerLabel(PoseStack pose,
+                                               MultiBufferSource.BufferSource buffers,
+                                               Minecraft mc,
+                                               Vec3 camera,
+                                               SafeBoxEscortMarkerClientState.DoorGeometry geometry,
+                                               String boxLabel) {
+        if (mc.font == null || mc.getEntityRenderDispatcher() == null) {
+            return;
+        }
+        String label = boxLabel == null || boxLabel.isBlank()
+                ? "Assigned safe box"
+                : "Safe box " + boxLabel;
+        int bgAlpha = (int) (mc.options.getBackgroundOpacity(0.30F) * 255.0F) << 24;
+
+        pose.pushPose();
+        pose.translate(
+                geometry.anchorX() - camera.x,
+                geometry.anchorY() + 0.08D - camera.y,
+                geometry.anchorZ() - camera.z
+        );
+        pose.mulPose(mc.getEntityRenderDispatcher().cameraOrientation());
+        pose.scale(-SAFE_BOX_LABEL_SCALE, -SAFE_BOX_LABEL_SCALE, SAFE_BOX_LABEL_SCALE);
+        Matrix4f matrix = pose.last().pose();
+        float x = -mc.font.width(label) / 2.0F;
+        mc.font.drawInBatch(
+                label, x, 0.0F, 0xFFE7C7FF, false, matrix, buffers,
+                Font.DisplayMode.NORMAL, bgAlpha, 0xF000F0);
+        pose.popPose();
     }
 
     private static void renderShoppingBagTimers(RenderLevelStageEvent event, Minecraft mc) {
@@ -793,6 +1049,10 @@ public class UltimateBankingSystemClient {
         if (mc.level == null || mc.player == null) {
             return;
         }
+        if (ClaimModeClientState.active()) {
+            event.setCanceled(true);
+            return;
+        }
         BlockState state = mc.level.getBlockState(event.getTarget().getBlockPos());
         if (!state.is(ModBlocks.GLASS_COUNTER_DISPLAY.get())
                 && !state.is(ModBlocks.CREATIVE_GLASS_COUNTER_DISPLAY.get())
@@ -889,6 +1149,33 @@ public class UltimateBankingSystemClient {
         }
     }
 
+    private static void drawSafeBoxDirectionalLine(PoseStack pose,
+                                                   VertexConsumer lines,
+                                                   Vec3 from,
+                                                   Vec3 to) {
+        Vec3 span = to.subtract(from);
+        double distance = span.length();
+        if (distance < 0.0001D) {
+            return;
+        }
+
+        PoseStack.Pose last = pose.last();
+        Vec3 normal = span.scale(1.0D / distance);
+        lineVertex(last, lines, from, 184, 102, 255, 220, normal);
+        lineVertex(last, lines, to, 184, 102, 255, 255, normal);
+
+        Vec3 arrowBase = to.subtract(normal.scale(Math.min(0.34D, distance * 0.24D)));
+        Vec3 referenceAxis = Math.abs(normal.y) < 0.90D
+                ? new Vec3(0.0D, 1.0D, 0.0D)
+                : new Vec3(1.0D, 0.0D, 0.0D);
+        Vec3 arrowSide = normal.cross(referenceAxis).normalize()
+                .scale(Math.min(0.15D, distance * 0.10D));
+        lineVertex(last, lines, arrowBase.add(arrowSide), 184, 102, 255, 255, normal);
+        lineVertex(last, lines, to, 184, 102, 255, 255, normal);
+        lineVertex(last, lines, arrowBase.subtract(arrowSide), 184, 102, 255, 255, normal);
+        lineVertex(last, lines, to, 184, 102, 255, 255, normal);
+    }
+
     private static Vec3 curvedPoint(Vec3 from, Vec3 to, double t, double arcHeight) {
         Vec3 base = from.lerp(to, t);
         double arc = Math.sin(Math.PI * t) * arcHeight;
@@ -981,11 +1268,13 @@ public class UltimateBankingSystemClient {
         int panelX = guiWidth - panelWidth - 8;
 
         if (ShopSetupObjectiveClientState.isCollapsed()) {
-            String title = tr("Store Requirements");
+            String title = tr(ShopSetupObjectiveClientState.getProjectType() + " Requirements");
             String stepText = tr("Step") + " " + ShopSetupObjectiveClientState.getStep()
                     + " / " + ShopSetupObjectiveClientState.getTotalSteps();
             String objectiveTitle = tr(ShopSetupObjectiveClientState.getObjectiveTitle());
-            String expandHint = tr("Press S to expand");
+            String expandHint = ShopSetupObjectiveClientState.getProjectCount() > 1
+                    ? tr("Press X to expand | ] to switch")
+                    : tr("Press X to expand");
             int compactWidth = Math.max(176, Math.min(236, panelWidth));
             int compactHeight = 42;
             int compactX = guiWidth - compactWidth - 8;
@@ -1003,17 +1292,20 @@ public class UltimateBankingSystemClient {
             return;
         }
 
-        String shopName = ShopSetupObjectiveClientState.getShopName();
-        String title = tr("Store Requirements");
-        String subtitle = shopName.isBlank()
+        String projectName = ShopSetupObjectiveClientState.getShopName();
+        String projectType = ShopSetupObjectiveClientState.getProjectType();
+        String title = tr(projectType + " Requirements");
+        String subtitle = projectName.isBlank()
                 ? tr("Setup in progress")
-                : tr("Shop: ") + shopName;
+                : tr(projectType + ": ") + projectName;
         String stepText = tr("Step") + " " + ShopSetupObjectiveClientState.getStep()
                 + " / " + ShopSetupObjectiveClientState.getTotalSteps();
         String objectiveTitle = tr(ShopSetupObjectiveClientState.getObjectiveTitle());
         String objectiveDetail = tr(ShopSetupObjectiveClientState.getObjectiveDetail());
         List<ShopSetupObjectivePayload.RequirementProgress> requirements = ShopSetupObjectiveClientState.getRequirements();
-        String closeHint = tr("Press X to minimize | Shift+X to close");
+        String closeHint = ShopSetupObjectiveClientState.getProjectCount() > 1
+                ? tr("Press X to minimize | ] switch | Shift+X close")
+                : tr("Press X to minimize | Shift+X to close");
 
         List<FormattedCharSequence> detailLines = font.split(Component.literal(objectiveDetail), panelWidth - 14);
         if (detailLines.size() > 6) {
@@ -1215,45 +1507,7 @@ public class UltimateBankingSystemClient {
     }
 
     private static void renderBalanceHud(Minecraft mc, GuiGraphics graphics) {
-        if (!HudClientState.isEnabled()) {
-            return;
-        }
-
-        String balance = HudClientState.getBalanceText();
-        if (balance.isBlank()) {
-            return;
-        }
-
-        String text = "Balance: " + Config.CURRENCY_SYMBOL.get() + MoneyText.abbreviate(balance);
-        int color = Config.HUD_TEXT_COLOR.get();
-        int width = graphics.guiWidth();
-        int height = graphics.guiHeight();
-        int textWidth = mc.font.width(text);
-        int textHeight = mc.font.lineHeight;
-
-        int x = 6;
-        int y = 6;
-        String corner = Config.HUD_CORNER.get().trim().toUpperCase();
-        switch (corner) {
-            case "TOP_RIGHT" -> {
-                x = width - textWidth - 6;
-                y = 6;
-            }
-            case "BOTTOM_LEFT" -> {
-                x = 6;
-                y = height - textHeight - 6;
-            }
-            case "BOTTOM_RIGHT" -> {
-                x = width - textWidth - 6;
-                y = height - textHeight - 6;
-            }
-            default -> {
-                x = 6;
-                y = 6;
-            }
-        }
-
-        graphics.drawString(mc.font, text, x, y, color, true);
+        BalanceHudRenderer.render(mc, graphics);
     }
 
     private static void renderActionAlert(Minecraft mc, GuiGraphics graphics) {
@@ -1395,6 +1649,108 @@ public class UltimateBankingSystemClient {
         graphics.pose().popPose();
     }
 
+    private static void renderPhoneNotification(Minecraft mc, GuiGraphics graphics) {
+        if (SmartphoneClientState.isInteractive() || !PhoneNotificationClientState.isActive()) {
+            return;
+        }
+        String message = PhoneNotificationClientState.message();
+        if (message.isBlank()) {
+            return;
+        }
+
+        float progress = PhoneNotificationClientState.progress();
+        float alpha = PhoneNotificationClientState.alpha();
+        if (progress <= 0.01F || alpha <= 0.01F) {
+            return;
+        }
+
+        int maxWidth = Math.max(238, Math.min(360, graphics.guiWidth() - 28));
+        int preferredWidth = Math.max(238, Math.min(maxWidth,
+                Math.max(mc.font.width(PhoneNotificationClientState.title()), mc.font.width(message)) + 76));
+        int width = preferredWidth;
+        List<FormattedCharSequence> wrapped = new ArrayList<>(
+                mc.font.split(Component.literal(message), width - 76));
+        if (wrapped.isEmpty()) {
+            return;
+        }
+        if (wrapped.size() > 2) {
+            wrapped = new ArrayList<>(wrapped.subList(0, 2));
+        }
+
+        int height = 48 + (wrapped.size() - 1) * mc.font.lineHeight;
+        int x = (graphics.guiWidth() - width) / 2;
+        int targetY = 18;
+        int y = Math.round(targetY - (height + 28) * (1.0F - progress));
+        int radius = 14;
+        int bg = withScaledAlpha(0xF8F7F8FA, alpha);
+        int border = withScaledAlpha(0x55FFFFFF, alpha);
+        int shadow = withScaledAlpha(0x52000000, alpha * 0.55F);
+        int text = withScaledAlpha(0xFF17191F, alpha);
+        int muted = withScaledAlpha(0xFF69707A, alpha);
+        int accent = withScaledAlpha(phoneNotificationAccent(PhoneNotificationClientState.tone()), alpha);
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0D, 0.0D, 1400.0D);
+        fillRoundedRect(graphics, x, y + 3, width, height, radius, shadow);
+        fillRoundedRect(graphics, x, y, width, height, radius, bg);
+        drawRoundedRectBorder(graphics, x, y, width, height, radius, border);
+
+        int icon = 30;
+        int iconX = x + 10;
+        int iconY = y + (height - icon) / 2;
+        fillRoundedRect(graphics, iconX, iconY, icon, icon, 8, accent);
+        graphics.drawString(mc.font, "$", iconX + (icon - mc.font.width("$")) / 2, iconY + 10,
+                withScaledAlpha(0xFFFFFFFF, alpha), false);
+
+        String title = PhoneNotificationClientState.title();
+        graphics.drawString(mc.font, title.isBlank() ? "UBS Phone" : title,
+                x + 50, y + 9, text, false);
+        int lineY = y + 24;
+        for (FormattedCharSequence line : wrapped) {
+            graphics.drawString(mc.font, line, x + 50, lineY, muted, false);
+            lineY += mc.font.lineHeight;
+        }
+        graphics.drawString(mc.font, "now", x + width - 10 - mc.font.width("now"), y + 9,
+                muted, false);
+        graphics.pose().popPose();
+    }
+
+    private static int phoneNotificationAccent(ActionAlertClientState.Tone tone) {
+        return switch (tone == null ? ActionAlertClientState.Tone.INFO : tone) {
+            case SUCCESS -> 0xFF20C985;
+            case ERROR -> 0xFFFF3B30;
+            case WARNING -> 0xFFFFB800;
+            case INFO -> 0xFF0078FF;
+        };
+    }
+
+    private static void drawRoundedRectBorder(GuiGraphics graphics, int x, int y, int w, int h, int r, int color) {
+        if (((color >>> 24) & 0xFF) == 0 || w <= 2 || h <= 2) {
+            return;
+        }
+        graphics.fill(x + r, y, x + w - r, y + 1, color);
+        graphics.fill(x + r, y + h - 1, x + w - r, y + h, color);
+        graphics.fill(x, y + r, x + 1, y + h - r, color);
+        graphics.fill(x + w - 1, y + r, x + w, y + h - r, color);
+    }
+
+    private static void fillRoundedRect(GuiGraphics graphics, int x, int y, int w, int h, int r, int color) {
+        if (((color >>> 24) & 0xFF) == 0 || w <= 0 || h <= 0) {
+            return;
+        }
+        int radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        if (radius <= 0) {
+            graphics.fill(x, y, x + w, y + h, color);
+            return;
+        }
+        graphics.fill(x + radius, y, x + w - radius, y + h, color);
+        graphics.fill(x, y + radius, x + w, y + h - radius, color);
+        graphics.fill(x + 2, y + radius / 2, x + radius, y + h - radius / 2, color);
+        graphics.fill(x + w - radius, y + radius / 2, x + w - 2, y + h - radius / 2, color);
+        graphics.fill(x + radius / 2, y + 2, x + w - radius / 2, y + radius, color);
+        graphics.fill(x + radius / 2, y + h - radius, x + w - radius / 2, y + h - 2, color);
+    }
+
     private static int withScaledAlpha(int argb, float factor) {
         int baseAlpha = (argb >>> 24) & 0xFF;
         int scaledAlpha = (int) Math.max(0.0F, Math.min(255.0F, baseAlpha * factor));
@@ -1481,6 +1837,65 @@ public class UltimateBankingSystemClient {
         graphics.pose().popPose();
     }
 
+    private static void renderHeistHud(Minecraft mc, GuiGraphics graphics) {
+        var state = HeistClientState.hud();
+        if (!state.active() || mc.screen != null) return;
+        List<HeistClientState.HudCrewEntry> crew = HeistClientState.hudCrew();
+        int width = Math.min(214, Math.max(176, graphics.guiWidth() / 5));
+        int height = 74 + crew.size() * 23;
+        int x = graphics.guiWidth() - width - 12;
+        int y = Math.max(18, (graphics.guiHeight() - height) / 2);
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0D, 0.0D, 610.0D);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xDD344A60);
+        graphics.fill(x, y, x + width, y + height, 0xE6111A24);
+        graphics.fill(x, y, x + width, y + 3, state.alarmed() ? 0xFFFF4F5E : 0xFFFFB84D);
+        graphics.drawString(mc.font, state.bankName(), x + 9, y + 10, 0xFFF5F7FA, false);
+        String timer = formatCountdown(state.remainingTicks() / 20L);
+        graphics.drawString(mc.font, timer, x + width - 9 - mc.font.width(timer), y + 10,
+                state.remainingTicks() < 1200 ? 0xFFFF6E76 : 0xFFF5F7FA, false);
+        String alarm = state.alarmed() ? "ALARM ACTIVE" : state.phase().replace('_', ' ');
+        graphics.drawString(mc.font, alarm, x + 9, y + 23,
+                state.alarmed() ? 0xFFFF6E76 : 0xFF8FA6BD, false);
+        String loot = "Loot  $" + MoneyText.abbreviate(BigDecimal.valueOf(state.lootCents(), 2));
+        graphics.drawString(mc.font, loot, x + 9, y + 37, 0xFFFFD166, false);
+        String bag = "Duffel  " + state.bagSlots() + "/" + state.bagCapacity() + " slots";
+        graphics.drawString(mc.font, bag, x + 9, y + 49, 0xFF9ED6FF, false);
+
+        int crewY = y + 65;
+        for (HeistClientState.HudCrewEntry member : crew) {
+            int textColor = member.active() && member.online() ? 0xFFF5F7FA : 0xFF697582;
+            graphics.drawString(mc.font, member.name(), x + 9, crewY, textColor, false);
+            int barX = x + 9;
+            int barY = crewY + 11;
+            int barWidth = width - 18;
+            float ratio = member.maxHealth() <= 0 ? 0F : Math.max(0F, Math.min(1F,
+                    member.health() / (float) member.maxHealth()));
+            graphics.fill(barX, barY, barX + barWidth, barY + 4, 0xFF293746);
+            graphics.fill(barX, barY, barX + Math.round(barWidth * ratio), barY + 4,
+                    ratio > .35F ? 0xFF48D6A5 : 0xFFFF5F68);
+            crewY += 23;
+        }
+
+        if (state.actionable()) {
+            int centerX = graphics.guiWidth() / 2;
+            String prompt = state.prompt().replace("{key}", PickpocketKeyMappings.getBoundKeyName());
+            int promptWidth = Math.max(150, mc.font.width(prompt) + 22);
+            int promptX = centerX - promptWidth / 2;
+            int promptY = graphics.guiHeight() / 2 + 28;
+            graphics.fill(promptX, promptY, promptX + promptWidth, promptY + 28, 0xDC111A24);
+            graphics.fill(promptX, promptY, promptX + promptWidth, promptY + 2, 0xFFFFB84D);
+            graphics.drawString(mc.font, prompt, centerX - mc.font.width(prompt) / 2,
+                    promptY + 6, 0xFFF5F7FA, false);
+            int required = Math.max(1, state.actionRequired());
+            int fill = Math.round((promptWidth - 12) * Math.min(1F, state.actionElapsed() / (float) required));
+            graphics.fill(promptX + 6, promptY + 20, promptX + promptWidth - 6, promptY + 24, 0xFF293746);
+            graphics.fill(promptX + 6, promptY + 20, promptX + 6 + fill, promptY + 24, 0xFFFFB84D);
+        }
+        graphics.pose().popPose();
+    }
+
     private static PickpocketTarget resolvePickpocketTarget(Minecraft mc, double rangeBlocks) {
         if (mc == null || mc.level == null || mc.player == null) {
             return null;
@@ -1524,6 +1939,12 @@ public class UltimateBankingSystemClient {
         PacketDistributor.sendToServer(new PickpocketCancelPayload());
         pickpocketHoldSent = false;
         pickpocketRequestedTargetId = null;
+    }
+
+    private static void sendHeistActionCancelIfNeeded() {
+        if (!heistActionHoldSent) return;
+        PacketDistributor.sendToServer(new HeistActionHoldPayload(false));
+        heistActionHoldSent = false;
     }
 
     private static String formatSecondsFromTicks(int ticks) {
@@ -1640,6 +2061,11 @@ public class UltimateBankingSystemClient {
         Minecraft mc = Minecraft.getInstance();
         // Hide held-hand model during shelf positioning so camera preview is unobstructed.
         if (mc.screen instanceof ShelfItemPositionScreen) {
+            event.setCanceled(true);
+            return;
+        }
+        if (Ove9000SawFirstPersonRenderer.render(event)
+                || DallasMaskFirstPersonRenderer.render(event)) {
             event.setCanceled(true);
         }
     }

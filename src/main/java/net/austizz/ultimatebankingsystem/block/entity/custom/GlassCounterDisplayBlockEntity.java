@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.block.entity.custom;
 
+import net.austizz.ultimatebankingsystem.shop.ShopMarketPriceService;
+
 import net.austizz.ultimatebankingsystem.util.ItemStackTagCompat;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
@@ -426,8 +428,21 @@ public class GlassCounterDisplayBlockEntity extends net.minecraft.world.level.bl
         return ClientboundBlockEntityDataPacket.create(this);
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        ShopMarketPriceService.track(this);
+    }
+
+    @Override
+    public void setRemoved() {
+        ShopMarketPriceService.shelfRemoved(this);
+        super.setRemoved();
+    }
+
     private void markUpdated() {
         setChanged();
+        ShopMarketPriceService.track(this);
         if (level != null) {
             BlockState state = getBlockState();
             level.sendBlockUpdated(worldPosition, state, state, 3);

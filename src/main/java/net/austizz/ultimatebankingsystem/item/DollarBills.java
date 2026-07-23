@@ -1,5 +1,6 @@
 package net.austizz.ultimatebankingsystem.item;
 
+import net.austizz.ultimatebankingsystem.block.custom.MoneyStackBlock;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
@@ -76,6 +77,20 @@ public final class DollarBills {
         return totalValueForDenoms(counts, CASH_DENOMINATIONS_CENTS_DESC);
     }
 
+    /**
+     * Long-safe total for tender counts that may include money-stack inflation
+     * (stacks tally as 100 bills each, so a full inventory of hundred-dollar
+     * stacks exceeds Integer.MAX_VALUE cents). Clamped consumers should use
+     * this instead of {@link #totalCashValueCents(int[])}.
+     */
+    public static long totalCashValueCentsLong(int[] counts) {
+        long total = 0L;
+        for (int i = 0; i < counts.length && i < CASH_DENOMINATIONS_CENTS_DESC.length; i++) {
+            total += (long) counts[i] * CASH_DENOMINATIONS_CENTS_DESC[i];
+        }
+        return total;
+    }
+
     public static void removeCash(ServerPlayer player, int[] plan) {
         int[] remaining = plan.clone();
         removeFromStacks(player.getInventory().items, remaining, DollarBills::cashIndexForItem);
@@ -94,6 +109,119 @@ public final class DollarBills {
 
     public static boolean isCashTenderItem(Item item) {
         return cashIndexForItem(item) >= 0;
+    }
+
+    public static final int BILLS_PER_MONEY_STACK = 100;
+
+    public static int billIndexForMoneyStackItem(Item item) {
+        MoneyStackBlock.BillDenomination denomination = MoneyStackBlock.BillDenomination.fromStackItem(item);
+        return denomination == null ? -1 : cashIndexForItem(denomination.billItem());
+    }
+
+    public static boolean isMoneyStackItem(Item item) {
+        return billIndexForMoneyStackItem(item) >= 0;
+    }
+
+    public static boolean isPhysicalTenderItem(Item item) {
+        return isCashTenderItem(item) || isMoneyStackItem(item);
+    }
+
+    public static long physicalTenderCents(Item item) {
+        int cashIndex = cashIndexForItem(item);
+        if (cashIndex >= 0) {
+            return CASH_DENOMINATIONS_CENTS_DESC[cashIndex];
+        }
+        int billIndex = billIndexForMoneyStackItem(item);
+        if (billIndex >= 0) {
+            return (long) BILLS_PER_MONEY_STACK * CASH_DENOMINATIONS_CENTS_DESC[billIndex];
+        }
+        return 0L;
+    }
+
+    /**
+     * Like {@link #getAvailableCashCounts(ServerPlayer)} but also counts carried money stacks
+     * as {@value #BILLS_PER_MONEY_STACK} loose bills of their denomination. Still length 12.
+     */
+    public static int[] getAvailableTenderAsCashCounts(ServerPlayer player) {
+        int[] counts = getAvailableCashCounts(player);
+        tallyMoneyStacksAsBills(player.getInventory().items, counts);
+        tallyMoneyStacksAsBills(player.getInventory().offhand, counts);
+        return counts;
+    }
+
+    /**
+     * Like {@link #removeCash(ServerPlayer, int[])} but may break money stacks: loose bills and
+     * coins are consumed first; any bill shortfall breaks straps and returns the leftover of each
+     * broken stack to the player as loose bills. Coins are always consumed purely loose.
+     */
+    public static void removeTender(ServerPlayer player, int[] plan) {
+        int[] remaining = plan.clone();
+        removeFromStacks(player.getInventory().items, remaining, DollarBills::cashIndexForItem);
+        removeFromStacks(player.getInventory().offhand, remaining, DollarBills::cashIndexForItem);
+
+        int[] residue = new int[CASH_DENOMINATIONS_CENTS_DESC.length];
+        boolean hasResidue = false;
+        for (int i = 0; i < remaining.length && i < CASH_DENOMINATIONS_CENTS_DESC.length; i++) {
+            int shortfall = remaining[i];
+            if (shortfall <= 0) {
+                continue;
+            }
+            int neededStacks = (shortfall + BILLS_PER_MONEY_STACK - 1) / BILLS_PER_MONEY_STACK;
+            int broken = breakMoneyStacks(player, i, neededStacks);
+            int covered = Math.min(shortfall, broken * BILLS_PER_MONEY_STACK);
+            remaining[i] -= covered;
+            int leftover = broken * BILLS_PER_MONEY_STACK - covered;
+            if (leftover > 0) {
+                residue[i] += leftover;
+                hasResidue = true;
+            }
+        }
+
+        if (hasResidue) {
+            giveCash(player, residue);
+        } else {
+            player.getInventory().setChanged();
+            player.containerMenu.broadcastChanges();
+        }
+    }
+
+    private static void tallyMoneyStacksAsBills(NonNullList<ItemStack> stacks, int[] counts) {
+        for (ItemStack stack : stacks) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            int billIndex = billIndexForMoneyStackItem(stack.getItem());
+            if (billIndex >= 0) {
+                counts[billIndex] += BILLS_PER_MONEY_STACK * stack.getCount();
+            }
+        }
+    }
+
+    private static int breakMoneyStacks(ServerPlayer player, int billIndex, int needed) {
+        int broken = breakMoneyStacksFrom(player.getInventory().items, billIndex, needed);
+        if (broken < needed) {
+            broken += breakMoneyStacksFrom(player.getInventory().offhand, billIndex, needed - broken);
+        }
+        return broken;
+    }
+
+    private static int breakMoneyStacksFrom(NonNullList<ItemStack> stacks, int billIndex, int needed) {
+        int broken = 0;
+        for (ItemStack stack : stacks) {
+            if (broken >= needed) {
+                break;
+            }
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            if (billIndexForMoneyStackItem(stack.getItem()) != billIndex) {
+                continue;
+            }
+            int take = Math.min(needed - broken, stack.getCount());
+            stack.shrink(take);
+            broken += take;
+        }
+        return broken;
     }
 
     public static int cashCentsForItem(Item item) {

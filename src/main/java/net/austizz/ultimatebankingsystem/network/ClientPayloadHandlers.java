@@ -1,16 +1,29 @@
 package net.austizz.ultimatebankingsystem.network;
 
+import net.austizz.ultimatebankingsystem.api.ApiNotificationPriority;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationRequest;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationType;
 import net.austizz.ultimatebankingsystem.client.ActionAlertClientState;
+import net.austizz.ultimatebankingsystem.client.ClaimModeClientState;
 import net.austizz.ultimatebankingsystem.client.DeliveryAlertClientState;
 import net.austizz.ultimatebankingsystem.client.DeliveryInfoBoardClientState;
 import net.austizz.ultimatebankingsystem.client.DeliveryPalletLabelsClientState;
+import net.austizz.ultimatebankingsystem.client.DallasMaskAnimationClientState;
+import net.austizz.ultimatebankingsystem.client.DepositBoxLabelClientState;
 import net.austizz.ultimatebankingsystem.client.HudClientState;
+import net.austizz.ultimatebankingsystem.client.HeistClientState;
+import net.austizz.ultimatebankingsystem.client.NotificationClientState;
 import net.austizz.ultimatebankingsystem.client.PickpocketClientState;
+import net.austizz.ultimatebankingsystem.client.PhoneNotificationClientState;
+import net.austizz.ultimatebankingsystem.client.RfidTargetSelectionClientState;
+import net.austizz.ultimatebankingsystem.client.SafeBoxEscortMarkerClientState;
+import net.austizz.ultimatebankingsystem.client.SafeBoxDisplayClientState;
 import net.austizz.ultimatebankingsystem.client.ShopSetupObjectiveClientState;
 import net.austizz.ultimatebankingsystem.client.ShelfTransformPreviewClientState;
 import net.austizz.ultimatebankingsystem.client.SmartphoneClientState;
 import net.austizz.ultimatebankingsystem.client.StockroomLocateClientState;
 import net.austizz.ultimatebankingsystem.gui.screens.ATMScreenHelper;
+import net.austizz.ultimatebankingsystem.gui.screens.AccessVerifierScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.BankScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.BankTellerScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ClientATMData;
@@ -18,6 +31,8 @@ import net.austizz.ultimatebankingsystem.gui.screens.ClientOwnerPcData;
 import net.austizz.ultimatebankingsystem.gui.screens.HandheldTerminalScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.OwnerPcClientScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.OwnerPcScreenHelper;
+import net.austizz.ultimatebankingsystem.gui.screens.RfidScannerScreen;
+import net.austizz.ultimatebankingsystem.gui.screens.SecureSafeAccessScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ShelfScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.ShopTerminalScreen;
 import net.austizz.ultimatebankingsystem.gui.screens.layers.AccountSettingsLayer;
@@ -36,12 +51,34 @@ final class ClientPayloadHandlers {
     }
 
     static void handleHudState(HudStatePayload payload) {
-        HudClientState.setBalanceText(payload.balance());
-        HudClientState.setEnabled(payload.enabled());
+        HudClientState.apply(
+                payload.balance(),
+                payload.enabled(),
+                payload.bankName(),
+                payload.accountType(),
+                payload.primaryAccount(),
+                payload.position()
+        );
     }
 
     static void handlePickpocketState(PickpocketStatePayload payload) {
         PickpocketClientState.apply(payload);
+    }
+
+    static void handleDallasMaskAnimation(DallasMaskAnimationPayload payload) {
+        DallasMaskAnimationClientState.apply(payload);
+    }
+
+    static void handleHeistPlanning(HeistPlanningPayload payload) {
+        HeistClientState.apply(payload);
+    }
+
+    static void handleHeistHud(HeistHudPayload payload) {
+        HeistClientState.apply(payload);
+    }
+
+    static void handleClaimModeSnapshot(ClaimModeSnapshotPayload payload) {
+        ClaimModeClientState.apply(payload);
     }
 
     static void handleSmartphoneSnapshot(SmartphoneSnapshotPayload payload) {
@@ -49,6 +86,27 @@ final class ClientPayloadHandlers {
         if (payload != null && payload.statusMessage() != null && !payload.statusMessage().isBlank()) {
             pushActionAlert(payload.open(), payload.statusMessage(), "Phone");
         }
+    }
+
+    static void handleSmartphoneLiveRefresh(SmartphoneLiveRefreshPayload payload) {
+        SmartphoneClientState.applyLiveRefresh(payload);
+    }
+
+    static void handleSmartphoneNotification(SmartphoneNotificationPayload payload) {
+        if (payload == null || payload.message().isBlank()) {
+            return;
+        }
+        ActionAlertClientState.Tone tone = switch (payload.tone()) {
+            case SUCCESS -> ActionAlertClientState.Tone.SUCCESS;
+            case ERROR -> ActionAlertClientState.Tone.ERROR;
+            case INFO -> ActionAlertClientState.Tone.INFO;
+            case WARNING -> ActionAlertClientState.Tone.WARNING;
+        };
+        if (SmartphoneClientState.isInteractive()) {
+            SmartphoneClientState.showPhoneNotification(payload.title(), payload.message());
+            return;
+        }
+        PhoneNotificationClientState.show(payload.title(), payload.message(), tone, payload.durationMs());
     }
 
     static void handleStockroomLocateRender(StockroomLocateRenderPayload payload) {
@@ -66,6 +124,34 @@ final class ClientPayloadHandlers {
         );
     }
 
+    static void handleSafeBoxEscortMarker(SafeBoxEscortMarkerPayload payload) {
+        SafeBoxEscortMarkerClientState.apply(toSafeBoxEscortMarkerUpdate(payload));
+    }
+
+    static void handleSafeBoxDisplayContents(SafeBoxDisplayContentsPayload payload) {
+        SafeBoxDisplayClientState.apply(payload);
+    }
+
+    static void handleDepositBoxLabels(DepositBoxLabelsPayload payload) {
+        DepositBoxLabelClientState.apply(payload);
+    }
+
+    static SafeBoxEscortMarkerClientState.MarkerUpdate toSafeBoxEscortMarkerUpdate(
+            SafeBoxEscortMarkerPayload payload) {
+        if (payload == null || !payload.active()) {
+            return SafeBoxEscortMarkerClientState.MarkerUpdate.inactive();
+        }
+        return new SafeBoxEscortMarkerClientState.MarkerUpdate(
+                true,
+                payload.dimensionId(),
+                payload.rowX(),
+                payload.rowY(),
+                payload.rowZ(),
+                payload.doorIndex(),
+                payload.boxLabel()
+        );
+    }
+
     static void handleDeliveryAlert(DeliveryAlertPayload payload) {
         if (payload == null) {
             DeliveryAlertClientState.clear();
@@ -80,9 +166,13 @@ final class ClientPayloadHandlers {
         ActionAlertClientState.show(payload.title(), payload.message(), tone, payload.durationMs());
     }
 
+    static void handleUiNotification(UiNotificationPayload payload) {
+        NotificationClientState.apply(payload);
+    }
+
     static void handleShopSetupObjective(ShopSetupObjectivePayload payload) {
         if (payload == null || !payload.active()) {
-            ShopSetupObjectiveClientState.clear();
+            ShopSetupObjectiveClientState.clearShopProject();
             return;
         }
         ShopSetupObjectiveClientState.set(
@@ -93,6 +183,12 @@ final class ClientPayloadHandlers {
                 payload.objectiveTitle(),
                 payload.objectiveDetail(),
                 payload.requirements()
+        );
+    }
+
+    static void handleBankSetupObjectives(BankSetupObjectivesPayload payload) {
+        ShopSetupObjectiveClientState.replaceBankProjects(
+                payload == null ? java.util.List.of() : payload.projects()
         );
     }
 
@@ -170,6 +266,39 @@ final class ClientPayloadHandlers {
             terminalScreen.handleSaveResponse(payload);
         }
         pushActionAlert(payload.success(), payload.message(), "Payment Terminal");
+    }
+
+    static void handleAccessVerifierOpen(AccessVerifierOpenPayload payload) {
+        if (Minecraft.getInstance().screen instanceof AccessVerifierScreen verifierScreen
+                && verifierScreen.matches(payload)) {
+            verifierScreen.refresh(payload);
+            return;
+        }
+        Minecraft.getInstance().setScreen(new AccessVerifierScreen(payload));
+    }
+
+    static void handleRfidScannerOpen(RfidScannerOpenPayload payload) {
+        if (!payload.authenticated()) {
+            RfidTargetSelectionClientState.clearSession();
+        }
+        if (Minecraft.getInstance().screen instanceof RfidScannerScreen scannerScreen
+                && scannerScreen.matches(payload)) {
+            scannerScreen.refresh(payload);
+            return;
+        }
+        Minecraft.getInstance().setScreen(new RfidScannerScreen(
+                payload,
+                RfidTargetSelectionClientState.retainedPin(payload)
+        ));
+    }
+
+    static void handleSecureSafeOpen(SecureSafeOpenPayload payload) {
+        if (Minecraft.getInstance().screen instanceof SecureSafeAccessScreen safeScreen
+                && safeScreen.matches(payload)) {
+            safeScreen.refresh(payload);
+            return;
+        }
+        Minecraft.getInstance().setScreen(new SecureSafeAccessScreen(payload));
     }
 
     static void handleHandheldTerminalOpen(HandheldTerminalOpenPayload payload) {
@@ -285,6 +414,23 @@ final class ClientPayloadHandlers {
         }
     }
 
+    static void handleOwnerPcPremiseActionResponse(OwnerPcPremiseActionResponsePayload payload) {
+        OwnerPcPremiseActionResponseClientHandler.handle(payload, currentOwnerPcScreen());
+    }
+
+    static void handleOwnerPcVaultRouteEditor(OwnerPcVaultRouteEditorPayload payload) {
+        handleOwnerPcVaultRouteEditor(payload, currentOwnerPcScreen());
+    }
+
+    static void handleOwnerPcVaultRouteEditor(OwnerPcVaultRouteEditorPayload payload,
+                                               OwnerPcClientScreen ownerScreen) {
+        ClientOwnerPcData.setVaultRouteEditor(payload);
+        ClientOwnerPcData.setToast(payload.success(), payload.message());
+        if (ownerScreen != null) {
+            ownerScreen.refreshFromNetwork();
+        }
+    }
+
     static void handleOwnerPcActionResponse(OwnerPcActionResponsePayload payload) {
         ClientOwnerPcData.setActionOutput(payload.message());
         String raw = payload.message() == null ? "" : payload.message();
@@ -311,7 +457,8 @@ final class ClientPayloadHandlers {
     }
 
     private static OwnerPcClientScreen currentOwnerPcScreen() {
-        return Minecraft.getInstance().screen instanceof OwnerPcClientScreen ownerScreen ? ownerScreen : null;
+        Minecraft minecraft = Minecraft.getInstance();
+        return minecraft != null && minecraft.screen instanceof OwnerPcClientScreen ownerScreen ? ownerScreen : null;
     }
 
     static void handlePinAuthResponse(PinAuthResponsePayload payload) {
@@ -439,43 +586,83 @@ final class ClientPayloadHandlers {
             return;
         }
         String trimmed = message.trim();
-        ActionAlertClientState.Tone tone = inferAlertTone(success, trimmed);
-        int durationMs = tone == ActionAlertClientState.Tone.ERROR ? 5600 : 4600;
-        ActionAlertClientState.show(
-                title == null || title.isBlank() ? defaultAlertTitle(tone) : title.trim(),
-                trimmed,
-                tone,
-                durationMs
-        );
+        String normalizedTitle = title == null ? "" : title.trim();
+        ApiNotificationType type = inferNotificationType(success, trimmed, normalizedTitle);
+        ApiNotificationPriority priority = switch (type) {
+            case ERROR, WARNING, SECURITY -> ApiNotificationPriority.HIGH;
+            default -> ApiNotificationPriority.NORMAL;
+        };
+        int durationMs = type == ApiNotificationType.ERROR ? 5600 : 4600;
+        NotificationClientState.showLocal(ApiNotificationRequest.builder(type, trimmed)
+                .channel(notificationChannel(type))
+                .source(notificationSource(type))
+                .title(normalizedTitle.isBlank() ? defaultAlertTitle(type) : normalizedTitle)
+                .priority(priority)
+                .durationMs(durationMs)
+                .build());
     }
 
-    private static ActionAlertClientState.Tone inferAlertTone(boolean success, String message) {
+    private static ApiNotificationType inferNotificationType(boolean success, String message, String title) {
         if (!success) {
-            return ActionAlertClientState.Tone.ERROR;
+            return ApiNotificationType.ERROR;
         }
-        String normalized = message == null ? "" : message.toLowerCase(java.util.Locale.ROOT);
+        String normalized = ((title == null ? "" : title) + " " + (message == null ? "" : message))
+                .toLowerCase(java.util.Locale.ROOT);
         if (normalized.contains("warning")
                 || normalized.contains("limit")
                 || normalized.contains("already")
                 || normalized.contains("queued")
                 || normalized.contains("wait")) {
-            return ActionAlertClientState.Tone.WARNING;
+            return ApiNotificationType.WARNING;
+        }
+        if (normalized.contains("pin") || normalized.contains("access") || normalized.contains("security")) {
+            return ApiNotificationType.SECURITY;
+        }
+        if (normalized.contains("atm") || normalized.contains("withdraw") || normalized.contains("deposit")
+                || normalized.contains("transfer") || normalized.contains("account")
+                || normalized.contains("payment") || normalized.contains("pay request")
+                || normalized.contains("bank teller")) {
+            return ApiNotificationType.TRANSACTION;
         }
         if (normalized.contains("selected")
                 || normalized.contains("copied")
                 || normalized.contains("refresh")
                 || normalized.contains("locating")) {
-            return ActionAlertClientState.Tone.INFO;
+            return ApiNotificationType.INFO;
         }
-        return ActionAlertClientState.Tone.SUCCESS;
+        return ApiNotificationType.SUCCESS;
     }
 
-    private static String defaultAlertTitle(ActionAlertClientState.Tone tone) {
-        return switch (tone) {
+    private static String defaultAlertTitle(ApiNotificationType type) {
+        return switch (type) {
             case ERROR -> "Action Failed";
             case WARNING -> "Warning";
             case INFO -> "Info";
             case SUCCESS -> "Success";
+            case TRANSACTION -> "Banking Update";
+            case SECURITY -> "Security Notice";
+            case MESSAGE -> "New Message";
+            case PROGRESS -> "Processing";
+            case SYSTEM -> "System Update";
+        };
+    }
+
+    private static String notificationChannel(ApiNotificationType type) {
+        return switch (type) {
+            case TRANSACTION -> "banking";
+            case SECURITY -> "security";
+            case MESSAGE -> "messaging";
+            case PROGRESS -> "progress";
+            default -> "actions";
+        };
+    }
+
+    private static String notificationSource(ApiNotificationType type) {
+        return switch (type) {
+            case TRANSACTION -> "UBS Banking";
+            case SECURITY -> "UBS Security";
+            case MESSAGE -> "UBS Phone";
+            default -> "Ultimate Banking System";
         };
     }
 

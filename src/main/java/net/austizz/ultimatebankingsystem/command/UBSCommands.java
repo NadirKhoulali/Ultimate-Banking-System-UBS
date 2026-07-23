@@ -18,6 +18,7 @@ import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.owner.staffing.BankStaffingService;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
@@ -26,12 +27,16 @@ import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.heist.HeistPlanningService;
+import net.austizz.ultimatebankingsystem.heist.HeistService;
+import net.austizz.ultimatebankingsystem.hud.HudPosition;
+import net.austizz.ultimatebankingsystem.hud.HudPreferencesSavedData;
 import net.austizz.ultimatebankingsystem.npc.BankTellerInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager;
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -53,6 +58,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -74,7 +80,7 @@ public class UBSCommands {
     private static final int HELP_ENTRIES_PER_PAGE = 14;
     private static final List<String> ACCOUNT_HELP_ENTRIES = List.of(
             "§8/§faccount §7help [page] §8- §7Show account help pages",
-            "§8/§faccount §7open §8<§faccountType§8> [§fcertificateTier§8] <§fbankName§8> §8- §7Open account",
+            "§8/§faccount §7open §8- §7Open a Central Bank checking account",
             "§8/§faccount §7close §8<§fbankName§8> §8- §7Close your account at a bank",
             "§8/§faccount §7balance §8- §7Show your primary account balance",
             "§8/§faccount §7info §8- §7View your primary account info",
@@ -100,6 +106,7 @@ public class UBSCommands {
             "§8/§faccount §7hud toggle §8- §7Toggle account HUD",
             "§8/§faccount §7hud primary §8- §7Monitor primary account on HUD",
             "§8/§faccount §7hud account §8<§faccountId§8> §8- §7Monitor a specific account on HUD",
+            "§8/§faccount §7hud move §8<§fposition§8> §8- §7Move only the balance HUD",
             "§8/§faccount §7pickpocket toggle §8- §7Toggle pickpocket immunity and ability",
             "§8/§faccount §7pickpocket status §8- §7Show your pickpocket status",
             "§8/§faccount §7safebox list §8- §7List your safe box slots",
@@ -172,6 +179,7 @@ public class UBSCommands {
             "dailybank",
             "teller"
     );
+    private static final List<String> HUD_POSITION_SUGGESTIONS = HudPosition.commandValues();
 
     private record EmployeeSpec(String role, BigDecimal salary) {}
     private record LoanProductSpec(String name, BigDecimal maxAmount, double interestRate, long durationTicks) {}
@@ -463,45 +471,7 @@ public class UBSCommands {
 
                         )
                         .then(Commands.literal("open")
-                                .then(Commands.argument("accountType", StringArgumentType.word())
-                                        .suggests(UBSCommands::suggestAccountOpenTypes)
-                                        .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                                .suggests(UBSCommands::suggestBankNames)
-                                                .executes(context -> handleBankOpenAccount(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "bankName"),
-                                                        StringArgumentType.getString(context, "accountType"),
-                                                        ""
-                                                ))
-                                        )
-                                        .then(Commands.argument("certificateTier", StringArgumentType.word())
-                                                .suggests(UBSCommands::suggestCertificateTiersForAccountOpen)
-                                                .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                                        .suggests(UBSCommands::suggestBankNames)
-                                                        .executes(context -> {
-                                                            String accountType = StringArgumentType.getString(context, "accountType");
-                                                            String certificateTier = StringArgumentType.getString(context, "certificateTier");
-                                                            String bankTail = StringArgumentType.getString(context, "bankName");
-                                                            if (parseAccountType(accountType) != AccountTypes.CertificateAccount) {
-                                                                String mergedBankName = normalizeBankName(certificateTier + " " + bankTail);
-                                                                return handleBankOpenAccount(
-                                                                        context.getSource(),
-                                                                        mergedBankName,
-                                                                        accountType,
-                                                                        ""
-                                                                );
-                                                            }
-                                                            return handleBankOpenAccount(
-                                                                    context.getSource(),
-                                                                    bankTail,
-                                                                    accountType,
-                                                                    certificateTier
-                                                            );
-                                                        })
-                                                )
-                                        )
-                                )
-                        )
+                                .executes(context -> handleDefaultAccountOpen(context.getSource())))
                         .then(Commands.literal("close")
                                 .then(Commands.argument("bankName", StringArgumentType.greedyString())
                                         .executes(context -> handleCloseBankAccount(
@@ -832,6 +802,7 @@ public class UBSCommands {
 
         event.getDispatcher().register(buildHiddenPayRequestCommand());
         event.getDispatcher().register(buildBankCommand());
+        event.getDispatcher().register(buildHeistCommand());
         event.getDispatcher().register(buildBankTellerCommand());
         event.getDispatcher().register(buildCashierCommand());
 
@@ -918,6 +889,16 @@ public class UBSCommands {
                                 .executes(context -> handleHudMonitorAccount(
                                         context.getSource(),
                                         UuidArgument.getUuid(context, "accountId")
+                                ))
+                        )
+                )
+                .then(Commands.literal("move")
+                        .then(Commands.argument("position", StringArgumentType.word())
+                                .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                        HUD_POSITION_SUGGESTIONS, builder))
+                                .executes(context -> handleHudMove(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "position")
                                 ))
                         )
                 );
@@ -1383,14 +1364,46 @@ public class UBSCommands {
                         .then(Commands.literal("active")
                                 .executes(context -> handleBankLoanSummary(context.getSource()))))
                 .then(Commands.literal("heist")
-                        .executes(context -> handleBankHeistComingSoon(context.getSource()))
+                        .executes(context -> handleOpenHeistPlanner(context.getSource()))
+                        .then(Commands.literal("abandon")
+                                .executes(context -> handleAbandonHeist(context.getSource())))
                         .then(Commands.literal("start")
-                                .executes(context -> handleBankHeistComingSoon(context.getSource()))
+                                .executes(context -> handleOpenHeistPlanner(context.getSource()))
                                 .then(Commands.argument("bankName", StringArgumentType.greedyString())
-                                        .executes(context -> handleBankHeistComingSoon(context.getSource()))
+                                        .executes(context -> handleOpenHeistPlanner(context.getSource()))
                                 )
                         )
                 );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildHeistCommand() {
+        return Commands.literal("heist")
+                .executes(context -> handleOpenHeistPlanner(context.getSource()))
+                .then(Commands.literal("plan")
+                        .executes(context -> handleOpenHeistPlanner(context.getSource())))
+                .then(Commands.literal("abandon")
+                        .executes(context -> handleAbandonHeist(context.getSource())));
+    }
+
+    private static int handleOpenHeistPlanner(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("Only players can open the heist planner."));
+            return 0;
+        }
+        HeistPlanningService.open(player);
+        return 1;
+    }
+
+    private static int handleAbandonHeist(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("Only players can abandon a heist."));
+            return 0;
+        }
+        HeistService.Result result = HeistService.abandon(player);
+        source.sendSystemMessage(Component.literal((result.success() ? "§a" : "§c") + result.message()));
+        return result.success() ? 1 : 0;
     }
 
     private static int handleBankCreate(CommandSourceStack source, String bankNameRaw, String ownershipModelRaw) {
@@ -1660,7 +1673,7 @@ public class UBSCommands {
         if (founder.getInventory().getFreeSlot() < 0) {
             String warning = "Inventory full. Visit your bank teller to issue your private bank card.";
             founder.sendSystemMessage(moneyLiteral("§e" + warning));
-            ServerActionAlert.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
+            ServerNotification.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
             return "pending teller issue (inventory full)";
         }
 
@@ -1679,7 +1692,7 @@ public class UBSCommands {
         founder.containerMenu.broadcastChanges();
         String masked = CreditCardService.maskCardNumber(issued.cardNumber());
         String success = "issued " + masked;
-        ServerActionAlert.send(founder, "Banking", "Private bank card issued: " + masked + ".", DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
+        ServerNotification.send(founder, "Banking", "Private bank card issued: " + masked + ".", DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
         return success;
     }
 
@@ -1783,6 +1796,15 @@ public class UBSCommands {
         }
         source.sendSystemMessage(message);
         return 1;
+    }
+
+    private static int handleDefaultAccountOpen(CommandSourceStack source) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
+            return 1;
+        }
+        return handleBankOpenAccount(source, centralBank.getBankName(), "checking", "");
     }
 
     private static int handleSetPrimaryBank(CommandSourceStack source, String bankNameRaw) {
@@ -2932,11 +2954,8 @@ public class UBSCommands {
             source.sendSystemMessage(moneyLiteral("§cOnly bank owners can fire employees."));
             return 1;
         }
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-        Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
-        employees.remove(target.getUUID());
-        metadata.putString("employees", encodeEmployeeMap(employees));
-        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        net.austizz.ultimatebankingsystem.bank.owner.staffing.BankEmployeeRemovalService.removeAndPersist(
+                centralBank, bank.getBankId(), target.getUUID());
         source.sendSystemMessage(moneyLiteral("§eFired employee " + target.getName().getString()));
         target.sendSystemMessage(moneyLiteral("§cYou were removed from employment at " + bank.getBankName()));
         return 1;
@@ -2991,14 +3010,12 @@ public class UBSCommands {
             source.sendSystemMessage(moneyLiteral("§cBank not found: " + bankNameRaw));
             return 1;
         }
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-        Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
-        if (employees.remove(player.getUUID()) == null) {
+        boolean removed = net.austizz.ultimatebankingsystem.bank.owner.staffing.BankEmployeeRemovalService.removeAndPersist(
+                centralBank, bank.getBankId(), player.getUUID());
+        if (!removed) {
             source.sendSystemMessage(moneyLiteral("§cYou are not employed at this bank."));
             return 1;
         }
-        metadata.putString("employees", encodeEmployeeMap(employees));
-        centralBank.putBankMetadata(bank.getBankId(), metadata);
         source.sendSystemMessage(moneyLiteral("§aYou resigned from " + bank.getBankName() + "."));
         return 1;
     }
@@ -3721,6 +3738,10 @@ public class UBSCommands {
         String requested = normalizeBankName(bankNameRaw);
         if (requested.isBlank()) {
             return null;
+        }
+        if (centralBank.getBankName() != null
+                && centralBank.getBankName().trim().equalsIgnoreCase(requested)) {
+            return centralBank;
         }
         return centralBank.getBanks().values().stream()
                 .filter(bank -> bank.getBankName() != null)
@@ -5021,6 +5042,30 @@ public class UBSCommands {
         return 1;
     }
 
+    private static int handleHudMove(CommandSourceStack source, String requestedPosition) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendSystemMessage(moneyLiteral("§cOnly players can use this command."));
+            return 1;
+        }
+        String position = normalizeHudPosition(requestedPosition);
+        if (position.isBlank()) {
+            source.sendSystemMessage(moneyLiteral(
+                    "§cUnknown HUD position. Use: §ftop-right, top-left, middle-right, middle-left, "
+                            + "bottom-right, or bottom-left§c."
+            ));
+            return 1;
+        }
+
+        HudPreferencesSavedData.get(source.getServer()).setPosition(player.getUUID(), position);
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        PacketDistributor.sendToPlayer(player, buildHudStatePayload(centralBank, player.getUUID()));
+        source.sendSystemMessage(moneyLiteral(
+                "§aBalance HUD moved to §f" + position.replace('-', ' ') + "§a."
+        ));
+        return 1;
+    }
+
     private static int handlePickpocketStatus(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
@@ -6230,15 +6275,43 @@ public class UBSCommands {
         HUD_ENABLED_OVERRIDES.keySet().removeIf(id -> !onlinePlayers.contains(id));
     }
 
+    static String normalizeHudPosition(String value) {
+        return HudPosition.normalize(value);
+    }
+
+    private static String resolveHudPosition(UUID playerId) {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null && playerId != null) {
+            String persisted = normalizeHudPosition(HudPreferencesSavedData.get(server).position(playerId));
+            if (!persisted.isBlank()) {
+                return persisted;
+            }
+        }
+        String configured = normalizeHudPosition(Config.HUD_CORNER.get());
+        return configured.isBlank() ? "top-right" : configured;
+    }
+
     public static HudStatePayload buildHudStatePayload(CentralBank centralBank, UUID playerId) {
         if (playerId == null) {
-            return new HudStatePayload("", false);
+            return new HudStatePayload("", false, "", "", false, "top-right");
         }
         boolean toggled = isHudEnabled(playerId);
         AccountHolder target = centralBank == null ? null : resolveHudTargetAccount(centralBank, playerId);
         boolean visible = toggled && target != null;
         String balance = target == null ? "" : target.getBalance().toPlainString();
-        return new HudStatePayload(balance, visible);
+        Bank bank = target == null || centralBank == null ? null : centralBank.getBank(target.getBankId());
+        String bankName = bank == null ? "" : bank.getBankName();
+        String accountType = target == null || target.getAccountType() == null
+                ? ""
+                : target.getAccountType().label;
+        return new HudStatePayload(
+                balance,
+                visible,
+                bankName,
+                accountType,
+                target != null && target.isPrimaryAccount(),
+                resolveHudPosition(playerId)
+        );
     }
 
     private static AccountHolder resolveHudTargetAccount(CentralBank centralBank, UUID playerId) {

@@ -13,14 +13,14 @@ The Bank Owner PC (displayed in-game as **Business Manager PC**) is the full-scr
 - Desktop lists all accessible bank apps as launch buttons.
 - `Create Bank` opens the in-UI bank creation flow.
 - Max banks per player is enforced by config (`PLAYER_BANKS_MAX_BANKS_PER_PLAYER`).
-- UI scale is forced to `2` while this screen is open, then restored on close.
+- The desktop follows the supported custom PC scaling rules, with compact layouts for small framebuffers and Minecraft-style scale exemptions for inventory-style screens.
 - Desktop, shop, order-board, and retail-webshop controls use the same dark UBS commerce theme so app chrome and modals stack consistently.
 
 Shop-capable desktop actions are role-gated (`OWNER`, `MANAGER`, `BUILDER`, `STAFF`) and validated server-side.
 
 ## Bank Manager Layout
 
-- Left nav: `Overview`, `Branding`, `Limits`, `Governance`, `Staffing`, `Lending`, `Compliance`
+- Left nav: `Overview`, `Accounts`, `Safe`, `Premises`, `Branding`, `Limits`, `Governance`, `Staffing`, `Lending`, `Compliance`
 - Top bar: current tool title + `Minimize` + `Refresh`
 - Upper content area: section controls
 - Lower content area: output panel / dashboard / card views
@@ -72,8 +72,59 @@ Actions shown in UI depend on ownership model and permissions:
 
 ## Staffing
 
-- hire/fire
-- employee list
+- hire/fire player employees
+- issue and inspect bound bank-teller NPCs
+- view player employees and regular bank NPCs in separate roster sections
+- grant or revoke per-employee `Safe Access`
+- open teller details and inspect teller availability
+
+`Safe Access` is required for customer deposit-box service; ownership alone does not silently bypass the employee permission. Permission-level-3 operators satisfy this requirement for the Central Bank.
+
+## Premises and Safety Deposit Setup
+
+`Premises` owns the bank's physical location records. Bank owners can:
+
+- claim a premise by selecting two corners and an outside exit
+- review bounds, exit, access mode, child safe areas, and vault readiness
+- switch between `PUBLIC` and `STAFF_ONLY`
+- update the outside exit
+- delete only an empty custom premise with no assignments, routes, migration dependency, or active escort
+
+Deleting a premise never cascades into customer box contents, assignments, rent/escrow data, routes, or world blocks. The server recomputes blockers when the action is confirmed.
+
+Permission-level-3 operators can inspect and manage premises without opening an Owner PC through `/ubs admin bank premise`. Premise IDs in admin list/detail output are click-to-copy. Admin deletion is an explicit destructive force path: it bypasses Owner-PC deletion blockers, cancels matching escorts, and removes affected assignments, routes, contained legacy area records, and loaded physical row labels before deleting the premise. Account-held box contents and escrow records remain preserved. `add` and `exit` launch protected world-selection tools; structural bounds and target-existence checks remain because bypassing those would persist invalid world data.
+
+The `Safe` panel contains safety-deposit setup and operations. Service stays disabled until at least one vault has all of these:
+
+1. A safe area nested inside a claimed premise.
+2. A loaded bank vault door in that safe area.
+3. At least one deposit-row block with every slot physically filled.
+4. At least one employee with `Safe Access`.
+5. A ready private viewing room in the premise.
+
+Removing a required door, row, room, or permission changes the vault back to unavailable without deleting customer data. Restoring the requirement makes it eligible again.
+
+### Private Viewing Rooms
+
+The former teller path-walking system is disabled. Owners now claim isolated viewing rooms and capture:
+
+- customer position/facing
+- teller position/facing
+- deposit-box tray position/facing
+
+Customers request access from the teller's `Safe Box` tab. UBS reserves a room/teller, temporarily removes the exact box from its physical row, presents a full-size tray and its contents in the room, restricts every unrelated interaction, then restores the room, teller, customer, row, and box when the customer confirms completion or the session is cleaned up.
+
+### Safe Operations Tabs
+
+- `Box Wall`: physical rows, sizes, assignment/rent/lock status, locate actions
+- `Private Viewing Rooms`: room claims, anchors, availability, rename/suspend/delete
+- `Access Logs`: customer, box, door, pallet, safe, and inventory activity
+- `Alarms`: alarm state, default/custom OGG sound, test/restart/stop
+- `Vault Storage`: simplified claim map, pallet/chest markers, counts, and market-value detail modals
+- `Pricing Policy`: independent rent for every deposit-box size
+- `Locked Queue`: overdue review and seizure confirmation
+
+See [Safety Deposit Boxes](Safety-Deposit-Boxes.md).
 
 ## Lending
 

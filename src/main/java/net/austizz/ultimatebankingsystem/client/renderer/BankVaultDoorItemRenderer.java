@@ -37,6 +37,8 @@ public class BankVaultDoorItemRenderer extends BlockEntityWithoutLevelRenderer {
         applyItemTransform(displayContext, poseStack);
         vaultModel.applyAnimation(0.0F);
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entitySolid(TEXTURE));
+        // Full model everywhere (door leaf plus the mounting wall) — the GUI
+        // transform scales the whole 68px-wide structure into the slot.
         vaultModel.renderToBuffer(poseStack, consumer, packedLight, packedOverlay, 0xFFFFFFFF);
         poseStack.popPose();
     }
@@ -53,8 +55,13 @@ public class BankVaultDoorItemRenderer extends BlockEntityWithoutLevelRenderer {
     private static void applyItemTransform(ItemDisplayContext displayContext, PoseStack poseStack) {
         poseStack.translate(0.5D, 0.5D, 0.5D);
         if (displayContext == ItemDisplayContext.GUI) {
-            poseStack.scale(0.21F, 0.21F, 0.21F);
-            poseStack.translate(0.0D, 1.55D, 0.0D);
+            // Full structure (68px-wide wall + door leaf), roughly origin-centered:
+            // scale it into the slot with a slight yaw/pitch for depth.
+            poseStack.scale(0.22F, 0.22F, 0.22F);
+            poseStack.mulPose(Axis.XP.rotationDegrees(10.0F));
+            poseStack.mulPose(Axis.YP.rotationDegrees(28.0F));
+            poseStack.mulPose(Axis.XP.rotationDegrees(180.0F));
+            return;
         } else if (displayContext == ItemDisplayContext.GROUND) {
             poseStack.scale(0.12F, 0.12F, 0.12F);
             poseStack.translate(0.0D, 1.45D, 0.0D);

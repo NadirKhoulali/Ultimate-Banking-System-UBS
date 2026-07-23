@@ -1,62 +1,89 @@
 # Smartphone
 
-The smartphone is a pocket UI for player-facing banking and communication. It is separate from the Business Manager PC and uses a smooth in-world overlay instead of pausing gameplay.
+The UBS smartphone is a non-pausing in-world overlay. Players keep moving while the phone is visible; pointer and keyboard input are captured only while interacting with phone controls.
 
-## Access
+## Access and Scale
 
 - Item: `smartphone`
-- Open by right-clicking the item.
-- Open by pressing `P` while the phone is in the player's inventory.
-- The phone slides in from the bottom-right of the screen.
-- The player can keep moving while the phone is open.
-- Clicking outside the phone hides interaction and returns the mouse to the game. Press `P` again to interact with the phone.
+- Right-click the held phone, or use the rebindable `Toggle Phone` key (default `[`) while a phone is in inventory.
+- The phone uses a smooth bottom-right slide animation.
+- Phone dimensions and all app content scale together independently from extreme Minecraft GUI-scale values, preventing the device from growing off-screen.
+- `Esc` navigates backward until Home; pressing it on Home puts the phone away.
 
-## Ownership
+Phones are owner-locked by default. `PhoneAccessMode=OPEN_ACCESS` permits the current holder to use one.
 
-Phones are owner-locked by default. The first player who opens a new phone becomes its owner.
+## Lock Screen
 
-Servers can change this with `PhoneAccessMode`:
+The first use prompts for a phone password and confirmation. Later opens show the lock screen, local and server time, and a swipe-up password panel. Settings includes password change.
 
-- `OWNER_LOCKED`: only the owner can use the phone.
-- `OPEN_ACCESS`: whoever holds the phone can use it.
+The home status bar shows local time. Content is clipped to the rounded screen bounds and never renders across the black bezel.
 
-## Built-In Apps
+## Banking
 
-- Banking: lists the player's UBS accounts, balances, primary state, frozen state, credit score, access type, role, and recent transactions.
-- Per-account apps: each account appears as its own bank/type entry inside Banking.
-- Tap to Pay: selects the account used when the phone is held at supported payment flows.
-- Calculator: simple expression calculator.
-- Paint: small phone sketch pad saved on the phone item.
-- Contacts: online server player directory plus known contacts from messages.
-- Messenger: private phone messages with offline history, unread counts, mute, block, favorite, and report actions.
-- Notes: up to 12 saved phone notes.
-- Settings: phone accent and wallpaper customization.
+The main Banking app represents the player's primary account. Every other bank account appears as a separate app named by bank and account type.
 
-Optional bridge apps appear only when the related mod is loaded:
+Features include:
 
-- JourneyMap (`journeymap`)
-- Auction House (`ultimate_auction_system`)
-- Real Estate / claiming (`ucs`)
+- real balances, account/card state, bank name, primary badge, copyable account ID, and credit score
+- per-account login/PIN session isolation
+- account-specific PIN setup, reusing a PIN set at an ATM
+- send/receive money using online players with primary accounts or a directly entered account ID
+- pending pay requests and Tap to Pay
+- month-selectable statistics based on real transaction data
+- scrollable transaction history and transaction detail
+- dark/light banking-app preference
+
+Logging into one account does not unlock another account app.
+
+If the player has no account, Banking opens an onboarding screen. `/account open` creates a Central Bank checking account and makes it primary when no other account exists.
+
+## Messenger and Contacts
+
+- searchable player/contact directory
+- private realtime messages to online clients
+- durable offline message history and unread state
+- multiline expanding composer with four visible lines and internal auto-scroll
+- typing indicator with animated dots, activity timeout, and immediate clear on send/delete/exit
+- pay-request and money-gift actions inside conversations
+- accept/decline state embedded in chat; completed requests/gifts cannot be claimed twice
+- offline delivery for messages, requests, and gifts with join/phone-open notifications
+- block, mute, favorite, and report actions
+
+Money gifts reserve funds when sent. Declined or expired gifts return the funds to the sender.
+
+While a phone input is focused, movement, inventory/chat, and unrelated keybinds are suppressed. Shifted characters such as `?` and `@` still work normally.
+
+## Notifications
+
+Phone feedback uses a top slide-down notification card. When the phone is closed but present in inventory, eligible phone notifications use the same visual style in the game HUD rather than legacy UBS alerts.
+
+## Other Apps
+
+- Calculator
+- Paint
+- Notes
+- Settings for accent, wallpaper, theme, and password
+- Contacts
+- Messenger
+- Tap to Pay
+
+Optional bridge apps appear only when the corresponding mod is loaded:
+
+- JourneyMap
+- Ultimate Auction System
+- Ultimate Claiming System / real estate
 
 ## Tap to Pay
 
-Tap to Pay is an additional payment method. It does not replace wallets, credit cards, cash, payment terminals, or shop cashier flows.
+Tap to Pay uses the selected phone account, falling back to the primary account. Each phone/account pair receives a stable cosmetic virtual-card number; settlement remains server-authoritative.
 
-Current Tap to Pay support:
+## Moderation
 
-- shop cashier card/terminal checkout
-- bank teller external payment sessions
+Messenger reports are reviewed with:
 
-The phone uses the selected Tap to Pay account. If no account was selected, the player's primary UBS account is used as a fallback.
+```text
+/ubs phone reports
+/ubs phone reports all
+/ubs phone reports resolve <reportId>
+```
 
-Each phone-account pair gets a stable virtual card number stored on the phone item. The number is cosmetic; the actual payment is still validated server-side against the UBS account.
-
-## Messaging Moderation
-
-Players can report a contact from Messenger. Reports are stored server-side and can be reviewed by admins:
-
-- `/ubs phone reports`
-- `/ubs phone reports all`
-- `/ubs phone reports resolve <reportId>`
-
-The larger PC admin report UI is planned separately.

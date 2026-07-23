@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -382,6 +383,14 @@ public class CentralBank extends Bank{
         return this.bankMetadata;
     }
 
+    public CompoundTag readBankMetadata(UUID bankId) {
+        if (bankId == null || bankMetadata == null) {
+            return null;
+        }
+        CompoundTag metadata = bankMetadata.get(bankId);
+        return metadata == null ? null : metadata.copy();
+    }
+
     public CompoundTag getOrCreateBankMetadata(UUID bankId) {
         if (bankId == null) {
             return new CompoundTag();
@@ -453,11 +462,32 @@ public class CentralBank extends Bank{
         return interbankOffers;
     }
 
+    public Map<UUID, CompoundTag> readInterbankOffers() {
+        return readTagMap(interbankOffers);
+    }
+
     public ConcurrentHashMap<UUID, CompoundTag> getInterbankLoans() {
         if (interbankLoans == null) {
             interbankLoans = new ConcurrentHashMap<>();
         }
         return interbankLoans;
+    }
+
+    public Map<UUID, CompoundTag> readInterbankLoans() {
+        return readTagMap(interbankLoans);
+    }
+
+    private static Map<UUID, CompoundTag> readTagMap(Map<UUID, CompoundTag> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, CompoundTag> snapshot = new LinkedHashMap<>();
+        source.forEach((id, tag) -> {
+            if (id != null && tag != null) {
+                snapshot.put(id, tag.copy());
+            }
+        });
+        return Map.copyOf(snapshot);
     }
 
     public ConcurrentHashMap<UUID, CompoundTag> getReportSnapshots() {

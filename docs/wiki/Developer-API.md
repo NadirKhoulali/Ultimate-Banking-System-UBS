@@ -1,453 +1,287 @@
-# Developer API & Placeholders
+# Developer API
 
-This page describes UBS API access for other mods/plugins and the built-in placeholder resolver.
+UBS exposes a server-side Java API for NeoForge `1.21.1`. API version `2.0.0` adds management surfaces for banks, shops, heists, and general server discovery while retaining the existing finance, cash, notification, and market-price methods.
 
-API baseline in this release: `1.2.2`
-
-Dashboard addon API baseline: `2.0.0`
-
-Need implementation guidance? Start with the [Developer Integration Tutorial](Developer-Integration-Tutorial.md).
-For web dashboard extensions, see [Dashboard Addon API](Dashboard-Addon-API.md).
-
-## Java API Entry Point
-
-Use:
+## Entry Points
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
+import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
+
+var finance = UltimateBankingApiProvider.get();
+var server = UltimateBankingApiProvider.server();
+var banks = UltimateBankingApiProvider.banks();
+var shops = UltimateBankingApiProvider.shops();
+var heists = UltimateBankingApiProvider.heists();
 ```
 
-Dashboard host API:
+`finance.getApiVersion()` returns `2.0.0`.
+
+## Contract and Threading
+
+- Read models are records whose collection fields use defensive immutable copies.
+- API methods return empty/failed results when UBS world data is unavailable; they do not expose mutable `Bank`, `CompoundTag`, or internal service objects.
+- Mutations must run on the logical Minecraft server thread.
+- Mutations reuse UBS authorization and validation. An addon does not bypass ownership, role, cooldown, capacity, setup, or heist rules.
+- Operations that require an acting player may require that player to be online.
+- `getTargets()` performs live heist/world eligibility scans and therefore returns no targets when called off the server thread.
+- Monetary values use `BigDecimal`, dollars, or cents as stated by the method/record. Do not infer units from formatting.
+- The API is an in-process Java surface. UBS does not ship an HTTP/WebSocket admin server.
+
+## Result Types
+
+- `ApiResult`: simple finance result and resulting balance.
+- `ApiTransactionResult`: success/reason, transaction ID, source/destination IDs, amount, resulting balances, and reference.
+- `ApiManagementResult`: `success` plus a human-readable message for bank/shop/heist actions.
+- `ApiCashResult`: physical cash inventory operation result.
+- `ApiItemResult`: issued paper instrument and reference ID.
+- `ApiNotificationResult` and `ApiAlertResult`: UI-delivery outcomes.
+
+## Finance API
+
+`UltimateBankingApiProvider.get()` exposes:
+
+### Money operations
 
 ```java
-UltimateBankingDashboardApi dashboardApi = UltimateBankingDashboardApiProvider.get();
+ApiResult getBalance(UUID accountId);
+ApiTransactionResult deposit(UUID accountId, BigDecimal amount, String reference);
+ApiTransactionResult withdraw(UUID accountId, BigDecimal amount, String reference);
+ApiTransactionResult transfer(UUID from, UUID to, BigDecimal amount, String reference);
+ApiTransactionResult depositToPrimary(UUID playerId, BigDecimal amount, String reference);
+ApiTransactionResult withdrawFromPrimary(UUID playerId, BigDecimal amount, String reference);
+ApiTransactionResult transferFromPrimary(UUID playerId, UUID to, BigDecimal amount, String reference);
+ApiTransactionResult transferToPrimary(UUID from, UUID playerId, BigDecimal amount, String reference);
 ```
 
-Dashboard pages are component-driven in `2.0.0`: use `DashboardPageDefinition`, `DashboardComponentDefinition`, and `DashboardComponents` builders to define reusable UBS-styled pages without custom HTML/CSS. The full reference for widget/component types, left-nav panels, layout defaults, form actions, and addon data routes is [Dashboard Addon API](Dashboard-Addon-API.md).
+Whole-dollar `long` overloads and legacy `ApiResult` deposit/withdraw/transfer overloads remain available.
 
-## Core API Operations
+### Validation
 
-Banking actions:
+- `accountExists`, `bankExists`, `shopExists`
+- `accountCanSend`, `accountCanReceive`
+- `primaryAccountCanSend`, `primaryAccountCanReceive`
+- `validateAccountCanSend`, `validateAccountCanReceive`, `validateAccountCanInteract`
+- `accountBelongsToBank`, `accountIsFrozen`, `accountIsPrimary`
+- `bankAcceptsTransactions`
 
-- `getBalance(accountId)`
-- `deposit(accountId, amount)`
-- `deposit(accountId, amount, reference)`
-- `withdraw(accountId, amount)`
-- `withdraw(accountId, amount, reference)`
-- `transfer(senderAccountId, receiverAccountId, amount)`
-- `transfer(senderAccountId, receiverAccountId, amount, reference)`
-- `depositToPrimary(playerId, amount, reference)`
-- `withdrawFromPrimary(playerId, amount, reference)`
-- `transferFromPrimary(senderPlayerId, receiverAccountId, amount, reference)`
-- `transferToPrimary(senderAccountId, receiverPlayerId, amount, reference)`
-- `shopPurchase(accountId, amount, shopName)`
-- `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)`
-- `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)`
-- `issueCheque(sourceAccountId, recipientPlayerId, amountDollars, writerPlayerId, writerName, recipientName)`
-- `giveDollarBills(playerId, denomination, billCount)`
-- `takeDollarBills(playerId, denomination, billCount)`
-- `giveCoins(playerId, denominationCents, coinCount)`
-- `takeCoins(playerId, denominationCents, coinCount)`
+Call validation immediately before an operation only as UX assistance; the operation still performs authoritative validation.
 
-`amount` can be a `long` for whole-dollar style integrations. Reference-aware deposit, withdraw, transfer, and primary-account helpers also accept `BigDecimal` for precise prices such as auction bids with cents.
+### Account and bank snapshots
 
-Service/runtime checks:
+- `getAccountSnapshot`, `getPrimaryAccountSnapshot`
+- `getPlayerAccounts`, `getPlayerAccountIds`, `getBankAccounts`
+- `getBankSnapshot`, `getBanks`
+- `getTransactionSnapshot`, `getAccountTransactions`, `getPlayerTransactions`
+- `setPrimaryAccount`
 
-- `getApiVersion()`
-- `isServerAvailable()`
-- `getPrimaryAccountId(playerId)`
-- `accountExists(accountId)`
-- `bankExists(bankId)`
-- `getAccountStatus(accountId)`
-- `validateAccountCanSend(accountId, amount)`
-- `validateAccountCanReceive(accountId)`
-- `sendUiAlert(playerId, title, message, tone, durationMs)`
-- `sendUiAlert(playerId, title, message, success, durationMs, toneCode)`
-- `sendLegacyUiAlert(playerId, title, legacyMessage, durationMs)`
-- `sendSuccessUiAlert(playerId, title, message, durationMs)`
-- `sendErrorUiAlert(playerId, title, message, durationMs)`
-- `sendInfoUiAlert(playerId, title, message, durationMs)`
-- `sendWarningUiAlert(playerId, title, message, durationMs)`
-- `getSupportedUiAlertTones()`
-- `playerHasAnyAccount(playerId)`
-- `playerHasPrimaryAccount(playerId)`
-- `playerHasAvailableAccount(playerId)`
-- `playerHasAvailablePrimaryAccount(playerId)`
-- `playerHasFrozenAccount(playerId)`
-- `playerOwnsAccount(playerId, accountId)`
-- `playerOwnsBank(playerId, bankId)`
-- `accountBelongsToBank(accountId, bankId)`
-- `accountIsFrozen(accountId)`
-- `accountIsPrimary(accountId)`
-- `accountCanSend(accountId, amount)`
-- `accountCanReceive(accountId)`
-- `primaryAccountCanSend(playerId, amount)`
-- `primaryAccountCanReceive(playerId)`
-- `bankAcceptsTransactions(bankId)`
+Account transaction lists are bounded by the requested limit and by the server's retained history (`AccountTransactionLogLimit`, default `20`).
 
-Formatting helpers:
+### Ownership and aggregate helpers
 
-- `formatMoneyRounded(amount)` -> configured-currency display string
+- `playerOwnsAccount`, `playerOwnsBank`, `playerOwnsAnyBank`
+- `getPlayerOwnedBanks`
+- `playerOwnsShop`, `playerOwnsAnyShop`, `getPlayerOwnedShopIds`
+- `playerHasAnyAccount`, `playerHasPrimaryAccount`
+- `playerHasAvailableAccount`, `playerHasAvailablePrimaryAccount`, `playerHasFrozenAccount`
+- `getPlayerTotalBalance`, `getPlayerPrimaryBalance`, `getPlayerAccountCount`
+- `getBankTotalDeposits`, `getBankReserve`, `getBankStatus`
 
-`formatMoneyRounded` accepts `BigDecimal` or `long` amounts and returns a compact display string using the configured UBS currency symbol. It rounds to two decimals and carries rounded suffixes to the next scale, so `999999` can display as `$1M`. Use this for user-facing integration UIs such as auction-house cards, shop screens, and alerts. Keep using raw `BigDecimal` values for storage, sorting, validation, and transactions.
+### Merchant and instruments
 
-`shopPurchase` overload note:
+- `shopPurchase` with payer, merchant, shop name, and reference
+- `issueBankNote`
+- `issueCheque`
+- `giveDollarBills`, `takeDollarBills`
+- `giveCoins`, `takeCoins`
+- supported denomination, stack-creation, count, and cash-on-hand helpers
 
-- `shopPurchase(accountId, amount, shopName)` is a simple label-based purchase.
-- `shopPurchase(payerAccountId, merchantAccountId, amount, shopName, reference)` is the terminal-grade path (explicit merchant routing + external reference string).
+Bill denominations are dollars: `1, 2, 5, 10, 20, 50, 100`. Coin denominations are cents: `1, 5, 10, 25, 50`.
 
-Reference-aware transaction methods:
+## Notification API
 
-- The overloads with `reference` return `ApiTransactionResult` instead of `ApiResult`.
-- `reference` is stored in the transaction description after a stable operation prefix, making external systems such as auction houses, shops, jobs, and quest rewards auditable in UBS transaction history.
-- `depositToPrimary`, `withdrawFromPrimary`, `transferFromPrimary`, and `transferToPrimary` are convenience helpers for integrations that only know a player UUID.
-- These helpers still validate frozen accounts, bank status, account ownership, balance, and transaction limits server-side.
-- For auction-house settlement, prefer `transferFromPrimary(winningBidderId, sellerAccountId, bidAmount, "YOURMOD_AUCTION:<auction-id>")` over minting money with `depositToPrimary`.
-
-`ApiTransactionResult` fields:
-
-- `success`
-- `reason`
-- `transactionId`
-- `senderAccountId`
-- `receiverAccountId`
-- `amount`
-- `balanceAfter`
-- `description`
-
-## Snapshot API (Typed Data)
-
-These methods expose stable read models for integration UIs, HUDs, dashboards, and leaderboards.
-
-### Account snapshots
-
-- `getAccountSnapshot(accountId)` -> `Optional<ApiAccountSnapshot>`
-- `getPrimaryAccountSnapshot(playerId)` -> `Optional<ApiAccountSnapshot>`
-- `getPlayerAccounts(playerId)` -> `List<ApiAccountSnapshot>`
-- `getPlayerAccountIds(playerId)` -> `List<UUID>`
-- `getBankAccounts(bankId)` -> `List<ApiAccountSnapshot>`
-- `setPrimaryAccount(playerId, accountId)` -> `ApiResult`
-- `getPrimaryAccountId(playerId)` and `getPrimaryAccountSnapshot(playerId)` return empty when no owned account is explicitly marked primary.
-
-`ApiAccountSnapshot` fields:
-- `accountId`
-- `playerId`
-- `bankId`
-- `accountType`
-- `accountTypeLabel`
-- `balance`
-- `primary`
-- `frozen`
-- `frozenReason`
-- `createdAt`
-
-### Account ownership and boolean helpers
-
-Use these helpers when an integration only needs a yes/no answer and should not duplicate UBS account-status rules.
-
-- `getPlayerAccountIds(playerId)` returns the player's account UUIDs, sorted the same way as `getPlayerAccounts`: primary accounts first, then newest accounts.
-- `playerHasAnyAccount(playerId)` returns `true` when UBS has at least one account registered to that player UUID.
-- `playerHasPrimaryAccount(playerId)` returns `true` when the player has a primary account selected.
-- `playerHasAvailableAccount(playerId)` returns `true` when at least one owned account can currently receive normal banking activity.
-- `playerHasAvailablePrimaryAccount(playerId)` returns `true` when the player's primary account exists and has status `AVAILABLE`.
-- `playerHasFrozenAccount(playerId)` returns `true` when any owned account is frozen.
-- `playerOwnsAccount(playerId, accountId)` checks account ownership.
-- `playerOwnsBank(playerId, bankId)` checks bank ownership.
-- `accountBelongsToBank(accountId, bankId)` checks account-to-bank membership.
-- `accountIsFrozen(accountId)` checks whether an account is frozen.
-- `accountIsPrimary(accountId)` checks whether an account is marked as the owner's primary account.
-- `accountCanSend(accountId, amount)` returns `true` only if `validateAccountCanSend` would succeed.
-- `accountCanReceive(accountId)` returns `true` only if `validateAccountCanReceive` would succeed.
-- `primaryAccountCanSend(playerId, amount)` checks the player's primary account and returns `false` if no primary account exists.
-- `primaryAccountCanReceive(playerId)` checks whether the player's primary account can receive funds.
-- `bankAcceptsTransactions(bankId)` returns `false` if the bank is missing or in a transaction-blocking state such as `SUSPENDED`, `REVOKED`, or `LOCKDOWN`.
-
-`amount` accepts `long` or `BigDecimal` for `accountCanSend` and `primaryAccountCanSend`.
-
-## UI Alert API
-
-UBS exposes its client-side action alert card to integrations. Alerts are sent server-side to an online player UUID and render on that player's client using the same queued alert UI as UBS banking, shop, teller, and payment flows.
-
-Methods:
-
-- `sendUiAlert(playerId, title, message, tone, durationMs)` -> `ApiAlertResult`
-- `sendUiAlert(playerId, title, message, success, durationMs, toneCode)` -> `ApiAlertResult`
-- `sendLegacyUiAlert(playerId, title, legacyMessage, durationMs)` -> `ApiAlertResult`
-- `sendSuccessUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
-- `sendErrorUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
-- `sendInfoUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
-- `sendWarningUiAlert(playerId, title, message, durationMs)` -> `ApiAlertResult`
-- `getSupportedUiAlertTones()` -> `List<ApiAlertTone>`
-
-`ApiAlertTone` values:
-
-- `SUCCESS` (`toneCode` 0)
-- `ERROR` (`toneCode` 1)
-- `INFO` (`toneCode` 2)
-- `WARNING` (`toneCode` 3)
-
-`ApiAlertResult` fields:
-
-- `success`
-- `reason`
-- `playerId`
-- `title`
-- `message`
-- `alertSuccess`
-- `durationMs`
-- `tone`
-- `toneCode`
-
-Behavior:
-
-- The target player must be online; offline players return `success=false` with reason `Player is not online`.
-- `message` is required and blank messages are rejected.
-- `durationMs` is clamped by the UBS alert payload to the supported display window.
-- `sendLegacyUiAlert` strips legacy formatting codes and infers tone from color/error wording.
-- The raw overload with `success` and `toneCode` exists for integrations that need every payload parameter. Prefer the `ApiAlertTone` overload for normal use.
-
-### Bank snapshots
-
-- `getBankSnapshot(bankId)` -> `Optional<ApiBankSnapshot>`
-- `getBanks()` -> `List<ApiBankSnapshot>`
-
-`ApiBankSnapshot` fields:
-- `bankId`
-- `bankName`
-- `ownerId`
-- `status`
-- `declaredReserve`
-- `totalDeposits`
-- `minimumRequiredReserve`
-- `reserveRatio`
-- `outstandingLoanBalance`
-- `maxLendableAmount`
-- `interestRate`
-- `accountCount`
-
-### Transaction snapshots
-
-- `getTransactionSnapshot(transactionId)` -> `Optional<ApiTransactionSnapshot>`
-- `getAccountTransactions(accountId, limit)` -> `List<ApiTransactionSnapshot>`
-- `getPlayerTransactions(playerId, limit)` -> `List<ApiTransactionSnapshot>`
-
-`ApiTransactionSnapshot` fields:
-- `transactionId`
-- `senderAccountId`
-- `receiverAccountId`
-- `amount`
-- `timestamp`
-- `description`
-
-## Cash & Paper Instruments API
-
-These methods let integrations issue real UBS instruments and physical USD legal tender cash items.
-
-### Bank notes and cheques
-
-- `issueBankNote(sourceAccountId, amountDollars, issuerPlayerId, issuerName)` -> `ApiItemResult`
-- `issueCheque(sourceAccountId, recipientPlayerId, amountDollars, writerPlayerId, writerName, recipientName)` -> `ApiItemResult`
-
-Behavior:
-
-- Withdraws the amount from `sourceAccountId`.
-- Returns a fully tagged `ItemStack` (`bank_note` or `cheque`) ready to give/store.
-- Returns the generated serial/ID in `referenceId`.
-
-`ApiItemResult` fields:
-
-- `success`
-- `reason`
-- `itemStack`
-- `referenceId`
-- `amount`
-
-### Dollar bills (denomination + bill count)
-
-- `giveDollarBills(playerId, denomination, billCount)` -> `ApiCashResult`
-- `takeDollarBills(playerId, denomination, billCount)` -> `ApiCashResult`
-- `getSupportedBillDenominations()` -> `List<Integer>`
-- `createDollarBillStacks(denomination, billCount)` -> `List<ItemStack>`
-- `getPlayerBillCount(playerId, denomination)` -> `int`
-- `getPlayerCashOnHand(playerId)` -> `int`
-- `getPlayerCashOnHandCents(playerId)` -> `int`
-
-`denomination` values are face-value dollars: `1, 2, 5, 10, 20, 50, 100`.
-`billCount` means count of bill items, not dollar amount.
-
-### Coins (denomination in cents + coin count)
-
-- `giveCoins(playerId, denominationCents, coinCount)` -> `ApiCashResult`
-- `takeCoins(playerId, denominationCents, coinCount)` -> `ApiCashResult`
-- `getSupportedCoinDenominations()` -> `List<Integer>`
-- `createCoinStacks(denominationCents, coinCount)` -> `List<ItemStack>`
-- `getPlayerCoinCount(playerId, denominationCents)` -> `int`
-- `getPlayerCashOnHand(playerId)` -> `int` (bills + coins)
-- `getPlayerCashOnHandCents(playerId)` -> `int` (bills + coins in cents)
-
-`denominationCents` values: `1, 5, 10, 25, 50`.
-`coinCount` means count of coin items, not cent total.
-
-`getPlayerCashOnHand(playerId)` returns whole dollars and truncates leftover cents. Use `getPlayerCashOnHandCents(playerId)` when exact coin-aware value is needed.
-
-`ApiCashResult` fields:
-
-- `success`
-- `reason`
-- `denomination`
-- `billCount`
-- `totalDollarValue`
-
-For coin operations, `denomination` and `totalDollarValue` use the provided cent-denomination value. Treat `totalDollarValue` as a legacy integer total for the returned denomination/count pair, not as a precise cross-denomination wallet value.
-
-## Aggregated Metrics API
-
-UBS now also exposes aggregate values for leaderboards and HUD overlays:
-
-- `getPlayerTotalBalance(playerId)`
-- `getPlayerPrimaryBalance(playerId)`
-- `getPlayerAccountCount(playerId)`
-- `getBankTotalDeposits(bankId)`
-- `getBankReserve(bankId)`
-- `getBankStatus(bankId)`
-
-## Pickpocket Metrics API
-
-UBS now exposes read methods for pickpocket history checks:
-
-- `hasPlayerEverStolen(playerId)` -> `boolean`
-- `getPlayersStolenFrom(playerId)` -> `List<UUID>`
-
-These methods are intended for moderation dashboards, custom HUD stats, and server-side progression hooks.
-
-## Placeholder Resolver API
-
-Use this when you want token-based text expansion:
-
-- `resolvePlaceholder(playerId, token)`
-- `resolvePlaceholders(playerId, text)`
-- `getSupportedPlaceholders()`
-
-If a token is unknown, `resolvePlaceholder` returns empty string.  
-`resolvePlaceholders` leaves unknown `%token%` values unchanged.
-
-## Supported Placeholder Tokens
-
-Player scope:
-
-- `%ubs_player_total_balance%`
-- `%ubs_player_total_balance_raw%`
-- `%ubs_player_primary_balance%`
-- `%ubs_player_primary_balance_raw%`
-- `%ubs_player_account_count%`
-- `%ubs_player_primary_account_id%`
-- `%ubs_player_primary_account_type%`
-- `%ubs_player_primary_bank_id%`
-- `%ubs_player_primary_bank_name%`
-
-Primary-bank scope (uses player's primary bank):
-
-- `%ubs_bank_name%`
-- `%ubs_bank_id%`
-- `%ubs_bank_status%`
-- `%ubs_bank_reserve%`
-- `%ubs_bank_reserve_raw%`
-- `%ubs_bank_total_deposits%`
-- `%ubs_bank_total_deposits_raw%`
-
-Explicit bank-id scope:
-
-- `%ubs_bank_name_<bank-uuid>%`
-- `%ubs_bank_status_<bank-uuid>%`
-- `%ubs_bank_reserve_<bank-uuid>%`
-- `%ubs_bank_reserve_raw_<bank-uuid>%`
-- `%ubs_bank_total_deposits_<bank-uuid>%`
-- `%ubs_bank_total_deposits_raw_<bank-uuid>%`
-
-## Formatted vs Raw Values
-
-- Non-raw money placeholders return abbreviated display values (example: `$1.2M`).
-- `formatMoneyRounded(amount)` returns rounded abbreviated display values (example: `$1.23K`) for integration UI text.
-- `_raw` placeholders return plain numeric decimal strings (example: `1234567.89`) suitable for sorting/ranking systems.
-
-## Example: Rounded Money Display
+New integrations should use `sendNotification(playerId, request)`.
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-String label = api.formatMoneyRounded(new BigDecimal("1234.56")); // "$1.23K" by default
+var request = ApiNotificationRequest.transaction("Payment settled")
+        .id("auction:settlement:" + orderId)
+        .channel("auction_house")
+        .source("Ultimate Auction System")
+        .title("Settlement complete")
+        .detail("The seller account was credited.")
+        .priority(ApiNotificationPriority.NORMAL)
+        .durationMs(5500)
+        .build();
+
+ApiNotificationResult result = finance.sendNotification(playerId, request);
 ```
 
-## Example: Leaderboard Line
+Types: `SUCCESS`, `ERROR`, `WARNING`, `INFO`, `TRANSACTION`, `SECURITY`, `MESSAGE`, `PROGRESS`, `SYSTEM`.
+
+Priorities: `LOW`, `NORMAL`, `HIGH`, `CRITICAL`.
+
+Placements: `AUTO`, `TOP_RIGHT`, `TOP_CENTER`, `BOTTOM_RIGHT`.
+
+Use a stable request ID and `replaceExisting=true` to update progress/state in place. Use `dismissNotification`, `clearNotificationChannel`, or `clearNotifications` for cleanup. Offline targets are not silently queued.
+
+The original `sendUiAlert` overloads and `ApiAlertTone` remain binary-compatible for older addons.
+
+## Market Price API
 
 ```java
-UUID playerId = player.getUUID();
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-
-String line = api.resolvePlaceholders(
-        playerId,
-        "Net Worth: %ubs_player_total_balance% | Accounts: %ubs_player_account_count%"
+ApiShopPriceStatistics stats = finance.getItemShopPriceStatistics(
+        stack,
+        ApiShopPriceScope.REGULAR
 );
 ```
 
-## Example: Numeric Sort Key
+Scopes:
+
+- `REGULAR`: registered, setup-complete, currently open shops; creative displays excluded
+- `INCLUDE_ALL`: every indexed shop display, including creative/unregistered displays
+- `ALL_SHELVES_EXCLUDE_CREATIVE`: every indexed non-creative display
+- `CREATIVE_ONLY`: creative displays only
+
+The result exposes availability, item ID, sample count, and median/average/minimum/maximum price in cents. Convenience methods exist for every scope.
+
+## General Server API
+
+`UltimateBankingApiProvider.server()` provides:
+
+- `isAvailable`
+- `getSnapshot`
+- `getAvailableFeatures`, `isFeatureAvailable`
+- `getOnlinePlayerIds`
+- `getPlayerPortfolio`
+
+`ApiServerSnapshot` contains API version, online-player count, bank/account/shop counts, active-heist count, and feature flags.
+
+Feature flags: `BANKING`, `SHOPS`, `HEISTS`, `SMARTPHONE`, `SAFETY_DEPOSIT_BOXES`, `RFID_ACCESS`, `PHYSICAL_CURRENCY`, `WALLET`, `OWNER_PC`.
+
+`ApiPlayerPortfolioSnapshot` contains account count, primary account, total balance, owned/accessed bank IDs, owned/accessed shop IDs, and current heist session ID.
+
+## Bank Management API
+
+`UltimateBankingApiProvider.banks()` provides:
+
+### Reads
+
+- `getBanks`, `getBank`, `findBank`
+- `getOwnedBanks`, `getAccessibleBanks`
+- `playerOwnsBank`, `playerOwnsAnyBank`
+- `playerCanAccessBank`
+- `playerCanManageSafeArea`, `playerCanAccessProtectedSafeArea`
+- `isBankUnderAttack`
+- `getStaffing`
+- `getSafeDepositSetup`
+
+`ApiBankManagementSnapshot` includes identity/owner/status, central-bank flag, account count, deposits, reserve requirements/ratio, outstanding loans, lendable amount, rate, premise/safe/vault/readiness counts, staff/teller counts, and attack state.
+
+`ApiBankStaffingSnapshot` contains immutable employee and teller records. Employees include role, salary, online state, and Safe Access. Tellers include entity identity, variant, position, active state, and bank-bound state.
+
+`ApiSafeDepositSetupSnapshot` contains enabled/readiness counts, human-readable blockers, and premises. Each `ApiBankPremiseSnapshot` provides bounds, exit/facing, access mode, safe/vault counts, and ready-vault count.
+
+### Mutations
 
 ```java
-String raw = api.resolvePlaceholder(playerId, "%ubs_player_total_balance_raw%");
-BigDecimal value = new BigDecimal(raw);
+ApiManagementResult setEmployeeSafeAccess(
+        UUID actorId, UUID bankId, UUID employeeId, boolean allowed);
+
+ApiManagementResult setInterestRate(
+        UUID actorId, UUID bankId, double annualPercent);
 ```
 
-## Example: Snapshot Usage
+The actor must have the same permission the in-game management action requires.
+
+## Shop Management API
+
+`UltimateBankingApiProvider.shops()` provides:
+
+### Discovery and ownership
+
+- `getShops`, `getShop`, `findShop`
+- `getOwnedShops`, `getAccessibleShops`
+- `shopExists`, `playerOwnsShop`, `playerOwnsAnyShop`
+- `getPlayerRole`, `playerCanManageShop`, `playerCanBuildInShop`
+
+### State and limits
+
+- `isShopSetupComplete`
+- `isShopCurrentlyOpen`
+- `getMaximumShopsPerOwner`
+- `getSupportedShopTypes`
+- `getSupportedParticipantRoles`
+
+`ApiShopManagementSnapshot` includes owner/name/type/display type, level/revenue/next target, used/capacity claim volume, plot and stockroom counts, setup/open state, display/cashier/order-pallet limits, and participants. Each participant includes role plus computed management/build permissions.
+
+### Mutations
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-
-api.getPrimaryAccountSnapshot(player.getUUID()).ifPresent(primary -> {
-    System.out.println("Primary account: " + primary.accountId());
-    System.out.println("Balance: " + primary.balance());
-});
-
-for (ApiBankSnapshot bank : api.getBanks()) {
-    System.out.println(bank.bankName() + " reserve ratio = " + bank.reserveRatio());
-}
+createShop(ownerId, name, type);
+renameShop(ownerId, shopId, newName);
+setShopType(ownerId, shopId, type);
+setOpeningHours(ownerId, shopId, schedule);
+setParticipantRole(ownerId, shopId, playerId, role);
+removeParticipant(ownerId, shopId, playerId);
+deleteShop(ownerId, shopId, confirmationName);
 ```
 
-## Example: Give Bills
+The schedule accepts the same payload as the Owner PC, for example `ALL|09:00|21:00` or `MON|9:00 AM|5:30 PM`. Roles are the values returned by `getSupportedParticipantRoles`.
+
+## Heist API
+
+`UltimateBankingApiProvider.heists()` provides:
+
+### State
+
+- `getSessions`, `getActiveSessions`, `getSession`, `getPlayerSession`
+- `getTargets`, `getTarget`
+- `isPlayerInHeist`, `isPlayerInActiveHeist`, `isBankUnderAttack`
+- player/bank cooldown and victim-protection remaining milliseconds
+- effective maximum crew size, countdown ticks, and duration ticks
+
+`ApiHeistSessionSnapshot` includes phase/timestamps/deadline, target bounds/exit, loot/alarm state, members, active drills/hacks, completed hacks, breached targets, and cancel votes.
+
+`ApiHeistTargetSnapshot` includes premise bounds/exit, owner-PC/vault-door positions, eligibility/blockers, physical-loot source count, and bank cooldown.
+
+### Planning actions
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-ApiCashResult result = api.giveDollarBills(player.getUUID(), 20, 6); // six $20 bills
-
-if (!result.success()) {
-    System.out.println("Failed to give bills: " + result.reason());
-}
+createPlanningSession(playerId);
+invite(leaderId, playerName);
+respondToInvite(playerId, accepted);
+leave(playerId);
+selectTarget(leaderId, bankId, premiseId);
+setReady(playerId, ready);
+startCountdown(leaderId);
+cancelCountdown(leaderId);
+abandon(playerId);
 ```
 
-## Example: Give Coins
+Actors must be online and calls must run on the server thread.
 
-```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-ApiCashResult result = api.giveCoins(player.getUUID(), 25, 12); // twelve quarters
+### Heist extension points
 
-if (!result.success()) {
-    System.out.println("Failed to give coins: " + result.reason());
-}
-```
+- Listen for `HeistLifecycleEvent` stages: `STARTED`, `ALARMED`, `SUCCEEDED`, `FAILED`.
+- Register `HeistDoorAdapter` with `HeistDoorAdapterRegistry` to breach/restore modded doors.
+- Register `HeistLootValueProvider` with `HeistLootValueRegistry` to value custom items.
+- Unregister adapters/providers when your integration unloads where applicable.
 
-## Example: Issue Cheque
+Registry implementations isolate provider exceptions so one addon does not break the heist loop.
 
-```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-ApiItemResult cheque = api.issueCheque(
-        sourceAccountId,
-        recipientPlayerId,
-        250L,
-        writerPlayerId,
-        "Bank Admin",
-        "RecipientName"
-);
+## Geometry Records
 
-if (cheque.success()) {
-    ItemStack stack = cheque.itemStack();
-    // give to player inventory or store for later
-}
-```
+`ApiBlockPosition` stores dimension and integer coordinates.
+
+`ApiBlockBounds` normalizes min/max coordinates and exposes `volume()` and `contains(position)`. Use these API records instead of depending on internal claim classes.
+
+## Placeholders
+
+`resolvePlaceholder`, `resolvePlaceholders`, and `getSupportedPlaceholders` support player balances/accounts and bank identity/status/reserve/deposit values. Raw variants return decimal strings for sorting; formatted variants use UBS money formatting.
+
+## Compatibility
+
+- Check `getApiVersion()` before using a surface introduced after your minimum version.
+- Declare UBS as a required or optional NeoForge dependency; never shade UBS into your jar.
+- Keep optional integration classes isolated until `ModList.get().isLoaded("ultimatebankingsystem")` is true.
+- Do not retain internal UBS objects or mutate NBT directly. Use IDs, snapshots, and API methods.
+

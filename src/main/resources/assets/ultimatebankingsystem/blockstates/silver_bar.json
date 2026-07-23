@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "ultimatebankingsystem:block/silver_bar" },
+    "facing=east": { "model": "ultimatebankingsystem:block/silver_bar", "y": 90 },
+    "facing=south": { "model": "ultimatebankingsystem:block/silver_bar", "y": 180 },
+    "facing=west": { "model": "ultimatebankingsystem:block/silver_bar", "y": 270 }
+  }
+}

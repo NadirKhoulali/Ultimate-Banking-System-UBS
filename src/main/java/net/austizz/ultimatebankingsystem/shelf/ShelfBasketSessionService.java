@@ -639,7 +639,7 @@ public final class ShelfBasketSessionService {
     private static boolean isPaymentStack(ItemStack stack) {
         return stack != null
                 && !stack.isEmpty()
-                && (DollarBills.isCashTenderItem(stack.getItem())
+                && (DollarBills.isPhysicalTenderItem(stack.getItem())
                 || stack.is(ModItems.CREDIT_CARD.get())
                 || WalletData.isWallet(stack));
     }

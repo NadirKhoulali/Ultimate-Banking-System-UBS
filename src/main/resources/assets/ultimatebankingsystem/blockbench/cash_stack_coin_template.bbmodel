@@ -1,0 +1,301 @@
+﻿{
+    "meta":  {
+                 "format_version":  "5.0",
+                 "model_format":  "java_block",
+                 "box_uv":  false
+             },
+    "name":  "cash_stack_coin_template",
+    "resolution":  {
+                       "width":  16,
+                       "height":  16
+                   },
+    "elements":  [
+                     {
+                         "name":  "coin_layer_1",
+                         "from":  [
+                                      5.25,
+                                      0,
+                                      5.25
+                                  ],
+                         "to":  [
+                                    10.75,
+                                    0.13,
+                                    10.75
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_2",
+                         "from":  [
+                                      5.33,
+                                      0.24,
+                                      5.19
+                                  ],
+                         "to":  [
+                                    10.83,
+                                    0.37,
+                                    10.69
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_3",
+                         "from":  [
+                                      5.18,
+                                      0.48,
+                                      5.32
+                                  ],
+                         "to":  [
+                                    10.68,
+                                    0.61,
+                                    10.82
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_4",
+                         "from":  [
+                                      5.37,
+                                      0.72,
+                                      5.27
+                                  ],
+                         "to":  [
+                                    10.87,
+                                    0.85,
+                                    10.77
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_5",
+                         "from":  [
+                                      5.15,
+                                      0.96,
+                                      5.14
+                                  ],
+                         "to":  [
+                                    10.65,
+                                    1.09,
+                                    10.64
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_6",
+                         "from":  [
+                                      5.29,
+                                      1.2,
+                                      5.35
+                                  ],
+                         "to":  [
+                                    10.79,
+                                    1.33,
+                                    10.85
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_7",
+                         "from":  [
+                                      5.13,
+                                      1.44,
+                                      5.23
+                                  ],
+                         "to":  [
+                                    10.63,
+                                    1.57,
+                                    10.73
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "coin_layer_8",
+                         "from":  [
+                                      5.31,
+                                      1.68,
+                                      5.3
+                                  ],
+                         "to":  [
+                                    10.81,
+                                    1.81,
+                                    10.8
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     }
+                 ],
+    "outliner":  [
+
+                 ],
+    "textures":  [
+                     {
+                         "name":  "coin_front",
+                         "path":  "ultimatebankingsystem:item/quarter_american_front",
+                         "folder":  "item",
+                         "namespace":  "ultimatebankingsystem",
+                         "id":  "0",
+                         "particle":  true,
+                         "visible":  true
+                     },
+                     {
+                         "name":  "coin_back",
+                         "path":  "ultimatebankingsystem:item/quarter_american_back",
+                         "folder":  "item",
+                         "namespace":  "ultimatebankingsystem",
+                         "id":  "1",
+                         "particle":  false,
+                         "visible":  true
+                     }
+                 ]
+}

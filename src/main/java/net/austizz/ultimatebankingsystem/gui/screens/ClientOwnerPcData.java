@@ -1,10 +1,15 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
-import net.austizz.ultimatebankingsystem.client.ActionAlertClientState;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationPriority;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationRequest;
+import net.austizz.ultimatebankingsystem.api.ApiNotificationType;
+import net.austizz.ultimatebankingsystem.client.NotificationClientState;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremiseActionResponsePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteEditorPayload;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -34,6 +39,8 @@ public final class ClientOwnerPcData {
     private static boolean suppressNextOrderBoardReportToast;
 
     private static OwnerPcBankDataPayload currentBankData;
+    private static OwnerPcPremiseActionResponsePayload premiseActionResponse;
+    private static OwnerPcVaultRouteEditorPayload vaultRouteEditor;
 
     private static String toastMessage = "";
     private static boolean toastSuccess = true;
@@ -100,6 +107,24 @@ public final class ClientOwnerPcData {
 
     public static OwnerPcBankDataPayload getCurrentBankData() {
         return currentBankData;
+    }
+
+    public static void setPremiseActionResponse(OwnerPcPremiseActionResponsePayload payload) {
+        premiseActionResponse = payload;
+    }
+
+    public static OwnerPcPremiseActionResponsePayload consumePremiseActionResponse() {
+        OwnerPcPremiseActionResponsePayload response = premiseActionResponse;
+        premiseActionResponse = null;
+        return response;
+    }
+
+    public static void setVaultRouteEditor(OwnerPcVaultRouteEditorPayload payload) {
+        vaultRouteEditor = payload;
+    }
+
+    public static OwnerPcVaultRouteEditorPayload getVaultRouteEditor() {
+        return vaultRouteEditor;
     }
 
     public static void setDesktopData(OwnerPcDesktopDataPayload payload) {
@@ -256,37 +281,46 @@ public final class ClientOwnerPcData {
         if (toastMessage.isBlank()) {
             return;
         }
-        ActionAlertClientState.Tone tone = inferAlertTone(success, toastMessage);
+        ApiNotificationType tone = inferAlertType(success, toastMessage);
         String title = inferAlertTitle(tone);
-        ActionAlertClientState.show(title, toastMessage, tone, normalizedDuration);
+        NotificationClientState.showLocal(ApiNotificationRequest.builder(tone, toastMessage)
+                .channel("owner_pc")
+                .source("Bank Owner PC")
+                .title(title)
+                .priority(tone == ApiNotificationType.ERROR || tone == ApiNotificationType.WARNING
+                        ? ApiNotificationPriority.HIGH
+                        : ApiNotificationPriority.NORMAL)
+                .durationMs(normalizedDuration)
+                .build());
     }
 
-    private static ActionAlertClientState.Tone inferAlertTone(boolean success, String message) {
+    private static ApiNotificationType inferAlertType(boolean success, String message) {
         if (!success) {
-            return ActionAlertClientState.Tone.ERROR;
+            return ApiNotificationType.ERROR;
         }
         String normalized = message == null ? "" : message.trim().toLowerCase(java.util.Locale.ROOT);
         if (normalized.contains("warning")
                 || normalized.contains("limit reached")
                 || normalized.contains("full")
                 || normalized.contains("missing")) {
-            return ActionAlertClientState.Tone.WARNING;
+            return ApiNotificationType.WARNING;
         }
         if (normalized.startsWith("selected ")
                 || normalized.startsWith("copied ")
                 || normalized.contains("refresh")
                 || normalized.contains("locating ")) {
-            return ActionAlertClientState.Tone.INFO;
+            return ApiNotificationType.INFO;
         }
-        return ActionAlertClientState.Tone.SUCCESS;
+        return ApiNotificationType.SUCCESS;
     }
 
-    private static String inferAlertTitle(ActionAlertClientState.Tone tone) {
+    private static String inferAlertTitle(ApiNotificationType tone) {
         return switch (tone) {
             case ERROR -> "Action Failed";
             case WARNING -> "Warning";
             case INFO -> "Info";
             case SUCCESS -> "Success";
+            default -> "Update";
         };
     }
 
@@ -320,6 +354,8 @@ public final class ClientOwnerPcData {
         suppressNextOwnerPcAutoOpen = false;
         suppressNextOrderBoardReportToast = false;
         currentBankData = null;
+        premiseActionResponse = null;
+        vaultRouteEditor = null;
         toastMessage = "";
         toastUntilMillis = 0L;
         toastSuccess = true;

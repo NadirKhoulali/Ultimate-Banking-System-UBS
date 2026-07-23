@@ -32,6 +32,12 @@ Use this checklist before publishing a new build to CurseForge/GitHub.
   - `./gradlew -q compileJava`
 - Run build:
   - `./gradlew build`
+- Inspect the final jar and dependency list:
+  - no `webadmin/` resources or classes
+  - no embedded HTTP/WebSocket administration runtime
+  - no bundled Netty HTTP admin or Bucket4j dependency
+  - no development backups, logs, `.bbmodel`, or local alarm imports
+- Run unit/API contract tests and resource/model validation.
 - Smoke test in client:
   - ATM open flow
   - PIN/account switching
@@ -44,4 +50,5 @@ Use this checklist before publishing a new build to CurseForge/GitHub.
 - Upload JAR to CurseForge.
 - Paste/update long description in CurseForge using the WYSIWYG source file.
 - Push wiki updates (if changed) to repo wiki branch.
+- Commit and push the shared PixelForge documentation memory after the release state is final.
 

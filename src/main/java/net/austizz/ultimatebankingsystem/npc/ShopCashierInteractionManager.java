@@ -15,7 +15,7 @@ import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.payments.WalletPaymentService;
 import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
@@ -508,6 +508,11 @@ public final class ShopCashierInteractionManager {
             processCashTender(player, cashier, session, held, cashIndex);
             return true;
         }
+        int stackBillIndex = held == null || held.isEmpty() ? -1 : DollarBills.billIndexForMoneyStackItem(held.getItem());
+        if (stackBillIndex >= 0) {
+            processMoneyStackTender(player, cashier, session, held, stackBillIndex);
+            return true;
+        }
         if (held != null && !held.isEmpty() && held.is(ModItems.CREDIT_CARD.get())) {
             sendTerminalRedirect(player, session, true);
             return true;
@@ -606,6 +611,50 @@ public final class ShopCashierInteractionManager {
                 DeliveryAlertPayload.AlertTone.SUCCESS,
                 "Accepted $" + MoneyText.abbreviate(BigDecimal.valueOf(denominationCents, 2))
                         + " cash. Remaining: $" + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)),
+                4800);
+        refreshTerminalForCheckout(player.getServer(), session);
+        sendTerminalRedirect(player, session, false);
+        sendCancelHint(player);
+    }
+
+    private static void processMoneyStackTender(ServerPlayer player,
+                                                BankTellerEntity cashier,
+                                                Session session,
+                                                ItemStack stack,
+                                                int billIndex) {
+        long remaining = remainingCents(session);
+        if (remaining <= 0L) {
+            completeSession(player, session);
+            return;
+        }
+
+        int denominationCents = DollarBills.cashDenominationCentsForIndex(billIndex);
+        if (denominationCents <= 0) {
+            return;
+        }
+        long tenderedCents = (long) DollarBills.BILLS_PER_MONEY_STACK * denominationCents;
+
+        stack.shrink(1);
+        player.getInventory().setChanged();
+        player.containerMenu.broadcastChanges();
+
+        session.insertedCash[billIndex] += DollarBills.BILLS_PER_MONEY_STACK;
+        session.cashPaidCents += tenderedCents;
+
+        long newRemaining = remainingCents(session);
+        if (newRemaining <= 0L) {
+            completeSession(player, session);
+            return;
+        }
+
+        player.sendSystemMessage(Component.literal("\u00a7aAccepted \u00a76$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(tenderedCents, 2))
+                + "\u00a7a money stack. Remaining: \u00a76$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2))));
+        pushCashierAlert(player,
+                DeliveryAlertPayload.AlertTone.SUCCESS,
+                "Accepted $" + MoneyText.abbreviate(BigDecimal.valueOf(tenderedCents, 2))
+                        + " money stack. Remaining: $" + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)),
                 4800);
         refreshTerminalForCheckout(player.getServer(), session);
         sendTerminalRedirect(player, session, false);
@@ -923,7 +972,7 @@ public final class ShopCashierInteractionManager {
         if (merchantPlayer != null && !merchantPlayer.getUUID().equals(player.getUUID())) {
             merchantPlayer.sendSystemMessage(Component.literal("§aSale completed at §b" + safeShopName(session.shopName)
                     + "§a: §6$" + totalLabel));
-            ServerActionAlert.send(
+            ServerNotification.send(
                     merchantPlayer,
                     "Cashier Sale",
                     "Sale completed at " + safeShopName(session.shopName) + ": $" + totalLabel,
@@ -1713,7 +1762,7 @@ public final class ShopCashierInteractionManager {
         if (player == null || message == null || message.isBlank()) {
             return;
         }
-        ServerActionAlert.sendLegacy(player, "Cashier", message, tone, durationMs);
+        ServerNotification.sendLegacy(player, "Cashier", message, tone, durationMs);
     }
 
     private static String safeShopName(String raw) {

@@ -8,6 +8,7 @@ import net.austizz.ultimatebankingsystem.network.BankTellerAccountSummary;
 import net.austizz.ultimatebankingsystem.network.BankTellerActionPayload;
 import net.austizz.ultimatebankingsystem.network.BankTellerActionResponsePayload;
 import net.austizz.ultimatebankingsystem.network.BankTellerOpenPayload;
+import net.austizz.ultimatebankingsystem.network.BankTellerSafeBoxState;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -59,6 +61,17 @@ public class BankTellerScreen extends Screen {
     }
 
     private record HoverBinding(AbstractWidget widget, HoverHint hint) {
+    }
+
+    private record SafeBoxPolicyData(String type,
+                                     String label,
+                                     String mode,
+                                     String amount,
+                                     long rentPeriodTicks,
+                                     long overdueTicks,
+                                     int total,
+                                     int assigned,
+                                     int free) {
     }
 
     private BankTellerOpenPayload payload;
@@ -105,6 +118,9 @@ public class BankTellerScreen extends Screen {
     private String feedbackMessage = "";
     private long feedbackUntilMillis = 0L;
     private final long openedAtMillis = System.currentTimeMillis();
+    private int tellerKeepaliveTicks;
+    private boolean preserveTellerUseOnClose;
+    private boolean tellerUseReleaseSent;
 
     private int openTypeIndex = 0;
     private int openTierIndex = 0;
@@ -152,6 +168,7 @@ public class BankTellerScreen extends Screen {
         this.feedbackMessage = response.message() == null ? "" : response.message();
         this.feedbackUntilMillis = System.currentTimeMillis() + 5500L;
         if (response.closeScreen()) {
+            preserveTellerUseOnClose = true;
             this.onClose();
         }
     }
@@ -167,6 +184,9 @@ public class BankTellerScreen extends Screen {
         hoverBindings.clear();
         this.confirmReplaceButton = null;
         this.cancelReplaceButton = null;
+        if (activeTab == Tab.SAFE_BOX && !safeBoxFeatureReady()) {
+            activeTab = Tab.INSTRUMENTS;
+        }
 
         panelWidth = Math.min(860, Math.max(560, this.width - 32));
         panelHeight = Math.min(520, Math.max(380, this.height - 30));
@@ -207,7 +227,9 @@ public class BankTellerScreen extends Screen {
                 "Issue a first card or replace existing cards for the selected eligible account.");
         addTabButton(contentLeft + (tabW + gap) * 3, rowY, tabW, Tab.SAFE_BOX,
                 "Safety deposit boxes",
-                "Request a physical safety deposit box for the selected account at this teller bank.");
+                safeBoxFeatureReady()
+                        ? "Rent a safety deposit box or request private viewing of the selected account's assigned box."
+                        : safeBoxSetupReason());
         addTabButton(contentLeft + (tabW + gap) * 4, rowY, tabW, Tab.OPEN_ACCOUNT,
                 "Open account",
                 "Create a new account at this teller bank. Central Bank teller account opening can be free.");
@@ -385,16 +407,63 @@ public class BankTellerScreen extends Screen {
             tabInfoY = rowY + 34;
             tabContentBottomY = rowY + 24;
         } else if (activeTab == Tab.SAFE_BOX) {
-            DesktopButton requestBox = addHintedButton(contentLeft, rowY, contentWidth, 24,
-                    "Request Safety Deposit Box", 0xFFA4D9B2, btn ->
-                            sendAction("REQUEST_SAFE_BOX", getSelectedAccountId(), "", "", false),
-                    "Request Safety Deposit Box",
-                    "Assigns the first free physical locker door in this bank's claimed safe area to the selected account.");
             BankTellerAccountSummary selected = getSelectedAccount();
             UUID boundBankId = payload == null ? null : payload.parseBoundBankId();
-            requestBox.active = selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
-            tabInfoY = rowY + 34;
-            tabContentBottomY = rowY + 24;
+            boolean bankReady = safeBoxFeatureReady();
+            boolean eligible = bankReady && selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
+            List<SafeBoxPolicyData> policies = safeBoxPolicies();
+            int columns = contentWidth >= 380 ? 2 : 1;
+            int buttonW = columns == 2 ? (contentWidth - gap) / 2 : contentWidth;
+            int buttonH = 28;
+            for (int i = 0; i < policies.size(); i++) {
+                SafeBoxPolicyData policy = policies.get(i);
+                int col = columns == 1 ? 0 : i % 2;
+                int row = columns == 1 ? i : i / 2;
+                int buttonX = contentLeft + col * (buttonW + gap);
+                int buttonY = rowY + row * (buttonH + gap);
+                boolean available = policy.free() > 0;
+                String label = policy.label() + " | " + safeBoxPolicyPrice(policy) + " | " + policy.free() + "/" + policy.total();
+                DesktopButton requestBox = addHintedButton(buttonX, buttonY, buttonW, buttonH,
+                        label,
+                        available ? 0xFFA4D9B2 : 0xFF5C7084,
+                        btn -> sendAction("REQUEST_SAFE_BOX", getSelectedAccountId(), policy.type(), "", false),
+                        "Request " + policy.label() + " Box",
+                        available
+                                ? "Assign a free " + policy.label().toLowerCase(Locale.ROOT) + " safety deposit box to the selected account."
+                                : "No free " + policy.label().toLowerCase(Locale.ROOT) + " safety deposit boxes are available in loaded safe areas.");
+                requestBox.active = eligible && available;
+            }
+            int rows = (int) Math.ceil(policies.size() / (double) columns);
+            int openButtonY = rowY + rows * (buttonH + gap);
+            BankTellerSafeBoxState.AccountAssignment assignment = selectedSafeBoxAssignment();
+            DesktopButton requestOpen = addHintedButton(
+                    contentLeft,
+                    openButtonY,
+                    contentWidth,
+                    26,
+                    assignment == null
+                            ? "Request Box Viewing | No assignment"
+                            : "Request Box Viewing | " + assignment.assignmentLabel(),
+                    assignment != null && assignment.ready() ? 0xFF8EDDB2 : 0xFF5C7084,
+                    btn -> sendAction(
+                            BankTellerSafeBoxState.REQUEST_OPEN_SAFE_BOX_ACTION,
+                            getSelectedAccountId(),
+                            "",
+                            "",
+                            false
+                    ),
+                    "Request Private Box Viewing",
+                    assignment == null
+                            ? "The selected account does not have an assigned safety deposit box."
+                            : assignment.ready()
+                            ? "Move this teller and your assigned box into an available private viewing room."
+                            : assignment.missingReasons().isEmpty()
+                            ? "The assigned safety deposit box is temporarily unavailable."
+                            : assignment.missingReasons().getFirst()
+            );
+            requestOpen.active = eligible && assignment != null && assignment.ready() && !assignment.locked();
+            tabInfoY = openButtonY + 36;
+            tabContentBottomY = openButtonY + 26;
         } else if (activeTab == Tab.OPEN_ACCOUNT) {
             int selectorW2 = Math.max(84, Math.min(106, contentWidth / 6));
             int selectorMidW2 = contentWidth - (selectorW2 * 2) - (gap * 2);
@@ -496,7 +565,31 @@ public class BankTellerScreen extends Screen {
                 hintTitle,
                 hintDescription
         );
-        button.active = !replaceConfirmOpen && activeTab != tab;
+        button.active = !replaceConfirmOpen
+                && activeTab != tab
+                && (tab != Tab.SAFE_BOX || safeBoxFeatureReady());
+    }
+
+    private boolean safeBoxFeatureReady() {
+        return payload != null
+                && payload.safeBoxState() != null
+                && payload.safeBoxState().bankHasReadyVault();
+    }
+
+    private String safeBoxSetupReason() {
+        if (payload == null || payload.safeBoxState() == null) {
+            return "Safety deposit boxes are unavailable for this teller.";
+        }
+        List<String> reasons = payload.safeBoxState().missingReasons();
+        return reasons.isEmpty()
+                ? "The bank owner must finish the safety deposit setup before this tab can be used."
+                : reasons.getFirst();
+    }
+
+    private BankTellerSafeBoxState.AccountAssignment selectedSafeBoxAssignment() {
+        return payload == null || payload.safeBoxState() == null
+                ? null
+                : payload.safeBoxState().assignmentFor(getSelectedAccountId());
     }
 
     private void sendAction(String action, UUID accountId, String amount, String recipient, boolean confirmed) {
@@ -513,6 +606,94 @@ public class BankTellerScreen extends Screen {
                 confirmed,
                 paymentMode.token
         ));
+    }
+
+    private List<SafeBoxPolicyData> safeBoxPolicies() {
+        List<String> rows = payload == null ? List.of() : payload.safeBoxPolicies();
+        List<SafeBoxPolicyData> parsed = new ArrayList<>();
+        if (rows != null) {
+            for (String row : rows) {
+                if (row == null || !row.startsWith("@safe_policy=")) {
+                    continue;
+                }
+                String[] fields = row.substring("@safe_policy=".length()).split("\\|", -1);
+                parsed.add(new SafeBoxPolicyData(
+                        safePolicyField(fields, 0, "SMALL"),
+                        safePolicyField(fields, 1, "Small"),
+                        safePolicyField(fields, 2, "FREE"),
+                        safePolicyField(fields, 3, "0.00"),
+                        parseLongSafe(safePolicyField(fields, 4, "12096000"), 12096000L),
+                        parseLongSafe(safePolicyField(fields, 5, "5184000"), 5184000L),
+                        parseIntSafe(safePolicyField(fields, 6, "0"), 0),
+                        parseIntSafe(safePolicyField(fields, 7, "0"), 0),
+                        parseIntSafe(safePolicyField(fields, 8, "0"), 0)
+                ));
+            }
+        }
+        if (!parsed.isEmpty()) {
+            return parsed;
+        }
+        return List.of(
+                new SafeBoxPolicyData("SMALL", "Small", "FREE", "0.00", 12096000L, 5184000L, 0, 0, 0),
+                new SafeBoxPolicyData("MEDIUM", "Medium", "FREE", "0.00", 12096000L, 5184000L, 0, 0, 0),
+                new SafeBoxPolicyData("LARGE", "Large", "FREE", "0.00", 12096000L, 5184000L, 0, 0, 0),
+                new SafeBoxPolicyData("EXTRA_LARGE", "Extra Large", "FREE", "0.00", 12096000L, 5184000L, 0, 0, 0)
+        );
+    }
+
+    private String safeBoxPolicyOverview() {
+        List<SafeBoxPolicyData> policies = safeBoxPolicies();
+        List<String> parts = new ArrayList<>();
+        for (SafeBoxPolicyData policy : policies) {
+            parts.add(policy.label() + " " + safeBoxPolicyPrice(policy));
+        }
+        return "Policy: " + String.join(" | ", parts);
+    }
+
+    private String safeBoxPolicyPrice(SafeBoxPolicyData policy) {
+        String mode = policy == null || policy.mode() == null ? "FREE" : policy.mode().trim().toUpperCase(Locale.ROOT);
+        if ("ONE_TIME".equals(mode)) {
+            return "$" + MoneyText.abbreviate(parseDecimalSafe(policy.amount())) + " once";
+        }
+        if ("RECURRING".equals(mode)) {
+            return "$" + MoneyText.abbreviate(parseDecimalSafe(policy.amount())) + "/" + safeTicksLabel(policy.rentPeriodTicks());
+        }
+        return "Free";
+    }
+
+    private String safeTicksLabel(long ticks) {
+        long dayTicks = 24L * 60L * 60L * 20L;
+        if (ticks >= dayTicks) {
+            long days = Math.max(1L, ticks / dayTicks);
+            return days + "d";
+        }
+        long hourTicks = 60L * 60L * 20L;
+        long hours = Math.max(1L, ticks / hourTicks);
+        return hours + "h";
+    }
+
+    private String safePolicyField(String[] fields, int index, String fallback) {
+        if (fields == null || index < 0 || index >= fields.length) {
+            return fallback;
+        }
+        String value = fields[index];
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private int parseIntSafe(String raw, int fallback) {
+        try {
+            return Integer.parseInt(raw == null ? "" : raw.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private long parseLongSafe(String raw, long fallback) {
+        try {
+            return Long.parseLong(raw == null ? "" : raw.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     private void setAmountDraft(String value) {
@@ -691,6 +872,39 @@ public class BankTellerScreen extends Screen {
         if (System.currentTimeMillis() > feedbackUntilMillis) {
             feedbackMessage = "";
         }
+        tellerKeepaliveTicks++;
+        if (tellerKeepaliveTicks >= 40) {
+            tellerKeepaliveTicks = 0;
+            sendSessionControl("KEEPALIVE");
+        }
+    }
+
+    @Override
+    public void onClose() {
+        releaseTellerUseIfNeeded();
+        super.onClose();
+    }
+
+    @Override
+    public void removed() {
+        releaseTellerUseIfNeeded();
+        super.removed();
+    }
+
+    private void releaseTellerUseIfNeeded() {
+        if (preserveTellerUseOnClose || tellerUseReleaseSent) {
+            return;
+        }
+        tellerUseReleaseSent = true;
+        sendSessionControl("CLOSE_SESSION");
+    }
+
+    private void sendSessionControl(String action) {
+        if (payload == null || action == null || action.isBlank()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new BankTellerActionPayload(
+                payload.tellerId(), action, "", "", "", false, ""));
     }
 
     @Override
@@ -776,7 +990,9 @@ public class BankTellerScreen extends Screen {
         } else if (activeTab == Tab.SAFE_BOX) {
             BankTellerAccountSummary selected = getSelectedAccount();
             UUID boundBankId = payload == null ? null : payload.parseBoundBankId();
-            boolean eligible = selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
+            boolean bankReady = safeBoxFeatureReady();
+            boolean eligible = bankReady && selected != null && boundBankId != null && boundBankId.equals(selected.bankId());
+            BankTellerSafeBoxState.AccountAssignment assignment = selectedSafeBoxAssignment();
             drawTabInfoLine(graphics,
                     boundBankId == null
                             ? "This teller is not bound to a bank safe area."
@@ -784,15 +1000,27 @@ public class BankTellerScreen extends Screen {
                     tabInfoY,
                     0xFFD1E7FF);
             drawTabInfoLine(graphics,
-                    eligible
-                            ? "Request assigns the first free physical locker door in the claimed safe area."
-                            : "Select an account from this teller's bank to request a safety deposit box.",
+                    !bankReady
+                            ? safeBoxSetupReason()
+                            : eligible
+                            ? "Choose a size to rent, or request private viewing of your assigned box."
+                            : "Select an account from this teller's bank to use safety deposit services.",
                     tabInfoY + 14,
                     eligible ? 0xFF8DF0B2 : 0xFFFFB7A3);
             drawTabInfoLine(graphics,
-                    "After assignment, click the matching locker door to animate it open and access storage.",
+                    safeBoxPolicyOverview(),
                     tabInfoY + 28,
                     0xFFB9D8FF);
+            drawTabInfoLine(graphics,
+                    assignment == null
+                            ? "No safety deposit box is assigned to the selected account."
+                            : assignment.ready()
+                            ? "Assigned: " + assignment.assignmentLabel() + " | Private viewing available."
+                            : assignment.missingReasons().isEmpty()
+                            ? "The selected account's assigned box is temporarily unavailable."
+                            : assignment.missingReasons().getFirst(),
+                    tabInfoY + 42,
+                    assignment != null && assignment.ready() ? 0xFF9FE9C4 : 0xFFFFB7A3);
         } else if (activeTab == Tab.OPEN_ACCOUNT) {
             boolean bound = payload != null && payload.parseBoundBankId() != null;
             String targetBank = bound
@@ -978,7 +1206,8 @@ public class BankTellerScreen extends Screen {
         if (available < 24) {
             return;
         }
-        int cardH = Math.min(60, available);
+        int desiredH = activeTab == Tab.SAFE_BOX ? 76 : 60;
+        int cardH = Math.min(desiredH, available);
         drawVerticalGradient(graphics, cardX, cardY, cardX + cardW, cardY + cardH, 0xC918334C, 0xC9122A3F);
         graphics.fill(cardX, cardY, cardX + cardW, cardY + 1, 0x66B4DAF8);
         tabInfoY = cardY + 8;
@@ -1141,13 +1370,13 @@ public class BankTellerScreen extends Screen {
         if (mc.player == null) {
             return 0;
         }
-        int cents = 0;
+        long cents = 0L;
         for (ItemStack stack : mc.player.getInventory().items) {
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
-            int value = DollarBills.cashCentsForItem(stack.getItem());
-            if (value > 0) {
+            long value = DollarBills.physicalTenderCents(stack.getItem());
+            if (value > 0L) {
                 cents += value * stack.getCount();
             }
         }
@@ -1155,12 +1384,12 @@ public class BankTellerScreen extends Screen {
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
-            int value = DollarBills.cashCentsForItem(stack.getItem());
-            if (value > 0) {
+            long value = DollarBills.physicalTenderCents(stack.getItem());
+            if (value > 0L) {
                 cents += value * stack.getCount();
             }
         }
-        return Math.max(0, cents);
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0L, cents));
     }
 
     private List<String> wrapText(String text, int maxWidth) {

@@ -1,225 +1,183 @@
-# Ultimate Banking System (UBS) - Player Guide
+# Player Guide
 
-This guide covers the current playable UBS systems and command surface for players and server operators.
+## Getting Started
 
-## What UBS Adds
-
-- Banking core:
-  - multi-account support (`checking`, `saving`, `moneymarket`, `certificate`)
-  - PIN-protected ATM access
-  - transfers, transaction history, account primary selection
-  - pay requests and account HUD monitoring
-- Physical legal tender:
-  - bills: `$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`
-  - coins: `$0.01`, `$0.05`, `$0.10`, `$0.25`, `$0.50`
-- Instruments and cards:
-  - `bank_note`
-  - `cheque`
-  - `credit_card`
-- Payment systems:
-  - `payment_terminal` block (merchant checkout + redstone output)
-  - `handheld_payment_terminal` (portable player-to-player checkout)
-  - bank teller cash-out (bills + coins)
-- Retail/shop stack:
-  - shelf/display/cooler/table blocks
-  - shopping baskets/bags
-  - cashier NPC flow
-  - stockroom + pallet + order workflows
-  - webshop/courier board support
-- Other gameplay systems:
-  - safe box storage per account type
-  - pickpocket system (player opt-in/out toggle)
-  - world cash economy (structure loot, mob drops, configurable death cash drops)
-
-## Quick Start
-
-1. Place an ATM or use one in-world.
-2. Create an account if needed:
-   - `/account open checking "Central Bank"`
-3. Open ATM and select account.
-4. Set/confirm your 4-digit PIN on first login.
-5. Use ATM actions (balance, withdraw, deposit, transfer, history).
+1. Create an account:
+   - `/account open`
+2. Open an ATM block.
+3. Select an account.
+4. Complete PIN flow:
+   - first-time account: set + confirm a 4-digit PIN
+   - existing account: enter PIN
 
 ## ATM Features
 
-- account selection
-- balance inquiry
-- withdraw (whole-dollar amounts, bills only)
-- deposit (bills + coins, exact amount required)
-- transfer
-- transaction history
-- account settings (including PIN change)
-- pay request inbox + creation
+- Balance inquiry
+- Cash withdrawal (whole dollars)
+- Cash deposit (bills + coins, exact inventory match)
+- Transfer funds
+- Transaction history
+- Account settings
+- Pay requests (inbox + create)
+
+## Pay Requests
+
+Send request:
+
+- `/account payrequest <player> <amount> [destinationAccountId]`
+
+Receive request:
+
+- If you have a primary account, chat offers `Accept`, `Decline`, `Choose Account`.
+- If you do not have a primary account, UBS provides clickable account options with balances.
+
+ATM side:
+
+- open `Pay Requests`
+- review incoming requests
+- accept/decline or choose a specific paying account
+- create outgoing requests from the same menu
 
 ## Physical Cash Rules
 
-### Withdraw
+Withdraw:
 
-- ATM dispenses bills only.
-- Denomination breakdown is highest-first: `$100`, `$50`, `$20`, `$10`, `$5`, `$2`, `$1`.
+- ATM dispenses bills only (`$1, $2, $5, $10, $20, $50, $100`).
+- Overflow follows normal item-drop behavior.
 
-### Deposit
+Deposit:
 
-- UBS scans inventory and offhand for legal tender cash.
-- Deposit only succeeds if an exact denomination combination exists.
+- UBS scans inventory/offhand for legal tender cash items (bills + coins).
+- Deposit requires exact denomination fit for requested amount.
 
-### Teller Cash-Out
+Bank Teller:
 
-- Teller can dispense bills and coins.
-- Teller cap is controlled via bank limit type `teller`.
+- Teller cash-out can dispense bills + coins.
+- Teller withdrawal limit can be configured per bank (`teller` bank limit type).
 
-## Payment Terminal and Handheld
+Legal tender list with textures:
 
-### Terminal Block
+- [Currency & Legal Tender](Currency-Legal-Tender.md)
 
-- Right-click: pay configured amount.
-- Shift + right-click: open config (owner/OP).
-- Payment source:
+## Payment Terminal
+
+- Place `payment_terminal` block for merchant checkout.
+- Right-click to pay.
+- Shift + right-click opens config (owner/OP only).
+- Terminal payment source:
   - held valid credit card account, else primary account.
-- Terminal shows success/denied result and enforces a short interaction lock.
-- Optional idle/success/failure redstone output.
+- Result feedback:
+  - success/denied display state with temporary interaction lock.
+- Optional redstone output for success/failure/idle.
 
-### Handheld Terminal
+Handheld mode:
 
-- Hold item and right-click target player to charge.
-- Shift + right-click opens handheld config.
-- Uses same payment source rules as terminal.
-- No redstone controls.
+- Use `handheld_payment_terminal` to charge players directly.
+- While aiming at a player with handheld equipped, HUD panel shows amount + target.
+- Right-click player to charge that player.
+- Shift + right-click to open handheld terminal config.
+- Handheld has no redstone output controls.
+
+Full guide:
+
+- [Payment Terminal Guide](Payment-Terminal-Guide.md)
 
 ## Retail and Shop Systems
 
-Retail features now include:
+New retail surfaces include shelves, display tables, coolers, modular displays, shopping baskets/bags, pallets, and cashier NPC workflows.
 
-- shop shelves/tables/coolers/displays
-- shopping basket session flow
-- cashier-led checkout
-- stockroom + pallet assignment + restock loops
-- webshop order/cart/delivery flows
+High-level loop:
 
-For shop management details:
+1. Browse shelf/display stock.
+2. Add/remove items with basket flow.
+3. Checkout via cashier/terminal.
+4. Funds settle through UBS account/payment systems.
 
-- `docs/wiki/Retail-Shop-System.md`
-- `docs/wiki/Bank-Owner-PC.md`
+The desktop shop app also supports stockroom claims, pallet assignment, order flows, permissions, lighting/hours controls, and webshop/courier workflows.
+
+Retail Webshop:
+
+- Catalog search/filter/sort helps find checkout, display, shelving, and logistics items.
+- Cart lines have per-item add quantity, remove quantity, and remove item controls.
+- Checkout uses modals for payment account and delivery target selection.
+- Delivery target selection is step-based: choose shop/location, choose random or specific pallet mode, then choose a pallet when specific mode is selected.
+- Tracking shows queued and past orders. Successful orders do not show a failure reason; failed or completed orders can be replaced after confirmation.
+
+See:
+
+- [Retail & Shop System](Retail-Shop-System.md)
+- [Bank Owner PC](Bank-Owner-PC.md)
 
 ## Pickpocket
 
-- Default keybind is a Shift-modified chord (default key `F`, so `Shift + F`).
-- Toggle participation:
+- Client keybind defaults to `Shift + F` (rebindable key + Shift safety modifier).
+- Players can opt in/out:
   - `/account pickpocket toggle`
   - `/account pickpocket status`
 
-If disabled, you cannot steal and cannot be targeted.
+If disabled, you are immune and also cannot pickpocket others.
 
-## Safe Box and HUD
+## HUD and Safety Deposit Boxes
+
+- `/account hud toggle`
+- `/account hud primary`
+- `/account hud account <accountId>`
+- `/account hud move <top-right|top-left|middle-right|middle-left|bottom-right|bottom-left>`
+
+A bank's physical `Safe Box` teller tab is enabled only after its owner completes the vault setup. To inspect an assigned box:
+
+1. Select an account at that bank's teller.
+2. Open `Safe Box` and choose `Request to Open Safe Box`.
+3. UBS reserves a private viewing room and moves you and the teller to it.
+4. Use the full-size physical tray for your exact assigned box.
+5. Interact with the teller and confirm when finished; UBS restores the box and returns you.
+
+Only the selected account's exact assigned box is accessible. Other interactions inside the viewing room are blocked. The session closes on completion, timeout, disconnect, death, dimension change, or server recovery. If service is unavailable, the bank owner must restore the missing premise exit, vault door, full row, viewing room, or Safe Access requirement; assignments and contents remain preserved.
+
+Legacy safebox commands remain available where enabled:
 
 - `/account safebox list`
 - `/account safebox deposit`
 - `/account safebox withdraw <slot>`
-- `/account hud toggle`
-- `/account hud primary`
-- `/account hud account <accountId>`
 
-## Player Command Highlights
+## World Cash Economy
 
-### Account
+Depending on server config, UBS can add:
 
-- `/account open <accountType> [certificateTier] <bankName>`
-- `/account close <bankName>`
+- structure chest cash loot
+- cash drops from mobs/villagers
+- forced percentage cash drop on player death
+
+## Smartphone
+
+- Right-click a smartphone or press the rebindable phone key (default `[`).
+- The phone does not pause the game and supports banking, per-account login, contacts, realtime/offline messages, pay requests, gifts, notes, settings, and Tap to Pay.
+- First use requires a phone password.
+- `Esc` navigates back, then puts the phone away from Home.
+
+See [Smartphone](Smartphone.md).
+
+## Bank Heists
+
+Open the multiplayer heist planner with `/heist`. Build a crew, select an eligible bank premise, ready up, breach physical security, fill duffel bags, and extract before the timer expires. Use `/heist abandon` to leave.
+
+See [Bank Heists](Bank-Heists.md).
+
+## Limits and Security
+
+- PIN must be exactly 4 digits.
+- per-transaction ATM limit applies
+- daily ATM withdrawal limits apply
+- frozen accounts cannot withdraw, deposit, or transfer
+
+## Useful Commands
+
 - `/account info`
 - `/account info list`
-- `/account info bank <bankName>`
-- `/account info <accountId>`
-- `/account balance`
-- `/account primary set <accountId>`
-- `/account primary bank <bankName>`
-- `/account transfer <fromAccountId> <toAccountId> <amount>`
-- `/account transfer bank <fromBank> <toBank> <amount>`
-- `/account send <player> <amount> [bankName]`
-- `/account payrequest <player> <amount> [destinationAccountId]`
-- `/account transaction <transactionId>`
-- `/account transaction list <accountId>`
+- `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
+- `/account transaction list <accountUUID>`
 - `/account shop pay <amount> [shop]`
-- `/account note write <amount>`
-- `/account cheque write <player> <amount>`
-- `/account loan request|confirm|status ...`
-- `/account cd break|confirm ...`
-- `/account joint ...`
-- `/account business ...`
-
-### Bank
-
-- `/bank list`
-- `/bank create <name> [ownershipModel]`
-- `/bank info <bankName>`
 - `/bank reserve`
 - `/bank dashboard`
-- `/bank accounts`
-- `/bank limit set <type> <amount>`
-- `/bank role ...`
-- `/bank shares ...`
-- `/bank cofounder ...`
-- `/bank hire|fire|employees`
-- `/bank lend ...`
-- `/bank loan ...`
-- `/bank appeal <message>`
-- `/bank heist start <bankName>` (Coming Soon)
-
-### Session Control
-
-- `/cashier cancel`
-- `/bankteller cancel`
-
-## Admin Commands (Permission Level 3)
-
-- `/ubs admin view <player>`
-- `/ubs admin freeze|unfreeze ...`
-- `/ubs admin applications ...`
-- `/ubs admin appeals ...`
-- `/ubs admin import csv|essentialsx|cmi|iconomy <path>`
-- `/centralbank rate [set <rate>]`
-- `/centralbank opm inject|withdraw|history ...`
-- `/centralbank audit [bankName]`
-- `/centralbank report [history]`
-- `/centralbank ledger [suspense]`
-
-## Migration Import Notes
-
-- `csv` supports:
-  - `player_uuid_or_name,bank_name,account_type,balance,pin,is_primary,history`
-- Optional `history` format:
-  - `timestamp|signedAmount|description;timestamp|signedAmount|description`
-- `essentialsx` and `cmi` accept userdata folder or single YAML file.
-- `iconomy` accepts `player,balance` or `player:balance`.
-
-## Troubleshooting
-
-### "No accounts found"
-
-Create an account first:
-
-- `/account open checking "Central Bank"`
-
-### "Not enough cash on hand"
-
-You do not carry enough legal tender items for the requested action.
-
-### "Cannot form that exact amount"
-
-You may have enough total value, but not a matching denomination combination.
-
-### Transfer/payment fails
-
-Common causes:
-
-- insufficient balance
-- invalid destination account
-- frozen account
-- daily/transaction limit hit
-
-## Suggested Server Setup Flow
-
-1. Place ATMs and initial terminals.
-2. Tell players to create accounts and set PINs.
-3. Configure limits/rates in common config.
-4. Set central-bank policy values (`rate`, reserve/tax intervals, audit windows).
-5. Decide whether to enable pickpocket and world-cash systems for your server style.
+- `/heist`
+- `/heist abandon`

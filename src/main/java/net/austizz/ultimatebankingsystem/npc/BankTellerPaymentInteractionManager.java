@@ -10,7 +10,7 @@ import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.network.BankTellerActionResponsePayload;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.payments.WalletPaymentService;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
@@ -182,6 +182,12 @@ public final class BankTellerPaymentInteractionManager {
             return true;
         }
 
+        int stackBillIndex = held == null || held.isEmpty() ? -1 : DollarBills.billIndexForMoneyStackItem(held.getItem());
+        if (stackBillIndex >= 0) {
+            processMoneyStackTender(player, teller, session, held, stackBillIndex);
+            return true;
+        }
+
         if (held != null && !held.isEmpty() && held.is(ModItems.CREDIT_CARD.get())) {
             processCardPayment(player, teller, session, centralBank);
             return true;
@@ -235,6 +241,11 @@ public final class BankTellerPaymentInteractionManager {
             }
             if (player.distanceToSqr(teller) > CANCEL_DISTANCE_SQ) {
                 cancelAndCleanup(player, "You walked too far from the teller. Payment cancelled.", false, true);
+                continue;
+            }
+            if (!teller.refreshCustomerUse(player)) {
+                cancelAndCleanup(player, "This teller is now assisting another customer. Payment cancelled.",
+                        false, true);
                 continue;
             }
             if (Math.abs(level.getGameTime() - session.startedTick) > SESSION_TIMEOUT_TICKS) {
@@ -294,6 +305,43 @@ public final class BankTellerPaymentInteractionManager {
         sendPaymentFeedback(player, "§aAccepted §6$"
                 + MoneyText.abbreviate(BigDecimal.valueOf(denominationCents, 2))
                 + "§a cash. Remaining: §6$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)));
+        sendCancelHint(player);
+    }
+
+    private static void processMoneyStackTender(ServerPlayer player,
+                                                BankTellerEntity teller,
+                                                Session session,
+                                                ItemStack stack,
+                                                int billIndex) {
+        long remaining = remainingCents(session);
+        if (remaining <= 0L) {
+            completeSession(player, teller, session);
+            return;
+        }
+
+        int denominationCents = DollarBills.cashDenominationCentsForIndex(billIndex);
+        if (denominationCents <= 0) {
+            return;
+        }
+        long tenderedCents = (long) DollarBills.BILLS_PER_MONEY_STACK * denominationCents;
+
+        stack.shrink(1);
+        player.getInventory().setChanged();
+        player.containerMenu.broadcastChanges();
+
+        session.insertedCash[billIndex] += DollarBills.BILLS_PER_MONEY_STACK;
+        session.cashPaidCents += tenderedCents;
+
+        long newRemaining = remainingCents(session);
+        if (newRemaining <= 0L) {
+            completeSession(player, teller, session);
+            return;
+        }
+
+        sendPaymentFeedback(player, "\u00a7aAccepted \u00a76$"
+                + MoneyText.abbreviate(BigDecimal.valueOf(tenderedCents, 2))
+                + "\u00a7a money stack. Remaining: \u00a76$"
                 + MoneyText.abbreviate(BigDecimal.valueOf(newRemaining, 2)));
         sendCancelHint(player);
     }
@@ -542,6 +590,7 @@ public final class BankTellerPaymentInteractionManager {
         }
 
         sendPaymentFeedback(player, "§e" + reason);
+        releaseTellerUse(player, session.tellerId);
     }
 
     private static void reopenWithFeedback(ServerPlayer player,
@@ -558,6 +607,16 @@ public final class BankTellerPaymentInteractionManager {
         }
         PacketDistributor.sendToPlayer(player, BankTellerService.buildOpenPayload(player.server, centralBank, player, teller));
         PacketDistributor.sendToPlayer(player, new BankTellerActionResponsePayload(success, message == null ? "" : message, false));
+    }
+
+    private static void releaseTellerUse(ServerPlayer player, UUID tellerId) {
+        if (player == null || tellerId == null || player.server == null) {
+            return;
+        }
+        BankTellerEntity teller = findTeller(player.server, tellerId);
+        if (teller != null) {
+            teller.endCustomerUse(player.getUUID());
+        }
     }
 
     private static void refundSession(Session session, ServerPlayer player, String infoMessage) {
@@ -637,7 +696,7 @@ public final class BankTellerPaymentInteractionManager {
         player.sendSystemMessage(UbsTranslations.literal("§b[Bank Teller] §f" + session.paymentReason));
         player.sendSystemMessage(UbsTranslations.literal("§7Amount due: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(session.requiredCents, 2))));
         player.sendSystemMessage(UbsTranslations.literal("§7Right-click this teller with §aCash (bills/coins)§7 (one item per click) or with a §bCredit Card§7."));
-        ServerActionAlert.sendLegacy(
+        ServerNotification.sendLegacy(
                 player,
                 "Bank Teller",
                 "§bTeller payment started. Amount due: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(session.requiredCents, 2)),
@@ -682,7 +741,7 @@ public final class BankTellerPaymentInteractionManager {
         }
         // Keep teller guidance in chat and mirror it to the shared alert card.
         player.sendSystemMessage(UbsTranslations.literal(legacyMessage));
-        DeliveryAlertPayload.AlertTone tone = ServerActionAlert.inferToneFromLegacy(legacyMessage);
-        ServerActionAlert.sendLegacy(player, "Bank Teller", legacyMessage, tone, 4200);
+        DeliveryAlertPayload.AlertTone tone = ServerNotification.inferToneFromLegacy(legacyMessage);
+        ServerNotification.sendLegacy(player, "Bank Teller", legacyMessage, tone, 4200);
     }
 }

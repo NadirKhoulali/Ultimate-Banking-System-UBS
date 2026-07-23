@@ -6,7 +6,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.RegistryKeysCompat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.NonNullList;
@@ -185,7 +185,7 @@ public final class WorldCashEconomyService {
         // Surface world-economy rewards clearly so players can identify cash-yielding kills.
         if (killer != null && dropCents > 0) {
             String mobName = living.getName() == null ? "mob" : living.getName().getString();
-            ServerActionAlert.send(
+            ServerNotification.send(
                     killer,
                     "Cash Drop",
                     "Dropped $" + DollarBills.formatCents(dropCents) + " from " + mobName + ".",
@@ -244,7 +244,7 @@ public final class WorldCashEconomyService {
 
         // Explicitly notify the player that physical cash was dropped and will despawn on timer.
         int despawnTicks = Math.max(20, Config.DEATH_CASH_DROP_DESPAWN_TICKS.get());
-        ServerActionAlert.send(
+        ServerNotification.send(
                 player,
                 "Death Cash Drop",
                 "Dropped $" + DollarBills.formatCents(actualDropCents)

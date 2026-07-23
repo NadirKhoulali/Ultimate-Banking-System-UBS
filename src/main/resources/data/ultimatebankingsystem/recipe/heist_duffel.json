@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "S S",
+    "LCL",
+    "LLL"
+  ],
+  "key": {
+    "S": { "item": "minecraft:string" },
+    "L": { "item": "minecraft:leather" },
+    "C": { "item": "minecraft:chest" }
+  },
+  "result": {
+    "id": "ultimatebankingsystem:heist_duffel",
+    "count": 1
+  }
+}

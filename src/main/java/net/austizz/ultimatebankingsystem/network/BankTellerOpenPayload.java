@@ -19,7 +19,9 @@ public record BankTellerOpenPayload(
         String cardIssueFee,
         String cardReplacementFee,
         boolean openAccountFree,
-        List<BankTellerAccountSummary> accounts
+        List<String> safeBoxPolicies,
+        List<BankTellerAccountSummary> accounts,
+        BankTellerSafeBoxState safeBoxState
 ) implements CustomPacketPayload {
 
     public static final Type<BankTellerOpenPayload> TYPE = new Type<>(
@@ -34,6 +36,15 @@ public record BankTellerOpenPayload(
                     buf -> new UUID(buf.readLong(), buf.readLong())
             );
 
+    public BankTellerOpenPayload {
+        safeBoxPolicies = safeBoxPolicies == null ? List.of() : List.copyOf(safeBoxPolicies);
+        accounts = accounts == null ? List.of() : List.copyOf(accounts);
+        safeBoxState = safeBoxState == null
+                ? BankTellerSafeBoxState.unavailable(tellerId, parseUuid(boundBankId),
+                "Safe-deposit box state is unavailable.")
+                : safeBoxState;
+    }
+
     public static final StreamCodec<RegistryFriendlyByteBuf, BankTellerOpenPayload> STREAM_CODEC =
             StreamCodec.of(
                     (buf, payload) -> {
@@ -45,7 +56,9 @@ public record BankTellerOpenPayload(
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardIssueFee());
                         ByteBufCodecs.STRING_UTF8.encode(buf, payload.cardReplacementFee());
                         ByteBufCodecs.BOOL.encode(buf, payload.openAccountFree());
+                        ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(64)).encode(buf, payload.safeBoxPolicies());
                         BankTellerAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).encode(buf, payload.accounts());
+                        BankTellerSafeBoxState.STREAM_CODEC.encode(buf, payload.safeBoxState());
                     },
                     buf -> new BankTellerOpenPayload(
                             UUID_CODEC.decode(buf),
@@ -56,16 +69,22 @@ public record BankTellerOpenPayload(
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.STRING_UTF8.decode(buf),
                             ByteBufCodecs.BOOL.decode(buf),
-                            BankTellerAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf)
+                            ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(64)).decode(buf),
+                            BankTellerAccountSummary.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
+                            BankTellerSafeBoxState.STREAM_CODEC.decode(buf)
                     )
             );
 
     public UUID parseBoundBankId() {
-        if (boundBankId == null || boundBankId.isBlank()) {
+        return parseUuid(boundBankId);
+    }
+
+    private static UUID parseUuid(String raw) {
+        if (raw == null || raw.isBlank()) {
             return null;
         }
         try {
-            return UUID.fromString(boundBankId);
+            return UUID.fromString(raw);
         } catch (IllegalArgumentException ex) {
             return null;
         }

@@ -1,7 +1,7 @@
 package net.austizz.ultimatebankingsystem.callback;
 
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.UUID;
@@ -31,7 +31,7 @@ public class CallBackManager {
             String message = "Action either expired or cancelled, please try again!";
             player.sendSystemMessage(UbsTranslations.literal(message));
             // Mirror callback expiry/cancel feedback into the unified top alert system.
-            ServerActionAlert.send(player, "Action", message, net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload.AlertTone.WARNING, 3600);
+            ServerNotification.send(player, "Action", message, net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload.AlertTone.WARNING, 3600);
             return;
         }
         action.accept(player);

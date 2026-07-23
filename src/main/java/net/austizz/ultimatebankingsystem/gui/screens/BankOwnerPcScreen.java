@@ -1,6 +1,12 @@
 package net.austizz.ultimatebankingsystem.gui.screens;
 
 import net.austizz.ultimatebankingsystem.client.UbsClientTranslations;
+import net.austizz.ultimatebankingsystem.client.SafeAlarmOggImporter;
+import net.austizz.ultimatebankingsystem.client.VaultRouteEditorClientState;
+import net.austizz.ultimatebankingsystem.client.VaultRoutePickerHandshake;
+import net.austizz.ultimatebankingsystem.bank.safebox.setup.SafePremiseMode;
+import net.austizz.ultimatebankingsystem.bank.safebox.route.SafeTellerRouteDirection;
+import net.austizz.ultimatebankingsystem.bank.safebox.route.SafeTellerRouteValidator;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopButton;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopEditBox;
 import net.austizz.ultimatebankingsystem.gui.widgets.DesktopSlider;
@@ -9,11 +15,31 @@ import net.austizz.ultimatebankingsystem.network.OwnerPcActionPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataRequestPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcBankTellerPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcCreateBankPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopActionResponsePayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPlayerEmployeePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremiseActionPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremiseActionResponsePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremisePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSetupObjectivePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSafeAccessLogPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSafeAlarmPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultStorageClaimPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultStorageContentPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultStorageMarkerPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultSetupPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcViewingRoomPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteEditorPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteCancelPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRoutePosition;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteRequestPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteSavePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcVaultRouteStepPayload;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
+import net.austizz.ultimatebankingsystem.shop.ShopHoursTimeZone;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
@@ -22,6 +48,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -102,9 +129,27 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
     }
 
+    private record VaultStorageMarkerHitbox(int x,
+                                            int y,
+                                            int width,
+                                            int height,
+                                            OwnerPcVaultStorageMarkerPayload marker) {
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+        }
+    }
+
     private record InputHelp(String title, String summary, String example) {}
 
     private record WidgetRenderState(AbstractWidget widget, boolean visible, boolean active) {}
+
+    private record PremiseHeaderActions(int refreshX,
+                                        int refreshY,
+                                        int refreshWidth,
+                                        int claimX,
+                                        int claimY,
+                                        int claimWidth,
+                                        int textRight) {}
 
     private record MarketOfferData(String id,
                                    String lender,
@@ -465,6 +510,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         int appW = Math.max(1, right - left);
         boolean compact = appW < 980;
         boolean modalOpen = isModernBankActionModalOpen()
+                || isVaultRouteModalOpen()
                 || isMarketDetailModalOpen()
                 || (activeSection == Section.LENDING && pendingMarketAccept != null)
                 || selectedAccountTransaction != null;
@@ -506,8 +552,12 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                     label,
                     section == activeSection ? ORDER_BOARD_CYAN : 0xFF7895B4,
                     btn -> {
+                        VaultRouteEditorClientState.clear();
+                        vaultRouteEditorScroll = 0;
+                        vaultRouteDetailsScroll = 0;
                         activeSection = section;
                         bankActionModal = BankActionModal.NONE;
+                        premiseDeleteState = OwnerPcPremiseDeleteLifecycle.closed();
                         overviewDetailOpen = false;
                         overviewDetailAction = "SHOW_INFO";
                         selectedAccountCard = null;
@@ -534,11 +584,43 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         int toolbarY = headerY + 20;
         int headerContentW = Math.max(1, contentRight - contentX);
         int toolbarButtonW = toolbarButtonWForRender(headerContentW, compact);
-        int refreshX = contentRight - toolbarButtonW - 14;
-        DesktopButton refreshButton = addPcButton(refreshX, toolbarY, toolbarButtonW, 24, "Refresh", btn -> requestBankData(activeBankId))
+        boolean showPremiseClaim = dataReady
+                && activeSection == Section.PREMISES
+                && hasPremisePresentationPermission(data);
+        PremiseHeaderActions headerActions = premiseHeaderActions(
+                contentX, contentRight, headerY, toolbarY, toolbarButtonW, showPremiseClaim);
+        DesktopButton refreshButton = addPcButton(
+                        headerActions.refreshX(),
+                        headerActions.refreshY(),
+                        headerActions.refreshWidth(),
+                        24,
+                        "Refresh",
+                        btn -> requestBankData(activeBankId))
                 .setLabelOffset(4, 2);
         refreshButton.visible = !modalOpen;
         refreshButton.active = !modalOpen;
+        if (showPremiseClaim) {
+            DesktopButton claimButton = addPcButton(
+                            headerActions.claimX(),
+                            headerActions.claimY(),
+                            headerActions.claimWidth(),
+                            24,
+                            "Claim Premise",
+                            ORDER_BOARD_CYAN,
+                            btn -> startPremiseClaimAndClose())
+                    .setLabelOffset(4, 2);
+            claimButton.visible = !modalOpen;
+            claimButton.active = !modalOpen;
+            if (claimButton.visible) {
+                addBankHelpHitbox(
+                        headerActions.claimX(),
+                        headerActions.claimY(),
+                        headerActions.claimWidth(),
+                        24,
+                        "Claim Premise",
+                        "Close the Owner PC and start the in-world premise claim tool.");
+            }
+        }
 
         sectionViewportX = contentX;
         sectionViewportY = headerY + headerH + 18;
@@ -552,8 +634,15 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
         int sectionContentW = Math.max(contentMinW, sectionViewportW - 32);
         int contentHeight = getModernBankSectionContentHeight(dataReady ? data : null, sectionContentW);
-        sectionMaxScroll = pixelScrollMax(contentHeight, sectionViewportH);
-        sectionScroll = Math.max(0, Math.min(sectionScroll, sectionMaxScroll));
+        if (dataReady && activeSection == Section.PREMISES) {
+            OwnerPcPremisesPanelLayout.Layout premisesLayout = OwnerPcPremisesPanelLayout.layout(
+                    sectionContentW, sectionViewportH, data.premises().size(), sectionScroll);
+            sectionMaxScroll = premisesLayout.maxScroll();
+            sectionScroll = premisesLayout.clampedScroll();
+        } else {
+            sectionMaxScroll = pixelScrollMax(contentHeight, sectionViewportH);
+            sectionScroll = Math.max(0, Math.min(sectionScroll, sectionMaxScroll));
+        }
 
         if (!dataReady) {
             addModernBankContentButton(
@@ -569,7 +658,11 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
 
         if (modalOpen) {
-            initModernBankModalWidgets(data);
+            if (isVaultRouteModalOpen()) {
+                initVaultRouteModalWidgets(data);
+            } else {
+                initModernBankModalWidgets(data);
+            }
         } else {
             initModernBankSectionWidgets(data, sectionViewportX, sectionViewportY, sectionViewportW);
         }
@@ -584,6 +677,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case OVERVIEW -> initModernBankOverviewWidgets(data, innerX, y, innerW, ownerView);
             case ACCOUNTS -> initModernBankAccountsWidgets(data, innerX, y, innerW, ownerView);
             case SAFE -> initModernBankSafeWidgets(data, innerX, y, innerW);
+            case PREMISES -> initModernBankPremisesWidgets(data, innerX, y, innerW);
             case BRANDING -> initModernBankBrandingWidgets(data, innerX, y, innerW, ownerView);
             case LIMITS -> initModernBankLimitsWidgets(data, innerX, y, innerW, ownerView);
             case GOVERNANCE -> initModernBankGovernanceWidgets(innerX, y, innerW, ownerView);
@@ -701,9 +795,21 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             formValues.putIfAbsent("safe.policy.period", data.safeRentPeriodTicks());
             formValues.putIfAbsent("safe.policy.overdue", data.safeOverdueTicks());
         }
+        int safeY = y + modernBankSafeSetupHeight(data, width) + 12;
         int gap = 10;
-        int moduleY = y + modernBankSafeKpiBlockHeight(width) + 12;
-        int mainY = moduleY + modernBankSafeModuleRailHeight() + 12;
+        int moduleY = safeY + modernBankSafeKpiBlockHeight(width) + 12;
+        int mainY = moduleY + modernBankSafeModuleRailHeight(width) + 12;
+        initModernSafeModuleTabs(x, moduleY, width);
+        if (safePanelTab != SafePanelTab.DEPOSIT_BOXES) {
+            switch (safePanelTab) {
+                case ACCESS_LOGS -> initModernSafeAccessLogWidgets(data, x, mainY, width);
+                case ALARMS -> initModernSafeAlarmWidgets(data, x, mainY, width);
+                case VAULT_STORAGE -> initModernVaultStorageWidgets(data, x, mainY, width);
+                case DEPOSIT_BOXES -> {
+                }
+            }
+            return;
+        }
         boolean wide = width >= 820;
         int sideW = wide ? Math.max(250, (width - gap) * 31 / 100) : width;
         int mapW = wide ? Math.max(300, width - sideW - gap) : width;
@@ -721,7 +827,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         addModernBankContentButton(sideX + 16, actionY + 168, Math.max(74, sideW - 32), 24,
                 "Refresh", 0xFF7895B4, btn -> requestBankData(activeBankId));
 
-        addModernBankContentButton(sideX + 16, policyY + 104, Math.max(74, sideW - 32), 24,
+        addModernBankContentButton(sideX + 16, policyY + 138, Math.max(74, sideW - 32), 24,
                 "Pricing Policy", ORDER_BOARD_GOLD, btn -> openModernSafePolicyModal(data));
 
         int lowerY = wide
@@ -747,6 +853,300 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                         openModernBankModal(BankActionModal.SAFE_SEIZE_CONFIRM, true);
                     });
         }
+
+        int lowerH = lowerWide
+                ? Math.max(modernBankSafeAreaStatusHeight(width), modernBankSafeLockedQueueHeight(width))
+                : modernBankSafeAreaStatusHeight(width) + gap + modernBankSafeLockedQueueHeight(width);
+        int roomsY = lowerY + lowerH + gap;
+        addModernBankContentButton(x + 16, roomsY + 42, Math.min(172, Math.max(104, width - 32)), 24,
+                "Claim Viewing Room", ORDER_BOARD_CYAN, btn -> startViewingRoomClaimToolAndClose());
+
+        List<OwnerPcViewingRoomPayload> rooms = data == null ? List.of() : data.viewingRooms();
+        int roomColumns = width >= 760 ? 2 : 1;
+        int roomGap = 10;
+        int roomCardW = roomColumns == 2 ? Math.max(220, (width - roomGap) / 2) : width;
+        int roomCardY = roomsY + 82;
+        for (int index = 0; index < rooms.size(); index++) {
+            OwnerPcViewingRoomPayload room = rooms.get(index);
+            int col = index % roomColumns;
+            int row = index / roomColumns;
+            int cardX = x + col * (roomCardW + roomGap);
+            int cardY = roomCardY + row * (modernViewingRoomCardHeight() + roomGap);
+            String nameKey = "viewing.room.name." + room.roomId();
+            formValues.putIfAbsent(nameKey, room.name());
+
+            int renameW = Math.max(54, Math.min(76, roomCardW / 4));
+            addModernBankInput(nameKey, cardX + 12, cardY + 58,
+                    Math.max(72, roomCardW - 36 - renameW), "Room name");
+            addModernBankContentButton(cardX + roomCardW - 12 - renameW, cardY + 58,
+                    renameW, 22, "Rename", ORDER_BOARD_VIOLET,
+                    btn -> sendOwnerPcAction("VIEWING_ROOM_RENAME", room.roomId(),
+                            formValues.getOrDefault(nameKey, room.name()), "", ""));
+
+            int anchorGap = 6;
+            int anchorW = Math.max(48, (roomCardW - 24 - anchorGap * 2) / 3);
+            addModernBankContentButton(cardX + 12, cardY + 88, anchorW, 22,
+                    room.customerAnchor().isBlank() ? "Customer" : "Customer *", ORDER_BOARD_CYAN,
+                    btn -> startViewingRoomAnchorAndClose(room.roomId(), "CUSTOMER"));
+            addModernBankContentButton(cardX + 12 + anchorW + anchorGap, cardY + 88, anchorW, 22,
+                    room.tellerAnchor().isBlank() ? "Teller" : "Teller *", ORDER_BOARD_CYAN,
+                    btn -> startViewingRoomAnchorAndClose(room.roomId(), "TELLER"));
+            addModernBankContentButton(cardX + 12 + (anchorW + anchorGap) * 2, cardY + 88, anchorW, 22,
+                    room.displayAnchor().isBlank() ? "Box" : "Box *", ORDER_BOARD_CYAN,
+                    btn -> startViewingRoomAnchorAndClose(room.roomId(), "DISPLAY"));
+
+            int actionW = Math.max(48, (roomCardW - 24 - anchorGap * 2) / 3);
+            boolean suspended = room.status().startsWith("SUSPENDED");
+            addModernBankContentButton(cardX + 12, cardY + 118, actionW, 22,
+                    "Copy ID", 0xFF7895B4,
+                    btn -> copyTextToClipboard(room.roomId(), "Viewing-room ID copied."));
+            addModernBankContentButton(cardX + 12 + actionW + anchorGap, cardY + 118, actionW, 22,
+                    suspended ? "Reactivate" : "Suspend", suspended ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD,
+                    btn -> sendOwnerPcAction("VIEWING_ROOM_SUSPEND", room.roomId(),
+                            String.valueOf(!suspended), "", ""));
+            addModernBankContentButton(cardX + 12 + (actionW + anchorGap) * 2, cardY + 118, actionW, 22,
+                    "Delete", ORDER_BOARD_RED,
+                    btn -> sendOwnerPcAction("VIEWING_ROOM_DELETE", room.roomId(), "", "", ""));
+        }
+    }
+
+    private void initModernSafeModuleTabs(int x, int y, int width) {
+        int columns = width >= 560 ? 4 : 2;
+        int gap = 8;
+        int buttonW = Math.max(54, (width - 28 - gap * (columns - 1)) / columns);
+        SafePanelTab[] tabs = SafePanelTab.values();
+        for (int index = 0; index < tabs.length; index++) {
+            SafePanelTab tab = tabs[index];
+            int col = index % columns;
+            int row = index / columns;
+            int buttonX = x + 14 + col * (buttonW + gap);
+            int buttonY = y + 11 + row * 30;
+            addModernBankContentButton(buttonX, buttonY, buttonW, 22, tab.label,
+                    tab == safePanelTab ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                    button -> {
+                        safePanelTab = tab;
+                        sectionScroll = 0;
+                        rebuildWidgets();
+                    });
+        }
+    }
+
+    private void initModernSafeAccessLogWidgets(OwnerPcBankDataPayload data, int x, int y, int width) {
+        int columns = width >= 700 ? 6 : 3;
+        int gap = 6;
+        int buttonW = Math.max(50, (width - 32 - gap * (columns - 1)) / columns);
+        List<SafeLogFilter> filters = List.of(SafeLogFilter.values());
+        for (int index = 0; index < filters.size(); index++) {
+            SafeLogFilter filter = filters.get(index);
+            int col = index % columns;
+            int row = index / columns;
+            addModernBankContentButton(x + 16 + col * (buttonW + gap), y + 52 + row * 30,
+                    buttonW, 22, filter.label,
+                    filter == safeLogFilter ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                    button -> {
+                        safeLogFilter = filter;
+                        sectionScroll = 0;
+                        rebuildWidgets();
+                    });
+        }
+        int refreshIndex = filters.size();
+        int refreshCol = refreshIndex % columns;
+        int refreshRow = refreshIndex / columns;
+        addModernBankContentButton(x + 16 + refreshCol * (buttonW + gap), y + 52 + refreshRow * 30,
+                buttonW, 22, "Refresh", ORDER_BOARD_VIOLET,
+                button -> requestBankData(activeBankId));
+    }
+
+    private void initModernSafeAlarmWidgets(OwnerPcBankDataPayload data, int x, int y, int width) {
+        OwnerPcSafeAlarmPayload alarm = data.safeAlarm();
+        formValues.putIfAbsent("safe.alarm.sound", alarm.soundEventId());
+        formValues.putIfAbsent("safe.alarm.volume", formatAlarmNumber(alarm.volume()));
+        formValues.putIfAbsent("safe.alarm.primary", formatAlarmNumber(alarm.primaryPitch()));
+        formValues.putIfAbsent("safe.alarm.secondary", formatAlarmNumber(alarm.secondaryPitch()));
+        formValues.putIfAbsent("safe.alarm.interval", Integer.toString(alarm.intervalTicks()));
+
+        int configY = y + (width >= 620 ? 76 : 248) + 18;
+        int innerX = x + 16;
+        int innerW = Math.max(80, width - 32);
+        addModernBankInput("safe.alarm.sound", innerX, configY + 60, innerW, "namespace:sound_event");
+        int fieldColumns = width >= 720 ? 4 : 2;
+        int fieldGap = 8;
+        int fieldW = Math.max(60, (innerW - fieldGap * (fieldColumns - 1)) / fieldColumns);
+        String[] keys = {"safe.alarm.volume", "safe.alarm.primary", "safe.alarm.secondary", "safe.alarm.interval"};
+        String[] placeholders = {"2.0", "0.55", "0.8", "40"};
+        for (int index = 0; index < keys.length; index++) {
+            int col = index % fieldColumns;
+            int row = index / fieldColumns;
+            addModernBankInput(keys[index], innerX + col * (fieldW + fieldGap),
+                    configY + 116 + row * 50, fieldW, placeholders[index]);
+        }
+
+        int buttonY = configY + (fieldColumns == 4 ? 174 : 224);
+        int buttonColumns = width >= 720 ? 3 : 2;
+        int buttonW = Math.max(64, (innerW - fieldGap * (buttonColumns - 1)) / buttonColumns);
+        addModernBankContentButton(innerX, buttonY, buttonW, 24, "Save", ORDER_BOARD_CYAN,
+                button -> sendSafeAlarmAction("SAFE_ALARM_CONFIG", alarm.enabled()));
+        addModernBankContentButton(innerX + (buttonW + fieldGap), buttonY, buttonW, 24,
+                "Test Sound", ORDER_BOARD_VIOLET,
+                button -> sendSafeAlarmAction("SAFE_ALARM_TEST", true));
+        int stopIndex = 2;
+        addModernBankContentButton(
+                innerX + (stopIndex % buttonColumns) * (buttonW + fieldGap),
+                buttonY + (stopIndex / buttonColumns) * 32,
+                buttonW, 24, "Stop Test", ORDER_BOARD_RED,
+                button -> sendOwnerPcAction("SAFE_ALARM_STOP_TEST", "", "", "", ""));
+        int toggleIndex = 3;
+        int toggleCol = toggleIndex % buttonColumns;
+        int toggleRow = toggleIndex / buttonColumns;
+        addModernBankContentButton(innerX + toggleCol * (buttonW + fieldGap), buttonY + toggleRow * 32,
+                buttonW, 24, alarm.enabled() ? "Mute Alarm" : "Arm Alarm",
+                alarm.enabled() ? ORDER_BOARD_GOLD : ORDER_BOARD_GREEN,
+                button -> sendSafeAlarmAction("SAFE_ALARM_CONFIG", !alarm.enabled()));
+        int resetIndex = 4;
+        int resetCol = resetIndex % buttonColumns;
+        int resetRow = resetIndex / buttonColumns;
+        addModernBankContentButton(innerX + resetCol * (buttonW + fieldGap), buttonY + resetRow * 32,
+                buttonW, 24, "Restore Default", 0xFF7895B4, button -> {
+                    clearSafeAlarmFormValues();
+                    sendOwnerPcAction("SAFE_ALARM_RESET", "", "", "", "");
+                });
+        int importIndex = 5;
+        addModernBankContentButton(
+                innerX + (importIndex % buttonColumns) * (buttonW + fieldGap),
+                buttonY + (importIndex / buttonColumns) * 32,
+                buttonW, 24,
+                "Import .ogg File", ORDER_BOARD_VIOLET, button -> importSafeAlarmOgg());
+    }
+
+    private void initModernVaultStorageWidgets(OwnerPcBankDataPayload data, int x, int y, int width) {
+        List<OwnerPcVaultStorageClaimPayload> claims = data.vaultStorageClaims();
+        ensureSelectedVaultStorageClaim(claims);
+        if (claims.isEmpty()) return;
+        boolean wide = width >= 760;
+        int gap = 10;
+        int selectorW = wide ? Math.max(210, width * 27 / 100) : width;
+        int selectorX = wide ? x + width - selectorW : x;
+        int selectorY = wide ? y : y + 390;
+        int buttonW = Math.max(80, selectorW - 24);
+        for (int index = 0; index < claims.size(); index++) {
+            OwnerPcVaultStorageClaimPayload claim = claims.get(index);
+            String label = "Vault " + shortUuid(claim.claimId());
+            addModernBankContentButton(selectorX + 12, selectorY + 60 + index * 30,
+                    buttonW, 22, label,
+                    claim.claimId().equals(selectedVaultStorageClaimId) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                    button -> {
+                        selectedVaultStorageClaimId = claim.claimId();
+                        rebuildWidgets();
+                    });
+        }
+        addModernBankContentButton(selectorX + 12, selectorY + 66 + claims.size() * 30,
+                buttonW, 22, "Refresh Storage", ORDER_BOARD_VIOLET,
+                button -> requestBankData(activeBankId));
+    }
+
+    private void sendSafeAlarmAction(String action, boolean enabled) {
+        String tones = formValues.getOrDefault("safe.alarm.volume", "2.0") + ","
+                + formValues.getOrDefault("safe.alarm.primary", "0.55") + ","
+                + formValues.getOrDefault("safe.alarm.secondary", "0.8");
+        sendOwnerPcAction(action, Boolean.toString(enabled),
+                formValues.getOrDefault("safe.alarm.sound", "minecraft:block.note_block.bell"),
+                tones, formValues.getOrDefault("safe.alarm.interval", "40"));
+    }
+
+    private void clearSafeAlarmFormValues() {
+        formValues.remove("safe.alarm.sound");
+        formValues.remove("safe.alarm.volume");
+        formValues.remove("safe.alarm.primary");
+        formValues.remove("safe.alarm.secondary");
+        formValues.remove("safe.alarm.interval");
+    }
+
+    private void importSafeAlarmOgg() {
+        ClientOwnerPcData.setToast(true, "Opening the OGG file picker...");
+        SafeAlarmOggImporter.chooseAndImport(result -> {
+            if (result.cancelled()) {
+                ClientOwnerPcData.setToast(true, result.message());
+                return;
+            }
+            if (result.success()) {
+                formValues.put("safe.alarm.sound", result.soundEventId());
+            }
+            ClientOwnerPcData.setToast(result.success(), result.message());
+            rebuildWidgets();
+        });
+    }
+
+    private void ensureSelectedVaultStorageClaim(List<OwnerPcVaultStorageClaimPayload> claims) {
+        if (claims == null || claims.isEmpty()) {
+            selectedVaultStorageClaimId = "";
+            return;
+        }
+        boolean present = claims.stream().anyMatch(claim -> claim.claimId().equals(selectedVaultStorageClaimId));
+        if (!present) selectedVaultStorageClaimId = claims.getFirst().claimId();
+    }
+
+    private static String formatAlarmNumber(float value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP)
+                .stripTrailingZeros().toPlainString();
+    }
+
+    private void initModernBankPremisesWidgets(OwnerPcBankDataPayload data, int x, int y, int width) {
+        List<OwnerPcPremisePayload> premises = data == null ? List.of() : data.premises();
+        OwnerPcPremisesPanelLayout.Layout layout = OwnerPcPremisesPanelLayout.layout(
+                width, sectionViewportH, premises.size(), sectionScroll);
+        boolean canManage = hasPremisePresentationPermission(data);
+        for (OwnerPcPremisesPanelLayout.Card card : layout.cards()) {
+            OwnerPcPremisePayload premise = premises.get(card.index());
+            OwnerPcPremisesPanelLayout.Controls controls = OwnerPcPremisesPanelLayout.controls(
+                    card.width(), card.height());
+            int cardX = x + card.x();
+            int cardY = y + card.y();
+
+            DesktopButton publicButton = addPremiseCardButton(
+                    cardX, cardY, controls.publicMode(), "PUBLIC",
+                    premise.mode() == SafePremiseMode.PUBLIC ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                    btn -> setPremiseMode(premise, SafePremiseMode.PUBLIC));
+            publicButton.active = publicButton.visible
+                    && canManage
+                    && premise.mode() != SafePremiseMode.PUBLIC;
+
+            DesktopButton staffOnlyButton = addPremiseCardButton(
+                    cardX, cardY, controls.staffOnlyMode(), "STAFF_ONLY",
+                    premise.mode() == SafePremiseMode.STAFF_ONLY ? ORDER_BOARD_VIOLET : 0xFF7895B4,
+                    btn -> setPremiseMode(premise, SafePremiseMode.STAFF_ONLY));
+            staffOnlyButton.active = staffOnlyButton.visible
+                    && canManage
+                    && premise.mode() != SafePremiseMode.STAFF_ONLY;
+
+            DesktopButton updateExitButton = addPremiseCardButton(
+                    cardX, cardY, controls.updateExit(), "Update Exit", ORDER_BOARD_GOLD,
+                    btn -> startPremiseExitEditAndClose(premise));
+            updateExitButton.active = updateExitButton.visible && canManage;
+
+            boolean deleteEligible = premise.deleteBlockers().isEmpty();
+            DesktopButton deleteButton = addPremiseCardButton(
+                    cardX, cardY, controls.delete(), "Delete Premise",
+                    deleteEligible ? ORDER_BOARD_RED : 0xFF7895B4,
+                    deleteEligible ? btn -> openPremiseDeleteConfirmation(premise) : btn -> {
+                    });
+            deleteButton.active = deleteButton.visible && canManage && deleteEligible;
+        }
+    }
+
+    private DesktopButton addPremiseCardButton(int cardX,
+                                               int cardY,
+                                               OwnerPcPremisesPanelLayout.Rect bounds,
+                                               String label,
+                                               int accent,
+                                               java.util.function.Consumer<DesktopButton> onPress) {
+        return addModernBankContentButton(
+                cardX + bounds.x(),
+                cardY + bounds.y(),
+                bounds.width(),
+                bounds.height(),
+                label,
+                accent,
+                onPress);
     }
 
     private void initModernBankBrandingWidgets(OwnerPcBankDataPayload data, int x, int y, int width, boolean ownerView) {
@@ -801,18 +1201,55 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void initModernBankStaffingWidgets(int x, int y, int width, boolean ownerView) {
-        int cardY = y + modernBankTopSummaryHeight(width) + 18;
-        int cols = width >= 500 ? 3 : 2;
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        int actionY = y + modernBankTopSummaryHeight(width) + 18;
         int gap = 10;
-        int btnW = Math.max(72, (width - 32 - (gap * (cols - 1))) / cols);
-        int startX = x + 16;
-        int startY = cardY + 94;
-        addModernBankModalLauncher(startX, startY, btnW, "Employee Action", BankActionModal.STAFF_EMPLOYEE, ownerView);
-        addModernBankActionButton(startX + btnW + gap, startY, btnW, "Employee List", "SHOW_EMPLOYEES", "", "", "", "", true);
-        addModernBankActionButton(startX + ((btnW + gap) * (2 % cols)), startY + ((2 / cols) * 34), btnW,
+        int buttonY = actionY + 72;
+        int buttonW = Math.max(72, (width - 32 - (gap * 2)) / 3);
+        int buttonX = x + 16;
+        addModernBankModalLauncher(buttonX, buttonY, buttonW, "Hire / Fire", BankActionModal.STAFF_EMPLOYEE, ownerView);
+        addModernBankActionButton(buttonX + buttonW + gap, buttonY, buttonW,
                 "Issue Teller Egg", "TELLER_ISSUE", "", "", "", "", ownerView);
-        addModernBankActionButton(startX + ((btnW + gap) * (3 % cols)), startY + ((3 / cols) * 34), btnW,
-                "Teller Count", "TELLER_COUNT", "", "", "", "", ownerView);
+        addModernBankContentButton(buttonX + ((buttonW + gap) * 2), buttonY, buttonW, 24,
+                "Refresh Roster", ORDER_BOARD_CYAN, btn -> requestBankData(activeBankId));
+
+        if (data == null) {
+            return;
+        }
+        int rosterY = actionY + 128;
+        boolean wide = width >= 760;
+        int playerW = wide ? Math.max(320, (width - gap) * 55 / 100) : width;
+        int tellerW = wide ? width - playerW - gap : width;
+        int tellerX = wide ? x + playerW + gap : x;
+        int tellerY = wide ? rosterY : rosterY + modernBankEmployeeRosterHeight(data);
+
+        int employeeCardY = rosterY + 52;
+        for (OwnerPcPlayerEmployeePayload employee : data.playerEmployees()) {
+            int cardX = x + 12;
+            int cardW = Math.max(120, playerW - 24);
+            int actionW = Math.max(64, (cardW - 32 - gap) / 2);
+            int rowButtonY = employeeCardY + 58;
+            addModernBankActionButton(cardX + 10, rowButtonY, actionW,
+                    "Fire", "FIRE", employee.playerId().toString(), "", "", "", ownerView);
+            addModernBankActionButton(cardX + 10 + actionW + gap, rowButtonY, actionW,
+                    employee.safeAccess() ? "Revoke Safe Access" : "Grant Safe Access",
+                    employee.safeAccess() ? "SAFE_ACCESS_REVOKE" : "SAFE_ACCESS_GRANT",
+                    employee.playerId().toString(), "", "", "", ownerView);
+            employeeCardY += 94;
+        }
+
+        int tellerCardY = tellerY + 52;
+        for (OwnerPcBankTellerPayload teller : data.bankTellers()) {
+            int cardX = tellerX + 12;
+            int cardW = Math.max(120, tellerW - 24);
+            int actionW = Math.max(70, cardW - 20);
+            addModernBankContentButton(cardX + 10, tellerCardY + 58, actionW, 24,
+                    "Copy Teller ID", 0xFF7895B4, btn -> copyTextToClipboard(
+                            teller.entityId().toString(),
+                            "Copied teller ID " + teller.entityId() + "."
+                    ));
+            tellerCardY += 94;
+        }
     }
 
     private void initModernBankLendingWidgets(int x, int y, int width, boolean ownerView) {
@@ -941,9 +1378,42 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 && marketDetailOffer != null;
     }
 
+    private boolean isVaultRouteModalOpen() {
+        return activeWindow == WindowMode.BANK_APP
+                && !isActiveShopApp()
+                && activeSection == Section.STAFFING
+                && activeBankId != null
+                && activeBankId.equals(VaultRouteEditorClientState.selectedBankId())
+                && VaultRouteEditorClientState.isDetailsOpen();
+    }
+
+    private RectHitbox getVaultRouteModalBounds() {
+        int modalW = Math.max(180, Math.min(700, this.width - 24));
+        int desiredH = VaultRouteEditorClientState.isEditorOpen() ? 570 : 470;
+        int modalH = Math.max(220, Math.min(desiredH, this.height - 32));
+        return new RectHitbox(
+                Math.max(8, (this.width - modalW) / 2),
+                Math.max(8, (this.height - modalH) / 2),
+                modalW,
+                modalH);
+    }
+
+    private OwnerPcBankTellerPayload selectedBankTeller(OwnerPcBankDataPayload data) {
+        UUID tellerId = VaultRouteEditorClientState.selectedTellerId();
+        if (data == null || tellerId == null) {
+            return null;
+        }
+        for (OwnerPcBankTellerPayload teller : data.bankTellers()) {
+            if (teller != null && tellerId.equals(teller.entityId())) {
+                return teller;
+            }
+        }
+        return null;
+    }
+
     private boolean bankModalRequiresOwner(BankActionModal modal) {
         return switch (modal == null ? BankActionModal.NONE : modal) {
-            case NONE, SAFE_POLICY, SAFE_SEIZE_CONFIRM -> false;
+            case NONE, SAFE_POLICY, SAFE_SEIZE_CONFIRM, PREMISE_DELETE_CONFIRM, SAFE_STORAGE_DETAILS -> false;
             default -> true;
         };
     }
@@ -959,6 +1429,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             return;
         }
         bankActionModal = modal;
+        pendingFormInputFocusKey = "";
+        focusFirstModernBankModalInput = true;
         rebuildWidgets();
     }
 
@@ -979,37 +1451,63 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void openModernSafePolicyModal(OwnerPcBankDataPayload data) {
-        if (data != null) {
-            formValues.put("safe.policy.mode", data.safePolicyMode() == null || data.safePolicyMode().isBlank()
-                    ? "FREE"
-                    : data.safePolicyMode());
-            formValues.put("safe.policy.amount", data.safePolicyAmount());
-            formValues.put("safe.policy.period", data.safeRentPeriodTicks());
-            formValues.put("safe.policy.overdue", data.safeOverdueTicks());
-        }
-        formValues.putIfAbsent("safe.policy.mode", "FREE");
-        formValues.putIfAbsent("safe.policy.amount", "0.00");
-        formValues.putIfAbsent("safe.policy.period", "12096000");
-        formValues.putIfAbsent("safe.policy.overdue", "5184000");
+        formValues.putIfAbsent("safe.policy.size", "SMALL");
+        applySafePolicyFormForSize(data, formValues.getOrDefault("safe.policy.size", "SMALL"));
         openModernBankModal(BankActionModal.SAFE_POLICY, true);
     }
 
+    private void applySafePolicyFormForSize(OwnerPcBankDataPayload data, String sizeRaw) {
+        String selectedSize = normalizeSafePolicySize(sizeRaw);
+        formValues.put("safe.policy.size", selectedSize);
+        SafePolicyData policy = findSafePolicy(data, selectedSize);
+        if (policy != null) {
+            formValues.put("safe.policy.mode", policy.mode());
+            formValues.put("safe.policy.amount", policy.amount());
+            formValues.put("safe.policy.period", String.valueOf(Math.max(1L, policy.rentPeriodTicks())));
+            formValues.put("safe.policy.overdue", String.valueOf(Math.max(1L, policy.overdueTicks())));
+            return;
+        }
+        formValues.put("safe.policy.mode", data == null || data.safePolicyMode() == null || data.safePolicyMode().isBlank()
+                ? "FREE"
+                : data.safePolicyMode());
+        formValues.put("safe.policy.amount", data == null ? "0.00" : data.safePolicyAmount());
+        formValues.put("safe.policy.period", data == null ? "12096000" : data.safeRentPeriodTicks());
+        formValues.put("safe.policy.overdue", data == null ? "5184000" : data.safeOverdueTicks());
+    }
+
     private void closeModernBankModal() {
+        boolean storageDetails = bankActionModal == BankActionModal.SAFE_STORAGE_DETAILS;
+        if (bankActionModal == BankActionModal.PREMISE_DELETE_CONFIRM) {
+            if (!premiseDeleteState.canDismiss()) {
+                return;
+            }
+            premiseDeleteState = OwnerPcPremiseDeleteLifecycle.closed();
+        }
         bankActionModal = BankActionModal.NONE;
+        if (storageDetails) {
+            selectedVaultStorageMarker = null;
+            vaultStorageDetailsScroll = 0;
+            vaultStorageDetailsMaxScroll = 0;
+        }
+        pendingFormInputFocusKey = "";
+        focusFirstModernBankModalInput = false;
+        this.setFocused(null);
         rebuildWidgets();
     }
 
     private RectHitbox getModernBankModalBounds() {
         int availableW = Math.max(160, this.width - 48);
-        int modalW = Math.min(Math.max(160, this.width - 16), Math.min(640, Math.max(320, availableW)));
+        int maxModalW = bankActionModal == BankActionModal.SAFE_STORAGE_DETAILS ? 760 : 640;
+        int modalW = Math.min(Math.max(160, this.width - 16), Math.min(maxModalW, Math.max(320, availableW)));
         int desiredH = switch (bankActionModal == null ? BankActionModal.NONE : bankActionModal) {
             case ACCOUNT_TEMP_LIMIT -> 340;
             case LIMIT_AMOUNT -> 330;
             case LEND_PRODUCT -> 320;
             case GOVERNANCE_ROLE, GOVERNANCE_SHARES, STAFF_EMPLOYEE, LEND_OFFER -> 300;
-            case SAFE_POLICY -> 320;
+            case SAFE_POLICY -> 380;
             case CARD_ISSUE_FEE, CARD_REPLACEMENT_FEE -> 250;
-            case COMPLIANCE_APPEAL, SAFE_SEIZE_CONFIRM -> 250;
+            case COMPLIANCE_APPEAL, SAFE_SEIZE_CONFIRM, PREMISE_DELETE_CONFIRM -> 250;
+            case SAFE_STORAGE_DETAILS -> 520;
             case BRANDING_MOTTO, BRANDING_COLOR, LEND_BORROW, ACCOUNT_FREEZE -> 240;
             case NONE -> 0;
         };
@@ -1018,6 +1516,227 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         int x = Math.max(8, (this.width - modalW) / 2);
         int y = Math.max(8, (this.height - modalH) / 2);
         return new RectHitbox(x, y, modalW, modalH);
+    }
+
+    private void initVaultRouteModalWidgets(OwnerPcBankDataPayload data) {
+        if (!isVaultRouteModalOpen()) {
+            return;
+        }
+        if (VaultRouteEditorClientState.isEditorOpen()) {
+            initVaultRouteEditorWidgets();
+        } else {
+            initBankTellerDetailWidgets(data);
+        }
+    }
+
+    private void initBankTellerDetailWidgets(OwnerPcBankDataPayload data) {
+        RectHitbox modal = getVaultRouteModalBounds();
+        int innerX = modal.x() + 16;
+        int innerW = Math.max(120, modal.width() - 32);
+        int footerY = modal.y() + modal.height() - 32;
+        int viewportY = modal.y() + 168;
+        int viewportH = Math.max(54, footerY - viewportY - 30);
+        vaultRouteListViewport = new RectHitbox(innerX, viewportY, innerW, viewportH);
+
+        List<OwnerPcVaultSetupPayload> vaults = data == null ? List.of() : data.vaultSetups();
+        int rowH = 72;
+        int gap = 8;
+        int contentH = vaults.isEmpty() ? viewportH : (vaults.size() * (rowH + gap)) - gap;
+        vaultRouteDetailsMaxScroll = pixelScrollMax(contentH, viewportH);
+        vaultRouteDetailsScroll = Math.max(0, Math.min(vaultRouteDetailsScroll, vaultRouteDetailsMaxScroll));
+        int rowY = viewportY - vaultRouteDetailsScroll;
+        for (OwnerPcVaultSetupPayload vault : vaults) {
+            if (rowY >= viewportY && rowY + rowH <= viewportY + viewportH) {
+                int actionY = rowY + 42;
+                int actionGap = 8;
+                int actionW = Math.max(46, (innerW - actionGap - 20) / 2);
+                DesktopButton outbound = addPcButton(
+                        innerX + 10,
+                        actionY,
+                        actionW,
+                        22,
+                        "Configure Vault Path",
+                        ORDER_BOARD_CYAN,
+                        btn -> requestVaultRouteEditor(vault.vaultId(), SafeTellerRouteDirection.OUTBOUND));
+                DesktopButton returning = addPcButton(
+                        innerX + 10 + actionW + actionGap,
+                        actionY,
+                        actionW,
+                        22,
+                        "Configure Return Path",
+                        ORDER_BOARD_VIOLET,
+                        btn -> requestVaultRouteEditor(vault.vaultId(), SafeTellerRouteDirection.RETURN));
+                boolean enabled = !VaultRouteEditorClientState.isWaitingForServer();
+                outbound.active = enabled;
+                returning.active = enabled;
+            }
+            rowY += rowH + gap;
+        }
+
+        addPcButton(innerX, footerY, innerW, 22, "Close", 0xFF7895B4,
+                btn -> closeBankTellerDetails()).setLabelOffset(6, 1);
+    }
+
+    private void initVaultRouteEditorWidgets() {
+        RectHitbox modal = getVaultRouteModalBounds();
+        int innerX = modal.x() + 16;
+        int innerW = Math.max(120, modal.width() - 32);
+        int gap = 8;
+        int coordinateButtonW = Math.max(62, Math.min(120, innerW / 3));
+        int coordinateX = innerX + innerW - coordinateButtonW;
+        addPcButton(coordinateX, modal.y() + 108, coordinateButtonW, 22,
+                VaultRouteEditorClientState.hasStart() ? "Change Start" : "Select Start",
+                ORDER_BOARD_CYAN,
+                btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.START, -1));
+        addPcButton(coordinateX, modal.y() + 136, coordinateButtonW, 22,
+                VaultRouteEditorClientState.hasFinish() ? "Change Finish" : "Select Finish",
+                ORDER_BOARD_CYAN,
+                btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.FINISH, -1));
+
+        int addY = modal.y() + 170;
+        int addW = Math.max(42, (innerW - (gap * 3)) / 4);
+        addPcButton(innerX, addY, addW, 22, "Add Walk", ORDER_BOARD_CYAN,
+                btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.WALK, -1));
+        addPcButton(innerX + addW + gap, addY, addW, 22, "Add Wait", ORDER_BOARD_GOLD,
+                btn -> {
+                    VaultRouteEditorClientState.insertWait(VaultRouteEditorClientState.steps().size(), 20);
+                    rebuildWidgets();
+                });
+        addPcButton(innerX + ((addW + gap) * 2), addY, addW, 22, "Add Redstone", ORDER_BOARD_VIOLET,
+                btn -> beginVaultRouteRedstonePicker(-1, 15, 20));
+        addPcButton(innerX + ((addW + gap) * 3), addY, addW, 22, "Add RFID", ORDER_BOARD_GREEN,
+                btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.RFID, -1));
+
+        int footerY = modal.y() + modal.height() - 32;
+        int viewportY = modal.y() + 204;
+        int viewportH = Math.max(48, footerY - viewportY - 30);
+        vaultRouteListViewport = new RectHitbox(innerX, viewportY, innerW, viewportH);
+        List<OwnerPcVaultRouteStepPayload> steps = VaultRouteEditorClientState.steps();
+        int rowH = 72;
+        int rowGap = 8;
+        int contentH = steps.isEmpty() ? viewportH : (steps.size() * (rowH + rowGap)) - rowGap;
+        vaultRouteEditorMaxScroll = pixelScrollMax(contentH, viewportH);
+        vaultRouteEditorScroll = Math.max(0, Math.min(vaultRouteEditorScroll, vaultRouteEditorMaxScroll));
+        int rowY = viewportY - vaultRouteEditorScroll;
+        for (int i = 0; i < steps.size(); i++) {
+            OwnerPcVaultRouteStepPayload step = steps.get(i);
+            if (rowY >= viewportY && rowY + rowH <= viewportY + viewportH) {
+                initVaultRouteStepWidgets(step, i, innerX, rowY, innerW, rowH);
+            }
+            rowY += rowH + rowGap;
+        }
+
+        int footerW = Math.max(50, (innerW - gap) / 2);
+        addPcButton(innerX, footerY, footerW, 22, "Cancel", 0xFF7895B4,
+                btn -> cancelVaultRouteEditor()).setLabelOffset(6, 1);
+        DesktopButton save = addPcButton(innerX + footerW + gap, footerY, footerW, 22,
+                VaultRouteEditorClientState.isWaitingForServer() ? "Saving..." : "Save Route",
+                ORDER_BOARD_CYAN,
+                btn -> saveVaultRoute()).setLabelOffset(6, 1);
+        save.active = !VaultRouteEditorClientState.isWaitingForServer();
+    }
+
+    private void initVaultRouteStepWidgets(OwnerPcVaultRouteStepPayload step,
+                                           int index,
+                                           int x,
+                                           int y,
+                                           int width,
+                                           int height) {
+        int buttonGap = 4;
+        int commonW = 26;
+        int commonY = y + 6;
+        int commonX = x + width - 10 - ((commonW * 3) + (buttonGap * 2));
+        DesktopButton up = addPcButton(commonX, commonY, commonW, 20, "Up", 0xFF7895B4,
+                btn -> {
+                    VaultRouteEditorClientState.moveStep(index, -1);
+                    rebuildWidgets();
+                });
+        DesktopButton down = addPcButton(commonX + commonW + buttonGap, commonY, commonW, 20, "Dn", 0xFF7895B4,
+                btn -> {
+                    VaultRouteEditorClientState.moveStep(index, 1);
+                    rebuildWidgets();
+                });
+        addPcButton(commonX + ((commonW + buttonGap) * 2), commonY, commonW, 20, "Del", ORDER_BOARD_RED,
+                btn -> {
+                    VaultRouteEditorClientState.deleteStep(index);
+                    rebuildWidgets();
+                });
+        up.active = index > 0;
+        down.active = index + 1 < VaultRouteEditorClientState.steps().size();
+
+        int controlX = x + 10;
+        int controlY = y + height - 24;
+        int controlW = Math.max(42, width - 20);
+        if (step instanceof OwnerPcVaultRouteStepPayload.Walk) {
+            addPcButton(controlX, controlY, Math.min(132, controlW), 20, "Change Coordinate", ORDER_BOARD_CYAN,
+                    btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.WALK, index));
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Wait wait) {
+            addVaultRouteNumberInput(controlX, controlY, Math.min(130, controlW),
+                    wait.durationTicks(), 4,
+                    value -> VaultRouteEditorClientState.updateWait(index, value));
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Redstone redstone) {
+            int pickW = Math.max(42, Math.min(82, controlW / 3));
+            int fieldW = Math.max(28, (controlW - pickW - 8) / 2);
+            addVaultRouteNumberInput(controlX, controlY, fieldW,
+                    redstone.strength(), 2,
+                    value -> updateVaultRouteRedstoneStrength(index, value));
+            addVaultRouteNumberInput(controlX + fieldW + 4, controlY, fieldW,
+                    redstone.durationTicks(), 4,
+                    value -> updateVaultRouteRedstoneDuration(index, value));
+            addPcButton(controlX + (fieldW * 2) + 8, controlY, pickW, 20,
+                    "Pick Target", ORDER_BOARD_VIOLET,
+                    btn -> {
+                        OwnerPcVaultRouteStepPayload current = VaultRouteEditorClientState.steps().get(index);
+                        if (current instanceof OwnerPcVaultRouteStepPayload.Redstone currentRedstone) {
+                            beginVaultRouteRedstonePicker(
+                                    index, currentRedstone.strength(), currentRedstone.durationTicks());
+                        }
+                    });
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Rfid) {
+            addPcButton(controlX, controlY, Math.min(132, controlW), 20, "Change Scanner", ORDER_BOARD_GREEN,
+                    btn -> beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode.RFID, index));
+        }
+    }
+
+    private DesktopEditBox addVaultRouteNumberInput(int x,
+                                                     int y,
+                                                     int width,
+                                                     int value,
+                                                     int maxLength,
+                                                     java.util.function.IntConsumer consumer) {
+        DesktopEditBox input = new DesktopEditBox(this.font, x, y, width, 20, Component.empty());
+        input.setValue(String.valueOf(value));
+        input.setFilter(text -> text == null || text.isEmpty() || text.chars().allMatch(Character::isDigit));
+        input.setMaxLength(maxLength);
+        input.setResponder(text -> {
+            if (text == null || text.isBlank()) {
+                return;
+            }
+            try {
+                consumer.accept(Integer.parseInt(text));
+            } catch (NumberFormatException ignored) {
+                // The bounded state keeps the previous valid value.
+            }
+        });
+        input.setTextColor(0xFFFFFFFF);
+        input.setTextColorUneditable(0xFFCFD8E3);
+        return addRenderableWidget(input);
+    }
+
+    private void updateVaultRouteRedstoneStrength(int index, int value) {
+        List<OwnerPcVaultRouteStepPayload> steps = VaultRouteEditorClientState.steps();
+        if (index >= 0 && index < steps.size()
+                && steps.get(index) instanceof OwnerPcVaultRouteStepPayload.Redstone redstone) {
+            VaultRouteEditorClientState.updateRedstone(index, value, redstone.durationTicks());
+        }
+    }
+
+    private void updateVaultRouteRedstoneDuration(int index, int value) {
+        List<OwnerPcVaultRouteStepPayload> steps = VaultRouteEditorClientState.steps();
+        if (index >= 0 && index < steps.size()
+                && steps.get(index) instanceof OwnerPcVaultRouteStepPayload.Redstone redstone) {
+            VaultRouteEditorClientState.updateRedstone(index, redstone.strength(), value);
+        }
     }
 
     private void initModernBankModalWidgets(OwnerPcBankDataPayload data) {
@@ -1195,36 +1914,52 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                         "@account.temp.expires_millis", "");
             }
             case SAFE_POLICY -> {
+                formValues.putIfAbsent("safe.policy.size", "SMALL");
                 formValues.putIfAbsent("safe.policy.mode", "FREE");
                 formValues.putIfAbsent("safe.policy.amount", "0.00");
                 formValues.putIfAbsent("safe.policy.period", "12096000");
                 formValues.putIfAbsent("safe.policy.overdue", "5184000");
+                String selectedSize = normalizeSafePolicySize(formValues.getOrDefault("safe.policy.size", "SMALL"));
+                int sizeButtonW = Math.max(58, (width - (gap * 3)) / 4);
+                String[] sizes = {"SMALL", "MEDIUM", "LARGE", "EXTRA_LARGE"};
+                for (int i = 0; i < sizes.length; i++) {
+                    String size = sizes[i];
+                    String label = safePolicySizeLabel(size);
+                    addModernBankModalButton(x + ((sizeButtonW + gap) * i), y, sizeButtonW,
+                            label,
+                            size.equals(selectedSize) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                            btn -> {
+                                applySafePolicyFormForSize(data, size);
+                                rebuildWidgets();
+                            });
+                }
                 int third = Math.max(58, (width - (gap * 2)) / 3);
                 String mode = formValues.getOrDefault("safe.policy.mode", "FREE").toUpperCase(Locale.ROOT);
-                addModernBankModalButton(x, y, third, "Free", "FREE".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                int modeY = y + 52;
+                addModernBankModalButton(x, modeY, third, "Free", "FREE".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
                         btn -> {
                             formValues.put("safe.policy.mode", "FREE");
                             rebuildWidgets();
                         });
-                addModernBankModalButton(x + third + gap, y, third, "One-Time", "ONE_TIME".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                addModernBankModalButton(x + third + gap, modeY, third, "One-Time", "ONE_TIME".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
                         btn -> {
                             formValues.put("safe.policy.mode", "ONE_TIME");
                             rebuildWidgets();
                         });
-                addModernBankModalButton(x + ((third + gap) * 2), y, third, "Recurring", "RECURRING".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
+                addModernBankModalButton(x + ((third + gap) * 2), modeY, third, "Recurring", "RECURRING".equals(mode) ? ORDER_BOARD_CYAN : 0xFF7895B4,
                         btn -> {
                             formValues.put("safe.policy.mode", "RECURRING");
                             rebuildWidgets();
                         });
                 int half = Math.max(90, (width - gap) / 2);
-                addModernBankModalInput("safe.policy.amount", x, y + 52, half, "Amount");
-                addModernBankModalInput("safe.policy.period", x + half + gap, y + 52, half, "Rent period ticks");
-                addModernBankModalInput("safe.policy.overdue", x, y + 96, half, "Overdue ticks");
+                addModernBankModalInput("safe.policy.amount", x, y + 104, half, "Amount");
+                addModernBankModalInput("safe.policy.period", x + half + gap, y + 104, half, "Rent period ticks");
+                addModernBankModalInput("safe.policy.overdue", x, y + 148, half, "Overdue ticks");
                 int btnW = modernBankModalFooterButtonWidth(width, 2);
                 int startX = modernBankModalFooterStartX(x, width, 2, btnW, gap);
                 addModernBankModalButton(startX, buttonY, btnW, "Cancel", 0xFF7895B4, btn -> closeModernBankModal());
                 addModernBankModalActionButton(startX + btnW + gap, buttonY, btnW, "Save Policy", ORDER_BOARD_GOLD,
-                        "SAFE_BOX_POLICY", "@safe.policy.mode", "@safe.policy.amount", "@safe.policy.period", "@safe.policy.overdue");
+                        "SAFE_BOX_POLICY", "@safe.policy.size_mode", "@safe.policy.amount", "@safe.policy.period", "@safe.policy.overdue");
             }
             case SAFE_SEIZE_CONFIRM -> {
                 int btnW = modernBankModalFooterButtonWidth(width, 2);
@@ -1233,6 +1968,26 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 addModernBankModalActionButton(startX + btnW + gap, buttonY, btnW, "Seize Box", ORDER_BOARD_RED,
                         "SAFE_BOX_SEIZE", "@safe.seize.account", "", "", "");
             }
+            case PREMISE_DELETE_CONFIRM -> {
+                boolean deletePending = isPremiseDeletePending();
+                int btnW = modernBankModalFooterButtonWidth(width, 2);
+                int startX = modernBankModalFooterStartX(x, width, 2, btnW, gap);
+                DesktopButton deleteCancelButton = addModernBankModalButton(
+                        startX, buttonY, btnW, "Cancel", 0xFF7895B4,
+                        btn -> closeModernBankModal());
+                deleteCancelButton.active = !deletePending;
+                DesktopButton deleteConfirmButton = addModernBankModalButton(
+                        startX + btnW + gap, buttonY, btnW,
+                        deletePending ? "Deleting..." : "Confirm Delete",
+                        ORDER_BOARD_RED,
+                        btn -> confirmPremiseDelete());
+                deleteConfirmButton.active = !deletePending;
+            }
+            case SAFE_STORAGE_DETAILS -> {
+                int btnW = modernBankModalFooterButtonWidth(width, 1);
+                addModernBankModalButton(x + width - btnW, buttonY, btnW,
+                        "Close", 0xFF7895B4, btn -> closeModernBankModal());
+            }
             case NONE -> {
             }
         }
@@ -1240,6 +1995,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private DesktopEditBox addModernBankModalInput(String key, int x, int y, int width, String placeholder) {
         DesktopEditBox input = addFormInput(key, x, y, width, placeholder);
+        modernBankModalWidgets.add(input);
         input.visible = true;
         input.active = true;
         InputHelp help = helpForInput(key);
@@ -1271,6 +2027,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                                    java.util.function.Consumer<DesktopButton> onPress) {
         DesktopButton button = addPcButton(x, y, width, 24, label, accent, onPress)
                 .setLabelOffset(4, 1);
+        modernBankModalWidgets.add(button);
         button.visible = true;
         button.active = true;
         addBankHelpHitbox(x, y, width, 24, label, modernBankModalButtonHelp(label));
@@ -1337,6 +2094,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ACCOUNT_TEMP_LIMIT -> "Open a temporary account limit editor.";
             case SAFE_POLICY -> "Edit the safety deposit box pricing policy.";
             case SAFE_SEIZE_CONFIRM -> "Review a locked overdue safety box before seizure.";
+            case PREMISE_DELETE_CONFIRM -> "Review an eligible empty premise before permanent deletion.";
+            case SAFE_STORAGE_DETAILS -> "Inspect the selected vault storage marker.";
             case NONE -> modernBankButtonHelp(label);
         };
     }
@@ -1356,6 +2115,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case "filter" -> "Cycle which market offers are shown.";
             case "sort" -> "Cycle the market sorting metric.";
             case "high-low", "low-high" -> "Reverse the current market sort direction.";
+            case "public" -> "Allow customers and staff to enter this premise.";
+            case "staff_only" -> "Restrict this premise to bank staff.";
+            case "update exit" -> "Close the Owner PC and select a new in-world exit position.";
+            case "delete premise" -> "Delete is available only when the server reports no blockers.";
             default -> "Use this control to run the focused bank workflow.";
         };
     }
@@ -1374,6 +2137,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case "claim area" -> "Claim the configured cuboid around your current player position.";
             case "save policy" -> "Save the selected safe-box pricing mode and timing values.";
             case "seize box" -> "Confirm seizure of the selected locked overdue safety box into escrow.";
+            case "confirm delete" -> "Permanently delete the selected eligible premise.";
             case "freeze" -> "Freeze the selected account with the entered reason.";
             case "borrow" -> "Submit this borrowing request.";
             case "post offer" -> "Publish this offer to the interbank market.";
@@ -1604,6 +2368,49 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                              int width,
                                              int height,
                                              ShopStockroomItemCardData item) {
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + height);
+        }
+    }
+
+    private record SafeBoxCellData(int rowIndex,
+                                   int doorIndex,
+                                   String type,
+                                   String typeLabel,
+                                   int rowSpan,
+                                   String status,
+                                   String boxNumber,
+                                   String owner,
+                                   String accountId,
+                                   String paidAmount,
+                                   long rentPeriodTicks,
+                                   long assignedAtMillis,
+                                   String locateTarget) {}
+
+    private record SafePolicyData(String type,
+                                  String label,
+                                  String mode,
+                                  String amount,
+                                  long rentPeriodTicks,
+                                  long overdueTicks,
+                                  int total,
+                                  int assigned,
+                                  int free) {}
+
+    private record SafeBoxRowCardData(int index,
+                                      String dimension,
+                                      int x,
+                                      int y,
+                                      int z,
+                                      String locateTarget,
+                                      int boxes,
+                                      int assigned,
+                                      int locked,
+                                      int covers,
+                                      int empty,
+                                      List<SafeBoxCellData> cells) {}
+
+    private record SafeBoxLocateHitbox(int x, int y, int width, int height, SafeBoxCellData box) {
         boolean contains(double mouseX, double mouseY) {
             return mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + height);
         }
@@ -1885,6 +2692,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         private int navScroll;
         private boolean overviewDetailOpen;
         private String overviewDetailAction = "SHOW_INFO";
+        private SafePanelTab safePanelTab = SafePanelTab.DEPOSIT_BOXES;
+        private SafeLogFilter safeLogFilter = SafeLogFilter.ALL;
+        private String selectedVaultStorageClaimId = "";
         private AccountCardData selectedAccountCard;
         private boolean accountProfileOpen;
         private boolean lendingMarketOpen;
@@ -1895,6 +2705,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         private MarketOfferData pendingMarketAccept;
         private boolean refreshMarketAfterNextResponse;
         private final Map<String, String> formValues = new HashMap<>();
+        private OwnerPcPremiseDeleteLifecycle.State premiseDeleteState =
+                OwnerPcPremiseDeleteLifecycle.closed();
         private boolean shopLevelRoadmapOpen;
         private int shopLevelRoadmapScrollX;
         private ShopLevelRoadmapNode shopLevelRoadmapSelectedNode;
@@ -1923,6 +2735,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         OVERVIEW,
         ACCOUNTS,
         SAFE,
+        PREMISES,
         BRANDING,
         BUSINESS,
         LIMITS,
@@ -1932,6 +2745,39 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         HOURS,
         COMPLIANCE,
         PERMISSIONS
+    }
+
+    private enum SafePanelTab {
+        DEPOSIT_BOXES("Deposit Boxes"),
+        ACCESS_LOGS("Access Logs"),
+        ALARMS("Alarms"),
+        VAULT_STORAGE("Vault Storage");
+
+        private final String label;
+
+        SafePanelTab(String label) {
+            this.label = label;
+        }
+    }
+
+    private enum SafeLogFilter {
+        ALL("All"),
+        BOX_ACCESS("Box Access"),
+        ASSIGNMENT("Assignments"),
+        SECURITY("Security"),
+        STORAGE("Storage"),
+        SYSTEM("System");
+
+        private final String label;
+
+        SafeLogFilter(String label) {
+            this.label = label;
+        }
+    }
+
+    private enum ShopHoursClockView {
+        SERVER,
+        LOCAL
     }
 
     private enum MarketSort {
@@ -1979,7 +2825,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         ACCOUNT_FREEZE,
         ACCOUNT_TEMP_LIMIT,
         SAFE_POLICY,
-        SAFE_SEIZE_CONFIRM
+        SAFE_SEIZE_CONFIRM,
+        PREMISE_DELETE_CONFIRM,
+        SAFE_STORAGE_DETAILS
     }
 
     private enum FranchiseRequirementPickerMode {
@@ -2196,6 +3044,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private static final String SHOP_PERMISSIONS_ROLE_KEY = "shop.permissions.role";
     private static final String SHOP_HOURS_OPEN_KEY = "shop.hours.open";
     private static final String SHOP_HOURS_CLOSE_KEY = "shop.hours.close";
+    private static final String SHOP_HOURS_SERVER_ZONE_ID_KEY = "shop.hours.server_zone_id";
+    private static final String SHOP_HOURS_SERVER_ZONE_LABEL_KEY = "shop.hours.server_zone_label";
+    private static final String SHOP_HOURS_SERVER_EPOCH_KEY = "shop.hours.server_epoch_millis";
     private static final List<String> SHOP_HOURS_DAY_KEYS = List.of("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN");
     private static final String SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS_KEY = "shop.hours.deliverer_stockroom_access";
     private static final String SHOP_LIGHTING_ENABLED_KEY = "shop.lighting.enabled";
@@ -2230,6 +3081,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             Section.OVERVIEW,
             Section.ACCOUNTS,
             Section.SAFE,
+            Section.PREMISES,
             Section.BRANDING,
             Section.LIMITS,
             Section.GOVERNANCE,
@@ -2267,6 +3119,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private String selectedShopType = SHOP_TYPES.get(0);
 
     private final Map<String, String> formValues = new HashMap<>();
+    private OwnerPcPremiseDeleteLifecycle.State premiseDeleteState =
+            OwnerPcPremiseDeleteLifecycle.closed();
 
     private int outputPanelX;
     private int outputPanelY;
@@ -2293,6 +3147,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private boolean shopVaultPlanEditOpen;
     private final int[] shopVaultRequestedCounts = new int[SHOP_CASH_DENOMINATIONS.length];
     private final Map<String, DesktopEditBox> activeFormInputs = new HashMap<>();
+    private final List<AbstractWidget> modernBankModalWidgets = new ArrayList<>();
+    private String pendingFormInputFocusKey = "";
+    private boolean focusFirstModernBankModalInput;
     private final List<AccountCardHitbox> visibleAccountCards = new ArrayList<>();
     private final List<AccountTransactionHitbox> visibleAccountTransactions = new ArrayList<>();
     private AccountCardData selectedAccountCard;
@@ -2317,6 +3174,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private final List<ShopInventoryActionHitbox> visibleShopInventoryActions = new ArrayList<>();
     private final List<ShopInventoryShelfSelectHitbox> visibleShopInventoryShelfCards = new ArrayList<>();
     private final List<ShopStockroomLocateHitbox> visibleShopStockroomLocateActions = new ArrayList<>();
+    private final List<SafeBoxLocateHitbox> visibleSafeBoxLocateActions = new ArrayList<>();
     private final List<ShopOrderCardHitbox> visibleShopOrderCards = new ArrayList<>();
     private final List<ShopOrderPalletCardHitbox> visibleShopOrderPalletCards = new ArrayList<>();
     private final List<ShopOrderPickCardHitbox> visibleShopOrderPickCards = new ArrayList<>();
@@ -2325,6 +3183,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private final List<ShopOperationsHelpHitbox> visibleShopOperationsHelp = new ArrayList<>();
     private final List<ShopOperationsHelpHitbox> visibleBankHelp = new ArrayList<>();
     private final List<ShopOperationsHelpHitbox> visibleBankRuntimeHelp = new ArrayList<>();
+    private final List<VaultStorageMarkerHitbox> visibleVaultStorageMarkers = new ArrayList<>();
     private final List<SectionTextLabel> visibleSectionTextLabels = new ArrayList<>();
     private String shopOrderSelectedId = "";
     private String shopOrderSelectedPalletRef = "";
@@ -2337,7 +3196,15 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private boolean shopOrderPickerReturnToCreateModal;
     private boolean shopOrderPalletPickerReturnToCreateModal;
     private ShopEmployeeCardData selectedShopEmployeeModal;
+    private OwnerPcVaultRouteEditorPayload handledVaultRoutePayload;
+    private int vaultRouteEditorScroll;
+    private int vaultRouteEditorMaxScroll;
+    private int vaultRouteDetailsScroll;
+    private int vaultRouteDetailsMaxScroll;
+    private RectHitbox vaultRouteListViewport;
+    private boolean vaultRouteRestoreBankRequested;
     private String shopHoursModalDay = "";
+    private ShopHoursClockView shopHoursClockView = ShopHoursClockView.SERVER;
     private ShopPermissionMemberCardData selectedShopPermissionModal;
     private boolean shopDeleteModalOpen;
     private ShopInventoryFilterMode shopInventoryFilterMode = ShopInventoryFilterMode.ALL;
@@ -2347,6 +3214,15 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     private int shopInventoryMapScroll;
     private int shopInventoryMapMaxScroll;
     private RectHitbox shopInventoryMapViewportHitbox;
+    private int safeBoxMapScroll;
+    private int safeBoxMapMaxScroll;
+    private RectHitbox safeBoxMapViewportHitbox;
+    private SafePanelTab safePanelTab = SafePanelTab.DEPOSIT_BOXES;
+    private SafeLogFilter safeLogFilter = SafeLogFilter.ALL;
+    private String selectedVaultStorageClaimId = "";
+    private OwnerPcVaultStorageMarkerPayload selectedVaultStorageMarker;
+    private int vaultStorageDetailsScroll;
+    private int vaultStorageDetailsMaxScroll;
     private int shopStockroomPanelScroll;
     private int shopStockroomPanelMaxScroll;
     private RectHitbox shopStockroomViewportHitbox;
@@ -2575,6 +3451,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         applyForcedGuiScale();
         configureVirtualScale();
         initializeAuthStateIfNeeded();
+        restoreVaultRouteEditorWindow();
         rebuildWidgets();
     }
 
@@ -2613,8 +3490,11 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     @Override
     protected void rebuildWidgets() {
+        queueCurrentFormInputFocus();
+        this.setFocused(null);
         this.clearWidgets();
         this.activeFormInputs.clear();
+        this.modernBankModalWidgets.clear();
         this.visibleAccountCards.clear();
         this.visibleAccountTransactions.clear();
         this.accountHistoryViewportX = 0;
@@ -2631,8 +3511,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         this.visibleShopBusinessActions.clear();
         this.visibleShopBusinessHelp.clear();
         this.visibleShopOperationsHelp.clear();
+        this.visibleSafeBoxLocateActions.clear();
         this.visibleBankHelp.clear();
         this.visibleBankRuntimeHelp.clear();
+        this.visibleVaultStorageMarkers.clear();
         this.visibleSectionTextLabels.clear();
         this.visibleOrderBoardCards.clear();
         this.visibleOrderBoardRankHitboxes.clear();
@@ -2658,6 +3540,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         this.taskbarMenuHitbox = null;
         this.taskbarLogoutHitbox = null;
         this.taskbarTurnOffHitbox = null;
+        this.safeBoxMapViewportHitbox = null;
+        this.vaultRouteListViewport = null;
 
         if (!desktopAuthenticated) {
             initAuthWidgets();
@@ -2677,6 +3561,63 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             initUtilityWindowWidgets();
         }
         initTaskbarWidgets();
+    }
+
+    private void queueCurrentFormInputFocus() {
+        if (focusFirstModernBankModalInput) {
+            return;
+        }
+        GuiEventListener focused = this.getFocused();
+        if (!(focused instanceof DesktopEditBox input)) {
+            return;
+        }
+        for (Map.Entry<String, DesktopEditBox> entry : activeFormInputs.entrySet()) {
+            if (entry.getValue() == input) {
+                pendingFormInputFocusKey = entry.getKey();
+                return;
+            }
+        }
+    }
+
+    private void applyPendingFormInputFocus() {
+        DesktopEditBox target = null;
+        if (focusFirstModernBankModalInput && isModernBankActionModalOpen()) {
+            target = modernBankModalWidgets.stream()
+                    .filter(DesktopEditBox.class::isInstance)
+                    .map(DesktopEditBox.class::cast)
+                    .filter(input -> input.visible && input.active)
+                    .findFirst()
+                    .orElse(null);
+        } else if (!pendingFormInputFocusKey.isBlank()) {
+            target = activeFormInputs.get(pendingFormInputFocusKey);
+        }
+        if (target == null || !target.visible || !target.active) {
+            pendingFormInputFocusKey = "";
+            focusFirstModernBankModalInput = false;
+            return;
+        }
+        this.setFocused(target);
+        target.moveCursorToEnd(false);
+        pendingFormInputFocusKey = "";
+        focusFirstModernBankModalInput = false;
+    }
+
+    private GuiEventListener focusedModernBankModalWidget() {
+        applyPendingFormInputFocus();
+        GuiEventListener focused = this.getFocused();
+        if (focused != null && modernBankModalWidgets.contains(focused)) {
+            return focused;
+        }
+        DesktopEditBox firstInput = modernBankModalWidgets.stream()
+                .filter(DesktopEditBox.class::isInstance)
+                .map(DesktopEditBox.class::cast)
+                .filter(input -> input.visible && input.active)
+                .findFirst()
+                .orElse(null);
+        if (firstInput != null) {
+            this.setFocused(firstInput);
+        }
+        return firstInput;
     }
 
     private void initializeAuthStateIfNeeded() {
@@ -2758,6 +3699,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         refreshMarketAfterNextResponse = false;
         marketOfferCache.clear();
         formValues.clear();
+        premiseDeleteState = OwnerPcPremiseDeleteLifecycle.closed();
         activeFormInputs.clear();
         selectedOwnershipModel = OWNERSHIP_MODELS.get(0);
         selectedExplorerFileName = "";
@@ -2775,6 +3717,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         shopInventoryMapScroll = 0;
         shopInventoryMapMaxScroll = 0;
         shopInventoryMapViewportHitbox = null;
+        safeBoxMapScroll = 0;
+        safeBoxMapMaxScroll = 0;
+        safeBoxMapViewportHitbox = null;
         shopStockroomPanelScroll = 0;
         shopStockroomPanelMaxScroll = 0;
         shopStockroomViewportHitbox = null;
@@ -5742,18 +6687,28 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 boolean wideHours = fullW >= 820;
                 int scheduleW = wideHours ? Math.max(420, (fullW * 2) / 3) : fullW;
                 int scheduleH = wideHours ? 410 : 398;
-                int rowY = fullY + 58;
+                int rowY = fullY + 70;
                 int editW = 46;
-                for (ShopHoursDayData day : getShopHoursDaysFromForm()) {
+                for (ShopHoursDayData day : getDisplayedShopHoursDays()) {
                     addSectionPcButton(fullX + scheduleW - editW - 14, rowY - 4, editW, 18,
                             "Edit", btn -> openShopHoursModal(day.key())).setLabelOffset(4, 0);
                     rowY += 28;
                 }
                 int scheduleControlsY = fullY + scheduleH - 64;
-                int halfControls = Math.max(90, (scheduleW - 42) / 2);
-                addSectionPcButton(fullX + 14, scheduleControlsY, halfControls, 22, "Refresh hours",
+                int controlsGap = 8;
+                int controlW = Math.max(68, (scheduleW - 28 - (controlsGap * 2)) / 3);
+                addSectionPcButton(fullX + 14, scheduleControlsY, controlW, 22, "Refresh",
                         btn -> sendShopDesktopAction("SHOP_HOURS_LIGHTING_REPORT", "")).setLabelOffset(6, 1);
-                addSectionPcButton(fullX + 24 + halfControls, scheduleControlsY, halfControls, 22, "Closed access",
+                addSectionPcButton(fullX + 14 + controlW + controlsGap, scheduleControlsY, controlW, 22,
+                        shopHoursClockView == ShopHoursClockView.SERVER ? "Time: Server" : "Time: Local",
+                        btn -> {
+                            shopHoursClockView = shopHoursClockView == ShopHoursClockView.SERVER
+                                    ? ShopHoursClockView.LOCAL
+                                    : ShopHoursClockView.SERVER;
+                            rebuildWidgets();
+                        }).setLabelOffset(6, 1);
+                addSectionPcButton(fullX + 14 + ((controlW + controlsGap) * 2), scheduleControlsY,
+                        controlW, 22, "Closed access",
                         btn -> {
                             boolean allowed = "true".equalsIgnoreCase(formValues.getOrDefault(SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS_KEY, "false"));
                             formValues.put(SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS_KEY, allowed ? "false" : "true");
@@ -6818,6 +7773,19 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 registerShopOperationsHelp(refreshHours, "Refresh Hours & Lighting",
                         "Reloads current schedule, open status, and managed lighting state from server.");
                 curY += 32;
+                DesktopButton timeZoneView = addSectionPcButton(innerX, curY, innerWidth, 24,
+                        shopHoursClockView == ShopHoursClockView.SERVER
+                                ? "Display: Server Time - " + shopHoursServerZoneDescription()
+                                : "Display: Local Time - " + shopHoursLocalZoneDescription(),
+                        btn -> {
+                            shopHoursClockView = shopHoursClockView == ShopHoursClockView.SERVER
+                                    ? ShopHoursClockView.LOCAL
+                                    : ShopHoursClockView.SERVER;
+                            rebuildWidgets();
+                        }).setLabelOffset(6, 1);
+                registerShopOperationsHelp(timeZoneView, "Schedule Timezone",
+                        "Switches only the displayed weekly schedule. Editing remains in the authoritative server timezone.");
+                curY += 32;
 
                 curY = addSectionGroupHeader(innerX, curY, innerWidth, "Closed-Hours Delivery Access");
                 boolean delivererStockroomAccess = "true".equalsIgnoreCase(
@@ -7232,9 +8200,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
         ShopBusinessSnapshot snapshot = parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines());
         String type = normalizeBusinessShopType(snapshot.shopType());
-        int panelX = sectionViewportX + 8;
-        int panelY = sectionViewportY + 8;
-        int panelW = Math.max(120, sectionViewportW - 16);
+        int panelY = sectionViewportY;
+        int panelW = Math.max(120, sectionViewportW);
         int contentHeight = getShopBusinessPanelContentHeight(snapshot, panelW);
         markSectionControl(panelY + contentHeight, 1);
 
@@ -8213,6 +9180,184 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         };
     }
 
+    private PremiseHeaderActions premiseHeaderActions(int contentX,
+                                                      int contentRight,
+                                                      int headerY,
+                                                      int toolbarY,
+                                                      int defaultButtonWidth,
+                                                      boolean showClaim) {
+        int contentWidth = Math.max(1, contentRight - contentX);
+        int refreshWidth = Math.max(1, Math.min(defaultButtonWidth, contentWidth - 28));
+        int refreshX = Math.max(contentX, contentRight - refreshWidth - 14);
+        if (!showClaim) {
+            return new PremiseHeaderActions(
+                    refreshX, toolbarY, refreshWidth,
+                    refreshX, toolbarY, 0,
+                    refreshX - 12);
+        }
+        if (contentWidth < 420) {
+            int stackedWidth = Math.max(1, Math.min(112, contentWidth - 28));
+            int stackedX = Math.max(contentX, contentRight - stackedWidth - 14);
+            return new PremiseHeaderActions(
+                    stackedX, headerY + 8, stackedWidth,
+                    stackedX, headerY + 38, stackedWidth,
+                    stackedX - 12);
+        }
+        int claimWidth = Math.min(112, Math.max(88, (contentWidth - refreshWidth - 44) / 2));
+        int claimX = Math.max(contentX, refreshX - claimWidth - 8);
+        return new PremiseHeaderActions(
+                refreshX, toolbarY, refreshWidth,
+                claimX, toolbarY, claimWidth,
+                claimX - 12);
+    }
+
+    private boolean hasPremisePresentationPermission(OwnerPcBankDataPayload data) {
+        if (data != null && data.ownerView()) {
+            return true;
+        }
+        Minecraft client = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        return client != null && client.player != null && client.player.hasPermissions(3);
+    }
+
+    private void setPremiseMode(OwnerPcPremisePayload premise, SafePremiseMode mode) {
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (premise == null || mode == null || !hasPremisePresentationPermission(data)) {
+            return;
+        }
+        sendOwnerPcPremiseAction(
+                OwnerPcPremiseActionPayload.Action.SET_MODE,
+                premise.premiseId(),
+                mode);
+    }
+
+    private void startPremiseClaimAndClose() {
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (!hasPremisePresentationPermission(data)) {
+            return;
+        }
+        sendOwnerPcPremiseAction(OwnerPcPremiseActionPayload.Action.START_CLAIM, "", null);
+        closeEntirePcUi();
+    }
+
+    private void startPremiseExitEditAndClose(OwnerPcPremisePayload premise) {
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (premise == null || !hasPremisePresentationPermission(data)) {
+            return;
+        }
+        sendOwnerPcPremiseAction(
+                OwnerPcPremiseActionPayload.Action.START_EXIT_EDIT,
+                premise.premiseId(),
+                null);
+        closeEntirePcUi();
+    }
+
+    private void openPremiseDeleteConfirmation(OwnerPcPremisePayload premise) {
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (isPremiseDeletePending()
+                || activeBankId == null
+                || premise == null
+                || !hasPremisePresentationPermission(data)
+                || !premise.deleteBlockers().isEmpty()) {
+            return;
+        }
+        premiseDeleteState = OwnerPcPremiseDeleteLifecycle.confirming(
+                activeBankId, premise.premiseId());
+        taskbarMenuOpen = false;
+        bankActionModal = BankActionModal.PREMISE_DELETE_CONFIRM;
+        rebuildWidgets();
+    }
+
+    private void confirmPremiseDelete() {
+        if (!premiseDeleteState.canConfirm()) {
+            return;
+        }
+        String premiseId = premiseDeleteState.premiseId();
+        OwnerPcPremisePayload premise = findActivePremise(premiseId);
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (premise == null || !hasPremisePresentationPermission(data)) {
+            ClientOwnerPcData.setToast(false, "The selected premise is no longer available.");
+            return;
+        }
+        if (!premise.deleteBlockers().isEmpty()) {
+            ClientOwnerPcData.setToast(false,
+                    "Deletion is blocked: " + premiseDeleteBlockerSummary(premise));
+            return;
+        }
+        OwnerPcPremiseDeleteLifecycle.Confirmation confirmation =
+                premiseDeleteState.confirm(UUID.randomUUID());
+        if (!confirmation.shouldSend()) {
+            return;
+        }
+        premiseDeleteState = confirmation.state();
+        rebuildWidgets();
+        OwnerPcPremiseDeleteLifecycle.Request request = confirmation.request();
+        sendOwnerPcPremiseAction(
+                request.bankId(),
+                request.operationId(),
+                OwnerPcPremiseActionPayload.Action.DELETE,
+                request.premiseId(),
+                null);
+    }
+
+    private boolean isPremiseDeletePending() {
+        return premiseDeleteState.pending();
+    }
+
+    private boolean isPremiseDeleteModalOpen() {
+        return activeWindow == WindowMode.BANK_APP
+                && bankActionModal == BankActionModal.PREMISE_DELETE_CONFIRM
+                && premiseDeleteState.modalOpen();
+    }
+
+    private OwnerPcPremisePayload findActivePremise(String premiseId) {
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (data == null
+                || activeBankId == null
+                || !activeBankId.equals(data.bankId())
+                || premiseId == null
+                || premiseId.isBlank()) {
+            return null;
+        }
+        for (OwnerPcPremisePayload premise : data.premises()) {
+            if (premise != null && premiseId.equals(premise.premiseId())) {
+                return premise;
+            }
+        }
+        return null;
+    }
+
+    private String premiseDeleteBlockerSummary(OwnerPcPremisePayload premise) {
+        if (premise == null || premise.deleteBlockers().isEmpty()) {
+            return "none";
+        }
+        return premise.deleteBlockers().stream()
+                .map(this::premiseDeleteBlockerLabel)
+                .reduce((left, right) -> left + "; " + right)
+                .orElse("unknown blocker");
+    }
+
+    private void sendOwnerPcPremiseAction(OwnerPcPremiseActionPayload.Action action,
+                                          String premiseId,
+                                          SafePremiseMode mode) {
+        sendOwnerPcPremiseAction(activeBankId, UUID.randomUUID(), action, premiseId, mode);
+    }
+
+    private void sendOwnerPcPremiseAction(UUID bankId,
+                                          UUID operationId,
+                                          OwnerPcPremiseActionPayload.Action action,
+                                          String premiseId,
+                                          SafePremiseMode mode) {
+        if (bankId == null || operationId == null || action == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new OwnerPcPremiseActionPayload(
+                bankId,
+                operationId,
+                action,
+                premiseId == null ? "" : premiseId,
+                mode));
+    }
+
     private void sendOwnerPcAction(String action, String arg1, String arg2, String arg3, String arg4) {
         if (activeBankId == null) {
             return;
@@ -8296,6 +9441,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         state.navScroll = navScroll;
         state.overviewDetailOpen = overviewDetailOpen;
         state.overviewDetailAction = overviewDetailAction == null || overviewDetailAction.isBlank() ? "SHOW_INFO" : overviewDetailAction;
+        state.safePanelTab = safePanelTab;
+        state.safeLogFilter = safeLogFilter;
+        state.selectedVaultStorageClaimId = selectedVaultStorageClaimId == null ? "" : selectedVaultStorageClaimId;
         state.selectedAccountCard = selectedAccountCard;
         state.accountProfileOpen = accountProfileOpen;
         state.lendingMarketOpen = lendingMarketOpen;
@@ -8308,6 +9456,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         state.refreshMarketAfterNextResponse = refreshMarketAfterNextResponse;
         state.formValues.clear();
         state.formValues.putAll(formValues);
+        state.premiseDeleteState = premiseDeleteState;
         state.shopLevelRoadmapOpen = shopLevelRoadmapOpen;
         state.shopLevelRoadmapScrollX = Math.max(0, shopLevelRoadmapScrollX);
         state.shopLevelRoadmapSelectedNode = shopLevelRoadmapSelectedNode;
@@ -8338,6 +9487,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         overviewDetailAction = state.overviewDetailAction == null || state.overviewDetailAction.isBlank()
                 ? "SHOW_INFO"
                 : state.overviewDetailAction;
+        safePanelTab = state.safePanelTab == null ? SafePanelTab.DEPOSIT_BOXES : state.safePanelTab;
+        safeLogFilter = state.safeLogFilter == null ? SafeLogFilter.ALL : state.safeLogFilter;
+        selectedVaultStorageClaimId = state.selectedVaultStorageClaimId == null
+                ? "" : state.selectedVaultStorageClaimId;
         selectedAccountCard = state.selectedAccountCard;
         accountProfileOpen = state.accountProfileOpen;
         selectedAccountTransaction = null;
@@ -8352,6 +9505,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         refreshMarketAfterNextResponse = state.refreshMarketAfterNextResponse;
         formValues.clear();
         formValues.putAll(state.formValues);
+        premiseDeleteState = state.premiseDeleteState == null
+                ? OwnerPcPremiseDeleteLifecycle.closed()
+                : state.premiseDeleteState;
         if (isActiveShopApp()) {
             bankActionModal = BankActionModal.NONE;
             shopLevelRoadmapOpen = state.shopLevelRoadmapOpen;
@@ -9351,6 +10507,16 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         closeEntirePcUi();
     }
 
+    private void startViewingRoomClaimToolAndClose() {
+        sendOwnerPcAction("VIEWING_ROOM_CLAIM_TOOL", "", "", "", "");
+        closeEntirePcUi();
+    }
+
+    private void startViewingRoomAnchorAndClose(String roomId, String anchorKind) {
+        sendOwnerPcAction("VIEWING_ROOM_ANCHOR", roomId, anchorKind, "", "");
+        closeEntirePcUi();
+    }
+
     private void startShopCashierLinkAndClose() {
         sendShopDesktopAction("SHOP_LINK_CASHIER_TERMINAL", "");
         closeEntirePcUi();
@@ -9827,6 +10993,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             marketOfferCache.clear();
             refreshMarketAfterNextResponse = false;
             bankActionModal = BankActionModal.NONE;
+            premiseDeleteState = OwnerPcPremiseDeleteLifecycle.closed();
             shopLevelRoadmapOpen = false;
             shopLevelRoadmapSelectedNode = null;
             shopLevelRoadmapScrollX = 0;
@@ -9897,6 +11064,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
         if ("@account.temp.expires_millis".equals(value)) {
             return String.valueOf(resolveAccountTempExpiryMillis());
+        }
+        if ("@safe.policy.size_mode".equals(value)) {
+            return normalizeSafePolicySize(formValues.getOrDefault("safe.policy.size", "SMALL"))
+                    + ":" + formValues.getOrDefault("safe.policy.mode", "FREE").trim().toUpperCase(Locale.ROOT);
         }
         if (value.charAt(0) == '@') {
             return formValues.getOrDefault(value.substring(1), "").trim();
@@ -10163,6 +11334,13 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     public void refreshFromNetwork() {
         syncAuthStateFromDesktopData();
+        OwnerPcPremiseActionResponsePayload premiseResponse =
+                ClientOwnerPcData.consumePremiseActionResponse();
+        if (premiseResponse != null) {
+            handlePremiseActionResponse(premiseResponse);
+        }
+        consumeVaultRouteEditorResponse();
+        restoreVaultRouteEditorWindow();
         if (refreshMarketAfterNextResponse
                 && activeWindow == WindowMode.BANK_APP
                 && activeSection == Section.LENDING
@@ -10187,8 +11365,177 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         rebuildWidgets();
     }
 
+    private void handlePremiseActionResponse(OwnerPcPremiseActionResponsePayload payload) {
+        if (payload == null) {
+            return;
+        }
+
+        OwnerPcPremiseDeleteLifecycle.ResponseAction action =
+                payload.action() == OwnerPcPremiseActionPayload.Action.DELETE
+                        ? OwnerPcPremiseDeleteLifecycle.ResponseAction.DELETE
+                        : OwnerPcPremiseDeleteLifecycle.ResponseAction.OTHER;
+        BankWindowState state = bankWindows.get(payload.bankId());
+        if (state != null) {
+            OwnerPcPremiseDeleteLifecycle.Response response = state.premiseDeleteState.handle(
+                    action,
+                    payload.bankId(),
+                    payload.premiseId(),
+                    payload.operationId(),
+                    payload.success());
+            if (response.accepted()) {
+                state.premiseDeleteState = response.state();
+                if (response.shouldRefresh()) {
+                    state.bankActionModal = BankActionModal.NONE;
+                }
+            }
+        }
+
+        if (activeWindow == WindowMode.BANK_APP && payload.bankId().equals(activeBankId)) {
+            OwnerPcPremiseDeleteLifecycle.Response response = premiseDeleteState.handle(
+                    action,
+                    payload.bankId(),
+                    payload.premiseId(),
+                    payload.operationId(),
+                    payload.success());
+            if (response.accepted()) {
+                premiseDeleteState = response.state();
+                if (response.shouldRefresh()) {
+                    bankActionModal = BankActionModal.NONE;
+                }
+            }
+        }
+    }
+
+    private void consumeVaultRouteEditorResponse() {
+        OwnerPcVaultRouteEditorPayload payload = ClientOwnerPcData.getVaultRouteEditor();
+        if (payload == null || payload == handledVaultRoutePayload) {
+            return;
+        }
+        handledVaultRoutePayload = payload;
+        boolean editorWasOpen = VaultRouteEditorClientState.isEditorOpen();
+        if (VaultRouteEditorClientState.acceptServerResponse(payload)
+                && payload.success()
+                && !editorWasOpen) {
+            vaultRouteEditorScroll = 0;
+        }
+    }
+
+    private void restoreVaultRouteEditorWindow() {
+        if (!VaultRouteEditorClientState.shouldRestoreEditor()) {
+            return;
+        }
+        UUID bankId = VaultRouteEditorClientState.selectedBankId();
+        if (bankId == null) {
+            VaultRouteEditorClientState.clear();
+            return;
+        }
+        BankWindowState windowState = bankWindows.computeIfAbsent(bankId, BankWindowState::new);
+        windowState.activeSection = Section.STAFFING;
+        if (!bankWindowOrder.contains(bankId)) {
+            bankWindowOrder.add(bankId);
+        }
+        loadBankWindowState(bankId);
+        activeSection = Section.STAFFING;
+        activeWindow = WindowMode.BANK_APP;
+        bankWindowOpen = true;
+        ClientOwnerPcData.setSelectedBankId(bankId);
+
+        OwnerPcBankDataPayload data = ClientOwnerPcData.getCurrentBankData();
+        if (data != null && bankId.equals(data.bankId())) {
+            vaultRouteRestoreBankRequested = false;
+            VaultRouteEditorClientState.markEditorRestored();
+        } else if (!vaultRouteRestoreBankRequested) {
+            vaultRouteRestoreBankRequested = true;
+            requestBankData(bankId);
+        }
+    }
+
+    private void openBankTellerDetails(OwnerPcBankTellerPayload teller) {
+        if (activeBankId == null || teller == null) {
+            return;
+        }
+        VaultRouteEditorClientState.openDetails(activeBankId, teller.entityId());
+        vaultRouteDetailsScroll = 0;
+        vaultRouteEditorScroll = 0;
+        rebuildWidgets();
+    }
+
+    private void requestVaultRouteEditor(String vaultId, SafeTellerRouteDirection direction) {
+        UUID bankId = VaultRouteEditorClientState.selectedBankId();
+        UUID tellerId = VaultRouteEditorClientState.selectedTellerId();
+        if (bankId == null || tellerId == null || vaultId == null || vaultId.isBlank()) {
+            ClientOwnerPcData.setToast(false, "A bank, teller, and vault are required.");
+            return;
+        }
+        VaultRouteEditorClientState.requestEditor(vaultId, direction);
+        handledVaultRoutePayload = ClientOwnerPcData.getVaultRouteEditor();
+        PacketDistributor.sendToServer(new OwnerPcVaultRouteRequestPayload(
+                bankId, vaultId, tellerId, direction));
+        rebuildWidgets();
+    }
+
+    private void beginVaultRoutePicker(VaultRouteEditorClientState.PickerMode mode, int stepIndex) {
+        VaultRoutePickerHandshake.LaunchIntent intent = VaultRoutePickerHandshake.begin(mode, stepIndex);
+        if (intent.removeOwnerPcScreen()) {
+            closeOwnerPcForVaultRoutePicker();
+        }
+    }
+
+    private void beginVaultRouteRedstonePicker(int stepIndex, int strength, int durationTicks) {
+        VaultRoutePickerHandshake.LaunchIntent intent = VaultRoutePickerHandshake.beginRedstone(
+                stepIndex, strength, durationTicks);
+        if (intent.removeOwnerPcScreen()) {
+            closeOwnerPcForVaultRoutePicker();
+        }
+    }
+
+    private void closeOwnerPcForVaultRoutePicker() {
+        Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
+        if (mc != null) {
+            mc.setScreen(null);
+        }
+    }
+
+    private void saveVaultRoute() {
+        try {
+            OwnerPcVaultRouteSavePayload payload = VaultRouteEditorClientState.toSavePayload();
+            VaultRouteEditorClientState.expectServerResponse();
+            handledVaultRoutePayload = ClientOwnerPcData.getVaultRouteEditor();
+            PacketDistributor.sendToServer(payload);
+            rebuildWidgets();
+        } catch (IllegalStateException | IllegalArgumentException ex) {
+            String error = ex.getMessage() == null ? "Complete all required route fields." : ex.getMessage();
+            VaultRouteEditorClientState.showMessage(false, error);
+            ClientOwnerPcData.setToast(false, error);
+        }
+    }
+
+    private void cancelVaultRouteEditor() {
+        UUID editSessionId = VaultRouteEditorClientState.cancelEditor();
+        if (editSessionId != null) {
+            PacketDistributor.sendToServer(new OwnerPcVaultRouteCancelPayload(editSessionId));
+        }
+        vaultRouteEditorScroll = 0;
+        rebuildWidgets();
+    }
+
+    private void closeBankTellerDetails() {
+        VaultRouteEditorClientState.closeDetails();
+        vaultRouteDetailsScroll = 0;
+        vaultRouteEditorScroll = 0;
+        rebuildWidgets();
+    }
+
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        applyPendingFormInputFocus();
+        if (isModernBankActionModalOpen()) {
+            if (keyCode == 256) {
+                closeModernBankModal();
+                return true;
+            }
+            return routeModernBankModalKeyPressed(keyCode, scanCode, modifiers);
+        }
         if (taskbarMenuOpen && keyCode == 256) {
             taskbarMenuOpen = false;
             rebuildWidgets();
@@ -10263,10 +11610,13 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
 
-        if (activeWindow == WindowMode.BANK_APP && isModernBankActionModalOpen()) {
+        if (isVaultRouteModalOpen()) {
             if (keyCode == 256) {
-                bankActionModal = BankActionModal.NONE;
-                rebuildWidgets();
+                if (VaultRouteEditorClientState.isEditorOpen()) {
+                    cancelVaultRouteEditor();
+                } else {
+                    closeBankTellerDetails();
+                }
                 return true;
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
@@ -10424,8 +11774,50 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    private boolean routeModernBankModalKeyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == 258) {
+            cycleModernBankModalFocus((modifiers & 0x1) != 0);
+            return true;
+        }
+        GuiEventListener focused = focusedModernBankModalWidget();
+        if (focused != null) {
+            focused.keyPressed(keyCode, scanCode, modifiers);
+        }
+        return true;
+    }
+
+    private void cycleModernBankModalFocus(boolean reverse) {
+        List<AbstractWidget> focusableWidgets = modernBankModalWidgets.stream()
+                .filter(widget -> widget.visible && widget.active)
+                .toList();
+        if (focusableWidgets.isEmpty()) {
+            this.setFocused(null);
+            return;
+        }
+        int currentIndex = focusableWidgets.indexOf(this.getFocused());
+        int nextIndex;
+        if (reverse) {
+            nextIndex = currentIndex < 0
+                    ? focusableWidgets.size() - 1
+                    : Math.floorMod(currentIndex - 1, focusableWidgets.size());
+        } else {
+            nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % focusableWidgets.size();
+        }
+        this.setFocused(focusableWidgets.get(nextIndex));
+        pendingFormInputFocusKey = "";
+        focusFirstModernBankModalInput = false;
+    }
+
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        applyPendingFormInputFocus();
+        if (isModernBankActionModalOpen()) {
+            GuiEventListener focused = focusedModernBankModalWidget();
+            if (focused != null) {
+                focused.charTyped(codePoint, modifiers);
+            }
+            return true;
+        }
         if (!desktopAuthenticated) {
             return super.charTyped(codePoint, modifiers);
         }
@@ -10455,9 +11847,54 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (isModernBankActionModalOpen()) {
+            GuiEventListener focused = focusedModernBankModalWidget();
+            if (focused != null) {
+                focused.keyReleased(keyCode, scanCode, modifiers);
+            }
+            return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollDelta) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
+        if (isModernBankActionModalOpen() && bankActionModal == BankActionModal.SAFE_STORAGE_DETAILS) {
+            RectHitbox modal = getModernBankModalBounds();
+            if (modal.contains(localMouseX, localMouseY)) {
+                if (scrollDelta < 0) {
+                    vaultStorageDetailsScroll = Math.min(vaultStorageDetailsMaxScroll, vaultStorageDetailsScroll + 36);
+                } else if (scrollDelta > 0) {
+                    vaultStorageDetailsScroll = Math.max(0, vaultStorageDetailsScroll - 36);
+                }
+            }
+            return true;
+        }
+        if (isVaultRouteModalOpen()) {
+            if (vaultRouteListViewport != null && vaultRouteListViewport.contains(localMouseX, localMouseY)) {
+                boolean editor = VaultRouteEditorClientState.isEditorOpen();
+                int current = editor ? vaultRouteEditorScroll : vaultRouteDetailsScroll;
+                int max = editor ? vaultRouteEditorMaxScroll : vaultRouteDetailsMaxScroll;
+                int next = current;
+                if (scrollDelta < 0) {
+                    next = Math.min(max, current + 32);
+                } else if (scrollDelta > 0) {
+                    next = Math.max(0, current - 32);
+                }
+                if (editor) {
+                    vaultRouteEditorScroll = next;
+                } else {
+                    vaultRouteDetailsScroll = next;
+                }
+                if (next != current) {
+                    rebuildWidgets();
+                }
+            }
+            return true;
+        }
         if (isShopBusinessModalOverlayActive()
                 && shopBusinessActionModal == ShopBusinessActionModal.FRANCHISE_REQUIRED_ITEMS
                 && franchiseRequirementMaxScroll > 0) {
@@ -10723,6 +12160,24 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                     accountHistoryScroll = Math.max(0, accountHistoryScroll - step);
                 }
                 return previous != accountHistoryScroll || accountHistoryMaxScroll > 0;
+            }
+
+            if (!isActiveShopApp()
+                    && activeSection == Section.SAFE
+                    && safeBoxMapViewportHitbox != null
+                    && safeBoxMapMaxScroll > 0
+                    && safeBoxMapViewportHitbox.contains(localMouseX, localMouseY)) {
+                int previous = safeBoxMapScroll;
+                int step = 38;
+                if (scrollDelta < 0) {
+                    safeBoxMapScroll = Math.min(safeBoxMapMaxScroll, safeBoxMapScroll + step);
+                } else if (scrollDelta > 0) {
+                    safeBoxMapScroll = Math.max(0, safeBoxMapScroll - step);
+                }
+                if (previous != safeBoxMapScroll) {
+                    rebuildWidgets();
+                }
+                return true;
             }
 
             if (isActiveShopApp()
@@ -11141,6 +12596,42 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         double localMouseX = toLocalX(mouseX);
         double localMouseY = toLocalY(mouseY);
+        if (button == 0 && isVaultRouteModalOpen()) {
+            RectHitbox modal = getVaultRouteModalBounds();
+            if (modal.contains(localMouseX, localMouseY)) {
+                return super.mouseClicked(localMouseX, localMouseY, button);
+            }
+            return true;
+        }
+        if (isModernBankActionModalOpen()) {
+            RectHitbox modal = getModernBankModalBounds();
+            if (modal.contains(localMouseX, localMouseY)) {
+                for (GuiEventListener child : this.children()) {
+                    if (modernBankModalWidgets.contains(child)
+                            && child.mouseClicked(localMouseX, localMouseY, button)) {
+                        this.setFocused(child);
+                        if (button == 0) {
+                            this.setDragging(true);
+                        }
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+        if (button == 0
+                && activeWindow == WindowMode.BANK_APP
+                && activeSection == Section.SAFE
+                && safePanelTab == SafePanelTab.VAULT_STORAGE) {
+            for (VaultStorageMarkerHitbox hitbox : visibleVaultStorageMarkers) {
+                if (!hitbox.contains(localMouseX, localMouseY)) continue;
+                selectedVaultStorageMarker = hitbox.marker();
+                vaultStorageDetailsScroll = 0;
+                vaultStorageDetailsMaxScroll = 0;
+                openModernBankModal(BankActionModal.SAFE_STORAGE_DETAILS, true);
+                return true;
+            }
+        }
         if (button == 0 && taskbarClockHitbox != null && taskbarClockHitbox.contains(localMouseX, localMouseY)) {
             taskbarMenuOpen = !taskbarMenuOpen;
             rebuildWidgets();
@@ -11238,15 +12729,6 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         if (button == 0
                 && isShopDeleteModalOverlayActive()) {
             RectHitbox modal = getShopDeleteModalBounds();
-            if (modal.contains(localMouseX, localMouseY)) {
-                return super.mouseClicked(localMouseX, localMouseY, button);
-            }
-            return true;
-        }
-        if (button == 0
-                && activeWindow == WindowMode.BANK_APP
-                && isModernBankActionModalOpen()) {
-            RectHitbox modal = getModernBankModalBounds();
             if (modal.contains(localMouseX, localMouseY)) {
                 return super.mouseClicked(localMouseX, localMouseY, button);
             }
@@ -11436,6 +12918,29 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                     paintAt(localMouseX, localMouseY, paintDrawColor);
                     return true;
                 }
+            }
+        }
+
+        if (button == 0
+                && activeWindow == WindowMode.BANK_APP
+                && !isActiveShopApp()
+                && activeSection == Section.SAFE
+                && safeBoxMapViewportHitbox != null
+                && safeBoxMapViewportHitbox.contains(localMouseX, localMouseY)
+                && !visibleSafeBoxLocateActions.isEmpty()) {
+            for (SafeBoxLocateHitbox hitbox : visibleSafeBoxLocateActions) {
+                if (!hitbox.contains(localMouseX, localMouseY)) {
+                    continue;
+                }
+                SafeBoxCellData box = hitbox.box();
+                if (box != null && box.locateTarget() != null && !box.locateTarget().isBlank()) {
+                    String label = box.boxNumber() == null || box.boxNumber().isBlank()
+                            ? box.typeLabel() + " door " + (box.doorIndex() + 1)
+                            : box.boxNumber();
+                    sendOwnerPcAction("SAFE_BOX_LOCATE", box.locateTarget(), "", "", "");
+                    ClientOwnerPcData.setToast(true, "Locating " + label + "...");
+                }
+                return true;
             }
         }
 
@@ -12270,6 +13775,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     @Override
     public void onClose() {
         restoreForcedGuiScale();
+        VaultRouteEditorClientState.clear();
         activeScrollbarDrag = null;
         shopLevelRoadmapScrollbarDragging = false;
         if (!discardCachedScreenOnClose) {
@@ -12370,6 +13876,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         if (configureVirtualScale()) {
             rebuildWidgets();
         }
+        applyPendingFormInputFocus();
 
         int localMouseX = (int) toLocalX(mouseX);
         int localMouseY = (int) toLocalY(mouseY);
@@ -12448,7 +13955,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 || isShopPermissionModalOverlayActive()
                 || isShopDeleteModalOverlayActive();
         boolean shopOrderCreateModalOverlayActive = isShopOrderCreateModalOverlayActive();
-        boolean bankModalOverlayActive = isModernBankActionModalOpen()
+        boolean bankModalOverlayActive = isVaultRouteModalOpen()
+                || isModernBankActionModalOpen()
                 || isMarketDetailModalOpen()
                 || (activeWindow == WindowMode.BANK_APP
                 && !isActiveShopApp()
@@ -12909,6 +14417,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         visibleAccountTransactions.clear();
         visibleKpiCards.clear();
         visibleBankRuntimeHelp.clear();
+        visibleVaultStorageMarkers.clear();
         visibleMarketActions.clear();
         accountProfileCopyIdHitbox = null;
         marketConfirmAcceptHitbox = null;
@@ -12958,12 +14467,25 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         String subtitle = bankSectionSubtitle(activeSection);
         int contentW = Math.max(1, contentRight - contentX);
         int headerButtonW = toolbarButtonWForRender(contentW, compact);
-        int reservedHeaderW = contentW >= 560 ? 390 : Math.max(140, headerButtonW + 54);
-        graphics.drawString(this.font, fitToWidth(tr(title), Math.max(80, contentRight - contentX - reservedHeaderW)),
-                contentX + 28, headerY + 18, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(tr(subtitle), Math.max(80, contentRight - contentX - reservedHeaderW)),
-                contentX + 30, headerY + 39, 0xFF9FB8D2, false);
-        if (dataReady && contentW >= 640) {
+        boolean showPremiseClaim = dataReady
+                && activeSection == Section.PREMISES
+                && hasPremisePresentationPermission(data);
+        PremiseHeaderActions headerActions = premiseHeaderActions(
+                contentX, contentRight, headerY, headerY + 20, headerButtonW, showPremiseClaim);
+        int titleAvailable;
+        if (showPremiseClaim) {
+            titleAvailable = headerActions.textRight() - contentX - 28;
+        } else {
+            int reservedHeaderW = contentW >= 560 ? 390 : Math.max(140, headerButtonW + 54);
+            titleAvailable = contentRight - contentX - reservedHeaderW;
+        }
+        if (titleAvailable >= 32) {
+            graphics.drawString(this.font, fitToWidth(tr(title), titleAvailable),
+                    contentX + 28, headerY + 18, 0xFFFFFFFF, false);
+            graphics.drawString(this.font, fitToWidth(tr(subtitle), Math.max(1, titleAvailable - 2)),
+                    contentX + 30, headerY + 39, 0xFF9FB8D2, false);
+        }
+        if (dataReady && !showPremiseClaim && contentW >= 640) {
             int refreshX = contentRight - headerButtonW - 14;
             String depositsLine = tr("Deposits") + " $" + compactCurrency(data.deposits());
             int depositW = Math.min(112, Math.max(72, this.font.width(depositsLine)));
@@ -13002,7 +14524,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                     sectionMaxScroll
             );
         }
-        if (isModernBankActionModalOpen()) {
+        if (isVaultRouteModalOpen()) {
+            drawVaultRouteModalOverlay(graphics, data);
+        } else if (isModernBankActionModalOpen()) {
             drawModernBankModalOverlay(graphics, data);
         }
     }
@@ -13012,6 +14536,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case OVERVIEW -> drawModernBankOverview(graphics, data, x, y, width);
             case ACCOUNTS -> drawModernBankAccounts(graphics, data, x, y, width);
             case SAFE -> drawModernBankSafe(graphics, data, x, y, width);
+            case PREMISES -> drawModernBankPremises(graphics, data, x, y, width);
             case BRANDING -> drawModernBankBranding(graphics, data, x, y, width);
             case LIMITS -> drawModernBankLimits(graphics, data, x, y, width);
             case GOVERNANCE -> drawModernBankGovernance(graphics, data, x, y, width);
@@ -13021,6 +14546,149 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case BUSINESS, HOURS, PERMISSIONS -> {
             }
         }
+    }
+
+    private void drawModernBankPremises(GuiGraphics graphics,
+                                        OwnerPcBankDataPayload data,
+                                        int x,
+                                        int y,
+                                        int width) {
+        List<OwnerPcPremisePayload> premises = data.premises();
+        OwnerPcPremisesPanelLayout.Layout layout = OwnerPcPremisesPanelLayout.layout(
+                width, sectionViewportH, premises.size(), sectionScroll);
+        drawModernPremisesSummary(graphics, premises, x, y, width);
+
+        int viewportBottom = sectionViewportY + sectionViewportH;
+        for (OwnerPcPremisesPanelLayout.Card card : layout.cards()) {
+            int cardY = y + card.y();
+            if (cardY + card.height() < sectionViewportY || cardY > viewportBottom) {
+                continue;
+            }
+            drawModernPremiseCard(
+                    graphics,
+                    premises.get(card.index()),
+                    x + card.x(),
+                    cardY,
+                    card.width(),
+                    card.height()
+            );
+        }
+    }
+
+    private void drawModernPremisesSummary(GuiGraphics graphics,
+                                           List<OwnerPcPremisePayload> premises,
+                                           int x,
+                                           int y,
+                                           int width) {
+        int ready = (int) premises.stream()
+                .filter(premise -> premise.status() == OwnerPcPremisePayload.Status.READY)
+                .count();
+        int publicCount = (int) premises.stream()
+                .filter(premise -> premise.mode() == SafePremiseMode.PUBLIC)
+                .count();
+        int blocked = (int) premises.stream()
+                .filter(premise -> !premise.deleteBlockers().isEmpty())
+                .count();
+        int migrationBacked = (int) premises.stream()
+                .filter(OwnerPcPremisePayload::migrationBacked)
+                .count();
+        int viewingRooms = premises.stream().mapToInt(OwnerPcPremisePayload::viewingRoomCount).sum();
+        int readyViewingRooms = premises.stream().mapToInt(OwnerPcPremisePayload::readyViewingRoomCount).sum();
+
+        drawModernBankPanel(
+                graphics,
+                x,
+                y,
+                width,
+                OwnerPcPremisesPanelLayout.SUMMARY_HEIGHT,
+                ORDER_BOARD_PANEL,
+                ORDER_BOARD_BORDER
+        );
+        int accent = premises.isEmpty() ? ORDER_BOARD_GOLD : ORDER_BOARD_CYAN;
+        graphics.fill(x + 1, y + 1, x + 5, y + OwnerPcPremisesPanelLayout.SUMMARY_HEIGHT - 1, accent);
+        graphics.drawString(this.font, tr("Premises"), x + 16, y + 14, ORDER_BOARD_TEXT, false);
+        graphics.drawString(
+                this.font,
+                fitToWidth(tr("Bank location registry, access modes, exits, and deletion state."), width - 32),
+                x + 16,
+                y + 32,
+                ORDER_BOARD_MUTED,
+                false
+        );
+        String totals = premises.size() + " locations | " + ready + " ready | " + publicCount + " public";
+        graphics.drawString(this.font, fitToWidth(tr(totals), width - 32), x + 16, y + 52,
+                ready == premises.size() && !premises.isEmpty() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD, false);
+        String constraints = premises.isEmpty()
+                ? "No premises are registered."
+                : readyViewingRooms + " of " + viewingRooms + " viewing rooms ready | "
+                + blocked + " deletion blocked | " + migrationBacked + " migrated";
+        graphics.drawString(this.font, fitToWidth(tr(constraints), width - 32), x + 16, y + 69,
+                blocked == 0 ? ORDER_BOARD_GREEN : ORDER_BOARD_RED, false);
+    }
+
+    private void drawModernPremiseCard(GuiGraphics graphics,
+                                       OwnerPcPremisePayload premise,
+                                       int x,
+                                       int y,
+                                       int width,
+                                       int height) {
+        boolean ready = premise.status() == OwnerPcPremisePayload.Status.READY;
+        int accent = ready ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD;
+        int textX = x + 12;
+        int textWidth = Math.max(40, width - 24);
+        drawModernBankPanel(graphics, x, y, width, height, ORDER_BOARD_CARD, ORDER_BOARD_BORDER_HI);
+        graphics.fill(x + 1, y + 1, x + 5, y + height - 1, accent);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Premise " + shortUuid(premise.premiseId())), textWidth),
+                textX, y + 12, ORDER_BOARD_TEXT, false);
+        String state = premise.status().name() + " | " + premise.mode().name();
+        graphics.drawString(this.font, fitToWidth(tr(state), textWidth), textX, y + 29, accent, false);
+
+        List<String> details = List.of(
+                "Dimension: " + premise.dimension(),
+                "Bounds min: " + premise.minX() + ", " + premise.minY() + ", " + premise.minZ(),
+                "Bounds max: " + premise.maxX() + ", " + premise.maxY() + ", " + premise.maxZ(),
+                "Exit dimension: " + premise.exitDimension(),
+                "Exit: " + premise.exitX() + ", " + premise.exitY() + ", " + premise.exitZ()
+                        + " | yaw " + String.format(Locale.ROOT, "%.1f", premise.exitYaw()),
+                "Children: safe areas " + premise.safeAreaCount() + " | vaults " + premise.vaultCount(),
+                "Vault readiness: " + premise.readyVaultCount() + " of " + premise.vaultCount() + " ready",
+                "Migration: " + (premise.migrationBacked() ? "MIGRATION_BACKED" : "NATIVE")
+        );
+        int lineY = y + 48;
+        for (String detail : details) {
+            graphics.drawString(this.font, fitToWidth(tr(detail), textWidth), textX, lineY, ORDER_BOARD_MUTED, false);
+            lineY += LINE_HEIGHT;
+        }
+
+        graphics.drawString(this.font, tr("Deletion blockers"), textX, y + 143, ORDER_BOARD_TEXT, false);
+        int blockerY = y + 159;
+        if (premise.deleteBlockers().isEmpty()) {
+            graphics.drawString(this.font, tr("None - deletion eligible"), textX, blockerY,
+                    ORDER_BOARD_GREEN, false);
+        } else {
+            for (OwnerPcPremisePayload.DeleteBlocker blocker : premise.deleteBlockers()) {
+                String label = "- " + premiseDeleteBlockerLabel(blocker);
+                graphics.drawString(this.font, fitToWidth(tr(label), textWidth), textX, blockerY,
+                        ORDER_BOARD_RED, false);
+                blockerY += LINE_HEIGHT;
+            }
+        }
+
+        OwnerPcPremisesPanelLayout.Controls controls = OwnerPcPremisesPanelLayout.controls(width, height);
+        int controlLabelY = y + controls.publicMode().y() - 14;
+        graphics.drawString(this.font, tr("Access mode and actions"), textX, controlLabelY,
+                ORDER_BOARD_TEXT, false);
+    }
+
+    private String premiseDeleteBlockerLabel(OwnerPcPremisePayload.DeleteBlocker blocker) {
+        return switch (blocker) {
+            case NON_EMPTY -> "NON_EMPTY - child records remain";
+            case MIGRATION_BACKED -> "MIGRATION_BACKED - compatibility record";
+            case ASSIGNED -> "ASSIGNED - deposit boxes assigned";
+            case ROUTED -> "ROUTED - teller route references it";
+            case ACTIVE -> "ACTIVE - live escort or session";
+        };
     }
 
     private void drawModernBankOverview(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
@@ -13520,11 +15188,25 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private void drawModernBankSafe(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
         int gap = 10;
-        drawModernSafeKpis(graphics, data, x, y, width);
-        int moduleY = y + modernBankSafeKpiBlockHeight(width) + 12;
+        int setupHeight = modernBankSafeSetupHeight(data, width);
+        drawModernSafeSetupOverview(graphics, data, x, y, width, setupHeight);
+        int safeY = y + setupHeight + 12;
+        drawModernSafeKpis(graphics, data, x, safeY, width);
+        int moduleY = safeY + modernBankSafeKpiBlockHeight(width) + 12;
         drawModernSafeModuleRail(graphics, x, moduleY, width);
 
-        int mainY = moduleY + modernBankSafeModuleRailHeight() + 12;
+        int mainY = moduleY + modernBankSafeModuleRailHeight(width) + 12;
+        if (safePanelTab != SafePanelTab.DEPOSIT_BOXES) {
+            switch (safePanelTab) {
+                case ACCESS_LOGS -> drawModernSafeAccessLogs(graphics, data, x, mainY, width);
+                case ALARMS -> drawModernSafeAlarms(graphics, data, x, mainY, width);
+                case VAULT_STORAGE -> drawModernVaultStorage(graphics, data, x, mainY, width);
+                case DEPOSIT_BOXES -> {
+                }
+            }
+            drawModernActionFeedback(graphics, x, y + modernBankSafeContentHeight(data, width), width);
+            return;
+        }
         boolean wide = width >= 820;
         int sideW = wide ? Math.max(250, (width - gap) * 31 / 100) : width;
         int mapW = wide ? Math.max(300, width - sideW - gap) : width;
@@ -13549,7 +15231,124 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         drawModernSafeAreaStatus(graphics, data, x, lowerY, areaW, modernBankSafeAreaStatusHeight(width));
         drawModernSafeLockedQueue(graphics, data, queueX, queueY, queueW, modernBankSafeLockedQueueHeight(width));
 
-        drawModernActionFeedback(graphics, x, y + modernBankSafeContentHeight(width), width);
+        int lowerH = lowerWide
+                ? Math.max(modernBankSafeAreaStatusHeight(width), modernBankSafeLockedQueueHeight(width))
+                : modernBankSafeAreaStatusHeight(width) + gap + modernBankSafeLockedQueueHeight(width);
+        drawModernViewingRooms(graphics, data, x, lowerY + lowerH + gap, width,
+                modernBankViewingRoomsHeight(data, width));
+
+        drawModernActionFeedback(graphics, x, y + modernBankSafeContentHeight(data, width), width);
+    }
+
+    private void drawModernViewingRooms(GuiGraphics graphics,
+                                        OwnerPcBankDataPayload data,
+                                        int x,
+                                        int y,
+                                        int width,
+                                        int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        List<OwnerPcViewingRoomPayload> rooms = data == null ? List.of() : data.viewingRooms();
+        graphics.drawString(this.font, tr("Private Viewing Rooms"), x + 16, y + 16, 0xFFFFFFFF, false);
+        String capacity = rooms.size() + " / " + (data == null ? 0 : data.viewingRoomCapacity()) + " claimed";
+        graphics.drawString(this.font,
+                fitToWidth(tr("Private teller-assisted box access | " + capacity), Math.max(80, width - 220)),
+                x + 16, y + 32, 0xFF9FB8D2, false);
+
+        int columns = width >= 760 ? 2 : 1;
+        int gap = 10;
+        int cardW = columns == 2 ? Math.max(220, (width - gap) / 2) : width;
+        int cardY = y + 82;
+        if (rooms.isEmpty()) {
+            drawModernEmptyRosterCard(graphics, x + 16, cardY, Math.max(120, width - 32),
+                    "No viewing rooms claimed. Claim one inside a premise and outside its safe area.");
+            return;
+        }
+        for (int index = 0; index < rooms.size(); index++) {
+            OwnerPcViewingRoomPayload room = rooms.get(index);
+            int col = index % columns;
+            int row = index / columns;
+            int cardX = x + col * (cardW + gap);
+            int currentY = cardY + row * (modernViewingRoomCardHeight() + gap);
+            int accent = switch (room.status()) {
+                case "READY" -> ORDER_BOARD_GREEN;
+                case "OCCUPIED" -> ORDER_BOARD_CYAN;
+                case "SUSPENDED_LEVEL", "SUSPENDED_ADMIN" -> ORDER_BOARD_GOLD;
+                default -> ORDER_BOARD_RED;
+            };
+            graphics.fill(cardX, currentY, cardX + cardW, currentY + modernViewingRoomCardHeight(), 0xAA0B1727);
+            graphics.fill(cardX, currentY, cardX + 4, currentY + modernViewingRoomCardHeight(), accent);
+            graphics.drawString(this.font, fitToWidth(tr(room.name()), Math.max(50, cardW - 112)),
+                    cardX + 12, currentY + 10, 0xFFEAF5FF, false);
+            graphics.drawString(this.font, fitToWidth(tr(room.status()), 92),
+                    cardX + cardW - 100, currentY + 10, accent, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr("Premise " + shortUuid(room.premiseId()) + " | " + room.bounds()), cardW - 24),
+                    cardX + 12, currentY + 26, 0xFFB7CBE3, false);
+            String detail = room.reasons().isEmpty()
+                    ? "Anchors ready | customer, teller, and box display"
+                    : room.reasons().getFirst();
+            graphics.drawString(this.font, fitToWidth(tr(detail), cardW - 24),
+                    cardX + 12, currentY + 42,
+                    room.reasons().isEmpty() ? 0xFF9FE9C4 : 0xFFFFB7A3, false);
+        }
+    }
+
+    private void drawModernSafeSetupOverview(GuiGraphics graphics,
+                                             OwnerPcBankDataPayload data,
+                                             int x,
+                                             int y,
+                                             int width,
+                                             int height) {
+        OwnerPcSetupObjectivePayload objective = data.safeSetupObjective();
+        int accent = objective.ready() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD;
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        graphics.fill(x + 1, y + 1, x + 5, y + height - 1, accent);
+        graphics.drawString(this.font, tr("Safety Deposit Setup"), x + 16, y + 16, 0xFFFFFFFF, false);
+        String progress = objective.ready()
+                ? "Ready | " + objective.readyVaultCount() + " of " + objective.vaultCount() + " vaults available"
+                : "Setup required | " + objective.readyVaultCount() + " of " + objective.vaultCount() + " vaults ready";
+        graphics.drawString(this.font, fitToWidth(tr(progress), width - 32), x + 16, y + 34,
+                objective.ready() ? 0xFF9FE9C4 : 0xFFFFD28A, false);
+        String nextStep = objective.missingSteps().isEmpty()
+                ? "Teller rental and private box viewing are enabled."
+                : "Next: " + objective.missingSteps().getFirst();
+        graphics.drawString(this.font, fitToWidth(tr(nextStep), width - 32), x + 16, y + 50, 0xFFB7CBE3, false);
+
+        List<OwnerPcVaultSetupPayload> vaults = data.vaultSetups();
+        int columns = width >= 760 ? 2 : 1;
+        int gap = 10;
+        int cardW = columns == 2 ? Math.max(160, (width - 32 - gap) / 2) : Math.max(120, width - 32);
+        int cardY = y + 72;
+        if (vaults.isEmpty()) {
+            drawModernEmptyRosterCard(graphics, x + 16, cardY, cardW,
+                    "Claim a bank premise and safe area to create the first vault setup.");
+            return;
+        }
+        for (int i = 0; i < vaults.size(); i++) {
+            OwnerPcVaultSetupPayload vault = vaults.get(i);
+            int col = i % columns;
+            int row = i / columns;
+            int cardX = x + 16 + col * (cardW + gap);
+            int currentY = cardY + row * 94;
+            drawModernBankPanel(graphics, cardX, currentY, cardW, 84, 0xFF0F2035, 0xFF315779);
+            int cardAccent = vault.ready() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD;
+            graphics.fill(cardX + 1, currentY + 1, cardX + 4, currentY + 83, cardAccent);
+            String title = vault.vaultId().isBlank() ? "Vault setup" : "Vault " + shortUuid(vault.vaultId());
+            graphics.drawString(this.font, fitToWidth(tr(title), cardW - 28), cardX + 12, currentY + 10,
+                    0xFFFFFFFF, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr(vault.ready() ? "READY" : vault.status()), cardW - 28),
+                    cardX + 12, currentY + 26, vault.ready() ? 0xFF9FE9C4 : 0xFFFFD28A, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr(vault.doorStatus() + " | " + vault.rowStatus()), cardW - 28),
+                    cardX + 12, currentY + 42, 0xFFB7CBE3, false);
+            String roomStatus = vault.viewingRoomStatus();
+            if (!vault.ready() && !vault.missingReasonLabels().isEmpty()) {
+                roomStatus = vault.missingReasonLabels().getFirst();
+            }
+            graphics.drawString(this.font, fitToWidth(tr(roomStatus), cardW - 28), cardX + 12, currentY + 58,
+                    vault.ready() ? 0xFF9FB8D2 : 0xFFFFB7A3, false);
+        }
     }
 
     private void drawModernSafeKpis(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
@@ -13566,7 +15365,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         };
         String[] subs = {
                 "Protected claims",
-                "Claimed row units",
+                "Loaded row blocks",
                 data.safeTotalBoxSlots() + " total slots",
                 "Physical doors in use",
                 data.safeEscrowCases() + " escrow cases"
@@ -13581,25 +15380,231 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void drawModernSafeModuleRail(GuiGraphics graphics, int x, int y, int width) {
-        drawModernBankPanel(graphics, x, y, width, modernBankSafeModuleRailHeight(), 0xFF0F2035, 0xFF244B73);
-        String[] labels = {"Deposit Boxes", "Access Logs", "Alarms", "Vault Storage"};
-        int chipX = x + 14;
-        int chipY = y + 12;
-        for (int i = 0; i < labels.length; i++) {
-            String label = labels[i];
-            int chipW = Math.max(74, Math.min(136, this.font.width(tr(label)) + 24));
-            if (chipX + chipW > x + width - 14) {
-                break;
-            }
-            boolean active = i == 0;
-            int fill = active ? 0xFF163955 : 0xAA0B1727;
-            int accent = active ? ORDER_BOARD_CYAN : 0xFF7895B4;
-            graphics.fill(chipX, chipY, chipX + chipW, chipY + 22, fill);
-            graphics.fill(chipX, chipY, chipX + chipW, chipY + 1, accent);
-            graphics.drawCenteredString(this.font, fitToWidth(tr(label), chipW - 12), chipX + (chipW / 2), chipY + 7,
-                    active ? 0xFFE7F3FF : 0xFF9FB8D2);
-            chipX += chipW + 8;
+        drawModernBankPanel(graphics, x, y, width, modernBankSafeModuleRailHeight(width), 0xFF0F2035, 0xFF244B73);
+    }
+
+    private void drawModernSafeAccessLogs(GuiGraphics graphics,
+                                          OwnerPcBankDataPayload data,
+                                          int x,
+                                          int y,
+                                          int width) {
+        int headerH = modernSafeAccessLogHeaderHeight(width);
+        drawModernBankPanel(graphics, x, y, width, headerH, 0xFF102238, 0xFF244B73);
+        List<OwnerPcSafeAccessLogPayload> filtered = filteredSafeAccessLogs(data);
+        long denied = data.safeAccessLogs().stream()
+                .filter(entry -> "DENIED".equalsIgnoreCase(entry.outcome())).count();
+        graphics.drawString(this.font, tr("Safe Access Audit"), x + 16, y + 16, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr(data.safeAccessLogs().size() + " retained events | " + denied + " denied"), width - 32),
+                x + 16, y + 33, denied > 0 ? 0xFFFFB7A3 : 0xFF9FB8D2, false);
+
+        int cardY = y + headerH + 10;
+        if (filtered.isEmpty()) {
+            drawModernEmptyRosterCard(graphics, x, cardY, width,
+                    data.safeAccessLogs().isEmpty()
+                            ? "No safe activity has been recorded yet."
+                            : "No audit events match this filter.");
+            return;
         }
+        for (OwnerPcSafeAccessLogPayload entry : filtered) {
+            int accent = safeLogAccent(entry);
+            drawModernBankPanel(graphics, x, cardY, width, 70, 0xFF0F2035, 0xFF244B73);
+            graphics.fill(x + 1, cardY + 1, x + 5, cardY + 69, accent);
+            String action = humanizeSafeLogToken(entry.action());
+            String time = formatSafeLogTimestamp(entry.occurredAtMillis());
+            graphics.drawString(this.font, fitToWidth(tr(action), Math.max(60, width - 190)),
+                    x + 14, cardY + 10, 0xFFEAF5FF, false);
+            graphics.drawString(this.font, fitToWidth(time, 154), x + width - 166, cardY + 10,
+                    0xFF7895B4, false);
+            String actorLine = entry.actorName().isBlank() ? "System" : entry.actorName();
+            if (!entry.subject().isBlank()) actorLine += " | " + entry.subject();
+            graphics.drawString(this.font, fitToWidth(tr(actorLine), width - 28),
+                    x + 14, cardY + 28, accent, false);
+            String detail = entry.detail().isBlank() ? humanizeSafeLogToken(entry.category()) : entry.detail();
+            graphics.drawString(this.font, fitToWidth(tr(detail), width - 28),
+                    x + 14, cardY + 46, 0xFFB7CBE3, false);
+            String location = entry.dimension().isBlank() ? "No world position"
+                    : entry.dimension() + " | " + entry.x() + ", " + entry.y() + ", " + entry.z();
+            addBankRuntimeHelpHitbox(x, cardY, width, 70, action,
+                    actorLine + " | " + detail + " | " + location);
+            cardY += 80;
+        }
+    }
+
+    private void drawModernSafeAlarms(GuiGraphics graphics,
+                                      OwnerPcBankDataPayload data,
+                                      int x,
+                                      int y,
+                                      int width) {
+        OwnerPcSafeAlarmPayload alarm = data.safeAlarm();
+        int gap = 10;
+        int columns = width >= 620 ? 3 : 1;
+        int cardW = columns == 1 ? width : Math.max(100, (width - gap * 2) / 3);
+        String[] labels = {"Alarm State", "Audio Policy", "RFID Relays"};
+        String[] values = {
+                alarm.alarmActive() ? "ACTIVE" : "CLEAR",
+                alarm.enabled() ? "ARMED" : "MUTED",
+                Integer.toString(alarm.linkedScannerCount())
+        };
+        String[] subs = {
+                alarm.alarmActive() && !alarm.activeReason().isBlank() ? alarm.activeReason() : "No live incident",
+                alarm.intervalTicks() + " tick loop interval",
+                "Loaded bank-linked scanners"
+        };
+        int[] accents = {
+                alarm.alarmActive() ? ORDER_BOARD_RED : ORDER_BOARD_GREEN,
+                alarm.enabled() ? ORDER_BOARD_CYAN : ORDER_BOARD_GOLD,
+                ORDER_BOARD_VIOLET
+        };
+        for (int index = 0; index < labels.length; index++) {
+            int col = index % columns;
+            int row = index / columns;
+            drawModernKpiCard(graphics, x + col * (cardW + gap), y + row * 86,
+                    cardW, 76, labels[index], values[index], subs[index], accents[index]);
+        }
+
+        int statusH = columns == 1 ? 248 : 76;
+        int configY = y + statusH + 18;
+        int configH = modernSafeAlarmConfigHeight(width);
+        drawModernBankPanel(graphics, x, configY, width, configH, 0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Alarm Sound Configuration"), x + 16, configY + 16, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Use a registered sound event, or a namespaced event supplied by every client's resource pack."), width - 32),
+                x + 16, configY + 34, 0xFF9FB8D2, false);
+        graphics.drawString(this.font, tr("Sound event ID"), x + 16, configY + 48, 0xFFD5E2F1, false);
+
+        int fieldColumns = width >= 720 ? 4 : 2;
+        int fieldGap = 8;
+        int innerW = Math.max(80, width - 32);
+        int fieldW = Math.max(60, (innerW - fieldGap * (fieldColumns - 1)) / fieldColumns);
+        String[] fieldLabels = {"Volume", "Primary pitch", "Second pitch (0 = off)", "Loop interval ticks"};
+        for (int index = 0; index < fieldLabels.length; index++) {
+            int col = index % fieldColumns;
+            int row = index / fieldColumns;
+            graphics.drawString(this.font, fitToWidth(tr(fieldLabels[index]), fieldW),
+                    x + 16 + col * (fieldW + fieldGap), configY + 100 + row * 50,
+                    0xFFD5E2F1, false);
+        }
+        int noteY = configY + (fieldColumns == 4 ? 258 : 352);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Custom audio loops at the configured interval while a bank alarm is active. Mono OGG assets retain positional audio."), width - 32),
+                x + 16, noteY, 0xFF9FB8D2, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr("The default remains the existing two-tone vanilla bell. Test playback is local to your current world position."), width - 32),
+                x + 16, noteY + 18, 0xFF7895B4, false);
+    }
+
+    private void drawModernVaultStorage(GuiGraphics graphics,
+                                        OwnerPcBankDataPayload data,
+                                        int x,
+                                        int y,
+                                        int width) {
+        List<OwnerPcVaultStorageClaimPayload> claims = data.vaultStorageClaims();
+        ensureSelectedVaultStorageClaim(claims);
+        if (claims.isEmpty()) {
+            drawModernBankPanel(graphics, x, y, width, 180, 0xFF102238, 0xFF244B73);
+            graphics.drawString(this.font, tr("Vault Storage Map"), x + 16, y + 16, 0xFFFFFFFF, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr("No safe claims are available. Claim a safe area to create a storage map."), width - 32),
+                    x + 16, y + 42, 0xFF9FB8D2, false);
+            return;
+        }
+        OwnerPcVaultStorageClaimPayload selected = claims.stream()
+                .filter(claim -> claim.claimId().equals(selectedVaultStorageClaimId))
+                .findFirst().orElse(claims.getFirst());
+        boolean wide = width >= 760;
+        int gap = 10;
+        int selectorW = wide ? Math.max(210, width * 27 / 100) : width;
+        int selectorH = Math.max(118, 98 + claims.size() * 30);
+        int mapW = wide ? width - selectorW - gap : width;
+        int mapH = wide ? Math.max(390, selectorH) : 380;
+        int selectorX = wide ? x + mapW + gap : x;
+        int selectorY = wide ? y : y + mapH + gap;
+
+        drawVaultClaimMap(graphics, selected, x, y, mapW, mapH);
+        drawModernBankPanel(graphics, selectorX, selectorY, selectorW, selectorH,
+                0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Safe Claims"), selectorX + 12, selectorY + 16, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr(claims.size() + " mapped claim" + (claims.size() == 1 ? "" : "s")), selectorW - 24),
+                selectorX + 12, selectorY + 34, 0xFF9FB8D2, false);
+    }
+
+    private void drawVaultClaimMap(GuiGraphics graphics,
+                                   OwnerPcVaultStorageClaimPayload claim,
+                                   int x,
+                                   int y,
+                                   int width,
+                                   int height) {
+        drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
+        boolean compactHeader = width < 460;
+        graphics.drawString(this.font, tr("Vault Storage Map"), x + 16, y + 16, 0xFFFFFFFF, false);
+        String loadState = claim.fullyLoaded() ? "LIVE SNAPSHOT" : "PARTIAL - UNLOADED CHUNKS";
+        int stateX = compactHeader ? x + 16 : x + width - Math.min(200, width / 2);
+        int stateY = compactHeader ? y + 50 : y + 16;
+        int stateW = compactHeader ? width - 32 : Math.max(70, width - 220);
+        graphics.drawString(this.font, fitToWidth(tr(loadState), stateW), stateX, stateY,
+                claim.fullyLoaded() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr(claim.dimension() + " | X " + claim.minX() + ".." + claim.maxX()
+                        + " | Z " + claim.minZ() + ".." + claim.maxZ()), width - 32),
+                x + 16, y + 34, 0xFF9FB8D2, false);
+
+        int viewportX = x + 16;
+        int viewportY = y + (compactHeader ? 74 : 58);
+        int viewportW = Math.max(54, width - 32);
+        int viewportH = Math.max(100, height - (compactHeader ? 108 : 92));
+        graphics.fill(viewportX, viewportY, viewportX + viewportW, viewportY + viewportH, 0xFF091726);
+        int pad = 20;
+        int spanX = Math.max(1, claim.maxX() - claim.minX() + 1);
+        int spanZ = Math.max(1, claim.maxZ() - claim.minZ() + 1);
+        float scale = Math.min((viewportW - pad * 2) / (float) spanX,
+                (viewportH - pad * 2) / (float) spanZ);
+        scale = Math.max(0.01F, scale);
+        int outlineW = Math.max(2, Math.round(spanX * scale));
+        int outlineH = Math.max(2, Math.round(spanZ * scale));
+        int outlineX = viewportX + (viewportW - outlineW) / 2;
+        int outlineY = viewportY + (viewportH - outlineH) / 2;
+        graphics.fill(outlineX, outlineY, outlineX + outlineW, outlineY + outlineH, 0xFF0D2136);
+        int gridStepX = Math.max(1, spanX / 12);
+        int gridStepZ = Math.max(1, spanZ / 12);
+        for (int blockX = gridStepX; blockX < spanX; blockX += gridStepX) {
+            int lineX = outlineX + Math.round(blockX * scale);
+            graphics.fill(lineX, outlineY, lineX + 1, outlineY + outlineH, 0x332F6A91);
+        }
+        for (int blockZ = gridStepZ; blockZ < spanZ; blockZ += gridStepZ) {
+            int lineY = outlineY + Math.round(blockZ * scale);
+            graphics.fill(outlineX, lineY, outlineX + outlineW, lineY + 1, 0x332F6A91);
+        }
+        graphics.fill(outlineX, outlineY, outlineX + outlineW, outlineY + 2, ORDER_BOARD_CYAN);
+        graphics.fill(outlineX, outlineY + outlineH - 2, outlineX + outlineW, outlineY + outlineH, ORDER_BOARD_CYAN);
+        graphics.fill(outlineX, outlineY, outlineX + 2, outlineY + outlineH, ORDER_BOARD_CYAN);
+        graphics.fill(outlineX + outlineW - 2, outlineY, outlineX + outlineW, outlineY + outlineH, ORDER_BOARD_CYAN);
+
+        for (OwnerPcVaultStorageMarkerPayload marker : claim.markers()) {
+            float relativeX = (marker.x() - claim.minX() + 0.5F) / spanX;
+            float relativeZ = (marker.z() - claim.minZ() + 0.5F) / spanZ;
+            int markerX = outlineX + Math.round(relativeX * outlineW);
+            int markerY = outlineY + Math.round(relativeZ * outlineH);
+            int size = marker.unitCount() > 1 ? 12 : 9;
+            int accent = "PALLET".equals(marker.kind()) ? ORDER_BOARD_GOLD : ORDER_BOARD_VIOLET;
+            graphics.fill(markerX - size / 2, markerY - size / 2,
+                    markerX + (size + 1) / 2, markerY + (size + 1) / 2, 0xFF07111F);
+            graphics.fill(markerX - size / 2 + 2, markerY - size / 2 + 2,
+                    markerX + (size + 1) / 2 - 2, markerY + (size + 1) / 2 - 2, accent);
+            addBankRuntimeHelpHitbox(markerX - size / 2, markerY - size / 2, size, size,
+                    marker.label(), vaultStorageTooltip(marker));
+            visibleVaultStorageMarkers.add(new VaultStorageMarkerHitbox(
+                    markerX - size / 2, markerY - size / 2, size, size, marker));
+        }
+        if (claim.markers().isEmpty()) {
+            graphics.drawCenteredString(this.font, tr("No loaded pallets or chests in this safe claim."),
+                    viewportX + viewportW / 2, viewportY + viewportH / 2, 0xFF7895B4);
+        }
+        String legend = "Gold: metal pallet | Violet: chest"
+                + (claim.omittedMarkers() > 0 ? " | " + claim.omittedMarkers() + " markers omitted" : "");
+        graphics.drawString(this.font, fitToWidth(tr(legend), width - 32), x + 16, y + height - 24,
+                0xFF9FB8D2, false);
     }
 
     private void drawModernSafeBoxWallMap(GuiGraphics graphics,
@@ -13609,45 +15614,135 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                           int width,
                                           int height) {
         drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
-        graphics.drawString(this.font, tr("Box Wall Map"), x + 16, y + 18, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, fitToWidth(tr("Free, assigned, locked, and selected deposit-box doors."), width - 32),
+        graphics.drawString(this.font, tr("Deposit Row Map"), x + 16, y + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(tr("Loaded row blocks inside claimed safe areas. Box contents stay hidden."), width - 32),
                 x + 16, y + 36, 0xFF9FB8D2, false);
 
-        int totalSlots = Math.max(16, safeParseInt(data.safeTotalBoxSlots()));
-        int slotPreviewCap = width >= 560 ? 80 : width >= 390 ? 48 : 24;
-        int visibleSlots = Math.min(slotPreviewCap, totalSlots);
-        int cols = width >= 560 ? 10 : width >= 390 ? 8 : 4;
-        int rows = Math.max(1, (visibleSlots + cols - 1) / cols);
-        int gridX = x + 18;
-        int gridY = y + 72;
-        int gridW = Math.max(60, width - 36);
-        int cellGap = 4;
-        int cellW = Math.max(18, Math.min(48, (gridW - (cellGap * (cols - 1))) / cols));
-        int cellH = Math.max(18, Math.min(34, (height - 122 - (cellGap * (rows - 1))) / Math.max(1, rows)));
-        List<String> assignments = data.safeBoxAssignments();
-        for (int i = 0; i < visibleSlots; i++) {
-            int col = i % cols;
-            int row = i / cols;
-            int cellX = gridX + (col * (cellW + cellGap));
-            int cellY = gridY + (row * (cellH + cellGap));
-            String status = i < assignments.size() ? safeRowField(splitSafeRow(assignments.get(i)), 6, "ASSIGNED") : "FREE";
-            int border = safeBoxStatusColor(status);
-            int fill = "FREE".equalsIgnoreCase(status) ? 0xFF142A3B : ("LOCKED".equalsIgnoreCase(status) ? 0xFF3A1622 : 0xFF2A2F39);
-            graphics.fill(cellX, cellY, cellX + cellW, cellY + cellH, border);
-            graphics.fill(cellX + 1, cellY + 1, cellX + cellW - 1, cellY + cellH - 1, fill);
-            if ("LOCKED".equalsIgnoreCase(status)) {
-                graphics.fill(cellX + 3, cellY + 3, cellX + cellW - 3, cellY + 5, ORDER_BOARD_RED);
-            } else if (!"FREE".equalsIgnoreCase(status)) {
-                graphics.fill(cellX + 3, cellY + cellH - 5, cellX + cellW - 3, cellY + cellH - 3, ORDER_BOARD_GOLD);
+        List<SafeBoxRowCardData> rows = parseSafeBoxRows(data.safeBoxAssignments());
+        int viewportX = x + 16;
+        int viewportY = y + 62;
+        int viewportW = Math.max(60, width - 32);
+        int viewportH = Math.max(72, height - 108);
+        safeBoxMapViewportHitbox = new RectHitbox(viewportX, viewportY, viewportW, viewportH);
+        int cardH = safeBoxRowCardHeight(width);
+        int gap = 8;
+        int contentH = rows.isEmpty()
+                ? viewportH
+                : (rows.size() * cardH) + (Math.max(0, rows.size() - 1) * gap);
+        safeBoxMapMaxScroll = pixelScrollMax(contentH, viewportH);
+        safeBoxMapScroll = Math.max(0, Math.min(safeBoxMapScroll, safeBoxMapMaxScroll));
+
+        enableScaledScissor(graphics, viewportX, viewportY, viewportX + viewportW, viewportY + viewportH);
+        if (rows.isEmpty()) {
+            graphics.fill(viewportX, viewportY, viewportX + viewportW, Math.min(viewportY + viewportH, viewportY + 58), 0x6618324E);
+            graphics.fill(viewportX, viewportY, viewportX + 4, Math.min(viewportY + viewportH, viewportY + 58), ORDER_BOARD_GOLD);
+            graphics.drawString(this.font, fitToWidth(tr("No loaded deposit row blocks found in claimed safe areas."), viewportW - 24),
+                    viewportX + 12, viewportY + 10, 0xFFEAF5FF, false);
+            graphics.drawString(this.font, fitToWidth(tr("Place deposit row blocks inside a safe claim, keep the chunk loaded, then refresh."), viewportW - 24),
+                    viewportX + 12, viewportY + 28, 0xFF9FB8D2, false);
+        } else {
+            int rowY = viewportY - safeBoxMapScroll;
+            for (SafeBoxRowCardData row : rows) {
+                if (rowY > viewportY + viewportH || rowY + cardH < viewportY) {
+                    rowY += cardH + gap;
+                    continue;
+                }
+                drawSafeBoxRowCard(graphics, row, viewportX, rowY, viewportW, cardH);
+                rowY += cardH + gap;
             }
         }
+        graphics.disableScissor();
+        drawOutputScrollbar(graphics, viewportX, viewportY, viewportW, viewportH, safeBoxMapScroll, safeBoxMapMaxScroll);
+
         int legendY = y + height - 34;
         drawSafeLegendItem(graphics, x + 18, legendY, "Free", 0xFF22C55E);
         drawSafeLegendItem(graphics, x + 86, legendY, "Assigned", ORDER_BOARD_GOLD);
         drawSafeLegendItem(graphics, x + 178, legendY, "Locked", ORDER_BOARD_RED);
-        if (safeParseInt(data.safeTotalBoxSlots()) > visibleSlots) {
-            graphics.drawString(this.font, fitToWidth(tr("Showing first " + visibleSlots + " of " + data.safeTotalBoxSlots() + " slots."), width - 290),
-                    x + 270, legendY + 4, 0xFF9FB8D2, false);
+        if (width >= 430) {
+            drawSafeLegendItem(graphics, x + 252, legendY, "Cover", 0xFF7895B4);
+        }
+        if (!rows.isEmpty() && width >= 560) {
+            graphics.drawString(this.font, fitToWidth(tr(rows.size() + " row block" + (rows.size() == 1 ? "" : "s") + " loaded."), width - 352),
+                    x + 346, legendY + 4, 0xFF9FB8D2, false);
+        }
+    }
+
+    private void drawSafeBoxRowCard(GuiGraphics graphics,
+                                    SafeBoxRowCardData row,
+                                    int x,
+                                    int y,
+                                    int width,
+                                    int height) {
+        graphics.fill(x, y, x + width, y + height, 0xAA0B1727);
+        graphics.fill(x, y, x + width, y + 1, row.locked() > 0 ? ORDER_BOARD_RED : ORDER_BOARD_CYAN);
+        String title = "Row #" + row.index() + " | " + row.dimension() + " (" + row.x() + ", " + row.y() + ", " + row.z() + ")";
+        graphics.drawString(this.font, fitToWidth(tr(title), width - 24), x + 10, y + 8, 0xFFEAF5FF, false);
+        String summary = "Boxes " + row.boxes()
+                + " | Claimed " + row.assigned()
+                + " | Locked " + row.locked()
+                + " | Covers " + row.covers()
+                + " | Empty " + row.empty();
+        graphics.drawString(this.font, fitToWidth(tr(summary), width - 24), x + 10, y + 22, 0xFF9FB8D2, false);
+
+        List<SafeBoxCellData> cells = row.cells() == null ? List.of() : row.cells();
+        if (cells.isEmpty()) {
+            graphics.fill(x + 10, y + 42, x + width - 10, y + height - 10, 0x6618324E);
+            graphics.drawString(this.font, tr("No modules reported for this row block."), x + 20, y + 52, 0xFFBBD2EA, false);
+            return;
+        }
+        int units = 4;
+        int cellGap = 4;
+        int cellsX = x + 10;
+        int cellsY = y + 42;
+        int cellsW = Math.max(40, width - 20);
+        int cellH = Math.max(36, height - 52);
+        int unitW = Math.max(16, (cellsW - (cellGap * (units - 1))) / units);
+        int cellX = cellsX;
+        for (SafeBoxCellData cell : cells) {
+            int span = Math.max(1, Math.min(units, cell.rowSpan()));
+            int cellW = Math.max(18, (unitW * span) + (cellGap * Math.max(0, span - 1)));
+            if (cellX + cellW > cellsX + cellsW) {
+                cellW = Math.max(18, cellsX + cellsW - cellX);
+            }
+            drawSafeBoxCell(graphics, cell, cellX, cellsY, cellW, cellH);
+            cellX += cellW + cellGap;
+            if (cellX >= cellsX + cellsW) {
+                break;
+            }
+        }
+    }
+
+    private void drawSafeBoxCell(GuiGraphics graphics,
+                                 SafeBoxCellData cell,
+                                 int x,
+                                 int y,
+                                 int width,
+                                 int height) {
+        int border = safeBoxStatusColor(cell.status());
+        graphics.fill(x, y, x + width, y + height, border);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, safeBoxStatusFill(cell.status()));
+        graphics.fill(x + 3, y + 3, x + width - 3, y + 5, border);
+        String title = safeBoxTitle(cell);
+        graphics.drawString(this.font, fitToWidth(tr(title), width - 10), x + 5, y + 9, 0xFFEAF5FF, false);
+        graphics.drawString(this.font, fitToWidth(tr(safeBoxStatusLabel(cell.status())), width - 10),
+                x + 5, y + 22, border, false);
+        int lineY = y + 36;
+        for (String meta : safeBoxMetaLines(cell)) {
+            if (lineY > y + height - 18) {
+                break;
+            }
+            graphics.drawString(this.font, fitToWidth(tr(meta), width - 10), x + 5, lineY, 0xFFC8DAEC, false);
+            lineY += LINE_HEIGHT;
+        }
+        if (isLocatableSafeBox(cell) && height >= 72 && width >= 52) {
+            int buttonW = Math.min(58, width - 10);
+            int buttonH = 14;
+            int buttonX = x + width - buttonW - 5;
+            int buttonY = y + height - buttonH - 5;
+            graphics.fill(buttonX, buttonY, buttonX + buttonW, buttonY + buttonH, 0xFF163955);
+            graphics.fill(buttonX, buttonY, buttonX + buttonW, buttonY + 1, ORDER_BOARD_CYAN);
+            graphics.drawCenteredString(this.font, tr("Locate"), buttonX + buttonW / 2, buttonY + 4, 0xFFEAF5FF);
+            visibleSafeBoxLocateActions.add(new SafeBoxLocateHitbox(buttonX, buttonY, buttonW, buttonH, cell));
         }
     }
 
@@ -13673,15 +15768,25 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                           int height) {
         drawModernBankPanel(graphics, x, y, width, height, 0xFF102238, 0xFF244B73);
         graphics.drawString(this.font, tr("Policy Card"), x + 16, y + 18, 0xFFFFFFFF, false);
-        String mode = safePolicyModeLabel(data.safePolicyMode());
-        graphics.drawString(this.font, fitToWidth(tr(mode + " policy"), width - 32), x + 16, y + 40, 0xFFE7F3FF, false);
-        String amount = "$" + compactCurrency(data.safePolicyAmount());
-        String period = safeTicksLabel(data.safeRentPeriodTicks());
-        String overdue = safeTicksLabel(data.safeOverdueTicks());
-        drawModernMiniInfo(graphics, x + 16, y + 64, width - 32,
-                "Fee/rent: " + amount, 0xFFC8DAEC);
-        drawModernMiniInfo(graphics, x + 16, y + 80, width - 32,
-                "Rent period: " + period + " | Overdue: " + overdue, 0xFF9FB8D2);
+        List<SafePolicyData> policies = parseSafePolicies(data);
+        int rowY = y + 40;
+        int visible = Math.min(4, policies.size());
+        for (int i = 0; i < visible; i++) {
+            SafePolicyData policy = policies.get(i);
+            int currentY = rowY + i * 20;
+            String mode = safePolicyModeLabel(policy.mode());
+            String price = "Free".equals(mode)
+                    ? "Free"
+                    : "$" + compactCurrency(policy.amount()) + ("Recurring rent".equals(mode)
+                    ? "/" + safeTicksLabel(String.valueOf(policy.rentPeriodTicks()))
+                    : " once");
+            graphics.drawString(this.font, fitToWidth(tr(policy.label()), Math.max(50, width / 3)),
+                    x + 16, currentY, 0xFFE7F3FF, false);
+            graphics.drawString(this.font, fitToWidth(tr(price), Math.max(62, width / 3)),
+                    x + Math.max(84, width / 3), currentY, 0xFFFFF3C4, false);
+            graphics.drawString(this.font, fitToWidth(tr("free " + policy.free() + "/" + policy.total()), Math.max(52, width / 4)),
+                    x + width - 78, currentY, policy.free() > 0 ? 0xFF8DF0B2 : 0xFFFFB7A3, false);
+        }
     }
 
     private void drawModernSafeAreaStatus(GuiGraphics graphics,
@@ -13828,14 +15933,109 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private void drawModernBankStaffing(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
         drawModernTopSummary(graphics, data, x, y, width, "Staffing", "Employees, bank tellers, and salaries.");
-        int cardY = y + modernBankTopSummaryHeight(width) + 18;
-        drawModernBankPanel(graphics, x, cardY, width, 232, 0xFF102238, 0xFF244B73);
-        graphics.drawString(this.font, tr("Employee controls"), x + 16, cardY + 18, 0xFFFFFFFF, false);
-        graphics.drawString(this.font, tr("Hiring and firing open in a modal so the roster stays readable."),
-                x + 16, cardY + 42, 0xFF9FB8D2, false);
-        drawModernMiniInfo(graphics, x + 16, cardY + 166, width - 32,
-                "Employees tracked: " + data.employees().size() + " | teller tools stay owner-only.", 0xFFB7CBE3);
-        drawModernActionFeedback(graphics, x, cardY + 252, width);
+        int actionY = y + modernBankTopSummaryHeight(width) + 18;
+        drawModernBankPanel(graphics, x, actionY, width, 118, 0xFF102238, 0xFF244B73);
+        graphics.fill(x + 1, actionY + 1, x + 5, actionY + 117, ORDER_BOARD_CYAN);
+        graphics.drawString(this.font, tr("Staffing Action Center"), x + 16, actionY + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Hire bank employees, issue bound teller NPCs, and manage Safe Access per employee."), width - 32),
+                x + 16, actionY + 40, 0xFF9FB8D2, false);
+
+        int rosterY = actionY + 128;
+        int gap = 10;
+        boolean wide = width >= 760;
+        int playerW = wide ? Math.max(320, (width - gap) * 55 / 100) : width;
+        int tellerW = wide ? width - playerW - gap : width;
+        int tellerX = wide ? x + playerW + gap : x;
+        int tellerY = wide ? rosterY : rosterY + modernBankEmployeeRosterHeight(data);
+
+        drawModernBankPanel(graphics, x, rosterY, playerW, modernBankEmployeeRosterHeight(data) - 10,
+                0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Player Employees"), x + 16, rosterY + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                tr(data.playerEmployees().size() + " employed | " + countSafeAccessEmployees(data) + " with Safe Access"),
+                x + 16, rosterY + 36, 0xFF9FB8D2, false);
+        int employeeY = rosterY + 52;
+        if (data.playerEmployees().isEmpty()) {
+            drawModernEmptyRosterCard(graphics, x + 12, employeeY, Math.max(120, playerW - 24),
+                    "No bank employees hired yet.");
+        } else {
+            for (OwnerPcPlayerEmployeePayload employee : data.playerEmployees()) {
+                drawModernPlayerEmployeeCard(graphics, employee, x + 12, employeeY, Math.max(120, playerW - 24));
+                employeeY += 94;
+            }
+        }
+
+        drawModernBankPanel(graphics, tellerX, tellerY, tellerW, modernBankTellerRosterHeight(data) - 10,
+                0xFF102238, 0xFF244B73);
+        graphics.drawString(this.font, tr("Bank Teller NPCs"), tellerX + 16, tellerY + 18, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                tr(data.bankTellers().size() + " bound to this bank"),
+                tellerX + 16, tellerY + 36, 0xFF9FB8D2, false);
+        int tellerCardY = tellerY + 52;
+        if (data.bankTellers().isEmpty()) {
+            drawModernEmptyRosterCard(graphics, tellerX + 12, tellerCardY, Math.max(120, tellerW - 24),
+                    "No bank teller NPCs found in loaded worlds.");
+        } else {
+            for (OwnerPcBankTellerPayload teller : data.bankTellers()) {
+                drawModernBankTellerCard(graphics, teller, tellerX + 12, tellerCardY, Math.max(120, tellerW - 24));
+                tellerCardY += 94;
+            }
+        }
+
+        int rosterBottom = wide
+                ? rosterY + Math.max(modernBankEmployeeRosterHeight(data), modernBankTellerRosterHeight(data))
+                : tellerY + modernBankTellerRosterHeight(data);
+        drawModernActionFeedback(graphics, x, rosterBottom + 10, width);
+    }
+
+    private void drawModernPlayerEmployeeCard(GuiGraphics graphics,
+                                              OwnerPcPlayerEmployeePayload employee,
+                                              int x,
+                                              int y,
+                                              int width) {
+        drawModernBankPanel(graphics, x, y, width, 84, 0xFF0F2035, 0xFF315779);
+        int accent = employee.online() ? ORDER_BOARD_GREEN : 0xFF7895B4;
+        graphics.fill(x + 1, y + 1, x + 4, y + 83, accent);
+        graphics.drawString(this.font, fitToWidth(tr(employee.name()), width - 28), x + 12, y + 12, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr(employee.role() + " | $" + compactCurrency(employee.salary())), width - 28),
+                x + 12, y + 29, 0xFFB7CBE3, false);
+        String access = (employee.online() ? "Online" : "Offline")
+                + " | Safe Access " + (employee.safeAccess() ? "granted" : "not granted");
+        graphics.drawString(this.font, fitToWidth(tr(access), width - 28), x + 12, y + 44,
+                employee.safeAccess() ? 0xFF9FE9C4 : 0xFFFFD28A, false);
+    }
+
+    private void drawModernBankTellerCard(GuiGraphics graphics,
+                                          OwnerPcBankTellerPayload teller,
+                                          int x,
+                                          int y,
+                                          int width) {
+        drawModernBankPanel(graphics, x, y, width, 84, 0xFF0F2035, 0xFF315779);
+        int accent = teller.active() ? ORDER_BOARD_GREEN : ORDER_BOARD_RED;
+        graphics.fill(x + 1, y + 1, x + 4, y + 83, accent);
+        graphics.drawString(this.font, fitToWidth(tr(teller.name()), width - 28), x + 12, y + 12, 0xFFFFFFFF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Variant " + teller.variant() + " | " + (teller.active() ? "Active" : "Inactive")), width - 28),
+                x + 12, y + 29, 0xFFB7CBE3, false);
+        String location = teller.dimension() + " (" + teller.x() + ", " + teller.y() + ", " + teller.z() + ")";
+        graphics.drawString(this.font, fitToWidth(tr(location), width - 28), x + 12, y + 44, 0xFF9FB8D2, false);
+    }
+
+    private void drawModernEmptyRosterCard(GuiGraphics graphics, int x, int y, int width, String message) {
+        drawModernBankPanel(graphics, x, y, width, 64, 0xFF0F2035, 0xFF315779);
+        graphics.drawString(this.font, fitToWidth(tr(message), width - 24), x + 12, y + 24, 0xFF9FB8D2, false);
+    }
+
+    private int countSafeAccessEmployees(OwnerPcBankDataPayload data) {
+        int count = 0;
+        for (OwnerPcPlayerEmployeePayload employee : data.playerEmployees()) {
+            if (employee.safeAccess()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void drawModernBankLending(GuiGraphics graphics, OwnerPcBankDataPayload data, int x, int y, int width) {
@@ -14266,6 +16466,255 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
     }
 
+    private void drawVaultRouteModalOverlay(GuiGraphics graphics, OwnerPcBankDataPayload data) {
+        if (!isVaultRouteModalOpen()) {
+            return;
+        }
+        RectHitbox modal = getVaultRouteModalBounds();
+        int x = modal.x();
+        int y = modal.y();
+        int w = modal.width();
+        int h = modal.height();
+        boolean editor = VaultRouteEditorClientState.isEditorOpen();
+        int accent = editor ? ORDER_BOARD_CYAN : ORDER_BOARD_VIOLET;
+
+        graphics.fill(0, 0, this.width, this.height, 0xA804101E);
+        graphics.fill(sectionViewportX - 6, sectionViewportY - 6,
+                sectionViewportX + sectionViewportW + 6, sectionViewportY + sectionViewportH + 6, 0x5518344D);
+        graphics.fill(x - 10, y - 10, x + w + 10, y + h + 10, 0x33000000);
+        graphics.fill(x - 2, y - 2, x + w + 2, y + h + 2, 0xF0041424);
+        graphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, 0xFF3A5E83);
+        graphics.fill(x, y, x + w, y + h, 0xF0162B43);
+        graphics.fill(x, y, x + w, y + 28, 0xEE244B73);
+        graphics.fill(x, y, x + 4, y + h, accent);
+
+        graphics.drawString(this.font, tr(editor ? "Vault Route Editor" : "Bank Teller Detail"),
+                x + 16, y + 10, 0xFFFFFFFF, false);
+        if (editor) {
+            drawVaultRouteEditorBody(graphics, modal, data);
+        } else {
+            drawBankTellerDetailBody(graphics, modal, data);
+        }
+    }
+
+    private void drawBankTellerDetailBody(GuiGraphics graphics,
+                                          RectHitbox modal,
+                                          OwnerPcBankDataPayload data) {
+        int x = modal.x();
+        int y = modal.y();
+        int w = modal.width();
+        int h = modal.height();
+        OwnerPcBankTellerPayload teller = selectedBankTeller(data);
+        String subtitle = teller == null
+                ? "The selected teller is no longer present in the loaded bank roster."
+                : "Review identity, status, location, and configure each vault direction separately.";
+        graphics.drawString(this.font, fitToWidth(tr(subtitle), w - 32),
+                x + 16, y + 38, 0xFFCBE2F7, false);
+
+        int cardY = y + 62;
+        graphics.fill(x + 16, cardY, x + w - 16, cardY + 72, 0x6618324E);
+        int statusAccent = teller != null && teller.active() ? ORDER_BOARD_GREEN : ORDER_BOARD_RED;
+        graphics.fill(x + 16, cardY, x + 20, cardY + 72, statusAccent);
+        String tellerName = teller == null || teller.name().isBlank() ? "Bank Teller" : teller.name();
+        graphics.drawString(this.font, fitToWidth(tr(tellerName), w - 148),
+                x + 30, cardY + 10, 0xFFFFFFFF, false);
+        String tellerId = VaultRouteEditorClientState.selectedTellerId() == null
+                ? "unknown"
+                : VaultRouteEditorClientState.selectedTellerId().toString();
+        graphics.drawString(this.font, fitToWidth(tr("Teller ID " + tellerId), w - 60),
+                x + 30, cardY + 26, 0xFFBBD2EA, false);
+        String status = teller == null ? "Unavailable" : teller.active() ? "Active" : "Inactive";
+        String location = teller == null
+                ? "Location unavailable"
+                : teller.dimension() + " (" + teller.x() + ", " + teller.y() + ", " + teller.z() + ")";
+        graphics.drawString(this.font, fitToWidth(tr(status + " | " + location), w - 60),
+                x + 30, cardY + 44, teller != null && teller.active() ? 0xFF9FE9C4 : 0xFFFFB7A3, false);
+
+        graphics.drawString(this.font, tr("Configured Vaults"), x + 16, y + 148, 0xFFFFFFFF, false);
+        RectHitbox viewport = vaultRouteListViewport;
+        if (viewport == null) {
+            return;
+        }
+        List<OwnerPcVaultSetupPayload> vaults = data == null ? List.of() : data.vaultSetups();
+        enableScaledScissor(graphics, viewport.x(), viewport.y(),
+                viewport.x() + viewport.width(), viewport.y() + viewport.height());
+        if (vaults.isEmpty()) {
+            graphics.fill(viewport.x(), viewport.y(), viewport.x() + viewport.width(),
+                    viewport.y() + Math.min(52, viewport.height()), 0x6618324E);
+            graphics.drawString(this.font, fitToWidth(tr("No configured vaults are available for this bank."), viewport.width() - 24),
+                    viewport.x() + 12, viewport.y() + 18, 0xFF9FB8D2, false);
+        } else {
+            int rowY = viewport.y() - vaultRouteDetailsScroll;
+            for (OwnerPcVaultSetupPayload vault : vaults) {
+                drawVaultRouteDetailVaultRow(graphics, vault, viewport.x(), rowY, viewport.width(), 72);
+                rowY += 80;
+            }
+        }
+        graphics.disableScissor();
+        drawOutputScrollbar(graphics, viewport.x(), viewport.y(), viewport.width(), viewport.height(),
+                vaultRouteDetailsScroll, vaultRouteDetailsMaxScroll);
+        drawVaultRouteMessage(graphics, x + 16, y + h - 52, w - 32);
+    }
+
+    private void drawVaultRouteDetailVaultRow(GuiGraphics graphics,
+                                              OwnerPcVaultSetupPayload vault,
+                                              int x,
+                                              int y,
+                                              int width,
+                                              int height) {
+        int accent = vault.ready() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD;
+        graphics.fill(x, y, x + width, y + height, 0x6618324E);
+        graphics.fill(x, y, x + 4, y + height, accent);
+        String title = vault.vaultId().isBlank() ? "Vault" : "Vault " + vault.vaultId();
+        graphics.drawString(this.font, fitToWidth(tr(title), width - 24), x + 12, y + 8, 0xFFFFFFFF, false);
+        String status = (vault.ready() ? "Ready" : vault.status())
+                + " | " + (vault.viewingRoomStatus().isBlank()
+                ? "Viewing room not configured" : vault.viewingRoomStatus());
+        graphics.drawString(this.font, fitToWidth(tr(status), width - 24), x + 12, y + 24,
+                vault.ready() ? 0xFF9FE9C4 : 0xFFFFD28A, false);
+    }
+
+    private void drawVaultRouteEditorBody(GuiGraphics graphics,
+                                          RectHitbox modal,
+                                          OwnerPcBankDataPayload data) {
+        int x = modal.x();
+        int y = modal.y();
+        int w = modal.width();
+        int h = modal.height();
+        int innerX = x + 16;
+        int innerW = Math.max(120, w - 32);
+        VaultRouteEditorClientState.Identity identity = VaultRouteEditorClientState.identity();
+        OwnerPcBankTellerPayload teller = selectedBankTeller(data);
+        String tellerName = teller == null || teller.name().isBlank() ? "Bank Teller" : teller.name();
+        String routeLabel = identity == null
+                ? "Route unavailable"
+                : identity.direction().name() + " | Vault " + identity.vaultId();
+        graphics.drawString(this.font, fitToWidth(tr(tellerName + " | " + routeLabel), innerW),
+                innerX, y + 38, 0xFFCBE2F7, false);
+
+        int summaryY = y + 58;
+        graphics.fill(innerX, summaryY, innerX + innerW, summaryY + 42, 0x6618324E);
+        graphics.fill(innerX, summaryY, innerX + 4, summaryY + 42, ORDER_BOARD_CYAN);
+        String dimension = VaultRouteEditorClientState.dimension().isBlank()
+                ? "Set by first coordinate selection"
+                : VaultRouteEditorClientState.dimension();
+        graphics.drawString(this.font, fitToWidth(tr("Dimension: " + dimension), innerW - 24),
+                innerX + 12, summaryY + 8, 0xFFEAF5FF, false);
+        graphics.drawString(this.font,
+                fitToWidth(tr("Ordered steps: " + VaultRouteEditorClientState.steps().size()), innerW - 24),
+                innerX + 12, summaryY + 24, 0xFF9FB8D2, false);
+
+        drawVaultRouteCoordinateRow(graphics, innerX, y + 108, innerW,
+                "Start", VaultRouteEditorClientState.hasStart(), VaultRouteEditorClientState.start());
+        drawVaultRouteCoordinateRow(graphics, innerX, y + 136, innerW,
+                "Finish", VaultRouteEditorClientState.hasFinish(), VaultRouteEditorClientState.finish());
+        graphics.drawString(this.font, tr("Add ordered step"), innerX, y + 160, 0xFF9FB8D2, false);
+        graphics.drawString(this.font, tr("Route Steps"), innerX, y + 194, 0xFFFFFFFF, false);
+
+        RectHitbox viewport = vaultRouteListViewport;
+        if (viewport != null) {
+            List<OwnerPcVaultRouteStepPayload> steps = VaultRouteEditorClientState.steps();
+            enableScaledScissor(graphics, viewport.x(), viewport.y(),
+                    viewport.x() + viewport.width(), viewport.y() + viewport.height());
+            if (steps.isEmpty()) {
+                graphics.fill(viewport.x(), viewport.y(), viewport.x() + viewport.width(),
+                        viewport.y() + Math.min(48, viewport.height()), 0x6618324E);
+                graphics.drawString(this.font,
+                        fitToWidth(tr("No route steps. Add walk, wait, redstone, or RFID actions."), viewport.width() - 24),
+                        viewport.x() + 12, viewport.y() + 17, 0xFF9FB8D2, false);
+            } else {
+                int rowY = viewport.y() - vaultRouteEditorScroll;
+                for (int i = 0; i < steps.size(); i++) {
+                    drawVaultRouteStepRow(graphics, steps.get(i), i, viewport.x(), rowY, viewport.width(), 72);
+                    rowY += 80;
+                }
+            }
+            graphics.disableScissor();
+            drawOutputScrollbar(graphics, viewport.x(), viewport.y(), viewport.width(), viewport.height(),
+                    vaultRouteEditorScroll, vaultRouteEditorMaxScroll);
+        }
+        drawVaultRouteMessage(graphics, innerX, y + h - 52, innerW);
+    }
+
+    private void drawVaultRouteCoordinateRow(GuiGraphics graphics,
+                                             int x,
+                                             int y,
+                                             int width,
+                                             String label,
+                                             boolean selected,
+                                             OwnerPcVaultRoutePosition position) {
+        graphics.fill(x, y, x + width, y + 22, 0x6618324E);
+        graphics.fill(x, y, x + 3, y + 22, selected ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD);
+        String value = selected ? formatVaultRoutePosition(position) : "Not selected";
+        int reserve = Math.max(76, Math.min(132, width / 3));
+        graphics.drawString(this.font, fitToWidth(tr(label + ": " + value), width - reserve - 22),
+                x + 10, y + 7, selected ? 0xFFEAF5FF : 0xFFFFD28A, false);
+    }
+
+    private void drawVaultRouteStepRow(GuiGraphics graphics,
+                                       OwnerPcVaultRouteStepPayload step,
+                                       int index,
+                                       int x,
+                                       int y,
+                                       int width,
+                                       int height) {
+        int accent = step instanceof OwnerPcVaultRouteStepPayload.Walk
+                ? ORDER_BOARD_CYAN
+                : step instanceof OwnerPcVaultRouteStepPayload.Wait
+                ? ORDER_BOARD_GOLD
+                : step instanceof OwnerPcVaultRouteStepPayload.Rfid ? ORDER_BOARD_GREEN : ORDER_BOARD_VIOLET;
+        graphics.fill(x, y, x + width, y + height, 0x6618324E);
+        graphics.fill(x, y, x + 4, y + height, accent);
+        String title = (index + 1) + ". " + (step instanceof OwnerPcVaultRouteStepPayload.Walk
+                ? "Walk"
+                : step instanceof OwnerPcVaultRouteStepPayload.Wait
+                ? "Wait"
+                : step instanceof OwnerPcVaultRouteStepPayload.Rfid ? "Access RFID" : "Redstone");
+        graphics.drawString(this.font, fitToWidth(tr(title), Math.max(40, width - 112)),
+                x + 10, y + 8, 0xFFFFFFFF, false);
+        if (step instanceof OwnerPcVaultRouteStepPayload.Walk walk) {
+            graphics.drawString(this.font, fitToWidth(tr("Target " + formatVaultRoutePosition(walk.target())), width - 24),
+                    x + 10, y + 28, 0xFFBBD2EA, false);
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Wait wait) {
+            graphics.drawString(this.font,
+                    fitToWidth(tr("Duration ticks (1-" + SafeTellerRouteValidator.MAX_WAIT_TICKS + "): "
+                            + wait.durationTicks()), width - 24),
+                    x + 10, y + 30, 0xFFFFD28A, false);
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Redstone redstone) {
+            int controlW = Math.max(42, width - 20);
+            int pickW = Math.max(42, Math.min(82, controlW / 3));
+            int fieldW = Math.max(28, (controlW - pickW - 8) / 2);
+            graphics.drawString(this.font, fitToWidth(tr("Strength 1-15"), fieldW),
+                    x + 10, y + 30, 0xFFD9C4FF, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr("Duration 1-" + SafeTellerRouteValidator.MAX_REDSTONE_DURATION_TICKS), fieldW),
+                    x + 14 + fieldW, y + 30, 0xFFD9C4FF, false);
+            String target = formatVaultRoutePosition(redstone.target()) + " " + redstone.face().name();
+            graphics.drawString(this.font, fitToWidth(tr(target), pickW),
+                    x + width - pickW - 10, y + 30, 0xFFBBD2EA, false);
+        } else if (step instanceof OwnerPcVaultRouteStepPayload.Rfid rfid) {
+            graphics.drawString(this.font,
+                    fitToWidth(tr("Scanner " + formatVaultRoutePosition(rfid.scanner())), width - 24),
+                    x + 10, y + 28, 0xFF9FE9C4, false);
+        }
+    }
+
+    private void drawVaultRouteMessage(GuiGraphics graphics, int x, int y, int width) {
+        String message = VaultRouteEditorClientState.message();
+        if (message == null || message.isBlank()) {
+            return;
+        }
+        graphics.drawString(this.font, fitToWidth(tr(message), width), x, y,
+                VaultRouteEditorClientState.messageSuccess() ? 0xFF9FE9C4 : 0xFFFFB7A3, false);
+    }
+
+    private String formatVaultRoutePosition(OwnerPcVaultRoutePosition position) {
+        if (position == null) {
+            return "-";
+        }
+        return position.x() + ", " + position.y() + ", " + position.z();
+    }
+
     private void drawModernBankModalOverlay(GuiGraphics graphics, OwnerPcBankDataPayload data) {
         RectHitbox modal = getModernBankModalBounds();
         if (modal.height() <= 0) {
@@ -14353,12 +16802,13 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             }
             case SAFE_POLICY -> {
                 int half = Math.max(80, (width - gap) / 2);
-                drawModernFieldLabel(graphics, x, y - 12, "Pricing mode");
-                drawModernFieldLabel(graphics, x, y + 40, "Amount");
-                drawModernFieldLabel(graphics, x + half + gap, y + 40, "Rent period");
-                drawModernFieldLabel(graphics, x, y + 84, "Overdue period");
+                drawModernFieldLabel(graphics, x, y - 12, "Box size");
+                drawModernFieldLabel(graphics, x, y + 40, "Pricing mode");
+                drawModernFieldLabel(graphics, x, y + 92, "Amount");
+                drawModernFieldLabel(graphics, x + half + gap, y + 92, "Rent period");
+                drawModernFieldLabel(graphics, x, y + 136, "Overdue period");
             }
-            case SAFE_SEIZE_CONFIRM -> {
+            case SAFE_SEIZE_CONFIRM, PREMISE_DELETE_CONFIRM, SAFE_STORAGE_DETAILS -> {
             }
             case NONE -> {
             }
@@ -14370,17 +16820,52 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                                     int modalX,
                                                     int modalY,
                                                     int modalW) {
+        if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal)
+                == BankActionModal.SAFE_STORAGE_DETAILS) {
+            drawVaultStorageDetailsModal(graphics, modalX, modalY, modalW);
+            return;
+        }
+        if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal)
+                == BankActionModal.PREMISE_DELETE_CONFIRM) {
+            int x = modalX + 16;
+            int y = modalY + 82;
+            int width = Math.max(80, modalW - 32);
+            String premiseId = premiseDeleteState.premiseId();
+            graphics.fill(x, y, x + width, y + 92, 0x992B1020);
+            graphics.fill(x, y, x + width, y + 1, ORDER_BOARD_RED);
+            graphics.fill(x, y, x + 3, y + 92, ORDER_BOARD_RED);
+            graphics.drawString(this.font,
+                    fitToWidth(tr("Delete premise " + shortUuid(premiseId) + "?"), width - 26),
+                    x + 14, y + 16, 0xFFFFDDE5, false);
+            graphics.drawString(this.font,
+                    fitToWidth(tr("No deletion blockers were reported in the latest refresh."), width - 26),
+                    x + 14, y + 36, ORDER_BOARD_GREEN, false);
+            List<String> lines = wrapLines(List.of(
+                    "This permanently removes the premise record. The server revalidates eligibility when you confirm."),
+                    Math.max(80, width - 26));
+            int lineY = y + 56;
+            for (String line : lines) {
+                if (lineY > y + 76) {
+                    break;
+                }
+                graphics.drawString(this.font, fitToWidth(tr(line), width - 26),
+                        x + 14, lineY, 0xFFB7CBE3, false);
+                lineY += LINE_HEIGHT;
+            }
+            return;
+        }
         if ((bankActionModal == null ? BankActionModal.NONE : bankActionModal) == BankActionModal.SAFE_POLICY) {
             int x = modalX + 16;
-            int y = modalY + 206;
+            int y = modalY + 268;
             int width = Math.max(80, modalW - 32);
+            String size = safePolicyFullSizeLabel(formValues.getOrDefault("safe.policy.size", "SMALL"));
             String mode = safePolicyModeLabel(formValues.getOrDefault("safe.policy.mode", "FREE"));
             String period = safeTicksLabel(formValues.getOrDefault("safe.policy.period", "12096000"));
             String overdue = safeTicksLabel(formValues.getOrDefault("safe.policy.overdue", "5184000"));
             graphics.fill(x, y, x + width, y + 42, 0x662B1020);
             graphics.fill(x, y, x + width, y + 1, ORDER_BOARD_GOLD);
             graphics.fill(x, y, x + 3, y + 42, ORDER_BOARD_GOLD);
-            graphics.drawString(this.font, fitToWidth(tr("Preview: " + mode + " | period " + period + " | overdue " + overdue), width - 26),
+            graphics.drawString(this.font, fitToWidth(tr("Preview: " + size + " | " + mode + " | period " + period + " | overdue " + overdue), width - 26),
                     x + 14, y + 14, 0xFFFFF3C4, false);
             return;
         }
@@ -14481,6 +16966,95 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
     }
 
+    private void drawVaultStorageDetailsModal(GuiGraphics graphics,
+                                              int modalX,
+                                              int modalY,
+                                              int modalW) {
+        OwnerPcVaultStorageMarkerPayload marker = selectedVaultStorageMarker;
+        if (marker == null) return;
+        RectHitbox modal = getModernBankModalBounds();
+        int viewportX = modalX + 16;
+        int viewportY = modalY + 68;
+        int viewportW = Math.max(100, modalW - 32);
+        int viewportH = Math.max(90, modal.height() - 112);
+        int cardGap = 8;
+        int summaryH = 54;
+        int cardH = 68;
+        int rows = Math.max(1, marker.contents().size());
+        int contentH = summaryH + cardGap + rows * cardH + Math.max(0, rows - 1) * cardGap;
+        vaultStorageDetailsMaxScroll = Math.max(0, contentH - viewportH);
+        vaultStorageDetailsScroll = Math.max(0, Math.min(vaultStorageDetailsScroll, vaultStorageDetailsMaxScroll));
+
+        enableScaledScissor(graphics, viewportX, viewportY, viewportX + viewportW, viewportY + viewportH);
+        int summaryY = viewportY - vaultStorageDetailsScroll;
+        graphics.fill(viewportX, summaryY, viewportX + viewportW, summaryY + summaryH, 0xFF102A45);
+        graphics.fill(viewportX, summaryY, viewportX + 4, summaryY + summaryH, ORDER_BOARD_VIOLET);
+        graphics.drawString(this.font,
+                fitToWidth(tr(marker.kind().equals("PALLET")
+                        ? marker.unitCount() + " physical pallet" + (marker.unitCount() == 1 ? "" : "s")
+                        : marker.label()), viewportW - 28),
+                viewportX + 14, summaryY + 10, 0xFFEAF5FF, false);
+        String total = marker.valueKnown()
+                ? MoneyText.abbreviateWithDollar(BigDecimal.valueOf(marker.valueCents(), 2))
+                : "- (contains unpriced items)";
+        graphics.drawString(this.font,
+                fitToWidth(tr(marker.itemCount() + " items | Total value " + total), viewportW - 28),
+                viewportX + 14, summaryY + 29, marker.valueKnown() ? ORDER_BOARD_GREEN : ORDER_BOARD_GOLD, false);
+
+        int cardY = summaryY + summaryH + cardGap;
+        if (marker.contents().isEmpty()) {
+            graphics.fill(viewportX, cardY, viewportX + viewportW, cardY + cardH, 0xFF0F2035);
+            graphics.drawCenteredString(this.font, tr("This storage location is empty."),
+                    viewportX + viewportW / 2, cardY + 29, 0xFF9FB8D2);
+        } else {
+            for (OwnerPcVaultStorageContentPayload content : marker.contents()) {
+                if (cardY + cardH >= viewportY && cardY <= viewportY + viewportH) {
+                    graphics.fill(viewportX, cardY, viewportX + viewportW, cardY + cardH, 0xFF0F2035);
+                    graphics.fill(viewportX, cardY, viewportX + viewportW, cardY + 1,
+                            content.valueKnown() ? ORDER_BOARD_CYAN : ORDER_BOARD_GOLD);
+                    ResourceLocation itemId = ResourceLocation.tryParse(content.itemId());
+                    if (itemId != null) {
+                        ItemStack icon = new ItemStack(BuiltInRegistries.ITEM.get(itemId));
+                        if (!icon.isEmpty()) graphics.renderItem(icon, viewportX + 12, cardY + 18);
+                    }
+                    int textX = viewportX + 40;
+                    int textW = Math.max(60, viewportW - 52);
+                    graphics.drawString(this.font,
+                            fitToWidth(tr(content.displayName() + " x" + content.count()), textW),
+                            textX, cardY + 9, 0xFFEAF5FF, false);
+                    graphics.drawString(this.font, fitToWidth(content.itemId(), textW),
+                            textX, cardY + 23, 0xFF7895B4, false);
+                    String source = switch (content.valueSource()) {
+                        case "DIRECT" -> "Cash / commodity spot value";
+                        case "MARKET_MEDIAN" -> "Market median from " + content.marketSampleCount() + " open-shop price"
+                                + (content.marketSampleCount() == 1 ? "" : "s");
+                        default -> "No direct or regular-market value";
+                    };
+                    graphics.drawString(this.font, fitToWidth(tr(source), textW),
+                            textX, cardY + 38, content.valueKnown() ? 0xFFB7CBE3 : ORDER_BOARD_GOLD, false);
+                    String values = content.valueKnown()
+                            ? "Unit " + MoneyText.abbreviateWithDollar(BigDecimal.valueOf(content.unitValueCents(), 2))
+                            + " | Total " + MoneyText.abbreviateWithDollar(BigDecimal.valueOf(content.totalValueCents(), 2))
+                            + (content.marketSampleCount() > 0
+                            ? " | Average " + MoneyText.abbreviateWithDollar(BigDecimal.valueOf(content.marketAverageCents(), 2)) : "")
+                            : "Unit - | Total -";
+                    graphics.drawString(this.font, fitToWidth(tr(values), textW),
+                            textX, cardY + 52, content.valueKnown() ? ORDER_BOARD_GREEN : 0xFF9FB8D2, false);
+                }
+                cardY += cardH + cardGap;
+            }
+        }
+        graphics.disableScissor();
+        if (vaultStorageDetailsMaxScroll > 0) {
+            int trackX = viewportX + viewportW - 3;
+            graphics.fill(trackX, viewportY, trackX + 2, viewportY + viewportH, 0xFF17324D);
+            int thumbH = Math.max(20, Math.round(viewportH * (viewportH / (float) contentH)));
+            int thumbY = viewportY + Math.round((viewportH - thumbH)
+                    * (vaultStorageDetailsScroll / (float) vaultStorageDetailsMaxScroll));
+            graphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbH, ORDER_BOARD_CYAN);
+        }
+    }
+
     private int modernBankModalAccent() {
         return switch (bankActionModal == null ? BankActionModal.NONE : bankActionModal) {
             case BRANDING_MOTTO, BRANDING_COLOR -> ORDER_BOARD_CYAN;
@@ -14492,7 +17066,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ACCOUNT_FREEZE -> ORDER_BOARD_RED;
             case ACCOUNT_TEMP_LIMIT -> ORDER_BOARD_GOLD;
             case SAFE_POLICY -> ORDER_BOARD_GOLD;
-            case SAFE_SEIZE_CONFIRM -> ORDER_BOARD_RED;
+            case SAFE_STORAGE_DETAILS -> ORDER_BOARD_VIOLET;
+            case SAFE_SEIZE_CONFIRM, PREMISE_DELETE_CONFIRM -> ORDER_BOARD_RED;
             case NONE -> ORDER_BOARD_CYAN;
         };
     }
@@ -14515,6 +17090,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ACCOUNT_TEMP_LIMIT -> "Temporary Withdrawal Limit";
             case SAFE_POLICY -> "Safety Box Pricing";
             case SAFE_SEIZE_CONFIRM -> "Confirm Seizure";
+            case PREMISE_DELETE_CONFIRM -> "Delete Premise";
+            case SAFE_STORAGE_DETAILS -> selectedVaultStorageMarker == null
+                    ? "Storage Details"
+                    : selectedVaultStorageMarker.label();
             case NONE -> "";
         };
     }
@@ -14537,6 +17116,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ACCOUNT_TEMP_LIMIT -> "Set a customer-specific withdrawal cap that expires automatically.";
             case SAFE_POLICY -> "Choose free, one-time, or recurring rent for assigned boxes.";
             case SAFE_SEIZE_CONFIRM -> "Destructive action for locked overdue boxes only.";
+            case PREMISE_DELETE_CONFIRM -> "Permanent deletion is available only while every blocker is clear.";
+            case SAFE_STORAGE_DETAILS -> selectedVaultStorageMarker == null
+                    ? "Inspect the selected physical storage marker."
+                    : selectedVaultStorageMarker.locationSummary();
             case NONE -> "";
         };
     }
@@ -14825,13 +17408,247 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         graphics.drawString(this.font, tr(label), x + 14, y + 4, 0xFFC8DAEC, false);
     }
 
+    private List<SafeBoxRowCardData> parseSafeBoxRows(List<String> payloadRows) {
+        if (payloadRows == null || payloadRows.isEmpty()) {
+            return List.of();
+        }
+        Map<Integer, SafeBoxRowCardData> rows = new LinkedHashMap<>();
+        for (String raw : payloadRows) {
+            if (raw == null || !raw.startsWith("@safe_row=")) {
+                continue;
+            }
+            String[] fields = splitSafeRow(raw.substring("@safe_row=".length()));
+            int index = safeParseInt(safeRowField(fields, 0, "0"), 0);
+            if (index <= 0) {
+                continue;
+            }
+            rows.put(index, new SafeBoxRowCardData(
+                    index,
+                    safeRowField(fields, 1, "dimension"),
+                    safeParseInt(safeRowField(fields, 2, "0"), 0),
+                    safeParseInt(safeRowField(fields, 3, "0"), 0),
+                    safeParseInt(safeRowField(fields, 4, "0"), 0),
+                    safeRowField(fields, 5, ""),
+                    safeParseInt(safeRowField(fields, 6, "0"), 0),
+                    safeParseInt(safeRowField(fields, 7, "0"), 0),
+                    safeParseInt(safeRowField(fields, 8, "0"), 0),
+                    safeParseInt(safeRowField(fields, 9, "0"), 0),
+                    safeParseInt(safeRowField(fields, 10, "0"), 0),
+                    new ArrayList<>()
+            ));
+        }
+        for (String raw : payloadRows) {
+            if (raw == null || !raw.startsWith("@safe_box=")) {
+                continue;
+            }
+            String[] fields = splitSafeRow(raw.substring("@safe_box=".length()));
+            int rowIndex = safeParseInt(safeRowField(fields, 0, "0"), 0);
+            if (rowIndex <= 0) {
+                continue;
+            }
+            SafeBoxRowCardData row = rows.get(rowIndex);
+            if (row == null) {
+                row = new SafeBoxRowCardData(rowIndex, "dimension", 0, 0, 0, "", 0, 0, 0, 0, 0, new ArrayList<>());
+                rows.put(rowIndex, row);
+            }
+            row.cells().add(new SafeBoxCellData(
+                    rowIndex,
+                    safeParseInt(safeRowField(fields, 1, "0"), 0),
+                    safeRowField(fields, 2, "EMPTY"),
+                    safeRowField(fields, 3, "Empty"),
+                    Math.max(1, safeParseInt(safeRowField(fields, 4, "1"), 1)),
+                    safeRowField(fields, 5, "EMPTY"),
+                    safeRowField(fields, 6, ""),
+                    safeRowField(fields, 7, ""),
+                    safeRowField(fields, 8, ""),
+                    safeRowField(fields, 9, "0"),
+                    Math.max(1L, safeParseLong(safeRowField(fields, 10, "1"), 1L)),
+                    Math.max(0L, safeParseLong(safeRowField(fields, 11, "0"), 0L)),
+                    safeRowField(fields, 12, "")
+            ));
+        }
+        List<SafeBoxRowCardData> parsed = new ArrayList<>(rows.values());
+        parsed.sort(Comparator.comparingInt(SafeBoxRowCardData::index));
+        for (SafeBoxRowCardData row : parsed) {
+            row.cells().sort(Comparator.comparingInt(SafeBoxCellData::doorIndex));
+        }
+        return parsed;
+    }
+
+    private List<SafePolicyData> parseSafePolicies(OwnerPcBankDataPayload data) {
+        List<String> payloadRows = data == null ? List.of() : data.safeBoxAssignments();
+        List<SafePolicyData> policies = new ArrayList<>();
+        if (payloadRows != null) {
+            for (String raw : payloadRows) {
+                if (raw == null || !raw.startsWith("@safe_policy=")) {
+                    continue;
+                }
+                String[] fields = splitSafeRow(raw.substring("@safe_policy=".length()));
+                policies.add(new SafePolicyData(
+                        normalizeSafePolicySize(safeRowField(fields, 0, "SMALL")),
+                        safeRowField(fields, 1, "Small"),
+                        safeRowField(fields, 2, "FREE"),
+                        safeRowField(fields, 3, "0.00"),
+                        Math.max(1L, safeParseLong(safeRowField(fields, 4, "12096000"), 12096000L)),
+                        Math.max(1L, safeParseLong(safeRowField(fields, 5, "5184000"), 5184000L)),
+                        Math.max(0, safeParseInt(safeRowField(fields, 6, "0"), 0)),
+                        Math.max(0, safeParseInt(safeRowField(fields, 7, "0"), 0)),
+                        Math.max(0, safeParseInt(safeRowField(fields, 8, "0"), 0))
+                ));
+            }
+        }
+        if (!policies.isEmpty()) {
+            return policies;
+        }
+        return List.of(
+                new SafePolicyData("SMALL", "Small", data == null ? "FREE" : data.safePolicyMode(), data == null ? "0.00" : data.safePolicyAmount(),
+                        safeParseLong(data == null ? "12096000" : data.safeRentPeriodTicks(), 12096000L),
+                        safeParseLong(data == null ? "5184000" : data.safeOverdueTicks(), 5184000L), 0, 0, 0),
+                new SafePolicyData("MEDIUM", "Medium", data == null ? "FREE" : data.safePolicyMode(), data == null ? "0.00" : data.safePolicyAmount(),
+                        safeParseLong(data == null ? "12096000" : data.safeRentPeriodTicks(), 12096000L),
+                        safeParseLong(data == null ? "5184000" : data.safeOverdueTicks(), 5184000L), 0, 0, 0),
+                new SafePolicyData("LARGE", "Large", data == null ? "FREE" : data.safePolicyMode(), data == null ? "0.00" : data.safePolicyAmount(),
+                        safeParseLong(data == null ? "12096000" : data.safeRentPeriodTicks(), 12096000L),
+                        safeParseLong(data == null ? "5184000" : data.safeOverdueTicks(), 5184000L), 0, 0, 0),
+                new SafePolicyData("EXTRA_LARGE", "Extra Large", data == null ? "FREE" : data.safePolicyMode(), data == null ? "0.00" : data.safePolicyAmount(),
+                        safeParseLong(data == null ? "12096000" : data.safeRentPeriodTicks(), 12096000L),
+                        safeParseLong(data == null ? "5184000" : data.safeOverdueTicks(), 5184000L), 0, 0, 0)
+        );
+    }
+
+    private SafePolicyData findSafePolicy(OwnerPcBankDataPayload data, String sizeRaw) {
+        String target = normalizeSafePolicySize(sizeRaw);
+        for (SafePolicyData policy : parseSafePolicies(data)) {
+            if (target.equals(policy.type())) {
+                return policy;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeSafePolicySize(String raw) {
+        String normalized = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "MEDIUM" -> "MEDIUM";
+            case "LARGE" -> "LARGE";
+            case "EXTRA_LARGE", "EXTRA LARGE", "XL" -> "EXTRA_LARGE";
+            default -> "SMALL";
+        };
+    }
+
+    private String safePolicySizeLabel(String raw) {
+        return switch (normalizeSafePolicySize(raw)) {
+            case "MEDIUM" -> "Medium";
+            case "LARGE" -> "Large";
+            case "EXTRA_LARGE" -> "XL";
+            default -> "Small";
+        };
+    }
+
+    private String safePolicyFullSizeLabel(String raw) {
+        return switch (normalizeSafePolicySize(raw)) {
+            case "MEDIUM" -> "Medium";
+            case "LARGE" -> "Large";
+            case "EXTRA_LARGE" -> "Extra Large";
+            default -> "Small";
+        };
+    }
+
+    private int safeBoxRowCardHeight(int width) {
+        return width >= 560 ? 122 : 112;
+    }
+
     private int safeBoxStatusColor(String status) {
         String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "LOCKED" -> ORDER_BOARD_RED;
             case "ASSIGNED" -> ORDER_BOARD_GOLD;
+            case "COVER" -> 0xFF7895B4;
+            case "EMPTY" -> 0xFF33506A;
             default -> 0xFF22C55E;
         };
+    }
+
+    private int safeBoxStatusFill(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "LOCKED" -> 0xFF321625;
+            case "ASSIGNED" -> 0xFF2F2B1A;
+            case "COVER" -> 0xFF22344B;
+            case "EMPTY" -> 0xFF132234;
+            default -> 0xFF142A3B;
+        };
+    }
+
+    private String safeBoxStatusLabel(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "LOCKED" -> "LOCKED";
+            case "ASSIGNED" -> "CLAIMED";
+            case "COVER" -> "COVER";
+            case "EMPTY" -> "EMPTY";
+            default -> "FREE";
+        };
+    }
+
+    private String safeBoxTitle(SafeBoxCellData cell) {
+        if (cell == null) {
+            return "Deposit box";
+        }
+        String status = cell.status() == null ? "" : cell.status().trim().toUpperCase(Locale.ROOT);
+        if ("COVER".equals(status)) {
+            return "Cover plate";
+        }
+        if ("EMPTY".equals(status)) {
+            return "Empty slot";
+        }
+        if (cell.boxNumber() != null && !cell.boxNumber().isBlank()) {
+            return cell.boxNumber();
+        }
+        String type = cell.typeLabel() == null || cell.typeLabel().isBlank() ? "Deposit box" : cell.typeLabel();
+        return type + " door " + (cell.doorIndex() + 1);
+    }
+
+    private List<String> safeBoxMetaLines(SafeBoxCellData cell) {
+        if (cell == null) {
+            return List.of();
+        }
+        String status = cell.status() == null ? "" : cell.status().trim().toUpperCase(Locale.ROOT);
+        List<String> lines = new ArrayList<>();
+        if ("ASSIGNED".equals(status) || "LOCKED".equals(status)) {
+            String owner = cell.owner() == null || cell.owner().isBlank()
+                    ? shortUuid(cell.accountId())
+                    : cell.owner();
+            lines.add("Owner: " + (owner == null || owner.isBlank() ? "Unknown" : owner));
+            lines.add("Paid: $" + compactCurrency(cell.paidAmount()));
+            lines.add("Rent: " + safeTicksLabel(String.valueOf(cell.rentPeriodTicks())));
+            if (cell.assignedAtMillis() > 0L) {
+                lines.add("Assigned " + formatRelativeTime(cell.assignedAtMillis()));
+            }
+            return lines;
+        }
+        if ("COVER".equals(status)) {
+            return List.of("Non-rentable cover", "Door " + (cell.doorIndex() + 1));
+        }
+        if ("EMPTY".equals(status)) {
+            return List.of("No deposit module", "Door " + (cell.doorIndex() + 1));
+        }
+        lines.add("Type: " + (cell.typeLabel() == null || cell.typeLabel().isBlank() ? "Deposit box" : cell.typeLabel()));
+        lines.add("Door " + (cell.doorIndex() + 1));
+        lines.add("Available");
+        return lines;
+    }
+
+    private boolean isLocatableSafeBox(SafeBoxCellData cell) {
+        if (cell == null || cell.locateTarget() == null || cell.locateTarget().isBlank()) {
+            return false;
+        }
+        String type = cell.type() == null ? "" : cell.type().trim().toUpperCase(Locale.ROOT);
+        String status = cell.status() == null ? "" : cell.status().trim().toUpperCase(Locale.ROOT);
+        return !"COVER".equals(type)
+                && !"EMPTY".equals(type)
+                && !"COVER".equals(status)
+                && !"EMPTY".equals(status);
     }
 
     private String safePolicyModeLabel(String mode) {
@@ -14877,6 +17694,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case OVERVIEW -> "Overview";
             case ACCOUNTS -> "Accounts";
             case SAFE -> "Safe";
+            case PREMISES -> "Premises";
             case BRANDING -> "Branding";
             case LIMITS -> "Limits";
             case GOVERNANCE -> "Governance";
@@ -14893,6 +17711,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return switch (section) {
             case ACCOUNTS -> "Accounts";
             case SAFE -> "Safe operations";
+            case PREMISES -> "Bank locations";
             case BRANDING -> "Bank branding";
             case LIMITS -> "Withdrawal and card fee limits";
             case GOVERNANCE -> "Roles, shares, and cofounders";
@@ -14907,6 +17726,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return switch (section) {
             case ACCOUNTS -> "Customer account directory and selected profile.";
             case SAFE -> "Protected areas, safety deposit boxes, rent policy, and locked-box review.";
+            case PREMISES -> "Premise locations, readiness, access modes, exits, and deletion constraints.";
             case BRANDING -> "Public identity, color, and motto.";
             case LIMITS -> "Permanent controls are cards; editing happens in modals.";
             case GOVERNANCE -> "Separate role management from read-only ownership reporting.";
@@ -14923,8 +17743,34 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return (rows * 66) + (Math.max(0, rows - 1) * 10);
     }
 
+    private int modernBankEmployeeRosterHeight(OwnerPcBankDataPayload data) {
+        int count = data == null ? 0 : data.playerEmployees().size();
+        return 72 + Math.max(64, count * 94);
+    }
+
+    private int modernBankTellerRosterHeight(OwnerPcBankDataPayload data) {
+        int count = data == null ? 0 : data.bankTellers().size();
+        return 72 + Math.max(64, count * 94);
+    }
+
+    private int modernBankStaffingContentHeight(OwnerPcBankDataPayload data, int width) {
+        int summary = modernBankTopSummaryHeight(width) + 18;
+        int action = 128;
+        int roster = width >= 760
+                ? Math.max(modernBankEmployeeRosterHeight(data), modernBankTellerRosterHeight(data))
+                : modernBankEmployeeRosterHeight(data) + modernBankTellerRosterHeight(data);
+        return summary + action + roster + 20;
+    }
+
     private int modernBankSafeKpiColumns(int width) {
         return width >= 1040 ? 5 : width >= 760 ? 3 : width >= 430 ? 2 : 1;
+    }
+
+    private int modernBankSafeSetupHeight(OwnerPcBankDataPayload data, int width) {
+        int count = data == null ? 0 : data.vaultSetups().size();
+        int columns = width >= 760 ? 2 : 1;
+        int rows = Math.max(1, (count + columns - 1) / columns);
+        return 72 + (rows * 94) + 12;
     }
 
     private int modernBankSafeKpiBlockHeight(int width) {
@@ -14933,8 +17779,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return (rows * 76) + (Math.max(0, rows - 1) * 10);
     }
 
-    private int modernBankSafeModuleRailHeight() {
-        return 46;
+    private int modernBankSafeModuleRailHeight(int width) {
+        return width >= 560 ? 46 : 76;
     }
 
     private int modernBankSafeMapHeight(int width) {
@@ -14942,7 +17788,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private int modernBankSafePolicyHeight() {
-        return 140;
+        return 176;
     }
 
     private int modernBankSafeAreaStatusHeight(int width) {
@@ -14953,10 +17799,39 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return width >= 430 ? 210 : 236;
     }
 
-    private int modernBankSafeContentHeight(int width) {
+    private int modernViewingRoomCardHeight() {
+        return 150;
+    }
+
+    private int modernBankViewingRoomsHeight(OwnerPcBankDataPayload data, int width) {
+        int count = data == null ? 0 : data.viewingRooms().size();
+        int columns = width >= 760 ? 2 : 1;
+        int rows = Math.max(1, (count + columns - 1) / columns);
+        return 82 + rows * modernViewingRoomCardHeight() + Math.max(0, rows - 1) * 10 + 12;
+    }
+
+    private int modernBankSafeContentHeight(OwnerPcBankDataPayload data, int width) {
         int gap = 10;
+        int setup = modernBankSafeSetupHeight(data, width) + 12;
         int kpis = modernBankSafeKpiBlockHeight(width);
-        int mainY = kpis + 12 + modernBankSafeModuleRailHeight() + 12;
+        int mainY = kpis + 12 + modernBankSafeModuleRailHeight(width) + 12;
+        int common = setup + mainY;
+        if (safePanelTab == SafePanelTab.ACCESS_LOGS) {
+            int rows = data == null ? 0 : filteredSafeAccessLogs(data).size();
+            return common + modernSafeAccessLogHeaderHeight(width) + 10
+                    + Math.max(70, rows * 80) + 20;
+        }
+        if (safePanelTab == SafePanelTab.ALARMS) {
+            int statusH = width >= 620 ? 76 : 248;
+            return common + statusH + 18 + modernSafeAlarmConfigHeight(width) + 20;
+        }
+        if (safePanelTab == SafePanelTab.VAULT_STORAGE) {
+            int claims = data == null ? 0 : data.vaultStorageClaims().size();
+            if (claims == 0) return common + 200;
+            int selectorH = Math.max(118, 98 + claims * 30);
+            int body = width >= 760 ? Math.max(390, selectorH) : 390 + selectorH;
+            return common + body + 20;
+        }
         boolean wide = width >= 820;
         int sideStack = 196 + gap + modernBankSafePolicyHeight();
         int main = wide
@@ -14966,7 +17841,57 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         int lower = lowerWide
                 ? Math.max(modernBankSafeAreaStatusHeight(width), modernBankSafeLockedQueueHeight(width))
                 : modernBankSafeAreaStatusHeight(width) + gap + modernBankSafeLockedQueueHeight(width);
-        return mainY + main + gap + lower + 20;
+        return common + main + gap + lower + gap
+                + modernBankViewingRoomsHeight(data, width) + 20;
+    }
+
+    private int modernSafeAccessLogHeaderHeight(int width) {
+        return width >= 700 ? 88 : 118;
+    }
+
+    private int modernSafeAlarmConfigHeight(int width) {
+        return width >= 720 ? 314 : 408;
+    }
+
+    private List<OwnerPcSafeAccessLogPayload> filteredSafeAccessLogs(OwnerPcBankDataPayload data) {
+        if (data == null) return List.of();
+        if (safeLogFilter == SafeLogFilter.ALL) return data.safeAccessLogs();
+        return data.safeAccessLogs().stream()
+                .filter(entry -> safeLogFilter.name().equalsIgnoreCase(entry.category()))
+                .toList();
+    }
+
+    private int safeLogAccent(OwnerPcSafeAccessLogPayload entry) {
+        if ("DENIED".equalsIgnoreCase(entry.outcome())) return ORDER_BOARD_RED;
+        return switch (entry.category().toUpperCase(Locale.ROOT)) {
+            case "BOX_ACCESS" -> ORDER_BOARD_CYAN;
+            case "ASSIGNMENT" -> ORDER_BOARD_GOLD;
+            case "SECURITY" -> ORDER_BOARD_RED;
+            case "STORAGE" -> ORDER_BOARD_GREEN;
+            default -> ORDER_BOARD_VIOLET;
+        };
+    }
+
+    private String formatSafeLogTimestamp(long occurredAtMillis) {
+        if (occurredAtMillis <= 0L) return "Unknown time";
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(occurredAtMillis), ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+    }
+
+    private static String humanizeSafeLogToken(String raw) {
+        if (raw == null || raw.isBlank()) return "Activity";
+        String[] words = raw.trim().toLowerCase(Locale.ROOT).split("[_\\s]+", -1);
+        StringBuilder result = new StringBuilder();
+        for (String word : words) {
+            if (word.isBlank()) continue;
+            if (!result.isEmpty()) result.append(' ');
+            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return result.isEmpty() ? "Activity" : result.toString();
+    }
+
+    private String vaultStorageTooltip(OwnerPcVaultStorageMarkerPayload marker) {
+        return marker.locationSummary() + " | Press to see details";
     }
 
     private int toolbarButtonWForRender(int headerContentW, boolean compact) {
@@ -15127,11 +18052,13 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ACCOUNTS -> accountProfileOpen && selectedAccountCard != null
                     ? summaryBlock + (width >= 740 ? 780 : 1030) + feedback
                     : summaryBlock + (width >= 760 ? 350 : 592) + feedback;
-            case SAFE -> modernBankSafeContentHeight(width) + feedback;
+            case SAFE -> modernBankSafeContentHeight(data, width) + feedback;
+            case PREMISES -> OwnerPcPremisesPanelLayout.layout(
+                    width, 0, data.premises().size(), 0).contentHeight();
             case BRANDING -> summaryBlock + 230 + feedback;
             case LIMITS -> modernBankLimitsContentHeight(width) + feedback;
             case GOVERNANCE -> modernBankGovernanceContentHeight(width) + feedback;
-            case STAFFING -> summaryBlock + 252 + feedback;
+            case STAFFING -> modernBankStaffingContentHeight(data, width) + feedback;
             case LENDING -> summaryBlock + (width >= 520 ? 384 : 486) + getModernLendingMarketHeight(width) + 44 + feedback;
             case COMPLIANCE -> modernBankComplianceContentHeight(width) + feedback;
             case BUSINESS, HOURS, PERMISSIONS -> 260;
@@ -15304,7 +18231,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case PERMISSIONS -> drawFigmaShopPermissions(graphics, x, canvasY, width, contentHeight);
             case COMPLIANCE -> drawFigmaShopCompliance(graphics, x, canvasY, width, contentHeight);
             case ACCOUNTS -> drawFigmaShopClaims(graphics, x, canvasY, width, contentHeight);
-            case SAFE -> drawFigmaShopClaims(graphics, x, canvasY, width, contentHeight);
+            case SAFE, PREMISES -> drawFigmaShopClaims(graphics, x, canvasY, width, contentHeight);
         }
     }
 
@@ -15322,8 +18249,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case LENDING -> width < 560 ? 1120 : (narrow ? 860 : 520);
             case BUSINESS -> getShopBusinessPanelContentHeight(
                     parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines()),
-                    Math.max(120, width - 24)
-            ) + 20;
+                    Math.max(120, width)
+            );
             case HOURS -> narrow ? 840 : 430;
             case PERMISSIONS -> {
                 int memberRows = filterShopPermissionMemberCards(
@@ -15336,7 +18263,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 yield Math.max(narrow ? 650 : 390, shopComplianceContentHeight(width, eventRows));
             }
             case ACCOUNTS -> Math.max(narrow ? 820 : 470, shopClaimsContentHeight(width, viewportHeight));
-            case SAFE -> Math.max(narrow ? 820 : 470, shopClaimsContentHeight(width, viewportHeight));
+            case SAFE, PREMISES -> Math.max(narrow ? 820 : 470, shopClaimsContentHeight(width, viewportHeight));
         };
         return Math.max(viewportHeight, base);
     }
@@ -16748,9 +19675,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         graphics.fill(x, y, x + 4, y + h, ORDER_BOARD_GOLD);
 
         String day = friendlyShopHoursDay(shopHoursModalDay);
-        graphics.drawString(this.font, day + " Hours", x + 16, y + 10, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, day + " Hours - Server Time", x + 16, y + 10, 0xFFFFFFFF, false);
         graphics.drawString(this.font,
-                fitToWidth("Edit this weekday only. Use exact time values or the 30-minute controls below.",
+                fitToWidth("Editing " + shopHoursServerZoneDescription()
+                                + ". The Local view is display-only.",
                         w - 32),
                 x + 16, y + 38, 0xFFCBE2F7, false);
 
@@ -17097,13 +20025,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void drawFigmaShopBusiness(GuiGraphics graphics, int x, int y, int width, int height) {
-        ShopBusinessSnapshot snapshot = parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines());
         drawShopBusinessTypePanel(graphics, x, y, width, height);
-        if (snapshot == null) {
-            return;
-        }
-        graphics.drawString(this.font, fitToWidth("Type-specific level unlocks and franchise systems follow the selected shop type only.", width - 24),
-                x + 12, y + Math.max(20, height - 28), 0xFF9FB8D2, false);
     }
 
     private void drawFigmaShopHours(GuiGraphics graphics, int x, int y, int width, int height) {
@@ -17111,10 +20033,17 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         int gap = 12;
         int scheduleW = wide ? Math.max(420, (width * 2) / 3) : width;
         int panelH = wide ? 410 : 398;
+        String serverZone = shopHoursServerZoneDescription();
+        String localZone = shopHoursLocalZoneDescription();
         drawFigmaShopPanel(graphics, x, y, scheduleW, panelH, "Weekly shop schedule",
-                "Each day opens its own focused modal. Times follow the server's local clock.", ORDER_BOARD_GOLD);
-        List<ShopHoursDayData> days = getShopHoursDaysFromForm();
-        int rowY = y + 58;
+                "Authoritative timezone: " + serverZone, ORDER_BOARD_GOLD);
+        String activeZoneLine = shopHoursClockView == ShopHoursClockView.SERVER
+                ? "Showing server time. Edit buttons change this authoritative schedule."
+                : "Showing your local time: " + localZone + ". Editing still uses server time.";
+        graphics.drawString(this.font, fitToWidth(activeZoneLine, scheduleW - 28),
+                x + 14, y + 44, shopHoursClockView == ShopHoursClockView.SERVER ? 0xFFFFD166 : 0xFF64D8FF, false);
+        List<ShopHoursDayData> days = getDisplayedShopHoursDays();
+        int rowY = y + 70;
         int editW = 46;
         int editX = x + scheduleW - editW - 14;
         int labelW = Math.min(132, Math.max(92, scheduleW / 6));
@@ -17391,7 +20320,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case PERMISSIONS -> 0xFF93C5FD;
             case COMPLIANCE -> ORDER_BOARD_RED;
             case ACCOUNTS -> ORDER_BOARD_CYAN;
-            case SAFE -> ORDER_BOARD_CYAN;
+            case SAFE, PREMISES -> ORDER_BOARD_CYAN;
         };
     }
 
@@ -17411,7 +20340,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case PERMISSIONS -> "Access controls";
             case COMPLIANCE -> "Maintenance console";
             case ACCOUNTS -> "Claiming actions";
-            case SAFE -> "Claiming actions";
+            case SAFE, PREMISES -> "Claiming actions";
         };
     }
 
@@ -17431,7 +20360,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case PERMISSIONS -> "Search players, choose role scope, and grant or remove plot access.";
             case COMPLIANCE -> "Rename, refresh, copy IDs, clear bad links, or delete with explicit confirmation.";
             case ACCOUNTS -> "Claim plot, stockroom, and delivery pallet areas for real shop workflows.";
-            case SAFE -> "Claim plot, stockroom, and delivery pallet areas for real shop workflows.";
+            case SAFE, PREMISES -> "Claim plot, stockroom, and delivery pallet areas for real shop workflows.";
         };
     }
 
@@ -17810,84 +20739,50 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void drawShopBusinessTypePanel(GuiGraphics graphics, int x, int y, int width, int height) {
-        visibleMarketActions.clear();
-        visibleShopEmployeeActions.clear();
-        visibleShopOwnerAccountCards.clear();
-        visibleShopPermissionMemberCards.clear();
-        visibleShopVaultAdjustActions.clear();
-        visibleShopInventoryActions.clear();
-        visibleShopInventoryShelfCards.clear();
-        visibleShopStockroomLocateActions.clear();
-        visibleShopOrderCards.clear();
-        visibleShopOrderPalletCards.clear();
-        visibleShopOrderPickCards.clear();
         visibleShopBusinessActions.clear();
         visibleShopBusinessHelp.clear();
-        visibleShopLevelRoadmapNodes.clear();
         visibleKpiCards.clear();
-        marketConfirmAcceptHitbox = null;
-        marketConfirmCancelHitbox = null;
-        accountProfileCopyIdHitbox = null;
-        shopLevelRoadmapScrollbarTrackHitbox = null;
-        shopLevelRoadmapScrollbarThumbHitbox = null;
-        shopLevelRoadmapModalCloseHitbox = null;
 
         ShopBusinessSnapshot snapshot = parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines());
-        int contentW = Math.max(1, width - 12);
-        int contentH = getShopBusinessPanelContentHeight(snapshot, contentW);
-        int maxScroll = pixelScrollMax(contentH, height);
-        sectionScroll = Math.max(0, Math.min(sectionScroll, maxScroll));
-
-        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_BORDER_HI);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, ORDER_BOARD_PANEL);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, ORDER_BOARD_CYAN);
-        if (!useVirtualScale) {
-            enableScaledScissor(graphics, x + 1, y + 1, x + width - 1, y + height - 1);
-        }
-        drawShopBusinessPanelContent(graphics, snapshot, x + 6, y + 6 - sectionScroll, contentW, contentH);
-        if (!useVirtualScale) {
-            graphics.disableScissor();
-        }
+        OwnerPcShopBusinessPanelLayout.Layout layout = getShopBusinessPanelLayout(snapshot, width, height, 0);
+        drawShopBusinessPanelContent(graphics, snapshot, x, y, layout);
     }
 
     private void drawShopBusinessPanelContent(GuiGraphics graphics,
                                               ShopBusinessSnapshot snapshot,
                                               int x,
                                               int y,
-                                              int width,
-                                              int height) {
+                                              OwnerPcShopBusinessPanelLayout.Layout layout) {
         String type = normalizeBusinessShopType(snapshot.shopType());
-        int gap = 8;
-        int cursorY = y;
+        OwnerPcShopBusinessPanelLayout.Rect header = layout.header();
+        drawBusinessHeader(graphics, snapshot, x + header.x(), y + header.y(), header.width(),
+                header.height(), layout.dimensions().headerControls());
+        drawBusinessMetricRow(graphics, snapshot, x, y, layout.metrics());
 
-        int headerH = getBusinessHeaderHeight(width);
-        drawBusinessHeader(graphics, snapshot, x, cursorY, width);
-        cursorY += headerH + 8;
-
-        drawBusinessMetricRow(graphics, snapshot, x, cursorY, width);
-        cursorY += getBusinessMetricRowHeight(width) + 16;
-
-        boolean wide = isShopBusinessWide(width);
-        int actionW = wide ? getShopBusinessActionColumnWidth(width) : width;
-        int mainW = wide ? Math.max(120, width - actionW - gap) : width;
-        int mainHeight = getShopBusinessTypeSpecificHeight(snapshot, mainW);
-        int actionX = wide ? x + mainW + gap : x;
-        int actionY = wide ? cursorY : cursorY + mainHeight + gap;
-        int actionH = wide ? Math.max(mainHeight, getShopBusinessActionCenterMinHeight(type)) : getShopBusinessActionCenterMinHeight(type);
+        OwnerPcShopBusinessPanelLayout.Rect main = layout.main();
+        OwnerPcShopBusinessPanelLayout.Rect actions = layout.actions();
+        int mainX = x + main.x();
+        int mainY = y + main.y();
+        int actionX = x + actions.x();
+        int actionY = y + actions.y();
 
         if ("FRANCHISE".equals(type)) {
-            drawFranchiseBusinessPanel(graphics, snapshot, x, cursorY, mainW);
-            drawFranchiseActionCenter(graphics, snapshot, actionX, actionY, actionW, actionH);
+            drawFranchiseBusinessPanel(graphics, snapshot, mainX, mainY, main.width());
+            drawFranchiseActionCenter(graphics, snapshot, actionX, actionY, actions.width(), actions.height());
         } else if ("CORPORATE_RETAIL_CHAIN".equals(type)) {
-            drawCorporateBusinessPanel(graphics, snapshot, x, cursorY, mainW);
-            drawCorporateActionCenter(graphics, snapshot, actionX, actionY, actionW, actionH);
+            drawCorporateBusinessPanel(graphics, snapshot, mainX, mainY, main.width());
+            drawCorporateActionCenter(graphics, snapshot, actionX, actionY, actions.width(), actions.height());
         } else {
-            drawIndependentBusinessPanel(graphics, snapshot, x, cursorY, mainW);
-            drawIndependentActionCenter(graphics, snapshot, actionX, actionY, actionW, actionH);
+            drawIndependentBusinessPanel(graphics, snapshot, mainX, mainY, main.width());
+            drawIndependentActionCenter(graphics, snapshot, actionX, actionY, actions.width(), actions.height());
         }
     }
 
-    private void drawBusinessMetricRow(GuiGraphics graphics, ShopBusinessSnapshot snapshot, int x, int y, int width) {
+    private void drawBusinessMetricRow(GuiGraphics graphics,
+                                       ShopBusinessSnapshot snapshot,
+                                       int x,
+                                       int y,
+                                       List<OwnerPcShopBusinessPanelLayout.Rect> cards) {
         String type = normalizeBusinessShopType(snapshot.shopType());
         String[] labels;
         String[] values;
@@ -17940,18 +20835,14 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             accents = new int[]{0xFF78D6A4, 0xFFE2A66A, 0xFF7DD6B2, 0xFF9EC7FF};
         }
 
-        int gap = 6;
-        int cols = width >= 560 ? 4 : width >= 330 ? 2 : 1;
-        int cardW = Math.max(80, (width - (gap * (cols - 1))) / cols);
         for (int i = 0; i < labels.length; i++) {
-            int row = i / cols;
-            int col = i % cols;
+            OwnerPcShopBusinessPanelLayout.Rect card = cards.get(i);
             drawBusinessKpiCard(
                     graphics,
-                    x + (col * (cardW + gap)),
-                    y + (row * (56 + gap)),
-                    cardW,
-                    56,
+                    x + card.x(),
+                    y + card.y(),
+                    card.width(),
+                    card.height(),
                     labels[i],
                     values[i],
                     subtitles[i],
@@ -17961,87 +20852,85 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
     }
 
-    private void drawBusinessHeader(GuiGraphics graphics, ShopBusinessSnapshot snapshot, int x, int y, int width) {
+    private void drawBusinessHeader(GuiGraphics graphics,
+                                    ShopBusinessSnapshot snapshot,
+                                    int x,
+                                    int y,
+                                    int width,
+                                    int height,
+                                    OwnerPcShopBusinessPanelLayout.HeaderControls controls) {
         String type = normalizeBusinessShopType(snapshot.shopType());
         int accent = businessAccentColor(type);
-        int headerH = getBusinessHeaderHeight(width);
-        graphics.fill(x - 1, y - 1, x + width + 1, y + headerH + 1, ORDER_BOARD_BORDER_HI);
-        graphics.fill(x, y, x + width, y + headerH, ORDER_BOARD_CARD);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, accent);
+        drawFigmaShopPanel(
+                graphics,
+                x,
+                y,
+                width,
+                height,
+                "Business type",
+                businessTypeSubtitle(type),
+                accent
+        );
 
-        String chipLabel = prettifyShopType(type);
-        int chipW = Math.min(Math.max(72, width / 3), Math.max(72, this.font.width(chipLabel.toUpperCase(Locale.ROOT)) + 16));
-        if (width >= 620) {
-            graphics.drawString(this.font, fitToWidth("Business Type", 120), x + 12, y + 13, ORDER_BOARD_TEXT, false);
-            drawBusinessChip(graphics, x + 122, y + 11, chipW, chipLabel, accent);
-            int subtitleX = x + 134 + chipW;
-            int buttonAreaW = Math.min(326, Math.max(238, width / 3));
-            graphics.drawString(this.font,
-                    fitToWidth(businessTypeSubtitle(type), Math.max(60, width - (subtitleX - x) - buttonAreaW - 12)),
-                    subtitleX,
-                    y + 13,
-                    ORDER_BOARD_MUTED,
-                    false);
+        OwnerPcShopBusinessPanelLayout.Rect summary = controls.typeSummary();
+        int summaryX = x + summary.x();
+        int summaryY = y + summary.y();
+        graphics.fill(summaryX, summaryY, summaryX + summary.width(), summaryY + summary.height(), 0x6618324E);
+        graphics.fill(summaryX, summaryY, summaryX + 3, summaryY + summary.height(), accent);
+        String typeLabel = prettifyShopType(type);
+        String levelLabel = "Level " + Math.max(1, snapshot.level());
+        int levelWidth = Math.min(Math.max(38, this.font.width(levelLabel)), Math.max(38, summary.width() / 3));
+        graphics.drawString(this.font,
+                fitToWidth(typeLabel, Math.max(30, summary.width() - levelWidth - 28)),
+                summaryX + 12,
+                summaryY + 8,
+                ORDER_BOARD_TEXT,
+                false);
+        graphics.drawString(this.font,
+                fitToWidth(levelLabel, levelWidth),
+                Math.max(summaryX + 12, summaryX + summary.width() - levelWidth - 10),
+                summaryY + 8,
+                accent,
+                false);
+        String status = snapshot.payableCents() > 0L
+                ? formatBusinessCents(snapshot.payableCents()) + " due"
+                : snapshot.freeReclass() ? "Free type migration available" : "No business fees due";
+        graphics.drawString(this.font,
+                fitToWidth(status, Math.max(30, summary.width() - 24)),
+                summaryX + 12,
+                summaryY + 25,
+                ORDER_BOARD_MUTED,
+                false);
 
-            int buttonW = width >= 780 ? 98 : 82;
-            int buttonH = 24;
-            int buttonY = y + 12;
-            int right = x + width - 12;
-            drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Change type", "CHANGE_TYPE", true, ORDER_BOARD_CYAN);
-            right -= buttonW + 8;
-            drawBusinessButton(graphics,
-                    right - buttonW,
-                    buttonY,
-                    buttonW,
-                    buttonH,
-                    "Pay fees",
-                    "PAY_FEES_MODAL",
-                    snapshot.payableCents() > 0L,
-                    ORDER_BOARD_GOLD,
-                    "No shop-type fees are due right now.");
-            right -= buttonW + 8;
-            drawBusinessButton(graphics, right - buttonW, buttonY, buttonW, buttonH, "Refresh", "REFRESH_TYPE", true, ORDER_BOARD_CYAN);
-            return;
-        }
+        drawBusinessHeaderButton(graphics, x, y, controls.refresh(), "Refresh", "REFRESH_TYPE", true,
+                ORDER_BOARD_CYAN, "");
+        drawBusinessHeaderButton(graphics, x, y, controls.payFees(), "Pay fees", "PAY_FEES_MODAL",
+                snapshot.payableCents() > 0L, ORDER_BOARD_GOLD, "No shop-type fees are due right now.");
+        drawBusinessHeaderButton(graphics, x, y, controls.changeType(), "Change type", "CHANGE_TYPE", true,
+                ORDER_BOARD_VIOLET, "");
+    }
 
-        graphics.drawString(this.font, fitToWidth("Business Type", Math.max(70, width - chipW - 34)), x + 12, y + 11, ORDER_BOARD_TEXT, false);
-        drawBusinessChip(graphics, x + width - chipW - 12, y + 10, chipW, chipLabel, accent);
-        List<String> subtitleLines = wrapLines(List.of(businessTypeSubtitle(type)), Math.max(80, width - 24));
-        int subtitleY = y + 31;
-        for (int i = 0; i < Math.min(2, subtitleLines.size()); i++) {
-            graphics.drawString(this.font, fitToWidth(subtitleLines.get(i), width - 24), x + 12, subtitleY + (i * LINE_HEIGHT), ORDER_BOARD_MUTED, false);
-        }
-
-        String[][] actions = {
-                {"Refresh", "REFRESH_TYPE"},
-                {"Pay fees", "PAY_FEES_MODAL"},
-                {"Change type", "CHANGE_TYPE"}
-        };
-        int cols = width >= 360 ? 2 : 1;
-        int gap = 6;
-        int buttonH = 24;
-        int buttonW = Math.max(86, (width - 24 - (gap * (cols - 1))) / cols);
-        int firstButtonY = y + headerH - ((3 + cols - 1) / cols * (buttonH + gap)) - 4;
-        for (int i = 0; i < actions.length; i++) {
-            int col = i % cols;
-            int row = i / cols;
-            String label = actions[i][0];
-            String action = actions[i][1];
-            boolean enabled = !"PAY_FEES_MODAL".equals(action) || snapshot.payableCents() > 0L;
-            int actionAccent = "PAY_FEES_MODAL".equals(action) ? ORDER_BOARD_GOLD : ORDER_BOARD_CYAN;
-            drawBusinessButton(
-                    graphics,
-                    x + 12 + (col * (buttonW + gap)),
-                    firstButtonY + (row * (buttonH + gap)),
-                    buttonW,
-                    buttonH,
-                    label,
-                    action,
-                    enabled,
-                    actionAccent,
-                    "No shop-type fees are due right now."
-            );
-        }
+    private void drawBusinessHeaderButton(GuiGraphics graphics,
+                                          int panelX,
+                                          int panelY,
+                                          OwnerPcShopBusinessPanelLayout.Rect button,
+                                          String label,
+                                          String action,
+                                          boolean enabled,
+                                          int accent,
+                                          String disabledReason) {
+        drawBusinessButton(
+                graphics,
+                panelX + button.x(),
+                panelY + button.y(),
+                button.width(),
+                button.height(),
+                label,
+                action,
+                enabled,
+                accent,
+                disabledReason
+        );
     }
 
     private void drawBusinessKpiCard(GuiGraphics graphics,
@@ -18054,21 +20943,15 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                       String subtitle,
                                       int accent,
                                       String tooltipDescription) {
-        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, ORDER_BOARD_BORDER_HI);
-        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_ROW);
-        graphics.fill(x, y, x + 3, y + height, accent);
-        graphics.drawString(this.font, fitToWidth(label, width - 14), x + 10, y + 8, ORDER_BOARD_MUTED, false);
-        graphics.drawString(this.font, fitToWidth(value, width - 14), x + 10, y + 23, ORDER_BOARD_TEXT, false);
-        graphics.drawString(this.font, fitToWidth(subtitle, width - 14), x + 10, y + 39, ORDER_BOARD_MUTED, false);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFF2E4D6D);
+        graphics.fill(x, y, x + width, y + height, 0x8A1A304A);
+        graphics.fill(x, y, x + width, y + 2, accent);
+        graphics.drawString(this.font, fitToWidth(label, width - 12), x + 6, y + 7, 0xFFC6DEF7, false);
+        graphics.drawString(this.font, fitToWidth(value, width - 12), x + 6, y + 22, 0xFFFFFFFF, false);
+        graphics.drawString(this.font, fitToWidth(subtitle, width - 12), x + 6, y + 42, 0xFF9FB8D2, false);
         if (tooltipDescription != null && !tooltipDescription.isBlank()) {
             visibleKpiCards.add(new KpiCardHitbox(x, y, width, height, label, value, tooltipDescription));
         }
-    }
-
-    private void drawBusinessChip(GuiGraphics graphics, int x, int y, int width, String label, int accent) {
-        graphics.fill(x, y, x + width, y + 14, accent);
-        graphics.fill(x + 1, y + 1, x + width - 1, y + 13, ORDER_BOARD_ROW);
-        graphics.drawCenteredString(this.font, fitToWidth(label.toUpperCase(Locale.ROOT), width - 6), x + (width / 2), y + 3, ORDER_BOARD_TEXT);
     }
 
     private void drawBusinessButton(GuiGraphics graphics,
@@ -19835,10 +22718,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private void drawBusinessCard(GuiGraphics graphics, int x, int y, int width, int height, String title, int accent) {
-        graphics.fill(x - 1, y - 1, x + width + 1, y + height + 1, ORDER_BOARD_BORDER_HI);
-        graphics.fill(x, y, x + width, y + height, ORDER_BOARD_PANEL);
+        drawModernBankPanel(graphics, x, y, width, height, 0xF0102236, 0xFF244B73);
         graphics.fill(x + 1, y + 1, x + width - 1, y + 3, accent);
-        graphics.fill(x, y, x + 3, y + height, accent);
         graphics.drawString(this.font, fitToWidth(title, width - 20), x + 12, y + 10, ORDER_BOARD_TEXT, false);
         registerShopBusinessHelp(x, y, width, height, title, businessCardHelpDescription(title));
     }
@@ -20173,29 +23054,6 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         return String.format(Locale.ROOT, "%.1f%%", Math.max(0.0D, value));
     }
 
-    private boolean isShopBusinessWide(int width) {
-        return width >= 640;
-    }
-
-    private int getBusinessHeaderHeight(int width) {
-        if (width >= 620) {
-            return 64;
-        }
-        int cols = width >= 360 ? 2 : 1;
-        int rows = (3 + cols - 1) / cols;
-        return 58 + (rows * 24) + (Math.max(0, rows - 1) * 6) + 8;
-    }
-
-    private int getBusinessMetricRowHeight(int width) {
-        int cols = width >= 560 ? 4 : width >= 330 ? 2 : 1;
-        int rows = (4 + cols - 1) / cols;
-        return (rows * 56) + (Math.max(0, rows - 1) * 6);
-    }
-
-    private int getShopBusinessActionColumnWidth(int width) {
-        return Math.min(238, Math.max(190, width / 3));
-    }
-
     private int getFranchiseBrandSectionHeight(int width) {
         return width >= 520 ? 156 : 222;
     }
@@ -20246,21 +23104,31 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
     }
 
     private int getShopBusinessPanelContentHeight(ShopBusinessSnapshot snapshot, int width) {
-        String type = normalizeBusinessShopType(snapshot == null ? null : snapshot.shopType());
         ShopBusinessSnapshot safe = snapshot == null
                 ? parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines())
                 : snapshot;
-        boolean wide = isShopBusinessWide(width);
-        int mainW = wide ? Math.max(120, width - getShopBusinessActionColumnWidth(width) - 8) : width;
-        int mainHeight = getShopBusinessTypeSpecificHeight(safe, mainW);
-        int actionHeight = getShopBusinessActionCenterMinHeight(type);
-        int height = 6 + getBusinessHeaderHeight(width) + 8 + getBusinessMetricRowHeight(width) + 16;
-        if (wide) {
-            height += Math.max(mainHeight, actionHeight) + 12;
-        } else {
-            height += mainHeight + 8 + actionHeight + 12;
-        }
-        return Math.max(240, height);
+        return getShopBusinessPanelLayout(safe, width, 0, 0).contentHeight();
+    }
+
+    private OwnerPcShopBusinessPanelLayout.Layout getShopBusinessPanelLayout(ShopBusinessSnapshot snapshot,
+                                                                              int width,
+                                                                              int viewportHeight,
+                                                                              int requestedScroll) {
+        ShopBusinessSnapshot safe = snapshot == null
+                ? parseShopBusinessSnapshot(ClientOwnerPcData.getActionOutputLines())
+                : snapshot;
+        OwnerPcShopBusinessPanelLayout.Dimensions dimensions = OwnerPcShopBusinessPanelLayout.dimensions(width);
+        int mainHeight = getShopBusinessTypeSpecificHeight(safe, dimensions.mainWidth());
+        int actionHeight = dimensions.wide()
+                ? Math.max(mainHeight, getShopBusinessActionCenterMinHeight(safe.shopType()))
+                : getShopBusinessActionCenterMinHeight(safe.shopType());
+        return OwnerPcShopBusinessPanelLayout.layout(
+                width,
+                viewportHeight,
+                mainHeight,
+                actionHeight,
+                requestedScroll
+        );
     }
 
     private int getOverviewDashboardContentHeight(int width, int viewportHeight) {
@@ -20388,6 +23256,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case COMPLIANCE -> "Compliance";
             case PERMISSIONS -> "Permissions";
             case SAFE -> "Safe";
+            case PREMISES -> "Premises";
         };
         if (isActiveShopApp()) {
             if (activeSection == Section.OVERVIEW && shopLevelRoadmapOpen) {
@@ -20420,7 +23289,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case HOURS -> "Hours & Lighting";
             case COMPLIANCE -> "Compliance";
             case PERMISSIONS -> "Permissions";
-            case SAFE -> "Claiming";
+            case SAFE, PREMISES -> "Claiming";
         };
     }
 
@@ -20440,7 +23309,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case HOURS -> "Hours";
             case COMPLIANCE -> "Audit";
             case PERMISSIONS -> "Roles";
-            case SAFE -> "Claim";
+            case SAFE, PREMISES -> "Claim";
         };
     }
 
@@ -20460,7 +23329,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case HOURS -> "Hours and lighting automation";
             case PERMISSIONS -> "Permissions and plot access";
             case COMPLIANCE -> "Compliance and settings";
-            case SAFE -> "Claiming and territory";
+            case SAFE, PREMISES -> "Claiming and territory";
         };
     }
 
@@ -20480,7 +23349,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case HOURS -> "Open windows, closed-hours courier access, and managed lighting behavior.";
             case PERMISSIONS -> "Role matrix for owner, manager, builder, staff, and guest access to the shop plot.";
             case COMPLIANCE -> "Rename, type changes, terminal clearing, app refresh, shop ID, and dangerous delete controls.";
-            case SAFE -> "Claim shop plots, stockroom regions, and delivery pallet drop zones.";
+            case SAFE, PREMISES -> "Claim shop plots, stockroom regions, and delivery pallet drop zones.";
         };
     }
 
@@ -20500,7 +23369,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case HOURS -> "SHOP_HOURS_LIGHTING_REPORT";
             case COMPLIANCE -> "SHOP_OVERVIEW";
             case PERMISSIONS -> "SHOP_PERMISSIONS_REPORT";
-            case SAFE -> "SHOP_OVERVIEW";
+            case SAFE, PREMISES -> "SHOP_OVERVIEW";
         };
     }
 
@@ -20985,11 +23854,17 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         if (selectedAccountCard == null) {
             return;
         }
+        copyTextToClipboard(selectedAccountCard.id(), "Copied full account id to clipboard.");
+    }
+
+    private void copyTextToClipboard(String value, String successMessage) {
         Minecraft mc = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
-        if (mc != null && mc.keyboardHandler != null) {
-            mc.keyboardHandler.setClipboard(selectedAccountCard.id());
+        if (mc == null || mc.keyboardHandler == null) {
+            ClientOwnerPcData.setToast(false, "Clipboard is unavailable.");
+            return;
         }
-        ClientOwnerPcData.setToast(true, "Copied full account id to clipboard.");
+        mc.keyboardHandler.setClipboard(value == null ? "" : value);
+        ClientOwnerPcData.setToast(true, successMessage == null ? "Copied to clipboard." : successMessage);
     }
 
     private String formatAccountEpochMillisForUi(long millis) {
@@ -21779,6 +24654,17 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         }
     }
 
+    private int safeParseInt(String value, int fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
     private double safeParseDouble(String value) {
         if (value == null || value.isBlank()) {
             return 0.0D;
@@ -21798,6 +24684,17 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             return Long.parseLong(value.trim());
         } catch (NumberFormatException ignored) {
             return 0L;
+        }
+    }
+
+    private long safeParseLong(String value, long fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
         }
     }
 
@@ -21831,6 +24728,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             switch (key) {
                 case "shop_hours.open_label" -> formValues.put(SHOP_HOURS_OPEN_KEY, value);
                 case "shop_hours.close_label" -> formValues.put(SHOP_HOURS_CLOSE_KEY, value);
+                case "shop_hours.server_zone_id" -> formValues.put(SHOP_HOURS_SERVER_ZONE_ID_KEY, value);
+                case "shop_hours.server_zone_label" -> formValues.put(SHOP_HOURS_SERVER_ZONE_LABEL_KEY, value);
+                case "shop_hours.server_epoch_millis" -> formValues.put(SHOP_HOURS_SERVER_EPOCH_KEY, value);
                 case "shop_hours.day" -> applyShopHoursDayToken(value);
                 case "shop_hours.closed_deliverer_stockroom_access" ->
                         formValues.put(SHOP_HOURS_DELIVERER_STOCKROOM_ACCESS_KEY, "1".equals(value) ? "true" : "false");
@@ -21880,6 +24780,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         String closeLabel = parts[5].trim().isBlank() ? formatShopTimeOfDay(closeMinute) : parts[5].trim();
         formValues.put(shopHoursDayOpenKey(dayKey), openLabel);
         formValues.put(shopHoursDayCloseKey(dayKey), closeLabel);
+        formValues.put(shopHoursDayOpenMinuteKey(dayKey), Integer.toString(openMinute));
+        formValues.put(shopHoursDayCloseMinuteKey(dayKey), Integer.toString(closeMinute));
         formValues.put(shopHoursDayCurrentKey(dayKey), parts.length >= 7 && "1".equals(parts[6].trim()) ? "true" : "false");
     }
 
@@ -21890,8 +24792,10 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         for (String dayKey : SHOP_HOURS_DAY_KEYS) {
             String open = formValues.getOrDefault(shopHoursDayOpenKey(dayKey), fallbackOpen);
             String close = formValues.getOrDefault(shopHoursDayCloseKey(dayKey), fallbackClose);
-            int openMinute = estimateMinuteOfDay(open, 9 * 60);
-            int closeMinute = estimateMinuteOfDay(close, 21 * 60);
+            int openMinute = parseBoundedInt(formValues.get(shopHoursDayOpenMinuteKey(dayKey)),
+                    estimateMinuteOfDay(open, 9 * 60), 0, 1439);
+            int closeMinute = parseBoundedInt(formValues.get(shopHoursDayCloseMinuteKey(dayKey)),
+                    estimateMinuteOfDay(close, 21 * 60), 0, 1439);
             days.add(new ShopHoursDayData(
                     dayKey,
                     friendlyShopHoursDay(dayKey),
@@ -21903,6 +24807,62 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             ));
         }
         return days;
+    }
+
+    private List<ShopHoursDayData> getDisplayedShopHoursDays() {
+        List<ShopHoursDayData> serverDays = getShopHoursDaysFromForm();
+        if (shopHoursClockView == ShopHoursClockView.SERVER) {
+            return serverDays;
+        }
+        ZoneId serverZone = ShopHoursTimeZone.parseZone(
+                formValues.get(SHOP_HOURS_SERVER_ZONE_ID_KEY), ZoneId.of("UTC"));
+        ZoneId localZone = ZoneId.systemDefault();
+        long referenceMillis = safeParseLong(
+                formValues.get(SHOP_HOURS_SERVER_EPOCH_KEY), System.currentTimeMillis());
+        List<ShopHoursTimeZone.ScheduleWindow> windows = serverDays.stream()
+                .map(day -> new ShopHoursTimeZone.ScheduleWindow(
+                        day.key(), day.openMinute(), day.closeMinute()))
+                .toList();
+        Map<String, ShopHoursDayData> bySourceDay = new HashMap<>();
+        for (ShopHoursDayData day : serverDays) {
+            bySourceDay.put(day.key(), day);
+        }
+        List<ShopHoursDayData> displayed = new ArrayList<>();
+        for (ShopHoursTimeZone.DisplayWindow converted : ShopHoursTimeZone.convertWeek(
+                windows, serverZone, localZone, referenceMillis)) {
+            ShopHoursDayData source = bySourceDay.get(converted.sourceDayKey());
+            if (source == null) {
+                continue;
+            }
+            displayed.add(new ShopHoursDayData(
+                    source.key(),
+                    friendlyShopHoursDay(converted.displayDayKey()),
+                    converted.openMinute(),
+                    converted.closeMinute(),
+                    formatShopTimeOfDay(converted.openMinute()),
+                    formatShopTimeOfDay(converted.closeMinute()),
+                    converted.currentDay()
+            ));
+        }
+        return displayed.isEmpty() ? serverDays : List.copyOf(displayed);
+    }
+
+    private String shopHoursServerZoneDescription() {
+        String reported = formValues.getOrDefault(SHOP_HOURS_SERVER_ZONE_LABEL_KEY, "").trim();
+        if (!reported.isBlank()) {
+            return reported;
+        }
+        long referenceMillis = safeParseLong(
+                formValues.get(SHOP_HOURS_SERVER_EPOCH_KEY), System.currentTimeMillis());
+        ZoneId serverZone = ShopHoursTimeZone.parseZone(
+                formValues.get(SHOP_HOURS_SERVER_ZONE_ID_KEY), ZoneId.of("UTC"));
+        return ShopHoursTimeZone.describeZone(serverZone, referenceMillis);
+    }
+
+    private String shopHoursLocalZoneDescription() {
+        long referenceMillis = safeParseLong(
+                formValues.get(SHOP_HOURS_SERVER_EPOCH_KEY), System.currentTimeMillis());
+        return ShopHoursTimeZone.describeZone(ZoneId.systemDefault(), referenceMillis);
     }
 
     private ShopHoursDayData getShopHoursDay(String rawDay) {
@@ -21957,6 +24917,14 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private String shopHoursDayCloseKey(String dayKey) {
         return "shop.hours." + normalizeShopHoursDayKey(dayKey).toLowerCase(Locale.ROOT) + ".close";
+    }
+
+    private String shopHoursDayOpenMinuteKey(String dayKey) {
+        return shopHoursDayOpenKey(dayKey) + ".minute";
+    }
+
+    private String shopHoursDayCloseMinuteKey(String dayKey) {
+        return shopHoursDayCloseKey(dayKey) + ".minute";
     }
 
     private String shopHoursDayCurrentKey(String dayKey) {
@@ -22869,7 +25837,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                     "Output shows grouped role headers (OWNER/MANAGER/BUILDER/STAFF/GUESTS) with player cards.",
                     "Click a player card to target it, then assign/update/remove roles from this panel."
             );
-            case SAFE -> List.of(
+            case SAFE, PREMISES -> List.of(
                     "Claiming and pallet routing.",
                     "Claim shop plots, stockrooms, and delivery pallet zones, then trace a live pallet from the action center."
             );
@@ -24967,9 +27935,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         orderBoardMaxScroll = pixelScrollMax(contentHeight, viewH);
         orderBoardScroll = Math.max(0, Math.min(orderBoardScroll, orderBoardMaxScroll));
 
-        if (!useVirtualScale) {
-            enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
-        }
+        enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
 
         int cursorY = viewY + 8 - orderBoardScroll;
         cursorY = drawOrderBoardPageTitle(graphics, viewX + 8, cursorY, viewW - 16);
@@ -24980,9 +27946,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case RANKING -> drawOrderBoardRanking(graphics, summary, rankRows, viewX + 8, cursorY, viewW - 16, viewY, viewH);
         }
 
-        if (!useVirtualScale) {
-            graphics.disableScissor();
-        }
+        graphics.disableScissor();
         if (orderBoardMaxScroll > 0) {
             drawVerticalScrollbar(
                     graphics,
@@ -26821,9 +29785,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         webshopMaxScroll = pixelScrollMax(contentHeight, viewH);
         webshopScroll = Math.max(0, Math.min(webshopScroll, webshopMaxScroll));
 
-        if (!useVirtualScale) {
-            enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
-        }
+        enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
 
         int cursorY = viewY + 8 - webshopScroll;
         switch (webshopPage) {
@@ -26835,9 +29797,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             case ORDERS -> drawWebshopOrdersPage(graphics, viewX + 8, cursorY, Math.max(120, viewW - 16), orders);
         }
 
-        if (!useVirtualScale) {
-            graphics.disableScissor();
-        }
+        graphics.disableScissor();
         if (webshopMaxScroll > 0) {
             drawVerticalScrollbar(
                     graphics,
@@ -27902,9 +30862,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
         webshopMaxScroll = pixelScrollMax(contentHeight, viewH);
         webshopScroll = Math.max(0, Math.min(webshopScroll, webshopMaxScroll));
 
-        if (!useVirtualScale) {
-            enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
-        }
+        enableScaledScissor(graphics, viewX + 1, viewY + 1, viewX + viewW - 1, viewY + viewH - 1);
 
         int cursorY = viewY + 6 - webshopScroll;
         int gap = 6;
@@ -28105,9 +31063,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             }
         }
 
-        if (!useVirtualScale) {
-            graphics.disableScissor();
-        }
+        graphics.disableScissor();
         if (webshopMaxScroll > 0) {
             drawVerticalScrollbar(
                     graphics,
@@ -28163,6 +31119,9 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
 
     private boolean handleWebshopActionClick(double mouseX, double mouseY, boolean modalOnly) {
         if (visibleWebshopActionHitboxes.isEmpty()) {
+            return false;
+        }
+        if (!modalOnly && !isInsideWebshopViewport(mouseX, mouseY)) {
             return false;
         }
         for (WebshopActionHitbox hitbox : visibleWebshopActionHitboxes) {

@@ -1,22 +1,21 @@
 package net.austizz.ultimatebankingsystem.client;
 
+import net.austizz.ultimatebankingsystem.network.BankSetupObjectivesPayload;
 import net.austizz.ultimatebankingsystem.network.ShopSetupObjectivePayload;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Client-side state for the guided "shop requirements" objective card.
  */
 public final class ShopSetupObjectiveClientState {
-    private static boolean active;
     private static boolean collapsed;
     private static boolean dismissed;
-    private static String shopName = "";
-    private static int step = 1;
-    private static int totalSteps = 1;
-    private static String objectiveTitle = "";
-    private static String objectiveDetail = "";
-    private static List<ShopSetupObjectivePayload.RequirementProgress> requirements = List.of();
+    private static final Map<String, Project> PROJECTS = new LinkedHashMap<>();
+    private static String selectedKey = "";
 
     private ShopSetupObjectiveClientState() {
     }
@@ -28,33 +27,68 @@ public final class ShopSetupObjectiveClientState {
                            String nextObjectiveTitle,
                            String nextObjectiveDetail,
                            List<ShopSetupObjectivePayload.RequirementProgress> nextRequirements) {
-        active = nextActive;
-        if (!active) {
-            clear();
+        boolean wasEmpty = PROJECTS.isEmpty();
+        if (!nextActive) {
+            clearShopProject();
             return;
         }
-        shopName = sanitize(nextShopName);
-        step = Math.max(1, nextStep);
-        totalSteps = Math.max(step, nextTotalSteps);
-        objectiveTitle = sanitize(nextObjectiveTitle);
-        objectiveDetail = sanitize(nextObjectiveDetail);
-        requirements = nextRequirements == null ? List.of() : List.copyOf(nextRequirements);
+        PROJECTS.put("shop", new Project(
+                "shop",
+                "Store",
+                sanitize(nextShopName),
+                Math.max(1, nextStep),
+                Math.max(Math.max(1, nextStep), nextTotalSteps),
+                sanitize(nextObjectiveTitle),
+                sanitize(nextObjectiveDetail),
+                nextRequirements == null ? List.of() : List.copyOf(nextRequirements)
+        ));
+        normalizeSelection();
+        if (wasEmpty) {
+            dismissed = false;
+        }
+    }
+
+    public static void replaceBankProjects(List<BankSetupObjectivesPayload.Project> projects) {
+        boolean wasEmpty = PROJECTS.isEmpty();
+        PROJECTS.keySet().removeIf(key -> key.startsWith("bank:"));
+        if (projects != null) {
+            for (BankSetupObjectivesPayload.Project project : projects) {
+                if (project == null || project.projectId().isBlank()) {
+                    continue;
+                }
+                String key = "bank:" + project.projectId();
+                PROJECTS.put(key, new Project(
+                        key,
+                        "Bank",
+                        sanitize(project.projectName()),
+                        project.step(),
+                        project.totalSteps(),
+                        sanitize(project.objectiveTitle()),
+                        sanitize(project.objectiveDetail()),
+                        List.of()
+                ));
+            }
+        }
+        normalizeSelection();
+        if (wasEmpty && !PROJECTS.isEmpty()) {
+            dismissed = false;
+        }
+    }
+
+    public static void clearShopProject() {
+        PROJECTS.remove("shop");
+        normalizeSelection();
     }
 
     public static void clear() {
-        active = false;
         collapsed = false;
         dismissed = false;
-        shopName = "";
-        step = 1;
-        totalSteps = 1;
-        objectiveTitle = "";
-        objectiveDetail = "";
-        requirements = List.of();
+        PROJECTS.clear();
+        selectedKey = "";
     }
 
     public static boolean isActive() {
-        return active && !dismissed;
+        return !PROJECTS.isEmpty() && !dismissed;
     }
 
     public static boolean isCollapsed() {
@@ -62,14 +96,14 @@ public final class ShopSetupObjectiveClientState {
     }
 
     public static void toggleCollapsed() {
-        if (!active) {
+        if (PROJECTS.isEmpty()) {
             return;
         }
         collapsed = !collapsed;
     }
 
     public static void dismiss() {
-        if (!active) {
+        if (PROJECTS.isEmpty()) {
             return;
         }
         dismissed = true;
@@ -77,30 +111,97 @@ public final class ShopSetupObjectiveClientState {
     }
 
     public static String getShopName() {
-        return shopName;
+        return selected().name();
+    }
+
+    public static String getProjectType() {
+        return selected().type();
+    }
+
+    public static int getProjectCount() {
+        return PROJECTS.size();
+    }
+
+    public static int getSelectedProjectIndex() {
+        if (PROJECTS.isEmpty()) {
+            return 0;
+        }
+        List<String> keys = new ArrayList<>(PROJECTS.keySet());
+        int index = keys.indexOf(selectedKey);
+        return index < 0 ? 0 : index;
+    }
+
+    public static void cycleProject() {
+        if (PROJECTS.size() < 2) {
+            return;
+        }
+        List<String> keys = new ArrayList<>(PROJECTS.keySet());
+        int current = keys.indexOf(selectedKey);
+        selectedKey = keys.get((Math.max(0, current) + 1) % keys.size());
+        dismissed = false;
     }
 
     public static int getStep() {
-        return step;
+        return selected().step();
     }
 
     public static int getTotalSteps() {
-        return totalSteps;
+        return selected().totalSteps();
     }
 
     public static String getObjectiveTitle() {
-        return objectiveTitle;
+        return selected().title();
     }
 
     public static String getObjectiveDetail() {
-        return objectiveDetail;
+        return selected().detail();
     }
 
     public static List<ShopSetupObjectivePayload.RequirementProgress> getRequirements() {
-        return requirements;
+        return selected().requirements();
+    }
+
+    private static Project selected() {
+        normalizeSelection();
+        Project selected = PROJECTS.get(selectedKey);
+        return selected == null ? Project.EMPTY : selected;
+    }
+
+    private static void normalizeSelection() {
+        if (PROJECTS.isEmpty()) {
+            selectedKey = "";
+            collapsed = false;
+            dismissed = false;
+            return;
+        }
+        if (!PROJECTS.containsKey(selectedKey)) {
+            selectedKey = PROJECTS.keySet().iterator().next();
+        }
     }
 
     private static String sanitize(String text) {
         return text == null ? "" : text.trim();
+    }
+
+    private record Project(String key,
+                           String type,
+                           String name,
+                           int step,
+                           int totalSteps,
+                           String title,
+                           String detail,
+                           List<ShopSetupObjectivePayload.RequirementProgress> requirements) {
+        private static final Project EMPTY = new Project("", "Setup", "", 1, 1, "", "", List.of());
+
+        private Project {
+            key = sanitize(key);
+            type = sanitize(type);
+            name = sanitize(name);
+            totalSteps = Math.max(1, totalSteps);
+            step = Math.max(1, Math.min(step, totalSteps));
+            title = sanitize(title);
+            detail = sanitize(detail);
+            requirements = requirements == null ? List.of() : List.copyOf(requirements);
+        }
     }
 }

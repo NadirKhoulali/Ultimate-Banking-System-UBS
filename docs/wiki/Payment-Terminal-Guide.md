@@ -12,9 +12,9 @@ UBS supports two payment terminal formats:
 
 Visual states:
 
-- Idle: <img src="https://raw.githubusercontent.com/NadirKhoulali/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal.png" alt="Payment terminal idle" width="220"/>
-- Success: <img src="https://raw.githubusercontent.com/NadirKhoulali/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal_success.png" alt="Payment terminal success" width="220"/>
-- Denied: <img src="https://raw.githubusercontent.com/NadirKhoulali/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal_denied.png" alt="Payment terminal denied" width="220"/>
+- Idle: <img src="https://raw.githubusercontent.com/PixelForgeMods/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal.png" alt="Payment terminal idle" width="220"/>
+- Success: <img src="https://raw.githubusercontent.com/PixelForgeMods/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal_success.png" alt="Payment terminal success" width="220"/>
+- Denied: <img src="https://raw.githubusercontent.com/PixelForgeMods/Ultimate-Banking-System-UBS/main/src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal_denied.png" alt="Payment terminal denied" width="220"/>
 
 ## Placement and Interaction
 

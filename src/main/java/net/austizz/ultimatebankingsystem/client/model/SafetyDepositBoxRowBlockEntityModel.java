@@ -124,6 +124,10 @@ public class SafetyDepositBoxRowBlockEntityModel {
     }
 
     public void applyState(ModuleType[] moduleTypes, float[] progress) {
+        applyState(moduleTypes, progress, null);
+    }
+
+    public void applyState(ModuleType[] moduleTypes, float[] progress, boolean[] hiddenTrays) {
         hideDynamicParts();
         applySeparatorVisibility(moduleTypes);
         for (int start = 0; start < SafetyDepositBoxRowBlockEntity.DOOR_COUNT; start++) {
@@ -145,7 +149,7 @@ public class SafetyDepositBoxRowBlockEntityModel {
             }
             float doorProgress = progress == null || start >= progress.length ? 0.0F : progress[start];
             cavity.visible = true;
-            tray.visible = true;
+            tray.visible = hiddenTrays == null || start >= hiddenTrays.length || !hiddenTrays[start];
             door.visible = true;
             applyDoorMotion(door, tray, doorProgress);
         }
@@ -232,13 +236,7 @@ public class SafetyDepositBoxRowBlockEntityModel {
                         .texOffs(92, 100).addBox(-7.05F, cavityY, cavityZ + cavityDepth - 0.34F, cavityWidth, innerHeight, 0.34F, new CubeDeformation(0.0F)),
                 PartPose.ZERO);
 
-        float halfTrayHeight = trayHeight * 0.5F;
-        root.addOrReplaceChild(prefix + "_tray", CubeListBuilder.create()
-                        .texOffs(76, 40).addBox(-6.45F, halfTrayHeight - 0.34F, -6.45F, 12.9F, 0.34F, 10.85F, new CubeDeformation(0.0F))
-                        .texOffs(76, 54).addBox(-6.85F, -halfTrayHeight, -6.8F, 0.42F, trayHeight, 11.25F, new CubeDeformation(0.0F))
-                        .texOffs(76, 54).addBox(6.43F, -halfTrayHeight, -6.8F, 0.42F, trayHeight, 11.25F, new CubeDeformation(0.0F))
-                        .texOffs(104, 54).addBox(-7.0F, halfTrayHeight - 0.86F, -7.2F, 14.0F, 0.86F, 0.48F, new CubeDeformation(0.0F))
-                        .texOffs(104, 68).addBox(-6.45F, -halfTrayHeight, -6.78F, 12.9F, 0.28F, 0.34F, new CubeDeformation(0.0F)),
+        SafetyDepositBoxTrayModel.addTray(root, prefix + "_tray", type,
                 PartPose.offset(0.0F, yCenter, 0.0F));
 
         PartDefinition door = root.addOrReplaceChild(prefix + "_door", CubeListBuilder.create()

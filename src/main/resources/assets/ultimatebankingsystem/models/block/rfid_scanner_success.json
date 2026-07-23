@@ -1,0 +1,7 @@
+{
+  "parent": "ultimatebankingsystem:block/rfid_scanner",
+  "textures": {
+    "0": "ultimatebankingsystem:block/success_rfid_reader",
+    "particle": "ultimatebankingsystem:block/success_rfid_reader"
+  }
+}

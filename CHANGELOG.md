@@ -1,126 +1,70 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to Ultimate Banking System are documented here.
 
-## [1.4.0] - 2026-06-20
+## [2.0.0] - 2026-07-23
 
 ### Added
-- Added the wallet item, wallet menu/screen, wallet model/texture/recipe, and wallet placeholder textures.
-- Added wallet cash and card tender support for bank teller and shop cashier payment flows.
-- Added the Dashboard Addon API (`2.0.0`) with dashboard registration, component/page definitions, widget/action handlers, addon routes, docs, and tests.
-- Added web admin host rendering for registered addon dashboards and reusable dashboard components.
-- Added bank level admin tooling, demo banking seed commands, leaderboard seed/remove commands, and dashboard diagnostics.
+
+- Added a complete smartphone platform with a lock screen, password setup, per-account bank apps and PIN sessions, realtime messenger, contacts/search, typing state, pay requests, money gifts, notifications, notes, calculator, paint, settings, themes, and optional JourneyMap, real-estate, and auction-house bridges.
+- Added physical bank premises, safe-area claims, vault-readiness checks, safety-deposit rows and sizes, teller leasing, private viewing rooms, physical deposit trays, contents rendering, rent policy, audit logs, alarms, and vault-storage mapping.
+- Added standing and compact safes with animated doors, PIN access, physical shelf slots, cash/bullion stacking, drill support, and optional chest storage upgrades.
+- Added gold and silver bars, metal pallets, placeable money stacks, a global bullion spot market, market-aware lore/value display, and corrected recipes/models.
+- Added programmable RFID scanners, unique cards, access levels, per-reader card authorization, signal targets, configurable strengths/durations, access logs, per-player passage protection, and an RFID spoofer for heists.
+- Added multiplayer bank heists with crew planning, invites/readiness, target selection, masks, lockpicks, OVE9000 saws, thermal drills, concurrent drills and computer hacks, destructible deposit boxes, pallet/safe theft, duffel bags, alarms, tactical HUDs, extraction borders, holograms, cooldowns, abandonment, timeout evacuation, and crash/disconnect recovery.
+- Added a unified claim-mode framework for bank premises, safe areas, viewing rooms, shop plots, stockrooms, and pallet operations with tactical outlines and a dedicated responsive HUD.
+- Added Notification API v2 with semantic types, priorities, adaptive placement, stable-ID updates, sticky notices, deduplication, sounds, and dismiss/channel-clear operations.
+- Added public Java API `2.0.0` entry points for server feature discovery, player portfolios, bank management, shop management, and heist state/actions.
+- Added immutable bank snapshots for reserves, deposits, lending, staffing, tellers, premises, safe readiness, and attack state.
+- Added immutable shop snapshots and APIs for ownership/access checks, roles, setup/open state, progression/capacity, create/rename/type/hours, participants, and deletion.
+- Added immutable heist snapshots and APIs for sessions, members, drills, hacks, targets, eligibility blockers, cooldowns, victim protection, planning, invitations, readiness, countdowns, leaving, and abandonment.
+- Added shop price-statistics APIs for regular registered shops, every shelf, non-creative shelves, and creative-only shelves.
+- Added a movable balance HUD with six supported anchor positions.
 
 ### Changed
-- Account access checks now use centralized denial messaging for frozen source/destination accounts.
-- Primary-account updates now route through a central bank helper so only one account is primary per player.
-- Web admin and command flows now use the centralized primary-account repair path.
+
+- Redesigned the banking phone app, messenger, retail webshop, business type panel, Bank Owner PC, safe operations, claim mode, notifications, and balance HUD for responsive UI scales and smaller displays.
+- Replaced path-walking safety-deposit escorts with isolated viewing-room sessions that temporarily present only the customer's physical box and restore all state when the visit ends.
+- Safety-deposit availability now depends on current physical setup and is suspended, without deleting customer data, when required vault infrastructure is removed.
+- Bank premises now prevent unauthorized breaking, placement, destructive interactions, projectiles, and explosions while preserving the player's inventory state.
+- Shop opening-hours displays now expose server timezone and client-local conversions.
+- `/account open` now creates a Central Bank checking account; custom-bank accounts are opened through bank tellers.
+- Transaction history persistence is bounded per account. The default is the newest `20` entries to reduce world-save time and saved-data growth.
+- Shop, delivery, safe, and heist systems now support additional admin repair and force-management commands.
+- The public API version is now `2.0.0`; existing finance and legacy alert entry points remain available.
 
 ### Fixed
-- Preserved oversized desktop response guarding while adding the new dashboard/webadmin paths.
-- Kept safety deposit box, bank vault door, and iron gate work excluded from this release.
 
-## [1.3.1] - 2026-06-20
+- Fixed duplicate/reordered messenger delivery and added realtime client updates.
+- Fixed phone scaling, clipping, keyboard modifiers, multiline input, scroll behavior, app alignment, and loading/session behavior.
+- Fixed PC modal layering, fixed-position controls, scroll clipping, small-screen layout loss, and GUI-scale handling.
+- Fixed deposit-row capacity, live readiness refresh, vault-door detection, viewing-room tray models, and item rendering.
+- Fixed heist drill placement/orientation, safe textures, extraction completion, concurrent interactions, loot prompts, cooldown administration, and forced evacuation.
+- Fixed protected-premise placement rollback so client inventory and hotbar state remain synchronized.
+- Fixed account type translation keys leaking into player-facing UI.
 
-### Fixed
-- Fixed the bank Accounts drilldown buttons by adding the missing `ACCOUNT_DETAIL`, freeze/unfreeze, and temporary-limit action handlers.
-- Account detail responses now return the structured profile/history payload expected by the redesigned owner PC UI.
+### Security and Distribution
+
+- Removed the embedded Netty HTTP/WebSocket administration server, browser assets, remote web commands, and dashboard-host extension API. The release exposes no browser-based server-management panel.
+- Retained in-game administration and expanded the server-side Java API for trusted mod integrations.
+
+## [1.4.3] - 2026-06-27
+
+- Published the moderation-safe NeoForge 1.21.1 maintenance build.
+- Removed the embedded web administration runtime from the distributed jar.
+- Fixed owner-PC account detail actions and retained the shopping-system update.
 
 ## [1.3.0] - 2026-06-20
 
-### Added
-- Redesigned Retail Webshop catalog, cart, checkout, delivery-target selection, and tracking flows.
-- Added payment account and delivery target modal workflows for webshop checkout.
-- Added replacement ordering for completed/failed webshop orders with confirmation summary.
-- Added shop type, franchise, and corporate retail configuration keys.
-
-### Changed
-- Updated UBS desktop, shop, order-board, and retail-webshop controls to use the darker commerce UI theme.
-- Removed creative invisible displays from the retail webshop catalog.
-- Cart items now expose per-item quantity and remove controls next to checkout totals.
-- Tracking no longer shows failure reasons/fix cards for successful orders.
-
-### Fixed
-- Fixed retail-webshop modal layering so modal buttons render and click above background controls.
-- Fixed product-detail quantity/add/back controls so they scroll with the product detail panel.
-- Guarded oversized desktop action responses from crashing order-board/report refreshes.
-
-### Docs
-- Updated README and wiki sources for the redesigned shopping system, tracking flow, and new shop configuration keys.
-
-## [1.2.1] - 2026-06-01
-
-### Added
-- French (`fr_fr`) in-game translation coverage for UBS blocks, items, and configuration labels/descriptions.
-- New UI alert helper APIs in the public developer API.
-- Additional account helper APIs for safer account access and balance checks.
-
-### Changed
-- Decoupled UI alert API calls from alert internals to keep external integrations stable.
-
-### Fixed
-- Primary account helper behavior in API utility methods.
+- Redesigned Retail Webshop catalog, cart, checkout, delivery-target selection, and tracking.
+- Added payment-account and delivery-target modal workflows, replacement ordering, and shop type metadata.
+- Updated desktop commerce styling and fixed modal/input/scroll regressions.
 
 ## [1.2.0] - 2026-04-15
 
-### Added
-- New merchant checkout stack:
-  - world `payment_terminal` block with configurable idle/success/failure states
-  - handheld payment terminal item for direct player-to-player checkout
-  - dedicated terminal configuration UIs and merchant account targeting
-- Credit card system with issuance/replacement flows and validation paths.
-- Bank teller service + GUI flow for:
-  - cheque/bank note/cash workflows
-  - account opening
-  - card issuance and replacement handling
-- Legal tender expansion with U.S. coins (front/back textured models) alongside dollar bills.
-- Creative tab support for UBS items and broader item/model registration coverage.
-- Payment terminal and currency documentation pages in the wiki set.
-
-### Changed
-- Currency display formatting now abbreviates without rounding up and preserves up to 2 decimal places.
-- Handheld terminal save validation now enforces configurable max price limits using `GlobalMaxSingleTransaction`.
-- Handheld hover payment overlay is rendered with corrected GUI layer ordering.
-- Shift + right-click handheld configuration opening restored.
-- Bank owner PC and ATM UX received additional spacing/layout/panel behavior refinements.
-
-### Fixed
-- Handheld interaction flow issues around role direction and repeated interaction feedback.
-- Multiple UI collision, overflow, and layering defects across PC/teller/terminal related screens.
-- Payment terminal behavior fixes for facing/state feedback timing and merchant account handling paths.
-- Assorted command/help, transaction display, and account flow consistency fixes.
-
-### Docs
-- Updated repo docs/wiki content for new payment terminal, legal tender list, and integration references.
-- Added/updated wiki pages in `docs/wiki` for release-aligned feature coverage.
+- Added payment terminals, handheld terminals, credit cards, teller services, legal-tender coins, and expanded public finance APIs.
 
 ## [1.1.0] - 2026-04-14
 
-### Added
-- Full bank-owner PC experience with desktop-style workflow and multi-app/taskbar handling.
-- New utility apps in the PC: Calculator, Notepad, Paint, File Explorer, and System tools.
-- Per-computer local file storage flow for notes/canvas files.
-- Expanded public Developer API:
-  - typed snapshots for accounts, banks, and transactions
-  - cash and item issuance helpers (`bank_note`, `cheque`, USD bills)
-  - aggregate balance/reserve metrics
-  - placeholder resolver for integrations and leaderboards
-- Bank Teller NPC spawn egg and teller interaction flow for cheque handling.
+- Added the Bank Owner PC, desktop utilities, typed account/bank/transaction snapshots, cash and paper-instrument APIs, and teller NPCs.
 
-### Changed
-- ATM and PC interfaces received major layout and spacing updates for better usability.
-- Money displays now support abbreviated formatting in player-facing contexts.
-- Bank and account interaction flows were refined (PIN/account switching/feedback behavior).
-
-### Fixed
-- Primary account handling now enforces a single primary account per player.
-- Multiple GUI collision/overflow cases across ATM and bank-owner PC screens.
-- Networking payload and command/runtime compatibility issues reported during compile/tests.
-- Bank command handling for names with spaces in close/management flows.
-
-### Docs
-- Updated README and wiki with API, integration, and configuration coverage.
-- Added release-oriented documentation artifacts and publish-ready description source.
-
-### Coming Soon
-- Bank Heist remains intentionally disabled and is marked as Coming Soon in commands, config labels, and docs.

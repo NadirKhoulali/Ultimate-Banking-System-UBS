@@ -1,16 +1,28 @@
 package net.austizz.ultimatebankingsystem.block;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
+import net.austizz.ultimatebankingsystem.block.custom.AccessVerifierBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ATMBlock;
 import net.austizz.ultimatebankingsystem.block.custom.BankOwnerPcBlock;
 import net.austizz.ultimatebankingsystem.block.custom.BankSafeIronBarGateBlock;
 import net.austizz.ultimatebankingsystem.block.custom.BankVaultDoorBlock;
+import net.austizz.ultimatebankingsystem.block.custom.CashStackBlock;
 import net.austizz.ultimatebankingsystem.block.custom.CardboardBoxBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ColorButtonBlock;
 import net.austizz.ultimatebankingsystem.block.custom.GlassCounterDisplayBlock;
+import net.austizz.ultimatebankingsystem.block.custom.HeistDrillBlock;
+import net.austizz.ultimatebankingsystem.block.custom.HeistDuffelBlock;
+import net.austizz.ultimatebankingsystem.block.custom.ThermalDrillBlock;
 import net.austizz.ultimatebankingsystem.block.custom.InvisibleDisplayBlock;
+import net.austizz.ultimatebankingsystem.block.custom.MetalBarBlock;
+import net.austizz.ultimatebankingsystem.block.custom.MetalPalletBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ModularWallDisplayBlock;
+import net.austizz.ultimatebankingsystem.block.custom.MoneyBriefcaseBlock;
+import net.austizz.ultimatebankingsystem.block.custom.MoneyStackBlock;
 import net.austizz.ultimatebankingsystem.block.custom.PalletBlock;
+import net.austizz.ultimatebankingsystem.block.custom.RfidScannerBlock;
+import net.austizz.ultimatebankingsystem.block.custom.RfidSignalRelayBlock;
+import net.austizz.ultimatebankingsystem.block.custom.SecureSafeBlock;
 import net.austizz.ultimatebankingsystem.block.custom.SafetyDepositBoxRowBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableLargeBlock;
@@ -20,7 +32,11 @@ import net.austizz.ultimatebankingsystem.block.custom.ShoppingBasketHolderBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopTerminalBlock;
 import net.austizz.ultimatebankingsystem.block.custom.TallWallShelfBlock;
 import net.austizz.ultimatebankingsystem.item.ColoredNameBlockItem;
+import net.austizz.ultimatebankingsystem.item.BankVaultDoorBlockItem;
+import net.austizz.ultimatebankingsystem.item.GoldBarBlockItem;
+import net.austizz.ultimatebankingsystem.item.HeistDuffelItem;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.item.SilverBarBlockItem;
 import net.austizz.ultimatebankingsystem.item.ShoppingBagItem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.world.item.BlockItem;
@@ -81,6 +97,49 @@ public class ModBlocks {
                     .noOcclusion()
                     .strength(3.0f)
                     .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> ACCESS_VERIFIER = registerBlock("access_verifier",
+            () -> new AccessVerifierBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(4.0f, 8.0f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> RFID_SCANNER = registerBlock("rfid_scanner",
+            () -> new RfidScannerBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(4.0f, 8.0f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> RFID_SIGNAL_RELAY = registerBlockOnly("rfid_signal_relay",
+            () -> new RfidSignalRelayBlock(BlockBehaviour.Properties.of()
+                    .noCollission()
+                    .noOcclusion()
+                    .strength(-1.0f, 3600000.0f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> STANDING_SAFE = registerBlock("standing_safe",
+            () -> new SecureSafeBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(8.0f, 1200.0f)
+                    .sound(SoundType.METAL)
+            , true));
+    public static final DeferredBlock<Block> COMPACT_SAFE = registerBlock("compact_safe",
+            () -> new SecureSafeBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(6.0f, 600.0f)
+                    .sound(SoundType.METAL)
+            , false));
+    public static final DeferredBlock<Block> CASH_STACK = registerBlockOnly("cash_stack",
+            () -> new CashStackBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(0.1f)
+                    .sound(SoundType.WOOL)
+            ));
+    public static final DeferredBlock<Block> MONEY_STACK = registerBlockOnly("money_stack",
+            () -> new MoneyStackBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(0.1f)
+                    .sound(SoundType.WOOL)
             ));
     public static final DeferredBlock<Block> TALL_WALL_SHELF = registerBlock("tall_wall_shelf",
             () -> new TallWallShelfBlock(
@@ -266,10 +325,61 @@ public class ModBlocks {
                             .strength(2.0f)
                             .sound(SoundType.WOOD)
             ));
+    public static final DeferredBlock<Block> METAL_PALLET = registerBlock("metal_pallet",
+            () -> new MetalPalletBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(5.0f, 8.0f)
+                            .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> SILVER_BAR = registerBlock("silver_bar",
+            () -> new MetalBarBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(4.0f, 6.0f)
+                            .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> GOLD_BAR = registerBlock("gold_bar",
+            () -> new MetalBarBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(4.0f, 6.0f)
+                            .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> MONEY_BRIEFCASE = registerBlock("money_briefcase",
+            () -> new MoneyBriefcaseBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(1.2f)
+                            .sound(SoundType.WOOL)
+            ));
+    public static final DeferredBlock<Block> HEIST_DRILL = registerBlock("heist_drill",
+            () -> new HeistDrillBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(3.5f, 6.0f)
+                            .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> THERMAL_DRILL = registerBlock("thermal_drill",
+            () -> new ThermalDrillBlock(
+                    BlockBehaviour.Properties.of()
+                            .noOcclusion()
+                            .strength(4.0f, 7.0f)
+                            .sound(SoundType.METAL)
+            ));
+    public static final DeferredBlock<Block> HEIST_DUFFEL = registerBlock("heist_duffel",
+            () -> new HeistDuffelBlock(BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .strength(1.5f)
+                    .sound(SoundType.WOOL)));
 
 
     private static <T extends Block> DeferredBlock<T> registerBlock(String name, Supplier<T> block) {
         return registerBlock(name, block, false);
+    }
+
+    private static <T extends Block> DeferredBlock<T> registerBlockOnly(String name, Supplier<T> block) {
+        return BLOCKS.register(name, block);
     }
 
     private static <T extends Block> DeferredBlock<T> registerBlock(String name,
@@ -286,6 +396,22 @@ public class ModBlocks {
         if ("shopping_bag".equals(name)) {
             // Generic/shop-ordered shopping bags should stack; cashier-packed bags remain non-stackable due unique NBT contents.
             ModItems.ITEMS.register(name, () -> new ShoppingBagItem(block.get(), new Item.Properties().stacksTo(64)));
+            return;
+        }
+        if ("bank_vault_door".equals(name)) {
+            ModItems.ITEMS.register(name, () -> new BankVaultDoorBlockItem(block.get(), new Item.Properties()));
+            return;
+        }
+        if ("gold_bar".equals(name)) {
+            ModItems.ITEMS.register(name, () -> new GoldBarBlockItem(block.get(), new Item.Properties()));
+            return;
+        }
+        if ("silver_bar".equals(name)) {
+            ModItems.ITEMS.register(name, () -> new SilverBarBlockItem(block.get(), new Item.Properties()));
+            return;
+        }
+        if ("heist_duffel".equals(name)) {
+            ModItems.ITEMS.register(name, () -> new HeistDuffelItem(block.get(), new Item.Properties()));
             return;
         }
         ModItems.ITEMS.register(name, () -> purpleName

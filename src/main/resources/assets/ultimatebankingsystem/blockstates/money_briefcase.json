@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,open=false": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=north,open=true": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=east,open=false": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=east,open=true": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=south,open=false": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=south,open=true": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=west,open=false": { "model": "ultimatebankingsystem:block/empty" },
+    "facing=west,open=true": { "model": "ultimatebankingsystem:block/empty" }
+  }
+}

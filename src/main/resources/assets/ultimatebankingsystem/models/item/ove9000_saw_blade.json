@@ -1,0 +1,4 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": { "layer0": "ultimatebankingsystem:item/ove9000_saw_blade" }
+}

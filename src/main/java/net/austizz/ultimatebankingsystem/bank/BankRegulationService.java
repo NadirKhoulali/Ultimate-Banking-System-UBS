@@ -6,7 +6,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
@@ -329,7 +329,7 @@ public final class BankRegulationService {
                             "§aSalary received from " + bank.getBankName() + ": $" + salary.toPlainString()
                     );
                     onlineEmployee.sendSystemMessage(net.minecraft.network.chat.Component.literal(salaryMessage));
-                    ServerActionAlert.sendLegacy(
+                    ServerNotification.sendLegacy(
                             onlineEmployee,
                             "Banking",
                             salaryMessage,
@@ -679,11 +679,11 @@ public final class BankRegulationService {
             String normalized = MoneyText.abbreviateCurrencyTokens(message == null ? "" : message);
             owner.sendSystemMessage(net.minecraft.network.chat.Component.literal(normalized));
             // Compliance and regulation feedback should be visible as top alerts, not chat-only.
-            ServerActionAlert.sendLegacy(
+            ServerNotification.sendLegacy(
                     owner,
                     "Bank Regulation",
                     normalized,
-                    ServerActionAlert.inferToneFromLegacy(normalized),
+                    ServerNotification.inferToneFromLegacy(normalized),
                     5200
             );
         }

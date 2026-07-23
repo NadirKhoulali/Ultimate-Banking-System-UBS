@@ -9,7 +9,7 @@ import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
@@ -91,9 +91,14 @@ public final class BankTellerInteractionManager {
         if (player == null || teller == null) {
             return;
         }
+        if (!teller.tryBeginCustomerUse(player)) {
+            sendTellerFeedback(player, "§eThis bank teller is currently assisting another customer.");
+            return;
+        }
 
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         if (centralBank == null) {
+            teller.endCustomerUse(player.getUUID());
             sendTellerFeedback(player, "§cBank data is unavailable right now.");
             return;
         }
@@ -101,14 +106,17 @@ public final class BankTellerInteractionManager {
         ItemStack stack = player.getItemInHand(hand);
         ChequeData cheque = readChequeData(stack);
         if (cheque == null) {
+            teller.endCustomerUse(player.getUUID());
             sendTellerFeedback(player, "§cInvalid cheque.");
             return;
         }
         if (!player.getUUID().equals(cheque.recipientId)) {
+            teller.endCustomerUse(player.getUUID());
             sendTellerFeedback(player, "§cThis cheque is not payable to you.");
             return;
         }
         if (centralBank.isChequeRedeemed(cheque.chequeId)) {
+            teller.endCustomerUse(player.getUUID());
             sendTellerFeedback(player, "§cThis cheque has already been redeemed.");
             return;
         }
@@ -253,6 +261,11 @@ public final class BankTellerInteractionManager {
                 continue;
             }
 
+            if (!teller.refreshCustomerUse(player)) {
+                cancel(player, "This teller is now assisting another customer.");
+                continue;
+            }
+
             if (Math.abs(level.getGameTime() - session.startedTick) > SESSION_TIMEOUT_TICKS) {
                 cancel(player, "Teller request timed out.");
             }
@@ -377,6 +390,7 @@ public final class BankTellerInteractionManager {
         ));
 
         SESSIONS.remove(player.getUUID());
+        releaseTellerUse(player, session);
         sendTellerFeedback(player, "§aCheque deposited successfully into account §f"
                 + shortId(destination.getAccountUUID()) + "§a.");
         sendGoodbye(player);
@@ -421,15 +435,18 @@ public final class BankTellerInteractionManager {
         BankManager.markDirty();
         DollarBills.giveCash(player, plan);
         SESSIONS.remove(player.getUUID());
+        releaseTellerUse(player, session);
         sendTellerFeedback(player, "§aCheque cashed out as cash: §f" + DollarBills.formatCashPlan(plan));
         sendGoodbye(player);
     }
 
     private static int cancel(ServerPlayer player, String reason) {
-        if (SESSIONS.remove(player.getUUID()) == null) {
+        Session session = SESSIONS.remove(player.getUUID());
+        if (session == null) {
             sendTellerFeedback(player, "§7No active teller interaction.");
             return 0;
         }
+        releaseTellerUse(player, session);
         sendTellerFeedback(player, "§e" + reason);
         sendGoodbye(player);
         return 1;
@@ -438,6 +455,16 @@ public final class BankTellerInteractionManager {
     private static void sendGoodbye(ServerPlayer player) {
         String msg = GOODBYE_MESSAGES[ThreadLocalRandom.current().nextInt(GOODBYE_MESSAGES.length)];
         player.sendSystemMessage(UbsTranslations.literal(msg));
+    }
+
+    private static void releaseTellerUse(ServerPlayer player, Session session) {
+        if (player == null || session == null) {
+            return;
+        }
+        Entity entity = player.serverLevel().getEntity(session.tellerId);
+        if (entity instanceof BankTellerEntity teller) {
+            teller.endCustomerUse(player.getUUID());
+        }
     }
 
     private static List<AccountHolder> getPlayerAccounts(ServerPlayer player) {
@@ -545,7 +572,7 @@ public final class BankTellerInteractionManager {
         }
         // Keep chat output while mirroring into the shared alert card used across UBS.
         player.sendSystemMessage(UbsTranslations.literal(legacyMessage));
-        DeliveryAlertPayload.AlertTone tone = ServerActionAlert.inferToneFromLegacy(legacyMessage);
-        ServerActionAlert.sendLegacy(player, "Bank Teller", legacyMessage, tone, 4200);
+        DeliveryAlertPayload.AlertTone tone = ServerNotification.inferToneFromLegacy(legacyMessage);
+        ServerNotification.sendLegacy(player, "Bank Teller", legacyMessage, tone, 4200);
     }
 }

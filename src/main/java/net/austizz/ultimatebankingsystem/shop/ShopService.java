@@ -6,6 +6,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.custom.PalletBlock;
 import net.austizz.ultimatebankingsystem.block.entity.custom.CardboardBoxBlockEntity;
@@ -15,6 +16,9 @@ import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayBlockEn
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopSellingTableBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.TallWallShelfBlockEntity;
+import net.austizz.ultimatebankingsystem.claim.ClaimOutline;
+import net.austizz.ultimatebankingsystem.claim.ClaimModeService;
+import net.austizz.ultimatebankingsystem.claim.ClaimToolKind;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.item.CashierSpawnEggItem;
@@ -25,7 +29,7 @@ import net.austizz.ultimatebankingsystem.network.DeliveryInfoBoardPayload;
 import net.austizz.ultimatebankingsystem.network.DeliveryPalletLabelSummary;
 import net.austizz.ultimatebankingsystem.network.DeliveryPalletLabelsPayload;
 import net.austizz.ultimatebankingsystem.network.ShopSetupObjectivePayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.network.StockroomLocateRenderPayload;
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.shelf.ShelfCartService;
@@ -81,6 +85,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.nio.charset.StandardCharsets;
@@ -2026,11 +2031,15 @@ public final class ShopService {
             return new ShopActionResult(false, "Only the shop owner can manage opening hours and lighting.");
         }
 
-        String currentDayKey = resolveCurrentScheduleDayKey(server);
+        long serverEpochMillis = System.currentTimeMillis();
+        ZoneId serverZone = resolveServerZone();
+        ZonedDateTime serverNow = Instant.ofEpochMilli(serverEpochMillis).atZone(serverZone);
+        String serverZoneDescription = ShopHoursTimeZone.describeZone(serverZone, serverEpochMillis);
+        String currentDayKey = scheduleDayKey(serverNow.getDayOfWeek().getValue() - 1);
         ensureWeeklySchedule(shop);
         int openMinute = getShopOpenMinuteForDay(shop, currentDayKey);
         int closeMinute = getShopCloseMinuteForDay(shop, currentDayKey);
-        int minuteOfDay = resolveCurrentMinuteOfDay(server);
+        int minuteOfDay = (serverNow.getHour() * 60) + serverNow.getMinute();
         boolean openNow = isShopOpenAtMinute(shop, minuteOfDay, currentDayKey);
         long untilChangeSeconds = secondsUntilNextShopStateChange(openMinute, closeMinute, minuteOfDay, openNow);
         boolean lightingEnabled = shop.getBoolean(TAG_LIGHTING_ENABLED);
@@ -2049,6 +2058,9 @@ public final class ShopService {
         lines.add("@shop_hours.open_label=" + sanitizeTokenText(formatMinuteAmPm(openMinute)));
         lines.add("@shop_hours.close_label=" + sanitizeTokenText(formatMinuteAmPm(closeMinute)));
         lines.add("@shop_hours.current_day=" + currentDayKey);
+        lines.add("@shop_hours.server_zone_id=" + sanitizeTokenText(serverZone.getId()));
+        lines.add("@shop_hours.server_zone_label=" + sanitizeTokenText(serverZoneDescription));
+        lines.add("@shop_hours.server_epoch_millis=" + serverEpochMillis);
         for (String dayKey : SHOP_SCHEDULE_DAY_KEYS) {
             int dayOpen = getShopOpenMinuteForDay(shop, dayKey);
             int dayClose = getShopCloseMinuteForDay(shop, dayKey);
@@ -2077,6 +2089,9 @@ public final class ShopService {
         lines.add("@shop_lighting.exclude_stockroom=" + (excludeStockroom ? "1" : "0"));
         lines.add("@shop_lighting.level=" + lightLevel);
         lines.add("@shop_lighting.managed_blocks=" + managedLights);
+        lines.add("Schedule timezone: " + serverZoneDescription);
+        lines.add("Server time: " + friendlyScheduleDay(currentDayKey) + " "
+                + formatMinuteAmPm(minuteOfDay));
         lines.add("Today (" + friendlyScheduleDay(currentDayKey) + "): "
                 + formatMinuteAmPm(openMinute) + "  |  Close: " + formatMinuteAmPm(closeMinute));
         lines.add("Current status: " + (openNow ? "OPEN" : "CLOSED"));
@@ -2161,7 +2176,8 @@ public final class ShopService {
         return new ShopActionResult(
                 true,
                 "Shop hours updated for " + targetLabel + ": "
-                        + formatMinuteAmPm(openMinute) + " - " + formatMinuteAmPm(closeMinute) + "."
+                        + formatMinuteAmPm(openMinute) + " - " + formatMinuteAmPm(closeMinute)
+                        + " (server time: " + resolveServerZone().getId() + ")."
         );
     }
 
@@ -2423,8 +2439,11 @@ public final class ShopService {
     }
 
     private static String resolveCurrentScheduleDayKey(MinecraftServer server) {
-        int index = Math.max(0, Math.min(6, LocalDate.now().getDayOfWeek().getValue() - 1));
-        return SHOP_SCHEDULE_DAY_KEYS.get(index);
+        return scheduleDayKey(ZonedDateTime.now(resolveServerZone()).getDayOfWeek().getValue() - 1);
+    }
+
+    private static String scheduleDayKey(int index) {
+        return SHOP_SCHEDULE_DAY_KEYS.get(Math.max(0, Math.min(6, index)));
     }
 
     private static String normalizeScheduleDay(String rawDay) {
@@ -2507,18 +2526,22 @@ public final class ShopService {
     }
 
     private static int resolveCurrentMinuteOfDay() {
-        LocalDateTime now = LocalDateTime.now();
+        ZonedDateTime now = ZonedDateTime.now(resolveServerZone());
         return now.getHour() * 60 + now.getMinute();
     }
 
     private static int resolveCurrentMinuteOfDay(MinecraftServer server) {
         // Server clock should follow host system clock to match admin/server timezone settings.
-        LocalDateTime now = LocalDateTime.now();
+        ZonedDateTime now = ZonedDateTime.now(resolveServerZone());
         return now.getHour() * 60 + now.getMinute();
     }
 
     private static long resolveCurrentEpochDay(MinecraftServer server) {
-        return LocalDate.now().toEpochDay();
+        return LocalDate.now(resolveServerZone()).toEpochDay();
+    }
+
+    private static ZoneId resolveServerZone() {
+        return ZoneId.systemDefault();
     }
 
     private static int legacyDayTickToMinute(int tick) {
@@ -2893,10 +2916,11 @@ public final class ShopService {
                                 msg = "Store setup is incomplete. Entry is restricted.";
                                 title = "Store Locked";
                             } else if (allowClosedDelivererStockroom) {
-                                msg = "Store is closed. Only accepted order couriers may access stockroom.";
+                                msg = "Store is closed. Only accepted order couriers may access stockroom. Hours use "
+                                        + resolveServerZone().getId() + ".";
                                 title = "Store Closed";
                             } else {
-                                msg = "Store is currently closed.";
+                                msg = "Store is currently closed. Hours use " + resolveServerZone().getId() + ".";
                                 title = "Store Closed";
                             }
                             if (teleportPlayerOutsideShop(player, shop, shopId)) {
@@ -4026,6 +4050,18 @@ public final class ShopService {
             return new ShopActionResult(false, "No matching claimed region intersects that selection.");
         }
 
+        MinecraftServer server = null;
+        List<BankTellerEntity> plotRemovalCashierCandidates = List.of();
+        if (!stockroom) {
+            server = ServerLifecycleHooks.getCurrentServer();
+            plotRemovalCashierCandidates = collectCashierEntitiesInClaims(
+                    server,
+                    target,
+                    ownerId,
+                    shopTag.contains(TAG_ID) ? shopTag.getUUID(TAG_ID) : null
+            );
+        }
+
         ListTag replaced = new ListTag();
         for (CompoundTag region : next) {
             replaced.add(region);
@@ -4036,8 +4072,7 @@ public final class ShopService {
         int removedTerminalLinks = 0;
         if (!stockroom) {
             clampStockroomClaimsToPlot(shopTag);
-            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-            removedCashiers = pruneCashiersOutsideClaims(server, shopTag);
+            removedCashiers = pruneCashiersOutsideClaims(shopTag, plotRemovalCashierCandidates);
             removedTerminalLinks = pruneTerminalLinksOutsideClaims(shopTag, collectLiveCashierIdsForShop(server, shopTag));
         }
         saveShopTag(centralBank, shopTag);
@@ -4068,9 +4103,14 @@ public final class ShopService {
         if (centralBank == null || player == null) {
             return new ShopActionResult(false, "Shop service is unavailable.");
         }
+        if (ClaimModeService.hasSession(player.getUUID())
+                || SafetyDepositBoxService.hasSafeAreaClaimToolSession(player.getUUID())) {
+            return new ShopActionResult(false,
+                    "Another claim mode is already active. Close it first.");
+        }
         if (CLAIM_TOOL_SESSIONS.containsKey(player.getUUID())
                 || PALLET_CLAIM_TOOL_SESSIONS.containsKey(player.getUUID())) {
-            return new ShopActionResult(false, "Claim tool is already active. Use barrier to finish first.");
+            return new ShopActionResult(false, "Claim mode is already active. Exit that workspace first.");
         }
         CompoundTag shop = resolveShopTag(centralBank, player.getUUID(), shopId);
         if (shop == null || !shop.contains(TAG_ID)) {
@@ -4078,10 +4118,6 @@ public final class ShopService {
         }
         UUID resolvedShopId = shop.getUUID(TAG_ID);
         long gameTime = player.serverLevel().getGameTime();
-        List<ItemStack> snapshot = snapshotHotbar(player);
-        int selected = Math.max(0, Math.min(8, player.getInventory().selected));
-
-        installClaimToolHotbar(player, stockroomMode);
         ClaimToolSession session = new ClaimToolSession(
                 player.getUUID(),
                 player.getUUID(),
@@ -4094,15 +4130,19 @@ public final class ShopService {
                 "",
                 null,
                 null,
-                snapshot,
-                selected
+                List.of(),
+                player.getInventory().selected
         );
         CLAIM_TOOL_SESSIONS.put(player.getUUID(), session);
+        ClaimToolKind kind = stockroomMode ? ClaimToolKind.SHOP_STOCKROOM : ClaimToolKind.SHOP_PLOT;
+        if (!ClaimModeService.begin(player, kind)) {
+            CLAIM_TOOL_SESSIONS.remove(player.getUUID());
+            return new ShopActionResult(false, "Another claim mode is already active.");
+        }
         return new ShopActionResult(
                 true,
                 (stockroomMode ? "Stockroom" : "Plot")
-                        + " claim tool enabled. Left-click with stick for pos1, right-click with stick for pos2, "
-                        + "paper to apply, sponge to clear, eye to toggle overlay, barrier to finish."
+                        + " claim mode enabled. Left-click sets Pos1, right-click sets Pos2, and Tab opens controls."
         );
     }
 
@@ -4111,6 +4151,11 @@ public final class ShopService {
                                                                UUID shopId) {
         if (centralBank == null || player == null) {
             return new ShopActionResult(false, "Shop service is unavailable.");
+        }
+        if (ClaimModeService.hasSession(player.getUUID())
+                || SafetyDepositBoxService.hasSafeAreaClaimToolSession(player.getUUID())) {
+            return new ShopActionResult(false,
+                    "Another claim mode is already active. Close it first.");
         }
         if (CLAIM_TOOL_SESSIONS.containsKey(player.getUUID())
                 || PALLET_CLAIM_TOOL_SESSIONS.containsKey(player.getUUID())) {
@@ -4121,12 +4166,9 @@ public final class ShopService {
             return new ShopActionResult(false, "No shop found. Create one first.");
         }
         long gameTime = player.serverLevel().getGameTime();
-        List<ItemStack> snapshot = snapshotHotbar(player);
-        int selected = Math.max(0, Math.min(8, player.getInventory().selected));
         Set<String> assignedRefs = new LinkedHashSet<>(collectAssignedPalletRefSet(shop));
 
         // Pallet labeling uses staged changes: players can add/remove refs and commit with Save.
-        installPalletClaimToolHotbar(player);
         PalletClaimToolSession session = new PalletClaimToolSession(
                 player.getUUID(),
                 player.getUUID(),
@@ -4137,13 +4179,16 @@ public final class ShopService {
                 assignedRefs,
                 new LinkedHashSet<>(),
                 new LinkedHashSet<>(),
-                snapshot,
-                selected
+                List.of(),
+                player.getInventory().selected
         );
         PALLET_CLAIM_TOOL_SESSIONS.put(player.getUUID(), session);
-        sendPalletClaimToolTutorial(player);
+        if (!ClaimModeService.begin(player, ClaimToolKind.DELIVERY_PALLET)) {
+            PALLET_CLAIM_TOOL_SESSIONS.remove(player.getUUID());
+            return new ShopActionResult(false, "Another claim mode is already active.");
+        }
         return new ShopActionResult(true,
-                "Delivery pallet claim tool enabled. Use green/red tools, then save or cancel.");
+                "Delivery pallet claim mode enabled. Aim at a pallet and click to stage it.");
     }
 
     public static boolean hasClaimToolSession(UUID playerId) {
@@ -4156,6 +4201,211 @@ public final class ShopService {
 
     public static boolean hasAnyClaimToolSession(UUID playerId) {
         return hasClaimToolSession(playerId) || hasPalletClaimToolSession(playerId);
+    }
+
+    public record ClaimToolView(UUID ownerId,
+                                UUID shopId,
+                                boolean stockroomMode,
+                                boolean addMode,
+                                boolean outlinesVisible,
+                                long startedTick,
+                                long lastUpdatedTick,
+                                String dimensionId,
+                                BlockPos firstCorner,
+                                BlockPos secondCorner,
+                                String shopName,
+                                String ownerName) {
+    }
+
+    public record PalletClaimToolView(UUID ownerId,
+                                      UUID shopId,
+                                      boolean addMode,
+                                      long startedTick,
+                                      long lastUpdatedTick,
+                                      int pendingAdd,
+                                      int pendingRemove,
+                                      String shopName,
+                                      String ownerName) {
+    }
+
+    public static ClaimToolView claimToolView(CentralBank centralBank, UUID playerId) {
+        ClaimToolSession session = playerId == null ? null : CLAIM_TOOL_SESSIONS.get(playerId);
+        if (session == null) {
+            return null;
+        }
+        CompoundTag shop = resolveShopTag(centralBank, session.ownerId(), session.shopId());
+        return new ClaimToolView(
+                session.ownerId(), session.shopId(), session.stockroomMode(), session.addMode(),
+                session.overlayEnabled(), session.startedTick(), session.lastUpdatedTick(),
+                normalizedDim(session.firstDimensionId()),
+                session.firstCorner() == null ? null : session.firstCorner().immutable(),
+                session.secondCorner() == null ? null : session.secondCorner().immutable(),
+                shop == null ? "Shop" : sanitizeTokenText(shop.getString(TAG_NAME)),
+                shop == null ? "" : sanitizeTokenText(shop.getString(TAG_OWNER_NAME))
+        );
+    }
+
+    public static PalletClaimToolView palletClaimToolView(CentralBank centralBank, UUID playerId) {
+        PalletClaimToolSession session = playerId == null ? null : PALLET_CLAIM_TOOL_SESSIONS.get(playerId);
+        if (session == null) {
+            return null;
+        }
+        CompoundTag shop = resolveShopTag(centralBank, session.ownerId(), session.shopId());
+        return new PalletClaimToolView(
+                session.ownerId(), session.shopId(), session.addMode(),
+                session.startedTick(), session.lastUpdatedTick(),
+                session.pendingAddRefs().size(), session.pendingRemoveRefs().size(),
+                shop == null ? "Shop" : sanitizeTokenText(shop.getString(TAG_NAME)),
+                shop == null ? "" : sanitizeTokenText(shop.getString(TAG_OWNER_NAME))
+        );
+    }
+
+    public static List<ClaimOutline> collectClaimOutlines(CentralBank centralBank,
+                                                           ServerPlayer viewer,
+                                                           int range,
+                                                           int limit) {
+        return collectClaimOutlines(centralBank, viewer, range, limit, null);
+    }
+
+    public static List<ClaimOutline> collectClaimOutlines(CentralBank centralBank,
+                                                           ServerPlayer viewer,
+                                                           int range,
+                                                           int limit,
+                                                           UUID visibleOwnerId) {
+        if (centralBank == null || viewer == null || limit <= 0) {
+            return List.of();
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        ListTag shops = getOrCreateRoot(centralMeta).getList(TAG_SHOPS, Tag.TAG_COMPOUND);
+        String dimension = normalizedDim(viewer.serverLevel().dimension().location().toString());
+        BlockPos origin = viewer.blockPosition();
+        List<ClaimOutline> outlines = new ArrayList<>();
+        for (Tag raw : shops) {
+            if (!(raw instanceof CompoundTag shop)) {
+                continue;
+            }
+            UUID ownerId = shop.contains(TAG_OWNER) ? shop.getUUID(TAG_OWNER) : null;
+            if (visibleOwnerId != null && !visibleOwnerId.equals(ownerId)) {
+                continue;
+            }
+            String owner = sanitizeTokenText(shop.getString(TAG_OWNER_NAME));
+            if (owner.isBlank()) {
+                owner = sanitizeTokenText(shop.getString(TAG_NAME));
+            }
+            appendClaimOutlines(outlines, shop.getList(TAG_CLAIMS, Tag.TAG_COMPOUND),
+                    dimension, origin, range, limit, "SHOP_PLOT", ownerId, owner);
+            appendClaimOutlines(outlines, shop.getList(TAG_STOCKROOM_CLAIMS, Tag.TAG_COMPOUND),
+                    dimension, origin, range, limit, "SHOP_STOCKROOM", ownerId, owner);
+            if (outlines.size() < limit && viewer.getServer() != null) {
+                Map<String, PalletRef> livePallets = buildLivePalletLookup(
+                        viewer.getServer(), deliveryPalletSearchClaims(shop));
+                for (String palletKey : collectAssignedPalletRefSet(shop)) {
+                    PalletRef pallet = resolveAssignedPalletLiveRef(
+                            viewer.getServer(), shop, palletKey, livePallets);
+                    if (pallet == null || pallet.pos() == null
+                            || !dimension.equals(normalizedDim(pallet.dimensionId()))) {
+                        continue;
+                    }
+                    BlockPos pos = pallet.pos();
+                    ClaimOutline outline = new ClaimOutline(
+                            dimension, "DELIVERY_PALLET", ownerId == null ? "" : ownerId.toString(), owner,
+                            pos.getX() - 1, pos.getY(), pos.getZ() - 1,
+                            pos.getX() + 1, pos.getY(), pos.getZ() + 1);
+                    if (outline.near(origin.getX(), origin.getY(), origin.getZ(), range)) {
+                        outlines.add(outline);
+                        if (outlines.size() >= limit) {
+                            break;
+                        }
+                    }
+                }
+            }
+            if (outlines.size() >= limit) {
+                break;
+            }
+        }
+        return List.copyOf(outlines);
+    }
+
+    private static void appendClaimOutlines(List<ClaimOutline> target,
+                                            ListTag claims,
+                                            String dimension,
+                                            BlockPos origin,
+                                            int range,
+                                            int limit,
+                                            String type,
+                                            UUID ownerId,
+                                            String owner) {
+        if (target.size() >= limit) {
+            return;
+        }
+        for (Tag raw : claims) {
+            if (!(raw instanceof CompoundTag claim)
+                    || !dimension.equals(normalizedDim(claim.getString(TAG_DIM)))) {
+                continue;
+            }
+            ClaimOutline outline = new ClaimOutline(
+                    dimension, type, ownerId == null ? "" : ownerId.toString(), owner,
+                    claim.getInt(TAG_MIN_X), claim.getInt(TAG_MIN_Y), claim.getInt(TAG_MIN_Z),
+                    claim.getInt(TAG_MAX_X), claim.getInt(TAG_MAX_Y), claim.getInt(TAG_MAX_Z));
+            if (outline.near(origin.getX(), origin.getY(), origin.getZ(), range)) {
+                target.add(outline);
+                if (target.size() >= limit) {
+                    return;
+                }
+            }
+        }
+    }
+
+    public static List<ClaimOutline> collectPendingPalletClaimOutlines(MinecraftServer server,
+                                                                        CentralBank centralBank,
+                                                                        UUID playerId,
+                                                                        int limit) {
+        PalletClaimToolSession session = playerId == null ? null : PALLET_CLAIM_TOOL_SESSIONS.get(playerId);
+        if (server == null || centralBank == null || session == null || limit <= 0) {
+            return List.of();
+        }
+        CompoundTag shop = resolveShopTag(centralBank, session.ownerId(), session.shopId());
+        if (shop == null) {
+            return List.of();
+        }
+        Map<String, PalletRef> liveLookup = buildLivePalletLookup(
+                server, deliveryPalletSearchClaims(shop));
+        String ownerName = sanitizeTokenText(shop.getString(TAG_OWNER_NAME));
+        String ownerId = session.ownerId() == null ? "" : session.ownerId().toString();
+        List<ClaimOutline> outlines = new ArrayList<>();
+        appendPendingPalletOutlines(outlines, server, shop, liveLookup,
+                session.pendingAddRefs(), "PENDING_PALLET_ADD", ownerId, ownerName, limit);
+        appendPendingPalletOutlines(outlines, server, shop, liveLookup,
+                session.pendingRemoveRefs(), "PENDING_PALLET_REMOVE", ownerId, ownerName, limit);
+        return List.copyOf(outlines);
+    }
+
+    private static void appendPendingPalletOutlines(List<ClaimOutline> target,
+                                                     MinecraftServer server,
+                                                     CompoundTag shop,
+                                                     Map<String, PalletRef> liveLookup,
+                                                     Set<String> palletIds,
+                                                     String type,
+                                                     String ownerId,
+                                                     String ownerName,
+                                                     int limit) {
+        if (palletIds == null || palletIds.isEmpty() || target.size() >= limit) {
+            return;
+        }
+        for (String palletId : palletIds) {
+            PalletRef pallet = resolveAssignedPalletLiveRef(server, shop, palletId, liveLookup);
+            if (pallet == null || pallet.pos() == null) {
+                continue;
+            }
+            BlockPos pos = pallet.pos();
+            target.add(new ClaimOutline(
+                    normalizedDim(pallet.dimensionId()), type, ownerId, ownerName,
+                    pos.getX() - 1, pos.getY(), pos.getZ() - 1,
+                    pos.getX() + 1, pos.getY(), pos.getZ() + 1));
+            if (target.size() >= limit) {
+                return;
+            }
+        }
     }
 
     public static boolean hasStockroomLocateSession(UUID playerId) {
@@ -4244,7 +4494,7 @@ public final class ShopService {
         ));
         return new ShopActionResult(true,
                 "Mode set to " + (addMode ? "Add Region" : "Remove Region")
-                        + ". Select corners with stick, then use paper to apply.");
+                        + ". Left-click sets Pos1, right-click sets Pos2, then press Enter to apply.");
     }
 
     public static ShopActionResult toggleClaimOverlay(ServerPlayer player) {
@@ -4306,7 +4556,7 @@ public final class ShopService {
         ));
         return new ShopActionResult(true,
                 "Pos1 set at " + clickedPos.getX() + ", " + clickedPos.getY() + ", " + clickedPos.getZ()
-                        + ". Right-click with stick to set Pos2.");
+                        + ". Right-click a block to set Pos2.");
     }
 
     public static ShopActionResult setClaimToolSecondCorner(ServerPlayer player,
@@ -4344,11 +4594,11 @@ public final class ShopService {
         if (first == null) {
             return new ShopActionResult(true,
                     "Pos2 set at " + clickedPos.getX() + ", " + clickedPos.getY() + ", " + clickedPos.getZ()
-                            + ". Left-click with stick to set Pos1.");
+                            + ". Left-click a block to set Pos1.");
         }
         return new ShopActionResult(true,
                 "Pos2 set at " + clickedPos.getX() + ", " + clickedPos.getY() + ", " + clickedPos.getZ()
-                        + ". Use paper to apply " + (session.addMode() ? "Add" : "Remove") + " region.");
+                        + ". Press Enter to apply " + (session.addMode() ? "Add" : "Remove") + " region.");
     }
 
     public static ShopActionResult clearClaimToolSelection(ServerPlayer player) {
@@ -4597,6 +4847,7 @@ public final class ShopService {
             return new ShopActionResult(false, "No pallet claim tool session is active.");
         }
         restoreHotbar(player, session.hotbarSnapshot(), session.selectedHotbarSlot());
+        ClaimModeService.domainClosed(player);
         return new ShopActionResult(true, reason == null || reason.isBlank() ? "Pallet claim tool closed." : reason);
     }
 
@@ -4605,6 +4856,7 @@ public final class ShopService {
             return;
         }
         PALLET_CLAIM_TOOL_SESSIONS.remove(playerId);
+        ClaimModeService.clear(playerId);
     }
 
     public static void closeAllClaimToolSessions(ServerPlayer player, String reason) {
@@ -4631,6 +4883,7 @@ public final class ShopService {
             return new ShopActionResult(false, "No claim tool session is active.");
         }
         restoreHotbar(player, session.hotbarSnapshot(), session.selectedHotbarSlot());
+        ClaimModeService.domainClosed(player);
         return new ShopActionResult(true, reason == null || reason.isBlank() ? "Claim tool closed." : reason);
     }
 
@@ -4639,6 +4892,13 @@ public final class ShopService {
             return;
         }
         CLAIM_TOOL_SESSIONS.remove(playerId);
+        ClaimModeService.clear(playerId);
+    }
+
+    public static void clearClaimSessionsOnServerStopping() {
+        CLAIM_TOOL_SESSIONS.clear();
+        PALLET_CLAIM_TOOL_SESSIONS.clear();
+        STOCKROOM_LOCATE_SESSIONS.clear();
     }
 
     public static void tickSessions(MinecraftServer server) {
@@ -4654,30 +4914,12 @@ public final class ShopService {
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                 if (player == null) {
                     CLAIM_TOOL_SESSIONS.remove(playerId);
+                    ClaimModeService.clear(playerId);
                     continue;
                 }
                 long now = player.serverLevel().getGameTime();
-                purgeSelectionToolItemsOutsideHotbar(player);
-                boolean validToolHotbar = true;
-                for (int i = 0; i < 9; i++) {
-                    if (!isClaimToolStack(player.getInventory().getItem(i))) {
-                        validToolHotbar = false;
-                        break;
-                    }
-                }
-                if (!validToolHotbar) {
-                    installClaimToolHotbar(player, session.stockroomMode());
-                }
-                if (session.overlayEnabled()) {
-                    renderClaimOverlay(server, player, session);
-                }
-                if ((now % 20L) == 0L) {
-                    sendClaimToolStatusActionBar(player, session);
-                }
                 if ((now - session.lastUpdatedTick()) > CLAIM_TOOL_TIMEOUT_TICKS) {
-                    finishClaimToolSession(player, "Claim tool timed out and your hotbar was restored.");
-                    player.sendSystemMessage(UbsTranslations.literal("§eClaim tool timed out."));
-                    pushShopAlert(player, "Claim Tool", "Claim tool timed out.", DeliveryAlertPayload.AlertTone.WARNING, 5200);
+                    finishClaimToolSession(player, "Claim mode timed out.");
                 }
             }
         }
@@ -4690,27 +4932,12 @@ public final class ShopService {
                 ServerPlayer player = server.getPlayerList().getPlayer(playerId);
                 if (player == null) {
                     PALLET_CLAIM_TOOL_SESSIONS.remove(playerId);
+                    ClaimModeService.clear(playerId);
                     continue;
                 }
                 long now = player.serverLevel().getGameTime();
-                purgeSelectionToolItemsOutsideHotbar(player);
-                boolean validToolHotbar = true;
-                for (int i = 0; i < 9; i++) {
-                    if (!isPalletClaimToolStack(player.getInventory().getItem(i))) {
-                        validToolHotbar = false;
-                        break;
-                    }
-                }
-                if (!validToolHotbar) {
-                    installPalletClaimToolHotbar(player);
-                }
-                if ((now % 20L) == 0L) {
-                    sendPalletClaimToolStatusActionBar(player, session);
-                }
                 if ((now - session.lastUpdatedTick()) > CLAIM_TOOL_TIMEOUT_TICKS) {
-                    finishPalletClaimToolSession(player, "Pallet claim tool timed out and your hotbar was restored.");
-                    player.sendSystemMessage(UbsTranslations.literal("§ePallet claim tool timed out."));
-                    pushShopAlert(player, "Delivery Pallets", "Pallet claim tool timed out.", DeliveryAlertPayload.AlertTone.WARNING, 5200);
+                    finishPalletClaimToolSession(player, "Delivery pallet claim mode timed out.");
                 }
             }
         }
@@ -5326,49 +5553,37 @@ public final class ShopService {
         }
         UUID resolvedShopId = shop.contains(TAG_ID) ? shop.getUUID(TAG_ID) : null;
         ListTag claims = shop.getList(TAG_CLAIMS, Tag.TAG_COMPOUND);
-        for (ServerLevel level : server.getAllLevels()) {
-            for (BankTellerEntity teller : level.getEntitiesOfClass(
-                    BankTellerEntity.class,
-                    new AABB(-30_000_000, level.getMinBuildHeight() - 1, -30_000_000,
-                            30_000_000, level.getMaxBuildHeight() + 1, 30_000_000),
-                    BankTellerEntity::isCashier
-            )) {
-                if (teller == null || !shopOwnerId.equals(teller.getOwnerUUID())) {
-                    continue;
-                }
-                BlockPos pos = teller.blockPosition();
-                if (!isInsideClaims(claims, level.dimension().location().toString(), pos)) {
-                    continue;
-                }
-                UUID tellerShopId = teller.getShopId();
-                if (resolvedShopId != null && tellerShopId != null && !resolvedShopId.equals(tellerShopId)) {
-                    continue;
-                }
-                if (resolvedShopId != null && tellerShopId == null) {
-                    teller.setShopId(resolvedShopId);
-                }
-                UUID employeeId = teller.getEmployeeId();
-                if (employeeId == null) {
-                    employeeId = teller.getUUID();
-                    teller.setEmployeeId(employeeId);
-                }
-                CompoundTag linked = resolveLinkedTerminalTag(shop, teller.getUUID());
-                String linkedLabel = linked == null ? "-" : terminalPosLabel(linked);
-                String label = teller.getName().getString();
-                if (label == null || label.isBlank()) {
-                    label = "Cashier";
-                }
-                out.add(new CashierSummary(
-                        teller.getUUID(),
-                        employeeId,
-                        resolvedShopId,
-                        label,
-                        level.dimension().location().toString(),
-                        pos.immutable(),
-                        linked != null,
-                        linkedLabel
-                ));
+        for (BankTellerEntity teller : collectCashierEntitiesInClaims(server, claims, shopOwnerId, resolvedShopId)) {
+            if (teller == null) {
+                continue;
             }
+            BlockPos pos = teller.blockPosition();
+            String dimensionId = teller.level().dimension().location().toString();
+            UUID tellerShopId = teller.getShopId();
+            if (resolvedShopId != null && tellerShopId == null) {
+                teller.setShopId(resolvedShopId);
+            }
+            UUID employeeId = teller.getEmployeeId();
+            if (employeeId == null) {
+                employeeId = teller.getUUID();
+                teller.setEmployeeId(employeeId);
+            }
+            CompoundTag linked = resolveLinkedTerminalTag(shop, teller.getUUID());
+            String linkedLabel = linked == null ? "-" : terminalPosLabel(linked);
+            String label = teller.getName().getString();
+            if (label == null || label.isBlank()) {
+                label = "Cashier";
+            }
+            out.add(new CashierSummary(
+                    teller.getUUID(),
+                    employeeId,
+                    resolvedShopId,
+                    label,
+                    dimensionId,
+                    pos.immutable(),
+                    linked != null,
+                    linkedLabel
+            ));
         }
         out.sort(Comparator.comparing((CashierSummary it) -> it.dimensionId().toLowerCase(Locale.ROOT))
                 .thenComparingInt(it -> it.pos().getY())
@@ -9257,13 +9472,15 @@ public final class ShopService {
         if (buyer != null) {
             buyer.sendSystemMessage(UbsTranslations.literal(message));
             if (deliveryAlert != null && !deliveryAlert.message().isBlank()) {
-                // Push a styled client HUD alert in addition to chat for high-visibility delivery confirmation.
-                PacketDistributor.sendToPlayer(buyer, new DeliveryAlertPayload(
+                ServerNotification.send(
+                        buyer,
                         deliveryAlert.title(),
                         stripLegacyFormatting(deliveryAlert.message()),
-                        deliveryAlert.success(),
+                        deliveryAlert.success()
+                                ? DeliveryAlertPayload.AlertTone.SUCCESS
+                                : DeliveryAlertPayload.AlertTone.ERROR,
                         WEBSHOP_DELIVERY_ALERT_DURATION_MS
-                ));
+                );
             }
         }
     }
@@ -9283,7 +9500,7 @@ public final class ShopService {
         if (player == null || message == null || message.isBlank()) {
             return;
         }
-        ServerActionAlert.sendLegacy(
+        ServerNotification.sendLegacy(
                 player,
                 title == null || title.isBlank() ? "Shop Manager" : title,
                 message,
@@ -12154,7 +12371,8 @@ public final class ShopService {
                 + " "
                 + formatMinuteAmPm(getShopOpenMinuteForDay(selectedShop, currentDayKey))
                 + " - "
-                + formatMinuteAmPm(getShopCloseMinuteForDay(selectedShop, currentDayKey));
+                + formatMinuteAmPm(getShopCloseMinuteForDay(selectedShop, currentDayKey))
+                + " [" + resolveServerZone().getId() + "]";
         UUID shopIdForSnapshot = selectedShop.contains(TAG_ID) ? selectedShop.getUUID(TAG_ID) : null;
         UUID settlementAccountId = shopIdForSnapshot == null
                 ? null
@@ -15196,6 +15414,45 @@ public final class ShopService {
         return found ? new int[]{min, max} : null;
     }
 
+    public static boolean overlapsClaimOwnedByAnotherPlayer(CentralBank centralBank,
+                                                             UUID requestedOwnerId,
+                                                             String dimensionId,
+                                                             int minX,
+                                                             int minY,
+                                                             int minZ,
+                                                             int maxX,
+                                                             int maxY,
+                                                             int maxZ) {
+        if (centralBank == null || requestedOwnerId == null) {
+            return false;
+        }
+        CompoundTag centralMeta = centralBank.getOrCreateBankMetadata(centralBank.getBankId());
+        ListTag shops = getOrCreateRoot(centralMeta).getList(TAG_SHOPS, Tag.TAG_COMPOUND);
+        String dimension = normalizedDim(dimensionId);
+        for (Tag raw : shops) {
+            if (!(raw instanceof CompoundTag shop)) {
+                continue;
+            }
+            UUID ownerId = shop.contains(TAG_OWNER) ? shop.getUUID(TAG_OWNER) : null;
+            if (requestedOwnerId.equals(ownerId)) {
+                continue;
+            }
+            for (Tag claimRaw : shop.getList(TAG_CLAIMS, Tag.TAG_COMPOUND)) {
+                if (!(claimRaw instanceof CompoundTag claim)
+                        || !dimension.equals(normalizedDim(claim.getString(TAG_DIM)))) {
+                    continue;
+                }
+                if (claimsOverlap(
+                        minX, minY, minZ, maxX, maxY, maxZ,
+                        claim.getInt(TAG_MIN_X), claim.getInt(TAG_MIN_Y), claim.getInt(TAG_MIN_Z),
+                        claim.getInt(TAG_MAX_X), claim.getInt(TAG_MAX_Y), claim.getInt(TAG_MAX_Z))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static ShopOverlapResult overlapsForeignShopClaim(CentralBank centralBank,
                                                               UUID ownShopId,
                                                               String dimensionId,
@@ -16525,43 +16782,101 @@ public final class ShopService {
         shopTag.put(TAG_CASHIER_TERMINALS, next);
     }
 
-    private static int pruneCashiersOutsideClaims(MinecraftServer server, CompoundTag shopTag) {
-        if (server == null || shopTag == null || !shopTag.contains(TAG_OWNER) || !shopTag.contains(TAG_ID)) {
+    private static List<BankTellerEntity> collectCashierEntitiesInClaims(MinecraftServer server,
+                                                                         ListTag claims,
+                                                                         UUID ownerId,
+                                                                         UUID shopId) {
+        if (server == null || claims == null || claims.isEmpty() || ownerId == null) {
+            return List.of();
+        }
+        List<BankTellerEntity> out = new ArrayList<>();
+        Set<UUID> seen = new HashSet<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            if (level == null) {
+                continue;
+            }
+            String levelDim = normalizedDim(level.dimension().location().toString());
+            for (Tag tag : claims) {
+                if (!(tag instanceof CompoundTag claim)) {
+                    continue;
+                }
+                if (!normalizedDim(claim.getString(TAG_DIM)).equals(levelDim)) {
+                    continue;
+                }
+                AABB bounds = claimEntitySearchBounds(claim, level);
+                if (bounds == null) {
+                    continue;
+                }
+                for (BankTellerEntity teller : level.getEntitiesOfClass(
+                        BankTellerEntity.class,
+                        bounds,
+                        BankTellerEntity::isCashier
+                )) {
+                    if (teller == null || !seen.add(teller.getUUID()) || !ownerId.equals(teller.getOwnerUUID())) {
+                        continue;
+                    }
+                    UUID tellerShopId = teller.getShopId();
+                    if (shopId != null && tellerShopId != null && !shopId.equals(tellerShopId)) {
+                        continue;
+                    }
+                    if (!isInsideClaims(claims, levelDim, teller.blockPosition())) {
+                        continue;
+                    }
+                    out.add(teller);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static AABB claimEntitySearchBounds(CompoundTag claim, ServerLevel level) {
+        if (claim == null || level == null) {
+            return null;
+        }
+        int minX = regionMinX(claim);
+        int maxX = regionMaxX(claim);
+        int minY = Math.max(regionMinY(claim), level.getMinBuildHeight() - 1);
+        int maxY = Math.min(regionMaxY(claim), level.getMaxBuildHeight() + 1);
+        int minZ = regionMinZ(claim);
+        int maxZ = regionMaxZ(claim);
+        if (maxX < minX || maxY < minY || maxZ < minZ) {
+            return null;
+        }
+        return new AABB(minX, minY, minZ, maxX + 1.0D, maxY + 1.0D, maxZ + 1.0D);
+    }
+
+    private static int pruneCashiersOutsideClaims(CompoundTag shopTag, List<BankTellerEntity> candidates) {
+        if (shopTag == null || candidates == null || candidates.isEmpty()
+                || !shopTag.contains(TAG_OWNER) || !shopTag.contains(TAG_ID)) {
             return 0;
         }
         UUID ownerId = shopTag.getUUID(TAG_OWNER);
         UUID shopId = shopTag.getUUID(TAG_ID);
         ListTag claims = shopTag.getList(TAG_CLAIMS, Tag.TAG_COMPOUND);
         int removed = 0;
-
-        for (ServerLevel level : server.getAllLevels()) {
-            for (BankTellerEntity teller : level.getEntitiesOfClass(
-                    BankTellerEntity.class,
-                    new AABB(-30_000_000, level.getMinBuildHeight() - 1, -30_000_000,
-                            30_000_000, level.getMaxBuildHeight() + 1, 30_000_000),
-                    BankTellerEntity::isCashier
-            )) {
-                if (teller == null || !ownerId.equals(teller.getOwnerUUID())) {
-                    continue;
-                }
-                UUID tellerShopId = teller.getShopId();
-                if (tellerShopId != null && !shopId.equals(tellerShopId)) {
-                    continue;
-                }
-                BlockPos pos = teller.blockPosition();
-                if (isInsideClaims(claims, level.dimension().location().toString(), pos)) {
-                    if (tellerShopId == null) {
-                        teller.setShopId(shopId);
-                    }
-                    continue;
-                }
-                ShopCashierInteractionManager.cancelForCashier(
-                        teller.getUUID(),
-                        "Cashier removed because its plot claim was removed."
-                );
-                teller.discard();
-                removed++;
+        Set<UUID> seen = new HashSet<>();
+        for (BankTellerEntity teller : candidates) {
+            if (teller == null || !seen.add(teller.getUUID()) || !ownerId.equals(teller.getOwnerUUID())) {
+                continue;
             }
+            UUID tellerShopId = teller.getShopId();
+            if (tellerShopId != null && !shopId.equals(tellerShopId)) {
+                continue;
+            }
+            BlockPos pos = teller.blockPosition();
+            String dim = teller.level().dimension().location().toString();
+            if (isInsideClaims(claims, dim, pos)) {
+                if (tellerShopId == null) {
+                    teller.setShopId(shopId);
+                }
+                continue;
+            }
+            ShopCashierInteractionManager.cancelForCashier(
+                    teller.getUUID(),
+                    "Cashier removed because its plot claim was removed."
+            );
+            teller.discard();
+            removed++;
         }
         return removed;
     }
@@ -16574,24 +16889,8 @@ public final class ShopService {
         UUID shopId = shopTag.getUUID(TAG_ID);
         ListTag claims = shopTag.getList(TAG_CLAIMS, Tag.TAG_COMPOUND);
         Set<UUID> ids = new HashSet<>();
-        for (ServerLevel level : server.getAllLevels()) {
-            for (BankTellerEntity teller : level.getEntitiesOfClass(
-                    BankTellerEntity.class,
-                    new AABB(-30_000_000, level.getMinBuildHeight() - 1, -30_000_000,
-                            30_000_000, level.getMaxBuildHeight() + 1, 30_000_000),
-                    BankTellerEntity::isCashier
-            )) {
-                if (teller == null || !ownerId.equals(teller.getOwnerUUID())) {
-                    continue;
-                }
-                UUID tellerShopId = teller.getShopId();
-                if (tellerShopId != null && !shopId.equals(tellerShopId)) {
-                    continue;
-                }
-                if (isInsideClaims(claims, level.dimension().location().toString(), teller.blockPosition())) {
-                    ids.add(teller.getUUID());
-                }
-            }
+        for (BankTellerEntity teller : collectCashierEntitiesInClaims(server, claims, ownerId, shopId)) {
+            ids.add(teller.getUUID());
         }
         return ids;
     }

@@ -42,3 +42,16 @@ repo/
 /.sisyphus
 /.sissyphus
 
+### AI session documentation & memory (local only, never commit) ###
+/ported-memory.md
+/claude-docs/
+MEMORY.md
+changelog-protocol.md
+user-profile-nadir.md
+working-with-nadir.md
+ubs-current-state.md
+ubs-code-landmines.md
+ubs-environment-tooling.md
+ultimate-mod-series.md
+codex-sessions-and-ported-memory.md
+

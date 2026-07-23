@@ -8,7 +8,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
 import net.austizz.ultimatebankingsystem.network.PickpocketStatePayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -129,7 +129,7 @@ public final class PickpocketService {
 
         long nowTick = resolveServerTick(server);
         if (!Config.PICKPOCKET_ENABLED.get()) {
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket",
                     "Pickpocketing is currently disabled by server configuration.",
                     DeliveryAlertPayload.AlertTone.ERROR,
@@ -145,7 +145,7 @@ public final class PickpocketService {
 
         long cooldownRemaining = getCooldownRemainingTicks(thief.getUUID(), nowTick);
         if (cooldownRemaining > 0L) {
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket",
                     "Cooldown active: wait " + formatSeconds(cooldownRemaining) + " seconds.",
                     DeliveryAlertPayload.AlertTone.WARNING,
@@ -158,7 +158,7 @@ public final class PickpocketService {
         ServerPlayer target = server.getPlayerList().getPlayer(targetId);
         String validationFailure = validateAttempt(thief, target, centralBank);
         if (validationFailure != null) {
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket",
                     validationFailure,
                     DeliveryAlertPayload.AlertTone.WARNING,
@@ -271,7 +271,7 @@ public final class PickpocketService {
         if (slot == null) {
             applyCooldown(thief.getUUID(), nowTick);
             syncIdleState(thief, nowTick);
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket Failed",
                     safeName(target) + " has no cash stack to steal.",
                     DeliveryAlertPayload.AlertTone.ERROR,
@@ -283,7 +283,7 @@ public final class PickpocketService {
         if (stolenStack.isEmpty()) {
             applyCooldown(thief.getUUID(), nowTick);
             syncIdleState(thief, nowTick);
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket Failed",
                     "Could not steal cash stack due to inventory desync.",
                     DeliveryAlertPayload.AlertTone.ERROR,
@@ -316,13 +316,13 @@ public final class PickpocketService {
         applyCooldown(thief.getUUID(), nowTick);
         syncIdleState(thief, nowTick);
 
-        ServerActionAlert.send(thief,
+        ServerNotification.send(thief,
                 "Pickpocket Success",
                 "You stole " + stolenSummary + " from " + targetName + ".",
                 DeliveryAlertPayload.AlertTone.SUCCESS,
                 4200);
 
-        ServerActionAlert.send(target,
+        ServerNotification.send(target,
                 "You Were Pickpocketed",
                 thiefName + " stole " + stolenSummary + " from you.",
                 DeliveryAlertPayload.AlertTone.WARNING,
@@ -344,7 +344,7 @@ public final class PickpocketService {
         applyCooldown(thief.getUUID(), nowTick);
         syncIdleState(thief, nowTick);
         if (notifyThief && reason != null && !reason.isBlank()) {
-            ServerActionAlert.send(thief,
+            ServerNotification.send(thief,
                     "Pickpocket Cancelled",
                     reason,
                     DeliveryAlertPayload.AlertTone.WARNING,
@@ -463,7 +463,7 @@ public final class PickpocketService {
         return stack != null
                 && !stack.isEmpty()
                 && stack.getCount() > 0
-                && DollarBills.isCashTenderItem(stack.getItem());
+                && DollarBills.isPhysicalTenderItem(stack.getItem());
     }
 
     private static String formatStackSummary(ItemStack stack) {

@@ -8,6 +8,8 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,7 @@ public final class SmartphoneData {
     private static final String TAG_ACCENT = "ubs_phone_accent";
     private static final String TAG_WALLPAPER = "ubs_phone_wallpaper";
     private static final String TAG_LAYOUT = "ubs_phone_layout";
+    private static final String TAG_PASSCODE_HASH = "ubs_phone_passcode_hash";
     private static final String TAG_TAP_ACCOUNT = "ubs_phone_tap_account";
     private static final String TAG_VIRTUAL_CARDS = "ubs_phone_virtual_cards";
     private static final String TAG_NOTES = "ubs_phone_notes";
@@ -43,7 +46,7 @@ public final class SmartphoneData {
             tag.putString(TAG_OWNER_NAME, player.getGameProfile().getName());
             tag.putString(TAG_ACCENT, "cyan");
             tag.putString(TAG_WALLPAPER, "aurora");
-            tag.putString(TAG_LAYOUT, "classic");
+            tag.putString(TAG_LAYOUT, "dark");
             ItemStackDataCompat.setCustomData(stack, tag);
         }
     }
@@ -92,6 +95,41 @@ public final class SmartphoneData {
         ItemStackDataCompat.setCustomData(stack, tag);
     }
 
+    public static void setLayout(ItemStack stack, String layout) {
+        CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
+        tag.putString(TAG_LAYOUT, sanitizeChoice(layout, "dark"));
+        ItemStackDataCompat.setCustomData(stack, tag);
+    }
+
+    public static boolean hasPasscode(ItemStack stack) {
+        String hash = ItemStackDataCompat.getCustomData(stack).getString(TAG_PASSCODE_HASH);
+        return hash != null && !hash.isBlank();
+    }
+
+    public static boolean setPasscode(ItemStack stack, String passcode) {
+        String pin = sanitizePasscode(passcode);
+        if (pin.isBlank()) {
+            return false;
+        }
+        CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
+        tag.putString(TAG_PASSCODE_HASH, hashPasscode(stack, pin));
+        ItemStackDataCompat.setCustomData(stack, tag);
+        return true;
+    }
+
+    public static boolean verifyPasscode(ItemStack stack, String passcode) {
+        String pin = sanitizePasscode(passcode);
+        String stored = ItemStackDataCompat.getCustomData(stack).getString(TAG_PASSCODE_HASH);
+        return !pin.isBlank() && stored != null && !stored.isBlank() && stored.equals(hashPasscode(stack, pin));
+    }
+
+    public static boolean changePasscode(ItemStack stack, String currentPasscode, String newPasscode) {
+        if (!verifyPasscode(stack, currentPasscode)) {
+            return false;
+        }
+        return setPasscode(stack, newPasscode);
+    }
+
     public static UUID getTapAccount(ItemStack stack) {
         CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
         return tag.hasUUID(TAG_TAP_ACCOUNT) ? tag.getUUID(TAG_TAP_ACCOUNT) : null;
@@ -135,14 +173,17 @@ public final class SmartphoneData {
         while (notes.size() <= safeIndex) {
             notes.add("");
         }
-        notes.set(safeIndex, clampText(text, MAX_NOTE_CHARS));
+        notes.set(safeIndex, clampNoteText(text, MAX_NOTE_CHARS));
         writeStringList(stack, TAG_NOTES, notes, MAX_NOTES);
     }
 
     public static void deleteNote(ItemStack stack, int index) {
         List<String> notes = getNotes(stack);
-        if (index >= 0 && index < notes.size()) {
-            notes.remove(index);
+        if (index >= 0 && index < MAX_NOTES) {
+            while (notes.size() <= index) {
+                notes.add("");
+            }
+            notes.set(index, "");
         }
         writeStringList(stack, TAG_NOTES, notes, MAX_NOTES);
     }
@@ -206,6 +247,28 @@ public final class SmartphoneData {
         return cleaned;
     }
 
+    private static String sanitizePasscode(String value) {
+        String cleaned = value == null ? "" : value.trim();
+        return cleaned.matches("\\d{4}") ? cleaned : "";
+    }
+
+    private static String hashPasscode(ItemStack stack, String passcode) {
+        UUID owner = getOwnerId(stack);
+        String salt = owner == null ? "unowned" : owner.toString();
+        byte[] input = (salt + ":" + passcode).getBytes(StandardCharsets.UTF_8);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashed = digest.digest(input);
+            StringBuilder out = new StringBuilder(hashed.length * 2);
+            for (byte value : hashed) {
+                out.append(String.format(Locale.ROOT, "%02x", value & 0xFF));
+            }
+            return out.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return UUID.nameUUIDFromBytes(input).toString();
+        }
+    }
+
     private static List<String> readStringList(ItemStack stack, String key, int max) {
         CompoundTag tag = ItemStackDataCompat.getCustomData(stack);
         ListTag raw = tag.getList(key, Tag.TAG_STRING);
@@ -233,6 +296,11 @@ public final class SmartphoneData {
 
     private static String clampText(String text, int maxChars) {
         String value = text == null ? "" : text.trim();
+        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+    }
+
+    private static String clampNoteText(String text, int maxChars) {
+        String value = text == null ? "" : text.replace("\r\n", "\n").replace('\r', '\n');
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 

@@ -5,6 +5,7 @@ import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.client.model.BankSafeIronBarGateBlockEntityModel;
 import net.austizz.ultimatebankingsystem.client.model.BankVaultDoorBlockEntityModel;
 import net.austizz.ultimatebankingsystem.client.model.SafetyDepositBoxRowBlockEntityModel;
+import net.austizz.ultimatebankingsystem.client.model.SafetyDepositBoxTrayModel;
 import net.austizz.ultimatebankingsystem.client.renderer.BankSafeIronBarGateItemRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.BankSafeIronBarGateRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.BankTellerRenderer;
@@ -12,9 +13,13 @@ import net.austizz.ultimatebankingsystem.client.renderer.BankVaultDoorItemRender
 import net.austizz.ultimatebankingsystem.client.renderer.BankVaultDoorRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.GlassCounterDisplayRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.ModularWallDisplayRenderer;
+import net.austizz.ultimatebankingsystem.client.renderer.MoneyBriefcaseItemRenderer;
+import net.austizz.ultimatebankingsystem.client.renderer.MoneyBriefcaseRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.PalletRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.SafetyDepositBoxRowItemRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.SafetyDepositBoxRowRenderer;
+import net.austizz.ultimatebankingsystem.client.renderer.SafetyDepositBoxDisplayProxyRenderer;
+import net.austizz.ultimatebankingsystem.client.renderer.SecureSafeRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.ShopSellingTableRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.ShoppingBasketRenderer;
 import net.austizz.ultimatebankingsystem.client.renderer.TallWallShelfRenderer;
@@ -37,15 +42,21 @@ public final class BankTellerClientEvents {
     @SubscribeEvent
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.BANK_TELLER.get(), BankTellerRenderer::new);
+        event.registerEntityRenderer(ModEntities.SAFETY_DEPOSIT_BOX_DISPLAY_PROXY.get(),
+                SafetyDepositBoxDisplayProxyRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.TALL_WALL_SHELF.get(), TallWallShelfRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.SHOP_SELLING_TABLE.get(), ShopSellingTableRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.SHOPPING_BASKET.get(), ShoppingBasketRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.PALLET.get(), PalletRenderer::new);
+        // Metal pallet contents are chunk-baked via MetalPalletContentsBakedModel
+        // (see ClientModBusEvents.onModifyBakingResult); no BER needed anymore.
         event.registerBlockEntityRenderer(ModBlockEntities.MODULAR_WALL_DISPLAY.get(), ModularWallDisplayRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.GLASS_COUNTER_DISPLAY.get(), GlassCounterDisplayRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.BANK_VAULT_DOOR.get(), BankVaultDoorRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.BANK_SAFE_IRON_BAR_GATE.get(), BankSafeIronBarGateRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.SAFETY_DEPOSIT_BOX_ROW.get(), SafetyDepositBoxRowRenderer::new);
+        event.registerBlockEntityRenderer(ModBlockEntities.SECURE_SAFE.get(), SecureSafeRenderer::new);
+        event.registerBlockEntityRenderer(ModBlockEntities.MONEY_BRIEFCASE.get(), MoneyBriefcaseRenderer::new);
     }
 
     @SubscribeEvent
@@ -53,6 +64,7 @@ public final class BankTellerClientEvents {
         event.registerLayerDefinition(BankVaultDoorBlockEntityModel.LAYER_LOCATION, BankVaultDoorBlockEntityModel::createBodyLayer);
         event.registerLayerDefinition(BankSafeIronBarGateBlockEntityModel.LAYER_LOCATION, BankSafeIronBarGateBlockEntityModel::createBodyLayer);
         event.registerLayerDefinition(SafetyDepositBoxRowBlockEntityModel.LAYER_LOCATION, SafetyDepositBoxRowBlockEntityModel::createBodyLayer);
+        event.registerLayerDefinition(SafetyDepositBoxTrayModel.LAYER_LOCATION, SafetyDepositBoxTrayModel::createBodyLayer);
     }
 
     @SubscribeEvent
@@ -104,5 +116,21 @@ public final class BankTellerClientEvents {
                 return renderer;
             }
         }, ModBlocks.SAFETY_DEPOSIT_BOX_ROW.get().asItem());
+
+        event.registerItem(new IClientItemExtensions() {
+            private MoneyBriefcaseItemRenderer renderer;
+
+            @Override
+            public BlockEntityWithoutLevelRenderer getCustomRenderer() {
+                if (renderer == null) {
+                    Minecraft minecraft = Minecraft.getInstance();
+                    renderer = new MoneyBriefcaseItemRenderer(
+                            minecraft.getBlockEntityRenderDispatcher(),
+                            minecraft.getEntityModels()
+                    );
+                }
+                return renderer;
+            }
+        }, ModBlocks.MONEY_BRIEFCASE.get().asItem());
     }
 }

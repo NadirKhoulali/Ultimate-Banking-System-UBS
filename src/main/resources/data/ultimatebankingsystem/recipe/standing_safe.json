@@ -1,0 +1,23 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "pattern": [
+  "III",
+  "ISI",
+  "IAI"
+ ],
+ "key": {
+  "I": {
+   "item": "minecraft:iron_block"
+  },
+  "S": {
+   "item": "ultimatebankingsystem:compact_safe"
+  },
+  "A": {
+   "item": "ultimatebankingsystem:access_verifier"
+  }
+ },
+ "result": {
+  "id": "ultimatebankingsystem:standing_safe",
+  "count": 1
+ }
+}

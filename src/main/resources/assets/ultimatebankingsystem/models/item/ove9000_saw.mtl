@@ -1,0 +1,12 @@
+newmtl ove9000_saw_blade_diffuse
+Kd 1.000000 1.000000 1.000000
+map_Kd ultimatebankingsystem:item/ove9000_saw_blade
+
+newmtl ove9000_saw_body_diffuse
+Kd 1.000000 1.000000 1.000000
+map_Kd ultimatebankingsystem:item/ove9000_saw_body
+
+newmtl ove9000_saw_protection_diffuse
+Kd 1.000000 1.000000 1.000000
+map_Kd ultimatebankingsystem:item/ove9000_saw_protection
+

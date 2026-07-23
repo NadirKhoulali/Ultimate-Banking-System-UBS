@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["CBB", "IRB", " II"],
+  "key": {
+    "C": { "item": "minecraft:copper_block" },
+    "B": { "item": "ultimatebankingsystem:ove9000_saw_blade" },
+    "I": { "item": "minecraft:iron_ingot" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": { "id": "ultimatebankingsystem:ove9000_saw", "count": 1 }
+}

@@ -1,0 +1,110 @@
+﻿{
+    "credit":  "Made with Blockbench MCP template for Ultimate Banking System",
+    "parent":  "minecraft:block/block",
+    "ambientocclusion":  false,
+    "textures":  {
+                     "front":  "ultimatebankingsystem:item/five_dollar_american",
+                     "particle":  "ultimatebankingsystem:item/five_dollar_american"
+                 },
+    "elements":  [
+                     {
+                         "name":  "bill_layer_1",
+                         "from":  [
+                                      2,
+                                      0,
+                                      3
+                                  ],
+                         "to":  [
+                                    14,
+                                    0.08,
+                                    13
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#front"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "bill_layer_2",
+                         "from":  [
+                                      2.12,
+                                      0.18,
+                                      3.06
+                                  ],
+                         "to":  [
+                                    14.12,
+                                    0.26,
+                                    13.06
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#front"
+                                                }
+                                   }
+                     },
+                     {
+                         "name":  "bill_layer_3",
+                         "from":  [
+                                      1.92,
+                                      0.36,
+                                      2.95
+                                  ],
+                         "to":  [
+                                    13.92,
+                                    0.44,
+                                    12.95
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#front"
+                                                }
+                                   }
+                     }
+                 ]
+}

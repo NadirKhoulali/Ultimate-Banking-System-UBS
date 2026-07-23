@@ -2,12 +2,18 @@ package net.austizz.ultimatebankingsystem.block.entity;
 
 import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.entity.custom.AccessVerifierBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.BankSafeIronBarGateBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.BankVaultDoorBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.GlassCounterDisplayBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.HeistDuffelBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.MetalPalletBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ModularWallDisplayBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.MoneyBriefcaseBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.PalletBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.RfidScannerBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SecureSafeBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.CardboardBoxBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopTerminalBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShopSellingTableBlockEntity;
@@ -30,6 +36,28 @@ public final class ModBlockEntities {
                     BlockEntityType.Builder.of(
                             ShopTerminalBlockEntity::new,
                             ModBlocks.PAYMENT_TERMINAL.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AccessVerifierBlockEntity>> ACCESS_VERIFIER =
+            BLOCK_ENTITY_TYPES.register("access_verifier", () ->
+                    BlockEntityType.Builder.of(
+                            AccessVerifierBlockEntity::new,
+                            ModBlocks.ACCESS_VERIFIER.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RfidScannerBlockEntity>> RFID_SCANNER =
+            BLOCK_ENTITY_TYPES.register("rfid_scanner", () ->
+                    BlockEntityType.Builder.of(
+                            RfidScannerBlockEntity::new,
+                            ModBlocks.RFID_SCANNER.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SecureSafeBlockEntity>> SECURE_SAFE =
+            BLOCK_ENTITY_TYPES.register("secure_safe", () ->
+                    BlockEntityType.Builder.of(
+                            SecureSafeBlockEntity::new,
+                            ModBlocks.STANDING_SAFE.get(),
+                            ModBlocks.COMPACT_SAFE.get()
                     ).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BankVaultDoorBlockEntity>> BANK_VAULT_DOOR =
@@ -128,6 +156,27 @@ public final class ModBlockEntities {
                     BlockEntityType.Builder.of(
                             PalletBlockEntity::new,
                             ModBlocks.PALLET.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MetalPalletBlockEntity>> METAL_PALLET =
+            BLOCK_ENTITY_TYPES.register("metal_pallet", () ->
+                    BlockEntityType.Builder.of(
+                            MetalPalletBlockEntity::new,
+                            ModBlocks.METAL_PALLET.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MoneyBriefcaseBlockEntity>> MONEY_BRIEFCASE =
+            BLOCK_ENTITY_TYPES.register("money_briefcase", () ->
+                    BlockEntityType.Builder.of(
+                            MoneyBriefcaseBlockEntity::new,
+                            ModBlocks.MONEY_BRIEFCASE.get()
+                    ).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<HeistDuffelBlockEntity>> HEIST_DUFFEL =
+            BLOCK_ENTITY_TYPES.register("heist_duffel", () ->
+                    BlockEntityType.Builder.of(
+                            HeistDuffelBlockEntity::new,
+                            ModBlocks.HEIST_DUFFEL.get()
                     ).build(null));
 
     private ModBlockEntities() {}

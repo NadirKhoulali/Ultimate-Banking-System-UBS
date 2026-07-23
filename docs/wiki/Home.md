@@ -1,55 +1,51 @@
 # Ultimate Banking System Wiki
 
-This wiki tracks the current UBS feature set and command surface.
+This wiki documents UBS `2.0.0` for Minecraft `1.21.1` on NeoForge.
 
-Current release target: `1.4.0`
-
-## Start Here
+## Player Guides
 
 - [Player Guide](Player-Guide.md)
 - [ATM Flow](ATM-Flow.md)
-- [Currency & Legal Tender](Currency-Legal-Tender.md)
+- [Currency and Legal Tender](Currency-Legal-Tender.md)
 - [Payment Terminal Guide](Payment-Terminal-Guide.md)
-- [Retail & Shop System](Retail-Shop-System.md)
+- [Smartphone](Smartphone.md)
+- [Retail and Shop System](Retail-Shop-System.md)
+- [Safety Deposit Boxes](Safety-Deposit-Boxes.md)
+- [Bank Heists](Bank-Heists.md)
+- [RFID and Security](RFID-and-Security.md)
+
+## Owner and Admin Guides
+
 - [Bank Owner PC](Bank-Owner-PC.md)
+- [Claim Tools](Claim-Tools.md)
 - [Admin Commands](Admin-Commands.md)
 - [Configuration](Configuration.md)
 - [Migration Guide](Migration-Guide.md)
+
+## Developer Guides
+
 - [Developer API](Developer-API.md)
 - [Developer Integration Tutorial](Developer-Integration-Tutorial.md)
-- [Dashboard Addon API](Dashboard-Addon-API.md)
 
-## System Overview
+## UBS 2.0
 
-UBS provides:
+The 2.0 release expands UBS from banking and shopping into a connected physical-economy platform:
 
-- account-based banking with PIN-protected ATM access
-- physical USD bills and coins as legal tender
-- ATM cash flow:
-  - withdraw is bills only
-  - deposit accepts bills + coins (exact match)
-- bank teller cash-out supports bills + coins
-- wallet cash/card tender support for teller and cashier payments
-- transfer history, limits, and anti-abuse controls
-- pay request workflows in chat and ATM UI
-- payment terminal block for merchant checkout with configurable redstone outputs
-- handheld payment terminal for direct player-to-player checkout
-- web dashboard addon API for UBS-styled addon panels and component pages
-- retail/shop stack:
-  - shelves, displays, coolers, tables, baskets/bags, pallet logistics, stockroom tooling
-  - cashier NPC workflows and desktop shop management actions
-  - webshop + delivery queue + courier order board support
-- world cash economy:
-  - structure chest cash loot
-  - mob cash drops
-  - configurable death cash drop handling
-- pickpocket subsystem with server-side cooldown/opt-out controls
-- player-owned banks with governance, staffing, products, and reserve controls
-- central-bank policy and settlement controls
-- admin moderation, audit, and import tools
+- responsive smartphone banking and realtime communication
+- bank premises, vault operations, alarms, deposit rows, and private viewing rooms
+- physical safes, money stacks, bullion, metal pallets, and spot-market valuation
+- RFID access control and per-player protected passage
+- multiplayer bank heists with physical tools, loot, alarms, extraction, and recovery
+- unified tactical claim tools
+- a Java API covering finance, notifications, market pricing, banks, shops, and heists
 
-## Notes
+For server safety and distribution-policy compliance, UBS does not ship an embedded browser-based administration server. Administration is performed in game; trusted mods integrate through the Java API.
 
-- Daily withdrawal resets and many lifecycle systems are tick-driven.
-- Interest, renewals, audits, and taxes are server-side scheduled flows.
-- Keep config values aligned with your server economy scale before launch.
+## Quick Start
+
+1. Install the UBS jar on both the server and client.
+2. Run `/account open` to create a Central Bank checking account.
+3. Use an ATM or smartphone to set the account PIN and manage banking.
+4. Use the Business Manager PC to create and operate a bank or shop.
+5. Review [Configuration](Configuration.md) before enabling or balancing production features.
+

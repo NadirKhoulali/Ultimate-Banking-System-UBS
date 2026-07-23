@@ -8,10 +8,18 @@ import net.austizz.ultimatebankingsystem.account.AccountHolder;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
+import net.austizz.ultimatebankingsystem.bank.owner.OwnerPcActionPolicy;
+import net.austizz.ultimatebankingsystem.bank.owner.premise.OwnerPcPremiseService;
+import net.austizz.ultimatebankingsystem.bank.owner.route.OwnerPcVaultRouteService;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.custom.SecureSafeBlock;
 import net.austizz.ultimatebankingsystem.block.custom.ShopSellingTableLargeBlock;
+import net.austizz.ultimatebankingsystem.block.entity.custom.AccessVerifierBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.RfidScannerBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SecureSafeBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ItemDisplayTransform;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShelfDisplayType;
@@ -25,6 +33,10 @@ import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.HandheldPaymentTerminalItem;
+import net.austizz.ultimatebankingsystem.heist.DallasMaskService;
+import net.austizz.ultimatebankingsystem.heist.HeistInteractionService;
+import net.austizz.ultimatebankingsystem.heist.HeistPlanningService;
+import net.austizz.ultimatebankingsystem.heist.HeistService;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
@@ -37,6 +49,7 @@ import net.austizz.ultimatebankingsystem.shelf.ShelfDisplayRules;
 import net.austizz.ultimatebankingsystem.shelf.ShelfPrice;
 import net.austizz.ultimatebankingsystem.shelf.ShelfService;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
+import net.austizz.ultimatebankingsystem.claim.ClaimModeService;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -67,6 +80,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Registers all network payloads (custom packets) for the Ultimate Banking System mod.
@@ -130,6 +144,13 @@ public final class ModPayloads {
         registrar.playToClient(ShopTerminalOpenPayload.TYPE, ShopTerminalOpenPayload.STREAM_CODEC, ModPayloads::handleShopTerminalOpen);
         registrar.playToServer(ShopTerminalSavePayload.TYPE, ShopTerminalSavePayload.STREAM_CODEC, ModPayloads::handleShopTerminalSave);
         registrar.playToClient(ShopTerminalSaveResponsePayload.TYPE, ShopTerminalSaveResponsePayload.STREAM_CODEC, ModPayloads::handleShopTerminalSaveResponse);
+        registrar.playToClient(AccessVerifierOpenPayload.TYPE, AccessVerifierOpenPayload.STREAM_CODEC, ModPayloads::handleAccessVerifierOpen);
+        registrar.playToServer(AccessVerifierActionPayload.TYPE, AccessVerifierActionPayload.STREAM_CODEC, ModPayloads::handleAccessVerifierAction);
+        registrar.playToClient(RfidScannerOpenPayload.TYPE, RfidScannerOpenPayload.STREAM_CODEC, ModPayloads::handleRfidScannerOpen);
+        registrar.playToServer(RfidScannerActionPayload.TYPE, RfidScannerActionPayload.STREAM_CODEC, ModPayloads::handleRfidScannerAction);
+        registrar.playToServer(RfidTargetSelectPayload.TYPE, RfidTargetSelectPayload.STREAM_CODEC, ModPayloads::handleRfidTargetSelect);
+        registrar.playToClient(SecureSafeOpenPayload.TYPE, SecureSafeOpenPayload.STREAM_CODEC, ModPayloads::handleSecureSafeOpen);
+        registrar.playToServer(SecureSafeActionPayload.TYPE, SecureSafeActionPayload.STREAM_CODEC, ModPayloads::handleSecureSafeAction);
         registrar.playToServer(ShelfUsePayload.TYPE, ShelfUsePayload.STREAM_CODEC, ModPayloads::handleShelfUse);
         registrar.playToClient(ShelfOpenPayload.TYPE, ShelfOpenPayload.STREAM_CODEC, ModPayloads::handleShelfOpen);
         registrar.playToServer(ShelfActionPayload.TYPE, ShelfActionPayload.STREAM_CODEC, ModPayloads::handleShelfAction);
@@ -143,6 +164,12 @@ public final class ModPayloads {
         registrar.playToClient(OwnerPcDesktopActionResponsePayload.TYPE, OwnerPcDesktopActionResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcDesktopActionResponse);
         registrar.playToServer(OwnerPcBankDataRequestPayload.TYPE, OwnerPcBankDataRequestPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankDataRequest);
         registrar.playToClient(OwnerPcBankDataPayload.TYPE, OwnerPcBankDataPayload.STREAM_CODEC, ModPayloads::handleOwnerPcBankData);
+        registrar.playToServer(OwnerPcPremiseActionPayload.TYPE, OwnerPcPremiseActionPayload.STREAM_CODEC, ModPayloads::handleOwnerPcPremiseAction);
+        registrar.playToClient(OwnerPcPremiseActionResponsePayload.TYPE, OwnerPcPremiseActionResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcPremiseActionResponse);
+        registrar.playToServer(OwnerPcVaultRouteRequestPayload.TYPE, OwnerPcVaultRouteRequestPayload.STREAM_CODEC, ModPayloads::handleOwnerPcVaultRouteRequest);
+        registrar.playToServer(OwnerPcVaultRouteSavePayload.TYPE, OwnerPcVaultRouteSavePayload.STREAM_CODEC, ModPayloads::handleOwnerPcVaultRouteSave);
+        registrar.playToServer(OwnerPcVaultRouteCancelPayload.TYPE, OwnerPcVaultRouteCancelPayload.STREAM_CODEC, ModPayloads::handleOwnerPcVaultRouteCancel);
+        registrar.playToClient(OwnerPcVaultRouteEditorPayload.TYPE, OwnerPcVaultRouteEditorPayload.STREAM_CODEC, ModPayloads::handleOwnerPcVaultRouteEditor);
         registrar.playToServer(OwnerPcActionPayload.TYPE, OwnerPcActionPayload.STREAM_CODEC, ModPayloads::handleOwnerPcAction);
         registrar.playToClient(OwnerPcActionResponsePayload.TYPE, OwnerPcActionResponsePayload.STREAM_CODEC, ModPayloads::handleOwnerPcActionResponse);
         registrar.playToServer(OwnerPcCreateBankPayload.TYPE, OwnerPcCreateBankPayload.STREAM_CODEC, ModPayloads::handleOwnerPcCreateBank);
@@ -187,8 +214,18 @@ public final class ModPayloads {
         registrar.playToClient(PayRequestCreateResponsePayload.TYPE, PayRequestCreateResponsePayload.STREAM_CODEC, ModPayloads::handlePayRequestCreateResponse);
         registrar.playToClient(HudStatePayload.TYPE, HudStatePayload.STREAM_CODEC, ModPayloads::handleHudState);
         registrar.playToClient(StockroomLocateRenderPayload.TYPE, StockroomLocateRenderPayload.STREAM_CODEC, ModPayloads::handleStockroomLocateRender);
+        registrar.playToClient(SafeBoxEscortMarkerPayload.TYPE, SafeBoxEscortMarkerPayload.STREAM_CODEC, ModPayloads::handleSafeBoxEscortMarker);
+        registrar.playToClient(SafeBoxDisplayContentsPayload.TYPE, SafeBoxDisplayContentsPayload.STREAM_CODEC,
+                ModPayloads::handleSafeBoxDisplayContents);
+        registrar.playToServer(DepositBoxLabelRequestPayload.TYPE, DepositBoxLabelRequestPayload.STREAM_CODEC,
+                ModPayloads::handleDepositBoxLabelRequest);
+        registrar.playToClient(DepositBoxLabelsPayload.TYPE, DepositBoxLabelsPayload.STREAM_CODEC,
+                ModPayloads::handleDepositBoxLabels);
         registrar.playToClient(DeliveryAlertPayload.TYPE, DeliveryAlertPayload.STREAM_CODEC, ModPayloads::handleDeliveryAlert);
+        registrar.playToClient(UiNotificationPayload.TYPE, UiNotificationPayload.STREAM_CODEC,
+                ModPayloads::handleUiNotification);
         registrar.playToClient(ShopSetupObjectivePayload.TYPE, ShopSetupObjectivePayload.STREAM_CODEC, ModPayloads::handleShopSetupObjective);
+        registrar.playToClient(BankSetupObjectivesPayload.TYPE, BankSetupObjectivesPayload.STREAM_CODEC, ModPayloads::handleBankSetupObjectives);
         registrar.playToClient(DeliveryInfoBoardPayload.TYPE, DeliveryInfoBoardPayload.STREAM_CODEC, ModPayloads::handleDeliveryInfoBoard);
         registrar.playToClient(DeliveryPalletLabelsPayload.TYPE, DeliveryPalletLabelsPayload.STREAM_CODEC, ModPayloads::handleDeliveryPalletLabels);
         registrar.playToServer(PickpocketStartPayload.TYPE, PickpocketStartPayload.STREAM_CODEC, ModPayloads::handlePickpocketStart);
@@ -197,6 +234,30 @@ public final class ModPayloads {
         registrar.playToServer(SmartphoneOpenRequestPayload.TYPE, SmartphoneOpenRequestPayload.STREAM_CODEC, ModPayloads::handleSmartphoneOpenRequest);
         registrar.playToServer(SmartphoneActionPayload.TYPE, SmartphoneActionPayload.STREAM_CODEC, ModPayloads::handleSmartphoneAction);
         registrar.playToClient(SmartphoneSnapshotPayload.TYPE, SmartphoneSnapshotPayload.STREAM_CODEC, ModPayloads::handleSmartphoneSnapshot);
+        registrar.playToClient(SmartphoneLiveRefreshPayload.TYPE, SmartphoneLiveRefreshPayload.STREAM_CODEC, ModPayloads::handleSmartphoneLiveRefresh);
+        registrar.playToClient(SmartphoneNotificationPayload.TYPE, SmartphoneNotificationPayload.STREAM_CODEC, ModPayloads::handleSmartphoneNotification);
+        registrar.playToServer(DallasMaskTogglePayload.TYPE, DallasMaskTogglePayload.STREAM_CODEC, ModPayloads::handleDallasMaskToggle);
+        registrar.playToClient(DallasMaskAnimationPayload.TYPE, DallasMaskAnimationPayload.STREAM_CODEC, ModPayloads::handleDallasMaskAnimation);
+        registrar.playToServer(HeistActionHoldPayload.TYPE, HeistActionHoldPayload.STREAM_CODEC, ModPayloads::handleHeistActionHold);
+        registrar.playToServer(HeistPlanningActionPayload.TYPE, HeistPlanningActionPayload.STREAM_CODEC, ModPayloads::handleHeistPlanningAction);
+        registrar.playToClient(HeistPlanningPayload.TYPE, HeistPlanningPayload.STREAM_CODEC, ModPayloads::handleHeistPlanning);
+        registrar.playToClient(HeistHudPayload.TYPE, HeistHudPayload.STREAM_CODEC, ModPayloads::handleHeistHud);
+        registrar.playToServer(ClaimModeActionPayload.TYPE, ClaimModeActionPayload.STREAM_CODEC,
+                ModPayloads::handleClaimModeAction);
+        registrar.playToClient(ClaimModeSnapshotPayload.TYPE, ClaimModeSnapshotPayload.STREAM_CODEC,
+                ModPayloads::handleClaimModeSnapshot);
+    }
+
+    private static void handleClaimModeAction(ClaimModeActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer player) {
+                ClaimModeService.handleAction(player, payload);
+            }
+        });
+    }
+
+    private static void handleClaimModeSnapshot(ClaimModeSnapshotPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleClaimModeSnapshot", payload));
     }
 
     private static void handleHudState(HudStatePayload payload, IPayloadContext context) {
@@ -207,12 +268,76 @@ public final class ModPayloads {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleStockroomLocateRender", payload));
     }
 
+    private static void handleSafeBoxEscortMarker(SafeBoxEscortMarkerPayload payload, IPayloadContext context) {
+        enqueueSafeBoxEscortMarker(payload, context::enqueueWork);
+    }
+
+    private static void handleSafeBoxDisplayContents(SafeBoxDisplayContentsPayload payload,
+                                                      IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSafeBoxDisplayContents", payload));
+    }
+
+    private static void handleDepositBoxLabelRequest(DepositBoxLabelRequestPayload payload,
+                                                     IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player) || payload == null) return;
+            BlockPos pos = new BlockPos(payload.x(), payload.y(), payload.z());
+            ServerLevel level = player.serverLevel();
+            boolean visible = false;
+            List<String> labels = List.of();
+            if (player.blockPosition().distSqr(pos) <= 128L * 128L
+                    && level.getBlockEntity(pos) instanceof net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity row) {
+                CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+                UUID bankId = net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService
+                        .findBankIdForSafeArea(centralBank, level, pos);
+                var heistSession = HeistService.session(player);
+                boolean heistParticipant = heistSession != null && !heistSession.phase().isTerminal();
+                visible = !heistParticipant && bankId != null && (player.hasPermissions(3)
+                        || HeistService.isBankStaff(player.getServer(), centralBank, bankId, player.getUUID()));
+                if (visible) {
+                    List<String> values = new ArrayList<>(4);
+                    for (int door = 0; door < 4; door++) values.add(row.getBoxNumber(door));
+                    labels = List.copyOf(values);
+                }
+            }
+            PacketDistributor.sendToPlayer(player, new DepositBoxLabelsPayload(
+                    level.dimension().location().toString(), pos.getX(), pos.getY(), pos.getZ(), visible, labels));
+        });
+    }
+
+    private static void handleDepositBoxLabels(DepositBoxLabelsPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDepositBoxLabels", payload));
+    }
+
+    static void enqueueSafeBoxEscortMarker(SafeBoxEscortMarkerPayload payload,
+                                           Consumer<Runnable> mainThreadEnqueuer) {
+        enqueueSafeBoxEscortMarker(
+                payload,
+                mainThreadEnqueuer,
+                marker -> ClientPayloadInvoker.invoke("handleSafeBoxEscortMarker", marker)
+        );
+    }
+
+    static void enqueueSafeBoxEscortMarker(SafeBoxEscortMarkerPayload payload,
+                                           Consumer<Runnable> mainThreadEnqueuer,
+                                           Consumer<SafeBoxEscortMarkerPayload> clientReceiver) {
+        mainThreadEnqueuer.accept(() -> clientReceiver.accept(payload));
+    }
+
     private static void handleDeliveryAlert(DeliveryAlertPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDeliveryAlert", payload));
     }
 
+    private static void handleUiNotification(UiNotificationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleUiNotification", payload));
+    }
+
     private static void handleShopSetupObjective(ShopSetupObjectivePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShopSetupObjective", payload));
+    }
+
+    private static void handleBankSetupObjectives(BankSetupObjectivesPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleBankSetupObjectives", payload));
     }
 
     private static void handleDeliveryInfoBoard(DeliveryInfoBoardPayload payload, IPayloadContext context) {
@@ -276,6 +401,48 @@ public final class ModPayloads {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSmartphoneSnapshot", payload));
     }
 
+    private static void handleSmartphoneLiveRefresh(SmartphoneLiveRefreshPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSmartphoneLiveRefresh", payload));
+    }
+
+    private static void handleSmartphoneNotification(SmartphoneNotificationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSmartphoneNotification", payload));
+    }
+
+    private static void handleDallasMaskToggle(DallasMaskTogglePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer player) {
+                DallasMaskService.requestToggle(player);
+            }
+        });
+    }
+
+    private static void handleDallasMaskAnimation(DallasMaskAnimationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleDallasMaskAnimation", payload));
+    }
+
+    private static void handleHeistActionHold(HeistActionHoldPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer player) {
+                HeistInteractionService.setHolding(player, payload != null && payload.held());
+            }
+        });
+    }
+
+    private static void handleHeistPlanningAction(HeistPlanningActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer player) HeistPlanningService.handle(player, payload);
+        });
+    }
+
+    private static void handleHeistPlanning(HeistPlanningPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleHeistPlanning", payload));
+    }
+
+    private static void handleHeistHud(HeistHudPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleHeistHud", payload));
+    }
+
     // ─── OpenATM ────────────────────────────────────────────────────────
 
     private static void handleOpenATM(OpenATMPayload payload, IPayloadContext context) {
@@ -334,6 +501,18 @@ public final class ModPayloads {
             if (server == null) {
                 return;
             }
+            if (BankTellerService.handleSessionControl(
+                    server, player, payload.tellerId(), payload.action())) {
+                return;
+            }
+            BankTellerEntity teller = findBankTeller(server, payload.tellerId());
+            if (teller != null && teller.getBoundBankId() != null
+                    && HeistService.isBankFrozen(server, teller.getBoundBankId())
+                    && !player.hasPermissions(3)) {
+                PacketDistributor.sendToPlayer(player, new BankTellerActionResponsePayload(false,
+                        "Bank operations are frozen during an active heist.", false));
+                return;
+            }
             var centralBank = BankManager.getCentralBank(server);
             if (centralBank == null) {
                 PacketDistributor.sendToPlayer(player, new BankTellerActionResponsePayload(false, "Bank data is unavailable.", false));
@@ -359,7 +538,7 @@ public final class ModPayloads {
             ));
 
             if (result.refreshOpenPayload()) {
-                BankTellerEntity teller = findBankTeller(server, payload.tellerId());
+                teller = findBankTeller(server, payload.tellerId());
                 if (teller != null && teller.isAlive()) {
                     PacketDistributor.sendToPlayer(player, BankTellerService.buildOpenPayload(server, centralBank, player, teller));
                 }
@@ -441,7 +620,7 @@ public final class ModPayloads {
                                 terminal
                         );
                 player.sendSystemMessage(moneyLiteral((selectionResult.success() ? "§a" : "§c") + selectionResult.message()));
-                ServerActionAlert.send(
+                ServerNotification.send(
                         player,
                         "Cashier Link",
                         selectionResult.message(),
@@ -454,7 +633,7 @@ public final class ModPayloads {
                 int remainingTicks = terminal.getFeedbackTicksRemaining();
                 int remainingSeconds = Math.max(1, (remainingTicks + 19) / 20);
                 player.sendSystemMessage(moneyLiteral("§eTerminal is busy. Try again in §6" + remainingSeconds + "s§e."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Terminal is busy. Try again in " + remainingSeconds + "s.",
                         DeliveryAlertPayload.AlertTone.WARNING,
@@ -464,7 +643,7 @@ public final class ModPayloads {
             if (payload.configureAction()) {
                 if (!terminal.canConfigure(player)) {
                     player.sendSystemMessage(moneyLiteral("§cOnly the shop owner or an operator can configure this terminal."));
-                    ServerActionAlert.send(player,
+                    ServerNotification.send(player,
                             "Payment Terminal",
                             "Only the shop owner or an operator can configure this terminal.",
                             DeliveryAlertPayload.AlertTone.ERROR,
@@ -490,7 +669,7 @@ public final class ModPayloads {
                 player.sendSystemMessage(moneyLiteral(
                         "§eThis terminal is linked to a cashier. Start checkout at that cashier first."
                 ));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "This terminal is linked to a cashier. Start checkout at that cashier first.",
                         DeliveryAlertPayload.AlertTone.WARNING,
@@ -503,7 +682,7 @@ public final class ModPayloads {
                 player.sendSystemMessage(moneyLiteral(
                         "§eNo active cashier checkout price found for your basket. Start checkout at a cashier first."
                 ));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "No active cashier checkout price found for your basket. Start checkout at a cashier first.",
                         DeliveryAlertPayload.AlertTone.WARNING,
@@ -513,7 +692,7 @@ public final class ModPayloads {
 
             if (centralBank == null) {
                 player.sendSystemMessage(moneyLiteral("§cBank data is unavailable."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Bank data is unavailable.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -526,7 +705,7 @@ public final class ModPayloads {
             var cardLookup = CreditCardService.findHeldCard(centralBank, player);
             if (!cardLookup.hasCard()) {
                 player.sendSystemMessage(moneyLiteral("§cNo credit card in hand. Hold a valid credit card to pay."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "No credit card in hand. Hold a valid credit card to pay.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -535,7 +714,7 @@ public final class ModPayloads {
             }
             if (!cardLookup.validation().valid()) {
                 player.sendSystemMessage(moneyLiteral("§cPayment failed: " + cardLookup.validation().message()));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Payment failed: " + cardLookup.validation().message(),
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -546,7 +725,7 @@ public final class ModPayloads {
             payer = centralBank.SearchForAccountByAccountId(cardLookup.validation().accountId());
             if (payer == null || !player.getUUID().equals(payer.getPlayerUUID())) {
                 player.sendSystemMessage(moneyLiteral("§cPayment failed: linked card account is unavailable."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Payment failed: linked card account is unavailable.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -557,7 +736,7 @@ public final class ModPayloads {
             UUID merchantAccountId = terminal.getMerchantAccountId();
             if (merchantAccountId == null) {
                 player.sendSystemMessage(moneyLiteral("§cThis terminal is not configured. Ask the owner to set a merchant account."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "This terminal is not configured. Ask the owner to set a merchant account.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -584,7 +763,7 @@ public final class ModPayloads {
             AccountHolder merchantAccount = centralBank.SearchForAccountByAccountId(merchantAccountId);
             if (merchantAccount == null) {
                 player.sendSystemMessage(moneyLiteral("§cMerchant account is missing. Ask the owner to reconfigure this terminal."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Merchant account is missing. Ask the owner to reconfigure this terminal.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -595,7 +774,7 @@ public final class ModPayloads {
             long price = terminal.getPriceDollars();
             if (price <= 0L) {
                 player.sendSystemMessage(moneyLiteral("§cThis terminal has an invalid price configured."));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "This terminal has an invalid price configured.",
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -613,7 +792,7 @@ public final class ModPayloads {
             );
             if (!result.success()) {
                 player.sendSystemMessage(moneyLiteral("§cPayment failed: " + result.reason()));
-                ServerActionAlert.send(player,
+                ServerNotification.send(player,
                         "Payment Terminal",
                         "Payment failed: " + result.reason(),
                         DeliveryAlertPayload.AlertTone.ERROR,
@@ -642,7 +821,7 @@ public final class ModPayloads {
                             + "§a. Charged from account: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(price))
                             + "§a. New balance: §6$" + result.balanceAfter().toPlainString()
             ));
-            ServerActionAlert.send(player,
+            ServerNotification.send(player,
                     "Payment Terminal",
                     "Payment successful at " + terminal.getShopName()
                             + ". Charged: $" + MoneyText.abbreviate(BigDecimal.valueOf(price))
@@ -656,7 +835,7 @@ public final class ModPayloads {
                         "§aSale received at §b" + terminal.getShopName()
                                 + "§a: §6$" + MoneyText.abbreviate(BigDecimal.valueOf(price))
                 ));
-                ServerActionAlert.send(merchantPlayer,
+                ServerNotification.send(merchantPlayer,
                         "Payment Terminal",
                         "Sale received at " + terminal.getShopName()
                                 + ": $" + MoneyText.abbreviate(BigDecimal.valueOf(price)),
@@ -792,6 +971,140 @@ public final class ModPayloads {
 
     private static void handleShopTerminalSaveResponse(ShopTerminalSaveResponsePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleShopTerminalSaveResponse", payload));
+    }
+
+    private static void handleAccessVerifierOpen(AccessVerifierOpenPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleAccessVerifierOpen", payload));
+    }
+
+    private static void handleAccessVerifierAction(AccessVerifierActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null) {
+                return;
+            }
+            var server = player.getServer();
+            if (server == null) {
+                return;
+            }
+            ServerLevel level = resolveServerLevel(server, payload.dimensionId());
+            if (level == null || player.level() != level) {
+                return;
+            }
+            BlockPos pos = new BlockPos(payload.x(), payload.y(), payload.z());
+            double distSq = player.position().distanceToSqr(
+                    pos.getX() + 0.5D,
+                    pos.getY() + 0.5D,
+                    pos.getZ() + 0.5D
+            );
+            if (distSq > 100.0D || !level.getBlockState(pos).is(ModBlocks.ACCESS_VERIFIER.get())) {
+                return;
+            }
+            if (level.getBlockEntity(pos) instanceof AccessVerifierBlockEntity verifier) {
+                verifier.handleAction(player, payload);
+            }
+        });
+    }
+
+    private static void handleRfidScannerOpen(RfidScannerOpenPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleRfidScannerOpen", payload));
+    }
+
+    private static void handleRfidScannerAction(RfidScannerActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null) {
+                return;
+            }
+            var scanner = resolveRfidScanner(player, payload.dimensionId(), payload.x(), payload.y(), payload.z(), 100.0D);
+            if (scanner != null) {
+                scanner.handleAction(player, payload);
+            }
+        });
+    }
+
+    private static void handleRfidTargetSelect(RfidTargetSelectPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null) {
+                return;
+            }
+            var scanner = resolveRfidScanner(
+                    player,
+                    payload.scannerDimensionId(),
+                    payload.scannerX(),
+                    payload.scannerY(),
+                    payload.scannerZ(),
+                    64.0D * 64.0D
+            );
+            if (scanner != null) {
+                scanner.handleTargetSelection(player, payload);
+            }
+        });
+    }
+
+    private static RfidScannerBlockEntity resolveRfidScanner(ServerPlayer player,
+                                                              String dimensionId,
+                                                              int x,
+                                                              int y,
+                                                              int z,
+                                                              double maxDistanceSq) {
+        var server = player.getServer();
+        if (server == null) {
+            return null;
+        }
+        ServerLevel level = resolveServerLevel(server, dimensionId);
+        if (level == null || player.level() != level) {
+            return null;
+        }
+        BlockPos pos = new BlockPos(x, y, z);
+        double distSq = player.position().distanceToSqr(
+                pos.getX() + 0.5D,
+                pos.getY() + 0.5D,
+                pos.getZ() + 0.5D
+        );
+        if (distSq > maxDistanceSq || !level.getBlockState(pos).is(ModBlocks.RFID_SCANNER.get())) {
+            return null;
+        }
+        return level.getBlockEntity(pos) instanceof RfidScannerBlockEntity scanner ? scanner : null;
+    }
+
+    private static void handleSecureSafeOpen(SecureSafeOpenPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleSecureSafeOpen", payload));
+    }
+
+    private static void handleSecureSafeAction(SecureSafeActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null || payload == null) {
+                return;
+            }
+            var server = player.getServer();
+            if (server == null) {
+                return;
+            }
+            ServerLevel level = resolveServerLevel(server, payload.dimensionId());
+            if (level == null || player.level() != level) {
+                return;
+            }
+            BlockPos payloadPos = new BlockPos(payload.x(), payload.y(), payload.z());
+            BlockState state = level.getBlockState(payloadPos);
+            if (!SecureSafeBlock.isSafeBlock(state)) {
+                return;
+            }
+            BlockPos masterPos = SecureSafeBlock.getMasterPos(state, payloadPos);
+            double distSq = player.position().distanceToSqr(
+                    masterPos.getX() + 0.5D,
+                    masterPos.getY() + 0.5D,
+                    masterPos.getZ() + 0.5D
+            );
+            if (distSq > 100.0D) {
+                return;
+            }
+            if (level.getBlockEntity(masterPos) instanceof SecureSafeBlockEntity safe) {
+                safe.handleAction(player, payload);
+            }
+        });
     }
 
     // ─── Shelf / Basket ────────────────────────────────────────────────
@@ -1677,45 +1990,142 @@ public final class ModPayloads {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleOwnerPcBankData", payload));
     }
 
-    private static void handleOwnerPcAction(OwnerPcActionPayload payload, IPayloadContext context) {
+    private static void handleOwnerPcPremiseAction(OwnerPcPremiseActionPayload payload,
+                                                    IPayloadContext context) {
         context.enqueueWork(() -> {
             ServerPlayer player = (ServerPlayer) context.player();
             var server = player.getServer();
-            var centralBank = BankManager.getCentralBank(server);
-            if (centralBank == null) {
-                PacketDistributor.sendToPlayer(player, new OwnerPcActionResponsePayload(
-                        payload.bankId(), false, "Bank data is unavailable."
-                ));
+            CentralBank centralBank = server == null ? null : BankManager.getCentralBank(server);
+            if (server != null && HeistService.isBankFrozen(server, payload.bankId())
+                    && !player.hasPermissions(3)) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcPremiseActionResponsePayload(
+                        payload.bankId(), payload.operationId(), payload.action(), payload.premiseId(),
+                        false, "Bank premises cannot be changed during an active heist."));
                 return;
             }
+            OwnerPcPremiseService.Result result = OwnerPcPremiseService.execute(
+                    server, centralBank, player, payload);
+            sendOwnerPcPremiseActionResult(player, centralBank, result);
+        });
+    }
 
-            BankOwnerPcService.ActionResult result = BankOwnerPcService.executeAction(
-                    server,
-                    centralBank,
-                    player,
-                    payload.bankId(),
-                    payload.action(),
-                    payload.arg1(),
-                    payload.arg2(),
-                    payload.arg3(),
-                    payload.arg4()
-            );
-            PacketDistributor.sendToPlayer(player, new OwnerPcActionResponsePayload(
-                    payload.bankId(),
-                    result.success(),
-                    result.message()
-            ));
+    private static void handleOwnerPcPremiseActionResponse(
+            OwnerPcPremiseActionResponsePayload payload,
+            IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleOwnerPcPremiseActionResponse", payload));
+    }
 
-            OwnerPcBankDataPayload dataPayload = BankOwnerPcService.buildBankDataPayload(
-                    server,
-                    centralBank,
-                    player.getUUID(),
-                    payload.bankId(),
-                    payload.bankId().equals(centralBank.getBankId()) && player.hasPermissions(3)
-            );
-            if (dataPayload != null) {
-                PacketDistributor.sendToPlayer(player, dataPayload);
+    public static void sendOwnerPcPremiseActionResult(
+            ServerPlayer player,
+            CentralBank centralBank,
+            OwnerPcPremiseService.Result result) {
+        if (player == null || result == null) {
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, new OwnerPcPremiseActionResponsePayload(
+                result.bankId(), result.operationId(), result.action(), result.premiseId(),
+                result.success(), result.message()));
+        if (centralBank == null || player.getServer() == null || result.bankId() == null) {
+            return;
+        }
+        boolean centralAdmin = result.bankId().equals(centralBank.getBankId())
+                && player.hasPermissions(3);
+        OwnerPcBankDataPayload refreshed = BankOwnerPcService.buildBankDataPayload(
+                player.getServer(), centralBank, player.getUUID(), result.bankId(), centralAdmin);
+        if (refreshed == null && player.hasPermissions(3)) {
+            Bank bank = centralBank.getBank(result.bankId());
+            if (bank != null) {
+                refreshed = BankOwnerPcService.buildBankDataPayload(
+                        player.getServer(), centralBank, bank.getBankOwnerId(), result.bankId());
             }
+        }
+        if (refreshed != null) {
+            PacketDistributor.sendToPlayer(player, refreshed);
+        }
+    }
+
+    private static void handleOwnerPcVaultRouteRequest(OwnerPcVaultRouteRequestPayload payload,
+                                                        IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = server == null ? null : BankManager.getCentralBank(server);
+            OwnerPcVaultRouteService.Result result = OwnerPcVaultRouteService.request(
+                    server, centralBank, player, payload);
+            PacketDistributor.sendToPlayer(player, result.editor());
+        });
+    }
+
+    private static void handleOwnerPcVaultRouteSave(OwnerPcVaultRouteSavePayload payload,
+                                                     IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            var server = player.getServer();
+            var centralBank = server == null ? null : BankManager.getCentralBank(server);
+            if (server != null && HeistService.isBankFrozen(server, payload.bankId())
+                    && !player.hasPermissions(3)) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcVaultRouteEditorPayload(
+                        false, "Bank routes cannot be changed during an active heist.",
+                        null, 0L, payload.bankId(), payload.vaultId(), payload.tellerId(),
+                        payload.direction(), false, "", OwnerPcVaultRoutePosition.ZERO,
+                        OwnerPcVaultRoutePosition.ZERO, List.of()));
+                return;
+            }
+            OwnerPcVaultRouteService.Result result = OwnerPcVaultRouteService.save(
+                    server, centralBank, player, payload);
+            PacketDistributor.sendToPlayer(player, result.editor());
+            if (!result.persisted() || centralBank == null) {
+                return;
+            }
+            boolean centralAdmin = payload.bankId().equals(centralBank.getBankId())
+                    && player.hasPermissions(3);
+            OwnerPcBankDataPayload refreshed = BankOwnerPcService.buildBankDataPayload(
+                    server, centralBank, player.getUUID(), payload.bankId(), centralAdmin);
+            if (refreshed == null && player.hasPermissions(3)) {
+                Bank bank = centralBank.getBank(payload.bankId());
+                if (bank != null) {
+                    refreshed = BankOwnerPcService.buildBankDataPayload(
+                            server, centralBank, bank.getBankOwnerId(), payload.bankId());
+                }
+            }
+            if (refreshed != null) {
+                PacketDistributor.sendToPlayer(player, refreshed);
+            }
+        });
+    }
+
+    private static void handleOwnerPcVaultRouteCancel(OwnerPcVaultRouteCancelPayload payload,
+                                                       IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            OwnerPcVaultRouteService.cancel(player.getServer(), player, payload);
+        });
+    }
+
+    private static void handleOwnerPcVaultRouteEditor(OwnerPcVaultRouteEditorPayload payload,
+                                                       IPayloadContext context) {
+        context.enqueueWork(() -> ClientPayloadInvoker.invoke(
+                "handleOwnerPcVaultRouteEditor", payload));
+    }
+
+    private static void handleOwnerPcAction(OwnerPcActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            OwnerPcActionPolicy.Action action = OwnerPcActionPolicy.classify(payload.action());
+            if (action != null && action.access() == OwnerPcActionPolicy.Access.MUTATION
+                    && player.getServer() != null
+                    && HeistService.isBankFrozen(player.getServer(), payload.bankId())
+                    && !player.hasPermissions(3)) {
+                PacketDistributor.sendToPlayer(player, new OwnerPcActionResponsePayload(
+                        payload.bankId(), false,
+                        "Bank management changes are frozen during an active heist."));
+                return;
+            }
+            OwnerPcActionRequestDispatcher.dispatch(
+                    new OwnerPcActionRequestDispatcher.Request(
+                            payload.bankId(), payload.action(), payload.arg1(),
+                            payload.arg2(), payload.arg3(), payload.arg4()),
+                    new OwnerPcActionServerPorts(player));
         });
     }
 
@@ -2017,9 +2427,10 @@ public final class ModPayloads {
                 return;
             }
 
-            int[] availableCash = DollarBills.getAvailableCashCounts(player);
-            int availableTotalCents = DollarBills.totalCashValueCents(availableCash);
-            if (availableTotalCents < depositCents) {
+            int[] availableCash = DollarBills.getAvailableTenderAsCashCounts(player);
+            long availableTotalCentsLong = DollarBills.totalCashValueCentsLong(availableCash);
+            int availableTotalCents = (int) Math.min(availableTotalCentsLong, Integer.MAX_VALUE);
+            if (availableTotalCentsLong < depositCents) {
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(false, account.getBalance().toPlainString(),
                         "Not enough cash on hand. You have $"
@@ -2035,7 +2446,7 @@ public final class ModPayloads {
                 return;
             }
 
-            DollarBills.removeCash(player, depositPlan);
+            DollarBills.removeTender(player, depositPlan);
             boolean success = account.AddBalance(depositAmount);
 
             UltimateBankingSystem.LOGGER.info("[UBS] Deposit ${} to account {} — success: {}",

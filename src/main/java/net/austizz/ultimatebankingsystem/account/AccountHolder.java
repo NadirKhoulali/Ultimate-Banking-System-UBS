@@ -9,7 +9,7 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.callback.CallBackManager;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -33,7 +33,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -56,6 +61,8 @@ public class AccountHolder {
     private long dailyWithdrawalWindowDay; // Epoch day in server local time
     private BigDecimal dailyWithdrawnAmount;
     private long dailyWithdrawalResetEpochMillis;
+    private long dailyOutgoingTransactionDay;
+    private BigDecimal dailyOutgoingTransactionAmount;
     private int creditScore;
     private boolean defaulted;
     private ConcurrentHashMap<UUID, AccountLoan> activeLoans;
@@ -72,6 +79,10 @@ public class AccountHolder {
 
     private static final long TEMP_WITHDRAWAL_LIMIT_DURATION_TICKS = 24000L;
     private static final ZoneId SERVER_ZONE = ZoneId.systemDefault();
+    private static final Comparator<TransactionEntry> TRANSACTION_OLDEST_FIRST = Comparator
+            .comparing((TransactionEntry entry) -> entry.transaction().getTimestamp(),
+                    Comparator.nullsFirst(Comparator.naturalOrder()))
+            .thenComparing(TransactionEntry::key, Comparator.nullsFirst(Comparator.naturalOrder()));
 
 
     public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String pinCode, UUID BankId, UUID AccountUUID) {
@@ -92,6 +103,8 @@ public class AccountHolder {
         this.dailyWithdrawalWindowDay = currentEpochDay();
         this.dailyWithdrawnAmount = BigDecimal.ZERO;
         this.dailyWithdrawalResetEpochMillis = computeNextMidnightEpochMillis();
+        this.dailyOutgoingTransactionDay = currentEpochDay();
+        this.dailyOutgoingTransactionAmount = BigDecimal.ZERO;
         this.creditScore = Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
         this.defaulted = false;
         this.activeLoans = new ConcurrentHashMap<>();
@@ -204,10 +217,18 @@ public class AccountHolder {
         DeliveryAlertPayload.AlertTone tone = incoming
                 ? DeliveryAlertPayload.AlertTone.SUCCESS
                 : DeliveryAlertPayload.AlertTone.WARNING;
-        ServerActionAlert.sendLegacy(owner, "Balance", legacyMessage, tone, 3600);
+        ServerNotification.sendLegacy(owner, "Balance", legacyMessage, tone, 3600);
     }
-    public void addTransaction(UserTransaction transaction) {
-        this.transactions.put(transaction.getTransactionUUID(), transaction);
+    public synchronized void addTransaction(UserTransaction transaction) {
+        if (transaction == null || transaction.getTransactionUUID() == null) {
+            return;
+        }
+        UserTransaction existing = getTransactions().putIfAbsent(transaction.getTransactionUUID(), transaction);
+        if (existing != null) {
+            return;
+        }
+        recordDailyOutgoingTransaction(transaction);
+        retainNewestTransactions(getTransactions(), configuredTransactionLogLimit());
         BankManager.markDirty();
     }
 //    public boolean sendMoney(AccountHolder accountHolder, BigDecimal amount) {
@@ -557,6 +578,17 @@ public class AccountHolder {
         return remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining;
     }
 
+    public AccountReadSnapshot readOnlySnapshot(long currentGameTime) {
+        long nowMillis = System.currentTimeMillis();
+        return AccountReadSnapshot.capture(new AccountReadSnapshot.Raw(
+                        getConfiguredDailyWithdrawalLimit(), dailyWithdrawalWindowDay,
+                        dailyWithdrawnAmount, dailyWithdrawalResetEpochMillis,
+                        temporaryWithdrawalLimit, temporaryWithdrawalLimitExpiresAtGameTime,
+                        temporaryWithdrawalLimitExpiresAtEpochMillis, certificateLocked,
+                        certificateMaturityGameTime),
+                currentGameTime, nowMillis, currentEpochDay(), computeNextMidnightEpochMillis());
+    }
+
     public boolean canWithdrawToday(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
@@ -732,6 +764,91 @@ public class AccountHolder {
         return transactions;
     }
 
+    public Map<UUID, UserTransaction> readOnlyTransactions() {
+        if (transactions == null || transactions.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, UserTransaction> snapshot = new LinkedHashMap<>();
+        transactions.forEach((id, transaction) -> {
+            if (id != null && transaction != null) {
+                snapshot.put(id, transaction);
+            }
+        });
+        return Map.copyOf(snapshot);
+    }
+
+    public synchronized BigDecimal getDailyOutgoingTransactionVolume() {
+        if (dailyOutgoingTransactionDay != currentEpochDay() || dailyOutgoingTransactionAmount == null) {
+            return BigDecimal.ZERO;
+        }
+        return dailyOutgoingTransactionAmount.max(BigDecimal.ZERO);
+    }
+
+    private void recordDailyOutgoingTransaction(UserTransaction transaction) {
+        if (!accountUUID.equals(transaction.getSenderUUID())
+                || transaction.getTimestamp() == null
+                || transaction.getAmount() == null
+                || transaction.getAmount().signum() <= 0) {
+            return;
+        }
+        long today = currentEpochDay();
+        long transactionDay = transaction.getTimestamp().toLocalDate().toEpochDay();
+        if (transactionDay != today) {
+            return;
+        }
+        if (dailyOutgoingTransactionDay != today || dailyOutgoingTransactionAmount == null) {
+            dailyOutgoingTransactionDay = today;
+            dailyOutgoingTransactionAmount = BigDecimal.ZERO;
+        }
+        dailyOutgoingTransactionAmount = dailyOutgoingTransactionAmount.add(transaction.getAmount());
+    }
+
+    private static int configuredTransactionLogLimit() {
+        try {
+            return Math.max(1, Config.ACCOUNT_TRANSACTION_LOG_LIMIT.get());
+        } catch (IllegalStateException ignored) {
+            return Config.DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT;
+        }
+    }
+
+    private static List<TransactionEntry> newestTransactions(Map<UUID, UserTransaction> source, int limit) {
+        int boundedLimit = Math.max(1, limit);
+        PriorityQueue<TransactionEntry> retained = new PriorityQueue<>(boundedLimit + 1, TRANSACTION_OLDEST_FIRST);
+        if (source != null) {
+            source.forEach((key, transaction) -> offerTransaction(retained, boundedLimit, key, transaction));
+        }
+        List<TransactionEntry> newestFirst = new ArrayList<>(retained);
+        newestFirst.sort(TRANSACTION_OLDEST_FIRST.reversed());
+        return newestFirst;
+    }
+
+    private static void offerTransaction(PriorityQueue<TransactionEntry> retained,
+                                         int limit,
+                                         UUID key,
+                                         UserTransaction transaction) {
+        if (key == null || transaction == null) {
+            return;
+        }
+        retained.offer(new TransactionEntry(key, transaction));
+        if (retained.size() > limit) {
+            retained.poll();
+        }
+    }
+
+    private static List<TransactionEntry> retainNewestTransactions(ConcurrentHashMap<UUID, UserTransaction> source,
+                                                                    int limit) {
+        List<TransactionEntry> retained = newestTransactions(source, limit);
+        if (source.size() != retained.size()
+                || retained.stream().anyMatch(entry -> source.get(entry.key()) != entry.transaction())) {
+            source.clear();
+            retained.forEach(entry -> source.put(entry.key(), entry.transaction()));
+        }
+        return retained;
+    }
+
+    private record TransactionEntry(UUID key, UserTransaction transaction) {
+    }
+
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putUUID("playerUUID", this.playerUUID);
         tag.putString("balance", this.balance.toString()); // BigDecimal als String opslaan
@@ -757,6 +874,11 @@ public class AccountHolder {
         tag.putLong("dailyWithdrawalWindowDay", this.dailyWithdrawalWindowDay);
         tag.putString("dailyWithdrawnAmount", this.dailyWithdrawnAmount.toPlainString());
         tag.putLong("dailyWithdrawalResetEpochMillis", this.dailyWithdrawalResetEpochMillis);
+        tag.putLong("dailyOutgoingTransactionDay", this.dailyOutgoingTransactionDay);
+        tag.putString("dailyOutgoingTransactionAmount",
+                this.dailyOutgoingTransactionAmount == null
+                        ? BigDecimal.ZERO.toPlainString()
+                        : this.dailyOutgoingTransactionAmount.toPlainString());
         if (this.temporaryWithdrawalLimit != null) {
             tag.putString("temporaryWithdrawalLimit", this.temporaryWithdrawalLimit.toPlainString());
             tag.putLong("temporaryWithdrawalLimitExpiresAtGameTime", this.temporaryWithdrawalLimitExpiresAtGameTime);
@@ -765,14 +887,17 @@ public class AccountHolder {
 
         // Transactions
         ListTag txList = new ListTag();
-        for (Map.Entry<UUID, UserTransaction> entry : getTransactions().entrySet()) {
-            UserTransaction tx = entry.getValue();
-            if (tx == null) continue;
+        List<TransactionEntry> retainedTransactions;
+        synchronized (this) {
+            retainedTransactions = retainNewestTransactions(getTransactions(), configuredTransactionLogLimit());
+        }
+        for (TransactionEntry entry : retainedTransactions) {
+            UserTransaction tx = entry.transaction();
 
             CompoundTag txTag = new CompoundTag();
             tx.save(txTag, registries);
             // store the key too, in case it diverges from tx.getTransactionUUID()
-            txTag.putUUID("mapKey", entry.getKey());
+            txTag.putUUID("mapKey", entry.key());
             txList.add(txTag);
         }
         tag.put("transactions", txList);
@@ -855,6 +980,19 @@ public class AccountHolder {
         account.dailyWithdrawalResetEpochMillis = tag.contains("dailyWithdrawalResetEpochMillis")
                 ? tag.getLong("dailyWithdrawalResetEpochMillis")
                 : computeNextMidnightEpochMillis();
+        long today = currentEpochDay();
+        boolean hasDailyOutgoingAggregate = tag.contains("dailyOutgoingTransactionDay")
+                && tag.contains("dailyOutgoingTransactionAmount");
+        account.dailyOutgoingTransactionDay = today;
+        account.dailyOutgoingTransactionAmount = BigDecimal.ZERO;
+        if (hasDailyOutgoingAggregate && tag.getLong("dailyOutgoingTransactionDay") == today) {
+            try {
+                account.dailyOutgoingTransactionAmount = new BigDecimal(
+                        tag.getString("dailyOutgoingTransactionAmount")).max(BigDecimal.ZERO);
+            } catch (NumberFormatException ignored) {
+                account.dailyOutgoingTransactionAmount = BigDecimal.ZERO;
+            }
+        }
         if (tag.contains("temporaryWithdrawalLimit")) {
             try {
                 account.temporaryWithdrawalLimit = new BigDecimal(tag.getString("temporaryWithdrawalLimit"));
@@ -873,14 +1011,26 @@ public class AccountHolder {
         account.transactions = new ConcurrentHashMap<>();
         if (tag.contains("transactions", Tag.TAG_LIST)) {
             ListTag txList = tag.getList("transactions", Tag.TAG_COMPOUND);
+            int transactionLimit = configuredTransactionLogLimit();
+            PriorityQueue<TransactionEntry> retained = new PriorityQueue<>(
+                    transactionLimit + 1, TRANSACTION_OLDEST_FIRST);
             for (int i = 0; i < txList.size(); i++) {
                 CompoundTag txTag = txList.getCompound(i);
                 UserTransaction tx = UserTransaction.load(txTag, registries);
                 if (tx == null) continue;
 
                 UUID key = txTag.hasUUID("mapKey") ? txTag.getUUID("mapKey") : tx.getTransactionUUID();
-                account.transactions.put(key, tx);
+                offerTransaction(retained, transactionLimit, key, tx);
+                if (!hasDailyOutgoingAggregate
+                        && account.accountUUID.equals(tx.getSenderUUID())
+                        && tx.getTimestamp() != null
+                        && tx.getTimestamp().toLocalDate().toEpochDay() == today
+                        && tx.getAmount() != null
+                        && tx.getAmount().signum() > 0) {
+                    account.dailyOutgoingTransactionAmount = account.dailyOutgoingTransactionAmount.add(tx.getAmount());
+                }
             }
+            retained.forEach(entry -> account.transactions.put(entry.key(), entry.transaction()));
         }
 
         account.activeLoans = new ConcurrentHashMap<>();

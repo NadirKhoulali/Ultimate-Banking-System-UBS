@@ -9,8 +9,11 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
 import net.austizz.ultimatebankingsystem.item.SmartphoneData;
+import net.austizz.ultimatebankingsystem.market.CommodityMarketService;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
+import net.austizz.ultimatebankingsystem.network.SmartphoneLiveRefreshPayload;
+import net.austizz.ultimatebankingsystem.network.SmartphoneNotificationPayload;
 import net.austizz.ultimatebankingsystem.network.SmartphoneSnapshotPayload;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
@@ -18,7 +21,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
@@ -30,34 +32,51 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class SmartphoneService {
     private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm")
             .withZone(ZoneId.systemDefault());
+    private static final String PAY_REQUEST_MESSAGE_PREFIX = "[[UBS_PAY_REQUEST:";
+    private static final String PAY_REQUEST_MESSAGE_SUFFIX = "]]";
+    private static final String GIFT_MESSAGE_PREFIX = "[[UBS_GIFT:";
+    private static final String GIFT_MESSAGE_SUFFIX = "]]";
+    private static final long GIFT_TIMEOUT_MILLIS = 5L * 60L * 1000L;
+    private static final long MESSENGER_TYPING_TIMEOUT_MILLIS = 85L * 1000L;
+    private static final ConcurrentHashMap<String, TypingState> MESSENGER_TYPING = new ConcurrentHashMap<>();
 
     private SmartphoneService() {
+    }
+
+    private record TypingState(UUID senderId, String senderName, UUID recipientId, long expiresAtMillis) {
     }
 
     public static void openPhone(ServerPlayer player, boolean animate) {
         ItemStack phone = findUsablePhone(player);
         if (phone.isEmpty()) {
-            ServerActionAlert.send(player, "Phone", "No smartphone found in your inventory.",
+            ServerNotification.send(player, "Phone", "No smartphone found in your inventory.",
                     DeliveryAlertPayload.AlertTone.ERROR, 3800);
             return;
         }
         SmartphoneData.ensureOwner(phone, player);
         if (!canUsePhone(phone, player)) {
-            ServerActionAlert.send(player, "Phone",
+            ServerNotification.send(player, "Phone",
                     "This phone belongs to " + SmartphoneData.getOwnerName(phone) + ".",
                     DeliveryAlertPayload.AlertTone.ERROR, 4600);
             return;
         }
         PacketDistributor.sendToPlayer(player, buildSnapshot(player, phone, animate));
+        deliverQueuedPhoneNotifications(player, true);
+    }
+
+    public static void onPlayerLogin(ServerPlayer player) {
+        deliverQueuedPhoneNotifications(player, false);
     }
 
     public static SmartphoneSnapshotPayload handleAction(ServerPlayer player, String action, String p1, String p2, String p3) {
@@ -73,6 +92,11 @@ public final class SmartphoneService {
         String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
         String status = switch (normalized) {
             case "SET_THEME" -> handleSetTheme(phone, p1, p2);
+            case "SET_PHONE_PASSCODE" -> handleSetPhonePasscode(phone, p1);
+            case "VERIFY_PHONE_PASSCODE" -> handleVerifyPhonePasscode(phone, p1);
+            case "CHANGE_PHONE_PASSCODE" -> handleChangePhonePasscode(phone, p1, p2, p3);
+            case "SET_BANK_THEME" -> handleSetBankTheme(phone, p1);
+            case "MARKET_REFRESH" -> "Spot market refreshed.";
             case "SET_PROFILE_NAME" -> handleSetProfileName(phone, p1);
             case "SET_TAP_ACCOUNT" -> handleSetTapAccount(player, phone, p1);
             case "SET_PRIMARY" -> handleSetPrimary(player, p1);
@@ -87,6 +111,13 @@ public final class SmartphoneService {
             case "DELETE_NOTE" -> handleDeleteNote(phone, p1);
             case "SAVE_PAINTING" -> handleSavePainting(phone, p1, p2);
             case "SEND_MESSAGE" -> handleSendMessage(player, p1, p2);
+            case "MESSAGE_TYPING" -> handleMessengerTyping(player, p1, p2);
+            case "MESSAGE_PAY_REQUEST_CREATE" -> handleMessengerPayRequestCreate(player, p1, p2, p3);
+            case "MESSAGE_PAY_REQUEST_ACCEPT" -> handleMessengerPayRequestAction(player, p1, p2, true);
+            case "MESSAGE_PAY_REQUEST_DECLINE" -> handleMessengerPayRequestAction(player, p1, "", false);
+            case "MESSAGE_GIFT_CREATE" -> handleMessengerGiftCreate(player, p1, p2, p3);
+            case "MESSAGE_GIFT_ACCEPT" -> handleMessengerGiftAction(player, p1, p2, true);
+            case "MESSAGE_GIFT_DECLINE" -> handleMessengerGiftAction(player, p1, "", false);
             case "READ_CONVERSATION" -> handleReadConversation(player, p1);
             case "FAVORITE_CONTACT" -> handleFavorite(player, p1, true);
             case "UNFAVORITE_CONTACT" -> handleFavorite(player, p1, false);
@@ -137,22 +168,34 @@ public final class SmartphoneService {
         List<String> lines = new ArrayList<>();
         lines.add(token("owner", player.getUUID(), player.getGameProfile().getName(), SmartphoneData.getOwnerName(phone)));
         lines.add(token("theme", SmartphoneData.getAccent(phone), SmartphoneData.getWallpaper(phone), SmartphoneData.getLayout(phone)));
+        lines.add(token("security", SmartphoneData.hasPasscode(phone)));
+        lines.add(token("phone_access", Config.PHONE_ACCESS_MODE.get()));
+        lines.add(token("server_time", System.currentTimeMillis(), ZoneId.systemDefault().getId()));
         lines.add(token("app", "banking", "Banking", "UBS accounts and payments"));
         lines.add(token("app", "tap", "Tap to Pay", "Default phone payment card"));
+        lines.add(token("app", "market", "Spot Market", "Global bullion desk"));
         lines.add(token("app", "calculator", "Calculator", "Fast arithmetic"));
         lines.add(token("app", "paint", "Paint", "Pixel sketch pad"));
         lines.add(token("app", "contacts", "Contacts", "Server player directory"));
         lines.add(token("app", "messenger", "Messenger", "Private phone messages"));
         lines.add(token("app", "notes", "Notes", "Private phone notes"));
         lines.add(token("app", "settings", "Settings", "Phone customization"));
-        if (isModLoaded("journeymap")) {
-            lines.add(token("app", "journeymap", "JourneyMap", "Open JourneyMap"));
-        }
-        if (isModLoaded("ultimate_auction_system")) {
-            lines.add(token("app", "auction", "Auction House", "Open auction house"));
-        }
-        if (isModLoaded("ucs")) {
-            lines.add(token("app", "realestate", "Real Estate", "Claims and properties"));
+        for (CommodityMarketService.PhoneMarketQuote quote : CommodityMarketService.phoneQuotes(player.getServer())) {
+            lines.add(token("market_quote",
+                    quote.id(),
+                    quote.displayName(),
+                    quote.unitName(),
+                    quote.spotLabel(),
+                    quote.bidLabel(),
+                    quote.askLabel(),
+                    quote.changeLabel(),
+                    quote.highLabel(),
+                    quote.lowLabel(),
+                    quote.source(),
+                    quote.updatedAtMillis(),
+                    quote.seeded(),
+                    quote.formula(),
+                    quote.confidenceLabel()));
         }
 
         CentralBank centralBank = BankManager.getCentralBank(player.getServer());
@@ -223,11 +266,13 @@ public final class SmartphoneService {
         }
 
         SmartphoneSavedData savedData = SmartphoneSavedData.get(player.getServer());
+        pruneExpiredGifts(player.getServer(), centralBank, savedData);
         SmartphoneSavedData.PlayerPrefs prefs = savedData.prefs(player.getUUID());
         if (centralBank != null) {
             appendPaymentRecipients(player, centralBank, prefs, lines);
         }
         player.getServer().getPlayerList().getPlayers().stream()
+                .filter(serverPlayer -> !serverPlayer.getUUID().equals(player.getUUID()))
                 .sorted(Comparator.comparing(serverPlayer -> serverPlayer.getGameProfile().getName(), String.CASE_INSENSITIVE_ORDER))
                 .forEach(serverPlayer -> lines.add(token("contact",
                         serverPlayer.getUUID(),
@@ -237,14 +282,16 @@ public final class SmartphoneService {
                         prefs.muted.contains(serverPlayer.getUUID()),
                         prefs.blocked.contains(serverPlayer.getUUID()),
                         prefs.unread.getOrDefault(serverPlayer.getUUID(), 0))));
-        for (UUID known : prefs.knownContacts) {
+        Set<UUID> knownContacts = new LinkedHashSet<>(prefs.knownContacts);
+        knownContacts.remove(player.getUUID());
+        for (UUID known : knownContacts) {
             if (player.getServer().getPlayerList().getPlayer(known) == null) {
-                lines.add(token("contact", known, "Offline Player", false,
+                lines.add(token("contact", known, resolveKnownContactName(player, savedData, known), false,
                         prefs.favorites.contains(known), prefs.muted.contains(known),
                         prefs.blocked.contains(known), prefs.unread.getOrDefault(known, 0)));
             }
         }
-        for (UUID other : prefs.knownContacts) {
+        for (UUID other : knownContacts) {
             List<SmartphoneSavedData.MessageEntry> messages = new ArrayList<>(savedData.conversation(player.getUUID(), other));
             messages.sort(Comparator
                     .comparingLong(SmartphoneSavedData.MessageEntry::createdAt)
@@ -252,16 +299,59 @@ public final class SmartphoneService {
             int from = Math.max(0, messages.size() - 120);
             for (int i = from; i < messages.size(); i++) {
                 SmartphoneSavedData.MessageEntry message = messages.get(i);
-                lines.add(token("message",
-                        other,
-                        message.id(),
-                        message.senderId(),
-                        message.senderName(),
-                        message.body(),
-                        SHORT_TIME.format(Instant.ofEpochMilli(message.createdAt())),
-                        message.createdAt()));
+                PayRequestMarker marker = parsePayRequestMarker(message.body());
+                GiftMarker giftMarker = parseGiftMarker(message.body());
+                if (marker == null && giftMarker == null) {
+                    lines.add(token("message",
+                            other,
+                            message.id(),
+                            message.senderId(),
+                            message.senderName(),
+                            message.body(),
+                            SHORT_TIME.format(Instant.ofEpochMilli(message.createdAt())),
+                            message.createdAt()));
+                } else if (marker != null) {
+                    PayRequestManager.PayRequest request = PayRequestManager.getRequest(marker.requestId());
+                    String amount = request == null ? marker.amount() : request.getAmount().toPlainString();
+                    String status = request == null ? "EXPIRED" : request.getStatus().name();
+                    UUID requester = request == null ? message.senderId() : request.getRequesterUUID();
+                    UUID payer = request == null ? message.recipientId() : request.getPayerUUID();
+                    lines.add(token("message_pay_request",
+                            other,
+                            message.id(),
+                            message.senderId(),
+                            message.senderName(),
+                            "Pay request",
+                            SHORT_TIME.format(Instant.ofEpochMilli(message.createdAt())),
+                            message.createdAt(),
+                            marker.requestId(),
+                            amount,
+                            status,
+                            requester,
+                            payer));
+                } else {
+                    SmartphoneSavedData.GiftEntry gift = savedData.gift(giftMarker.giftId());
+                    String amount = gift == null ? giftMarker.amount() : gift.amountDecimal().toPlainString();
+                    String status = gift == null ? "EXPIRED" : gift.status();
+                    UUID sender = gift == null ? message.senderId() : gift.senderId();
+                    UUID recipient = gift == null ? message.recipientId() : gift.recipientId();
+                    lines.add(token("message_gift",
+                            other,
+                            message.id(),
+                            message.senderId(),
+                            message.senderName(),
+                            "Gift",
+                            SHORT_TIME.format(Instant.ofEpochMilli(message.createdAt())),
+                            message.createdAt(),
+                            giftMarker.giftId(),
+                            amount,
+                            status,
+                            sender,
+                            recipient));
+                }
             }
         }
+        appendTypingIndicators(player, savedData, lines);
 
         List<String> notes = SmartphoneData.getNotes(phone);
         for (int i = 0; i < notes.size(); i++) {
@@ -292,6 +382,49 @@ public final class SmartphoneService {
     private static String handleSetTheme(ItemStack phone, String accent, String wallpaper) {
         SmartphoneData.setTheme(phone, accent, wallpaper);
         return "Phone theme updated.";
+    }
+
+    private static String handleSetPhonePasscode(ItemStack phone, String passcode) {
+        if (SmartphoneData.hasPasscode(phone)) {
+            return "Phone passcode already set.";
+        }
+        if (!SmartphoneData.setPasscode(phone, passcode)) {
+            return "Use a 4 digit phone passcode.";
+        }
+        return "Phone passcode set.";
+    }
+
+    private static String handleVerifyPhonePasscode(ItemStack phone, String passcode) {
+        if (!SmartphoneData.hasPasscode(phone)) {
+            return "Set a phone passcode first.";
+        }
+        return SmartphoneData.verifyPasscode(phone, passcode)
+                ? "Phone unlocked."
+                : "Incorrect phone passcode.";
+    }
+
+    private static String handleChangePhonePasscode(ItemStack phone, String currentPasscode, String newPasscode, String confirmPasscode) {
+        if (!SmartphoneData.hasPasscode(phone)) {
+            return "Set a phone passcode first.";
+        }
+        String next = newPasscode == null ? "" : newPasscode.trim();
+        String confirm = confirmPasscode == null ? "" : confirmPasscode.trim();
+        if (!next.matches("\\d{4}") || !confirm.matches("\\d{4}")) {
+            return "Use a 4 digit phone passcode.";
+        }
+        if (!next.equals(confirm)) {
+            return "Phone passcodes do not match.";
+        }
+        if (!SmartphoneData.changePasscode(phone, currentPasscode, next)) {
+            return "Current phone passcode is incorrect.";
+        }
+        return "Phone passcode changed.";
+    }
+
+    private static String handleSetBankTheme(ItemStack phone, String theme) {
+        String normalized = "light".equalsIgnoreCase(theme == null ? "" : theme.trim()) ? "light" : "dark";
+        SmartphoneData.setLayout(phone, normalized);
+        return "Banking theme set to " + normalized + ".";
     }
 
     private static String handleSetProfileName(ItemStack phone, String name) {
@@ -342,6 +475,8 @@ public final class SmartphoneService {
             return "Choose a 4-digit PIN to create your account.";
         }
 
+        List<AccountHolder> playerAccounts = new ArrayList<>(centralBank.SearchForAccount(player.getUUID()).values());
+        int existingAccountCount = playerAccounts.size();
         AccountHolder existing = centralBank.SearchForAccount(player.getUUID()).values().stream()
                 .filter(account -> account != null && centralBank.getBankId().equals(account.getBankId()))
                 .filter(account -> account.getAccountType() == AccountTypes.CheckingAccount)
@@ -349,14 +484,14 @@ public final class SmartphoneService {
                 .orElse(null);
         if (existing != null) {
             if (existing.hasPin()) {
-                if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+                if (existingAccountCount == 1 && !existing.isPrimaryAccount()) {
                     existing.setPrimaryAccount(true);
                 }
                 BankManager.markDirty();
                 return "Central Bank checking account already exists. Sign in with its PIN.";
             }
             existing.setPin(pin);
-            if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+            if (existingAccountCount == 1 && !existing.isPrimaryAccount()) {
                 existing.setPrimaryAccount(true);
             }
             BankManager.markDirty();
@@ -374,7 +509,7 @@ public final class SmartphoneService {
         if (!centralBank.AddAccount(account)) {
             return "You already have a Central Bank checking account.";
         }
-        if (findPrimaryAccount(centralBank, player.getUUID()) == null) {
+        if (existingAccountCount == 0) {
             account.setPrimaryAccount(true);
         }
         BankManager.markDirty();
@@ -391,9 +526,8 @@ public final class SmartphoneService {
             return resolved.message();
         }
         boolean requestFlow = "request".equalsIgnoreCase(flowRaw);
-        if (requestFlow && (resolved.accountIdDirect() || resolved.playerId() == null
-                || player.getServer().getPlayerList().getPlayer(resolved.playerId()) == null)) {
-            return "Requests need an online player with a primary account.";
+        if (requestFlow && (resolved.accountIdDirect() || resolved.playerId() == null)) {
+            return "Requests need a player with a primary account.";
         }
         rememberPaymentTarget(player, resolved.account(), resolved.accountIdDirect());
         return "Recipient added.";
@@ -440,29 +574,316 @@ public final class SmartphoneService {
         PaymentDestination payerTarget = resolvePaymentDestination(player, centralBank, targetRaw);
         if (payerTarget.account() == null) {
             return payerTarget.message() == null || payerTarget.message().isBlank()
-                    ? "Requests need an online player with a primary account."
+                    ? "Requests need a player with a primary account."
                     : payerTarget.message();
         }
         if (payerTarget.playerId() == null) {
             return "Requests need an account with a player owner.";
         }
-        ServerPlayer payer = player.getServer().getPlayerList().getPlayer(payerTarget.playerId());
-        if (payer == null) {
-            return "Player is not online.";
-        }
-        if (payer.getUUID().equals(player.getUUID())) {
+        UUID payerId = payerTarget.playerId();
+        if (payerId.equals(player.getUUID())) {
             return "You cannot request money from yourself.";
         }
-        if (!payerTarget.accountIdDirect() && findPrimaryAccount(centralBank, payer.getUUID()) == null) {
-            return payer.getGameProfile().getName() + " has no primary account.";
+        if (!payerTarget.accountIdDirect() && findPrimaryAccount(centralBank, payerId) == null) {
+            return resolvePlayerName(player.getServer(), payerId) + " has no primary account.";
         }
 
-        PayRequestManager.createRequest(player.getUUID(), payer.getUUID(), destination.getAccountUUID(), amount);
+        PayRequestManager.createRequest(player.getUUID(), payerId, destination.getAccountUUID(), amount);
         rememberPaymentTarget(player, payerTarget.account(), payerTarget.accountIdDirect());
-        ServerActionAlert.send(payer, "Pay Request",
+        notifyPhone(player.getServer(), payerId, "Pay Request",
                 player.getGameProfile().getName() + " requested " + MoneyText.abbreviateWithDollar(amount) + ".",
                 DeliveryAlertPayload.AlertTone.INFO, 5200);
-        return "Pay request sent to " + payer.getGameProfile().getName() + ".";
+        return "Pay request sent to " + resolvePlayerName(player.getServer(), payerId) + ".";
+    }
+
+    private static String handleMessengerPayRequestCreate(ServerPlayer player,
+                                                          String accountRaw,
+                                                          String payerRaw,
+                                                          String amountRaw) {
+        UUID destinationAccountId = parseUuid(accountRaw);
+        UUID payerId = parseUuid(payerRaw);
+        BigDecimal amount = parseAmount(amountRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null || destinationAccountId == null || payerId == null || amount == null) {
+            return "Pay request needs an account, contact, and amount.";
+        }
+        AccountHolder destination = centralBank.SearchForAccountByAccountId(destinationAccountId);
+        if (destination == null || !player.getUUID().equals(destination.getPlayerUUID())) {
+            return "Choose one of your accounts as the request destination.";
+        }
+        if (payerId.equals(player.getUUID())) {
+            return "You cannot request money from yourself.";
+        }
+        ServerPlayer payer = player.getServer().getPlayerList().getPlayer(payerId);
+        String payerName = payer == null ? resolvePlayerName(player.getServer(), payerId) : payer.getGameProfile().getName();
+        AccountHolder payerPrimary = findPrimaryAccount(centralBank, payerId);
+        if (payerPrimary == null) {
+            return payerName + " has no primary account.";
+        }
+
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        if (data.prefs(player.getUUID()).blocked.contains(payerId)
+                || data.prefs(payerId).blocked.contains(player.getUUID())) {
+            return "Pay request not sent.";
+        }
+
+        PayRequestManager.PayRequest request = PayRequestManager.createRequest(
+                player.getUUID(),
+                payerId,
+                destination.getAccountUUID(),
+                amount);
+        boolean sent = data.sendMessage(player.getUUID(), player.getGameProfile().getName(), payerId,
+                payerName, payRequestMarker(request.getRequestId(), amount));
+        if (!sent) {
+            PayRequestManager.markDeclined(request.getRequestId());
+            return "Pay request not sent.";
+        }
+        rememberPaymentTarget(player, payerPrimary, false);
+        if (payer != null) {
+            pushLiveRefresh(payer, "");
+        }
+        notifyPhone(player.getServer(), payerId, "Pay Request",
+                player.getGameProfile().getName() + " requested " + MoneyText.abbreviateWithDollar(amount) + ".",
+                DeliveryAlertPayload.AlertTone.INFO, 5200);
+        return "Pay request sent to " + payerName + ".";
+    }
+
+    private static String handleMessengerPayRequestAction(ServerPlayer player,
+                                                          String requestRaw,
+                                                          String accountRaw,
+                                                          boolean accept) {
+        UUID requestId = parseUuid(requestRaw);
+        if (requestId == null) {
+            return "Choose a valid pay request.";
+        }
+        PayRequestManager.PayRequest request = PayRequestManager.getRequest(requestId);
+        if (request == null) {
+            return "Pay request expired or missing.";
+        }
+        if (!request.getPayerUUID().equals(player.getUUID())) {
+            return "This request is not for you.";
+        }
+        if (request.getStatus() != PayRequestManager.Status.PENDING || PayRequestManager.isExpired(request)) {
+            PayRequestManager.pruneExpired();
+            pushLiveRefresh(player.getServer().getPlayerList().getPlayer(request.getRequesterUUID()), "");
+            return "Pay request is no longer pending.";
+        }
+
+        ServerPlayer requester = player.getServer().getPlayerList().getPlayer(request.getRequesterUUID());
+        if (!accept) {
+            PayRequestManager.markDeclined(request.getRequestId());
+            if (requester != null) {
+                pushLiveRefresh(requester, "");
+            }
+            notifyPhone(player.getServer(), request.getRequesterUUID(), "Pay Request",
+                    player.getGameProfile().getName() + " declined your request for "
+                            + MoneyText.abbreviateWithDollar(request.getAmount()) + ".",
+                    DeliveryAlertPayload.AlertTone.WARNING, 5200);
+            return "Request declined.";
+        }
+
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        if (centralBank == null) {
+            return "Bank data is unavailable.";
+        }
+        AccountHolder sender = null;
+        UUID senderId = parseUuid(accountRaw);
+        if (senderId != null) {
+            AccountHolder candidate = centralBank.SearchForAccountByAccountId(senderId);
+            if (candidate != null && candidate.getPlayerUUID().equals(player.getUUID())) {
+                sender = candidate;
+            }
+        }
+        if (sender == null) {
+            sender = findPrimaryAccount(centralBank, player.getUUID());
+        }
+        if (sender == null) {
+            return "No account available to pay this request.";
+        }
+        AccountHolder receiver = centralBank.SearchForAccountByAccountId(request.getReceiverAccountUUID());
+        if (receiver == null) {
+            if (requester != null) {
+                pushLiveRefresh(requester, "");
+            }
+            notifyPhone(player.getServer(), request.getRequesterUUID(), "Pay Request",
+                    "Your pay request could not be completed because its destination account is unavailable.",
+                    DeliveryAlertPayload.AlertTone.ERROR, 5200);
+            return "Requester destination account is unavailable.";
+        }
+        if (sender.getAccountUUID().equals(receiver.getAccountUUID())) {
+            return "Cannot pay the same account.";
+        }
+
+        boolean success = new UserTransaction(
+                sender.getAccountUUID(),
+                receiver.getAccountUUID(),
+                request.getAmount(),
+                LocalDateTime.now(),
+                "Pay Request"
+        ).makeTransaction(player.getServer());
+        if (!success) {
+            if (requester != null) {
+                pushLiveRefresh(requester, "");
+            }
+            notifyPhone(player.getServer(), request.getRequesterUUID(), "Pay Request",
+                    player.getGameProfile().getName() + " tried to pay your request, but payment failed.",
+                    DeliveryAlertPayload.AlertTone.WARNING, 5200);
+            return "Payment failed. Check balance/account status.";
+        }
+
+        PayRequestManager.markAccepted(request.getRequestId());
+        if (requester != null) {
+            pushLiveRefresh(requester, "");
+        }
+        notifyPhone(player.getServer(), request.getRequesterUUID(), "Pay Request",
+                player.getGameProfile().getName() + " paid " + MoneyText.abbreviateWithDollar(request.getAmount()) + ".",
+                DeliveryAlertPayload.AlertTone.SUCCESS, 5200);
+        return MoneyText.abbreviateCurrencyTokens(
+                "Paid $" + request.getAmount().toPlainString() + " using " + accountType(sender) + ".");
+    }
+
+    private static String handleMessengerGiftCreate(ServerPlayer player,
+                                                    String accountRaw,
+                                                    String recipientRaw,
+                                                    String amountRaw) {
+        UUID sourceAccountId = parseUuid(accountRaw);
+        UUID recipientId = parseUuid(recipientRaw);
+        BigDecimal amount = parseAmount(amountRaw);
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        pruneExpiredGifts(player.getServer(), centralBank, data);
+        if (centralBank == null || sourceAccountId == null || recipientId == null || amount == null) {
+            return "Gift needs an account, contact, and amount.";
+        }
+        AccountHolder source = centralBank.SearchForAccountByAccountId(sourceAccountId);
+        if (source == null || !source.canWithdraw(player.getUUID())) {
+            return "Choose one of your withdrawable accounts.";
+        }
+        if (recipientId.equals(player.getUUID())) {
+            return "You cannot gift money to yourself.";
+        }
+        ServerPlayer recipient = player.getServer().getPlayerList().getPlayer(recipientId);
+        String recipientName = recipient == null ? resolvePlayerName(player.getServer(), recipientId) : recipient.getGameProfile().getName();
+        AccountHolder recipientPrimary = findPrimaryAccount(centralBank, recipientId);
+        if (recipientPrimary == null) {
+            return recipientName + " has no primary account.";
+        }
+        if (data.prefs(player.getUUID()).blocked.contains(recipientId)
+                || data.prefs(recipientId).blocked.contains(player.getUUID())) {
+            return "Gift not sent.";
+        }
+        if (!source.RemoveBalance(amount)) {
+            return "Gift failed. Check balance/account status.";
+        }
+
+        SmartphoneSavedData.GiftEntry gift = data.createGift(player.getUUID(), recipientId,
+                source.getAccountUUID(), amount);
+        if (gift == null) {
+            source.forceAddBalance(amount);
+            return "Gift not sent.";
+        }
+        boolean sent = data.sendMessage(player.getUUID(), player.getGameProfile().getName(), recipientId,
+                recipientName, giftMarker(gift.id(), amount));
+        if (!sent) {
+            data.markGiftStatus(gift.id(), "DECLINED");
+            source.forceAddBalance(amount);
+            return "Gift not sent.";
+        }
+        rememberPaymentTarget(player, recipientPrimary, false);
+        if (recipient != null) {
+            pushLiveRefresh(recipient, "");
+        }
+        notifyPhone(player.getServer(), recipientId, "Gift",
+                player.getGameProfile().getName() + " gifted " + MoneyText.abbreviateWithDollar(amount) + ".",
+                DeliveryAlertPayload.AlertTone.SUCCESS, 5200);
+        return "Gift sent to " + recipientName + ".";
+    }
+
+    private static String handleMessengerGiftAction(ServerPlayer player,
+                                                    String giftRaw,
+                                                    String accountRaw,
+                                                    boolean accept) {
+        UUID giftId = parseUuid(giftRaw);
+        if (giftId == null) {
+            return "Choose a valid gift.";
+        }
+        CentralBank centralBank = BankManager.getCentralBank(player.getServer());
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        pruneExpiredGifts(player.getServer(), centralBank, data);
+        SmartphoneSavedData.GiftEntry gift = data.gift(giftId);
+        if (gift == null) {
+            return "Gift expired or missing.";
+        }
+        if (!gift.recipientId().equals(player.getUUID())) {
+            return "This gift is not for you.";
+        }
+        if (!"PENDING".equalsIgnoreCase(gift.status())) {
+            return "Gift is no longer pending.";
+        }
+        ServerPlayer sender = player.getServer().getPlayerList().getPlayer(gift.senderId());
+        if (!accept) {
+            if (data.markGiftStatus(gift.id(), "DECLINED")) {
+                refundGift(player.getServer(), centralBank, gift);
+                if (sender != null) {
+                    pushLiveRefresh(sender, "");
+                }
+                notifyPhone(player.getServer(), gift.senderId(), "Gift",
+                        player.getGameProfile().getName() + " declined your gift of "
+                                + MoneyText.abbreviateWithDollar(gift.amountDecimal()) + ".",
+                        DeliveryAlertPayload.AlertTone.WARNING, 5200);
+            }
+            return "Gift declined.";
+        }
+        if (centralBank == null) {
+            return "Bank data is unavailable.";
+        }
+        AccountHolder destination = null;
+        UUID destinationId = parseUuid(accountRaw);
+        if (destinationId != null) {
+            AccountHolder candidate = centralBank.SearchForAccountByAccountId(destinationId);
+            if (candidate != null && candidate.getPlayerUUID().equals(player.getUUID()) && candidate.canDeposit(player.getUUID())) {
+                destination = candidate;
+            }
+        }
+        if (destination == null) {
+            destination = findPrimaryAccount(centralBank, player.getUUID());
+        }
+        if (destination == null) {
+            return "No account available to receive this gift.";
+        }
+        BigDecimal amount = gift.amountDecimal();
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            data.markGiftStatus(gift.id(), "EXPIRED");
+            return "Gift amount is invalid.";
+        }
+        if (destination.isFrozen()) {
+            return "Destination account cannot receive this gift.";
+        }
+        if (!data.markGiftStatus(gift.id(), "ACCEPTED")) {
+            return "Gift is no longer pending.";
+        }
+        destination.forceAddBalance(amount);
+        AccountHolder source = centralBank.SearchForAccountByAccountId(gift.sourceAccountId());
+        UserTransaction tx = new UserTransaction(
+                gift.sourceAccountId(),
+                destination.getAccountUUID(),
+                amount,
+                LocalDateTime.now(),
+                "Messenger Gift"
+        );
+        if (source != null) {
+            source.addTransaction(tx);
+        }
+        destination.addTransaction(tx);
+        BankManager.markDirty();
+        if (sender != null) {
+            pushLiveRefresh(sender, "");
+        }
+        notifyPhone(player.getServer(), gift.senderId(), "Gift",
+                player.getGameProfile().getName() + " accepted "
+                        + MoneyText.abbreviateWithDollar(amount) + ".",
+                DeliveryAlertPayload.AlertTone.SUCCESS, 5200);
+        return "Gift accepted.";
     }
 
     private static String handleBankStaffAction(ServerPlayer player, String action, String bankRaw, String arg1, String arg2) {
@@ -597,13 +1018,25 @@ public final class SmartphoneService {
             if (byId != null) {
                 return resolvePlayerPrimary(centralBank, byId);
             }
+            AccountHolder offlinePrimary = findPrimaryAccount(centralBank, id);
+            if (offlinePrimary != null) {
+                return new PaymentDestination(offlinePrimary, id, false, "");
+            }
         }
 
         ServerPlayer byName = actor.getServer().getPlayerList().getPlayerByName(target);
-        if (byName == null) {
-            return PaymentDestination.error("Player is not online or account ID is invalid.");
+        if (byName != null) {
+            return resolvePlayerPrimary(centralBank, byName);
         }
-        return resolvePlayerPrimary(centralBank, byName);
+        UUID offlineId = resolvePlayerIdByName(actor.getServer(), target);
+        if (offlineId != null) {
+            AccountHolder offlinePrimary = findPrimaryAccount(centralBank, offlineId);
+            if (offlinePrimary != null) {
+                return new PaymentDestination(offlinePrimary, offlineId, false, "");
+            }
+            return PaymentDestination.error(target + " has no primary account.");
+        }
+        return PaymentDestination.error("Player or account ID was not found.");
     }
 
     private static PaymentDestination resolvePlayerPrimary(CentralBank centralBank, ServerPlayer player) {
@@ -777,6 +1210,47 @@ public final class SmartphoneService {
         return shortId(id);
     }
 
+    private static UUID resolvePlayerIdByName(net.minecraft.server.MinecraftServer server, String name) {
+        String target = name == null ? "" : name.trim();
+        if (server == null || target.isBlank()) {
+            return null;
+        }
+        ServerPlayer online = server.getPlayerList().getPlayerByName(target);
+        if (online != null) {
+            return online.getUUID();
+        }
+        if (server.getProfileCache() != null) {
+            var cached = server.getProfileCache().get(target);
+            if (cached.isPresent()) {
+                return cached.get().getId();
+            }
+        }
+        return null;
+    }
+
+    private static String resolveKnownContactName(ServerPlayer owner, SmartphoneSavedData data, UUID contactId) {
+        if (owner == null || contactId == null) {
+            return "Unknown";
+        }
+        String profileName = resolvePlayerName(owner.getServer(), contactId);
+        if (!profileName.equals(shortId(contactId)) && !profileName.isBlank()) {
+            return profileName;
+        }
+        if (data != null) {
+            List<SmartphoneSavedData.MessageEntry> messages = new ArrayList<>(data.conversation(owner.getUUID(), contactId));
+            messages.sort(Comparator.comparingLong(SmartphoneSavedData.MessageEntry::createdAt).reversed());
+            for (SmartphoneSavedData.MessageEntry message : messages) {
+                if (contactId.equals(message.senderId()) && message.senderName() != null && !message.senderName().isBlank()) {
+                    return message.senderName();
+                }
+                if (contactId.equals(message.recipientId()) && message.recipientName() != null && !message.recipientName().isBlank()) {
+                    return message.recipientName();
+                }
+            }
+        }
+        return shortId(contactId);
+    }
+
     private static String shortId(UUID id) {
         String value = id == null ? "" : id.toString();
         return value.length() <= 8 ? value : value.substring(0, 8);
@@ -789,6 +1263,12 @@ public final class SmartphoneService {
     }
 
     private record EmployeeSpec(String role, BigDecimal salary) {
+    }
+
+    private record PayRequestMarker(UUID requestId, String amount) {
+    }
+
+    private record GiftMarker(UUID giftId, String amount) {
     }
 
     private static String handleSaveNote(ItemStack phone, String indexRaw, String body) {
@@ -806,23 +1286,280 @@ public final class SmartphoneService {
         return "Painting saved.";
     }
 
+    private static String payRequestMarker(UUID requestId, BigDecimal amount) {
+        return PAY_REQUEST_MESSAGE_PREFIX
+                + (requestId == null ? "" : requestId)
+                + ":"
+                + (amount == null ? "0" : amount.toPlainString())
+                + PAY_REQUEST_MESSAGE_SUFFIX;
+    }
+
+    private static PayRequestMarker parsePayRequestMarker(String body) {
+        String raw = body == null ? "" : body.trim();
+        if (!raw.startsWith(PAY_REQUEST_MESSAGE_PREFIX) || !raw.endsWith(PAY_REQUEST_MESSAGE_SUFFIX)) {
+            return null;
+        }
+        String payload = raw.substring(PAY_REQUEST_MESSAGE_PREFIX.length(),
+                raw.length() - PAY_REQUEST_MESSAGE_SUFFIX.length());
+        int split = payload.indexOf(':');
+        String idRaw = split < 0 ? payload : payload.substring(0, split);
+        UUID requestId = parseUuid(idRaw);
+        if (requestId == null) {
+            return null;
+        }
+        String amount = split < 0 || split + 1 >= payload.length() ? "$0" : payload.substring(split + 1);
+        return new PayRequestMarker(requestId, amount);
+    }
+
+    private static String giftMarker(UUID giftId, BigDecimal amount) {
+        return GIFT_MESSAGE_PREFIX
+                + (giftId == null ? "" : giftId)
+                + ":"
+                + (amount == null ? "0" : amount.toPlainString())
+                + GIFT_MESSAGE_SUFFIX;
+    }
+
+    private static GiftMarker parseGiftMarker(String body) {
+        String raw = body == null ? "" : body.trim();
+        if (!raw.startsWith(GIFT_MESSAGE_PREFIX) || !raw.endsWith(GIFT_MESSAGE_SUFFIX)) {
+            return null;
+        }
+        String payload = raw.substring(GIFT_MESSAGE_PREFIX.length(),
+                raw.length() - GIFT_MESSAGE_SUFFIX.length());
+        int split = payload.indexOf(':');
+        String idRaw = split < 0 ? payload : payload.substring(0, split);
+        UUID giftId = parseUuid(idRaw);
+        if (giftId == null) {
+            return null;
+        }
+        String amount = split < 0 || split + 1 >= payload.length() ? "$0" : payload.substring(split + 1);
+        return new GiftMarker(giftId, amount);
+    }
+
+    private static void pruneExpiredGifts(net.minecraft.server.MinecraftServer server,
+                                          CentralBank centralBank,
+                                          SmartphoneSavedData data) {
+        if (server == null || centralBank == null || data == null) {
+            return;
+        }
+        for (SmartphoneSavedData.GiftEntry gift : data.expirePendingGifts(System.currentTimeMillis(), GIFT_TIMEOUT_MILLIS)) {
+            BigDecimal amount = gift.amountDecimal();
+            refundGift(server, centralBank, gift);
+            ServerPlayer sender = server.getPlayerList().getPlayer(gift.senderId());
+            if (sender != null) {
+                pushLiveRefresh(sender, "");
+            }
+            notifyPhone(server, gift.senderId(), "Gift",
+                    "Your gift of " + MoneyText.abbreviateWithDollar(amount) + " expired and was refunded.",
+                    DeliveryAlertPayload.AlertTone.WARNING, 5200);
+            ServerPlayer recipient = server.getPlayerList().getPlayer(gift.recipientId());
+            if (recipient != null) {
+                pushLiveRefresh(recipient, "");
+            } else {
+                notifyPhone(server, gift.recipientId(), "Gift",
+                        "A pending gift expired before it was accepted.",
+                        DeliveryAlertPayload.AlertTone.WARNING, 5200);
+            }
+        }
+    }
+
+    private static boolean refundGift(net.minecraft.server.MinecraftServer server,
+                                      CentralBank centralBank,
+                                      SmartphoneSavedData.GiftEntry gift) {
+        if (server == null || centralBank == null || gift == null) {
+            return false;
+        }
+        BigDecimal amount = gift.amountDecimal();
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+        AccountHolder source = centralBank.SearchForAccountByAccountId(gift.sourceAccountId());
+        if (source == null) {
+            return false;
+        }
+        return source.forceAddBalance(amount);
+    }
+
     private static String handleSendMessage(ServerPlayer player, String recipientRaw, String body) {
         UUID recipient = parseUuid(recipientRaw);
         if (recipient == null || body == null || body.isBlank()) {
             return "Choose a contact and write a message.";
         }
+        clearMessengerTyping(player, recipient);
         ServerPlayer target = player.getServer().getPlayerList().getPlayer(recipient);
         SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
         boolean sent = data.sendMessage(player.getUUID(), player.getGameProfile().getName(), recipient,
-                target == null ? "Offline Player" : target.getGameProfile().getName(), body);
+                target == null ? resolveKnownContactName(player, data, recipient) : target.getGameProfile().getName(), body);
         if (!sent) {
-            return "Message sent.";
+            return "Message not sent.";
         }
-        if (target != null && !data.prefs(recipient).muted.contains(player.getUUID())) {
-            ServerActionAlert.send(target, "Phone", "New message from " + player.getGameProfile().getName(),
+        if (target != null) {
+            pushLiveRefresh(target, "");
+        }
+        if (!data.prefs(recipient).muted.contains(player.getUUID())) {
+            notifyPhone(player.getServer(), recipient, "Messenger",
+                    "New message from " + player.getGameProfile().getName(),
                     DeliveryAlertPayload.AlertTone.INFO, 4400);
         }
         return "Message sent.";
+    }
+
+    private static String handleMessengerTyping(ServerPlayer player, String recipientRaw, String activeRaw) {
+        UUID recipient = parseUuid(recipientRaw);
+        if (recipient == null || recipient.equals(player.getUUID())) {
+            return "";
+        }
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        boolean active = Boolean.parseBoolean(activeRaw == null ? "" : activeRaw.trim());
+        if (!active) {
+            MESSENGER_TYPING.remove(typingKey(player.getUUID(), recipient));
+        } else if (!data.prefs(player.getUUID()).blocked.contains(recipient)
+                && !data.prefs(recipient).blocked.contains(player.getUUID())) {
+            MESSENGER_TYPING.put(typingKey(player.getUUID(), recipient),
+                    new TypingState(player.getUUID(),
+                            player.getGameProfile().getName(),
+                            recipient,
+                            System.currentTimeMillis() + MESSENGER_TYPING_TIMEOUT_MILLIS));
+        }
+        ServerPlayer target = player.getServer().getPlayerList().getPlayer(recipient);
+        if (target != null) {
+            pushLiveRefresh(target, "");
+        }
+        return "";
+    }
+
+    private static void clearMessengerTyping(ServerPlayer player, UUID recipient) {
+        if (player == null || recipient == null) {
+            return;
+        }
+        MESSENGER_TYPING.remove(typingKey(player.getUUID(), recipient));
+    }
+
+    private static void appendTypingIndicators(ServerPlayer player,
+                                               SmartphoneSavedData data,
+                                               List<String> lines) {
+        if (player == null || data == null || lines == null) {
+            return;
+        }
+        UUID recipient = player.getUUID();
+        long now = System.currentTimeMillis();
+        pruneExpiredTyping(now);
+        SmartphoneSavedData.PlayerPrefs recipientPrefs = data.prefs(recipient);
+        for (TypingState state : MESSENGER_TYPING.values()) {
+            if (state == null
+                    || !recipient.equals(state.recipientId())
+                    || state.expiresAtMillis() <= now
+                    || recipientPrefs.blocked.contains(state.senderId())
+                    || data.prefs(state.senderId()).blocked.contains(recipient)) {
+                continue;
+            }
+            lines.add(token("typing",
+                    state.senderId(),
+                    state.senderName(),
+                    Math.max(0L, state.expiresAtMillis() - now)));
+        }
+    }
+
+    private static void pruneExpiredTyping(long now) {
+        MESSENGER_TYPING.entrySet().removeIf(entry -> entry.getValue() == null
+                || entry.getValue().expiresAtMillis() <= now);
+    }
+
+    private static String typingKey(UUID sender, UUID recipient) {
+        return String.valueOf(sender) + "->" + recipient;
+    }
+
+    private static void pushLiveRefresh(ServerPlayer player, String statusMessage) {
+        if (player == null) {
+            return;
+        }
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            return;
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            return;
+        }
+        SmartphoneSnapshotPayload snapshot = buildSnapshot(player, phone, false);
+        PacketDistributor.sendToPlayer(player, SmartphoneLiveRefreshPayload.fromSnapshot(snapshot, statusMessage));
+    }
+
+    private static void deliverQueuedPhoneNotifications(ServerPlayer player, boolean consume) {
+        if (player == null) {
+            return;
+        }
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            return;
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            return;
+        }
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        List<SmartphoneSavedData.QueuedNotification> notifications = consume
+                ? data.consumeNotifications(player.getUUID())
+                : data.queuedNotifications(player.getUUID());
+        for (SmartphoneSavedData.QueuedNotification notification : notifications) {
+            if (notification == null || notification.message() == null || notification.message().isBlank()) {
+                continue;
+            }
+            PacketDistributor.sendToPlayer(player, new SmartphoneNotificationPayload(
+                    notification.title(),
+                    notification.message(),
+                    notification.toneCode(),
+                    notification.durationMs()
+            ));
+        }
+    }
+
+    private static void notifyPhone(net.minecraft.server.MinecraftServer server,
+                                    UUID recipientId,
+                                    String title,
+                                    String message,
+                                    DeliveryAlertPayload.AlertTone tone,
+                                    int durationMs) {
+        if (server == null || recipientId == null || message == null || message.isBlank()) {
+            return;
+        }
+        ServerPlayer recipient = server.getPlayerList().getPlayer(recipientId);
+        if (recipient != null && sendPhoneNotification(recipient, title, message, tone, durationMs)) {
+            return;
+        }
+        SmartphoneSavedData.get(server).queueNotification(
+                recipientId,
+                title == null || title.isBlank() ? "UBS Phone" : title,
+                message,
+                tone == null ? DeliveryAlertPayload.AlertTone.INFO.id() : tone.id(),
+                durationMs
+        );
+    }
+
+    private static boolean sendPhoneNotification(ServerPlayer player,
+                                                 String title,
+                                                 String message,
+                                                 DeliveryAlertPayload.AlertTone tone,
+                                                 int durationMs) {
+        if (player == null || message == null || message.isBlank()) {
+            return false;
+        }
+        ItemStack phone = findUsablePhone(player);
+        if (phone.isEmpty()) {
+            return false;
+        }
+        SmartphoneData.ensureOwner(phone, player);
+        if (!canUsePhone(phone, player)) {
+            return false;
+        }
+        DeliveryAlertPayload.AlertTone safeTone = tone == null ? DeliveryAlertPayload.AlertTone.INFO : tone;
+        PacketDistributor.sendToPlayer(player, new SmartphoneNotificationPayload(
+                title == null || title.isBlank() ? "UBS Phone" : title,
+                message,
+                safeTone.id(),
+                durationMs
+        ));
+        return true;
     }
 
     private static String handleReadConversation(ServerPlayer player, String otherRaw) {
@@ -866,11 +1603,12 @@ public final class SmartphoneService {
             return "Choose a contact first.";
         }
         ServerPlayer target = player.getServer().getPlayerList().getPlayer(other);
-        SmartphoneSavedData.ReportEntry report = SmartphoneSavedData.get(player.getServer()).report(
+        SmartphoneSavedData data = SmartphoneSavedData.get(player.getServer());
+        SmartphoneSavedData.ReportEntry report = data.report(
                 player.getUUID(),
                 player.getGameProfile().getName(),
                 other,
-                target == null ? "Offline Player" : target.getGameProfile().getName(),
+                target == null ? resolveKnownContactName(player, data, other) : target.getGameProfile().getName(),
                 reason == null || reason.isBlank() ? "Phone report" : reason
         );
         return "Report filed: " + report.id().toString().substring(0, 8) + ".";
@@ -887,14 +1625,6 @@ public final class SmartphoneService {
         }
         String raw = account.getAccountType().name().replace("Account", " Account");
         return raw.replaceAll("([a-z])([A-Z])", "$1 $2");
-    }
-
-    private static boolean isModLoaded(String modId) {
-        try {
-            return ModList.get().isLoaded(modId);
-        } catch (RuntimeException ignored) {
-            return false;
-        }
     }
 
     private static String token(Object... values) {

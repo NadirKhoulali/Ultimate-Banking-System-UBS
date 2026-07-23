@@ -7,7 +7,12 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.block.custom.SafetyDepositBoxRowBlock;
 import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity.ModuleType;
+import net.austizz.ultimatebankingsystem.client.DepositBoxLabelClientState;
+import net.austizz.ultimatebankingsystem.client.HeistClientState;
+import net.austizz.ultimatebankingsystem.client.SafeBoxDisplayClientState;
 import net.austizz.ultimatebankingsystem.client.model.SafetyDepositBoxRowBlockEntityModel;
+import net.austizz.ultimatebankingsystem.client.model.SafetyDepositBoxTrayModel;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -16,9 +21,13 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
+
+import java.util.List;
 
 public class SafetyDepositBoxRowRenderer implements BlockEntityRenderer<SafetyDepositBoxRowBlockEntity> {
     private static final ResourceLocation TEXTURE =
@@ -71,10 +80,11 @@ public class SafetyDepositBoxRowRenderer implements BlockEntityRenderer<SafetyDe
         for (int i = 0; i < progress.length; i++) {
             progress[i] = row.getDoorProgress(i, partialTick);
         }
-        model.applyState(row.getModuleTypesSnapshot(), progress);
+        model.applyState(row.getModuleTypesSnapshot(), progress, row.getViewingTransferMask());
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entitySolid(TEXTURE));
         model.renderToBuffer(poseStack, consumer, packedLight, packedOverlay, 0xFFFFFFFF);
         renderBoxNumberLabels(row, progress, poseStack, bufferSource);
+        renderBreachedContents(row, progress, poseStack, bufferSource, packedLight, packedOverlay);
         poseStack.popPose();
     }
 
@@ -87,9 +97,13 @@ public class SafetyDepositBoxRowRenderer implements BlockEntityRenderer<SafetyDe
                                        float[] progress,
                                        PoseStack poseStack,
                                        MultiBufferSource bufferSource) {
-        if (font == null || row == null) {
+        if (font == null || row == null || HeistClientState.active()) {
             return;
         }
+        if (row.getLevel() == null) return;
+        List<String> labels = DepositBoxLabelClientState.labels(
+                row.getLevel().dimension().location().toString(), row.getBlockPos());
+        if (labels.isEmpty()) return;
         ModuleType[] modules = row.getModuleTypesSnapshot();
         poseStack.pushPose();
         poseStack.translate(0.0F, 24.0F / 16.0F, 0.0F);
@@ -98,7 +112,8 @@ public class SafetyDepositBoxRowRenderer implements BlockEntityRenderer<SafetyDe
             if (!type.assignable() || !row.isAssignableBoxStart(start) || !row.isAssigned(start)) {
                 continue;
             }
-            renderBoxNumberLabel(row.getBoxNumber(start), type, start, progress[start], poseStack, bufferSource);
+            String label = start < labels.size() ? labels.get(start) : "";
+            renderBoxNumberLabel(label, type, start, progress[start], poseStack, bufferSource);
         }
         poseStack.popPose();
     }
@@ -158,5 +173,47 @@ public class SafetyDepositBoxRowRenderer implements BlockEntityRenderer<SafetyDe
     private static float smooth(float value) {
         float clamped = Mth.clamp(value, 0.0F, 1.0F);
         return clamped * clamped * (3.0F - 2.0F * clamped);
+    }
+
+    private static void renderBreachedContents(SafetyDepositBoxRowBlockEntity row,
+                                               float[] progress,
+                                               PoseStack poseStack,
+                                               MultiBufferSource bufferSource,
+                                               int packedLight,
+                                               int packedOverlay) {
+        if (row.getLevel() == null) return;
+        ModuleType[] modules = row.getModuleTypesSnapshot();
+        String dimension = row.getLevel().dimension().location().toString();
+        poseStack.pushPose();
+        poseStack.translate(0.0D, 24.0D / 16.0D, 0.0D);
+        for (int start = 0; start < SafetyDepositBoxRowBlockEntity.DOOR_COUNT; start++) {
+            ModuleType type = start < modules.length && modules[start] != null ? modules[start] : ModuleType.EMPTY;
+            if (!type.assignable() || !row.isHeistBreached(start) || progress[start] < 0.42F) continue;
+            List<ItemStack> contents = SafeBoxDisplayClientState.contents(
+                    SafetyDepositBoxRowBlockEntity.heistDisplayId(dimension, row.getBlockPos(), start));
+            int limit = Math.min(type.inventorySlots(), contents.size());
+            float trayHeight = SafetyDepositBoxTrayModel.trayHeight(type);
+            float centerY = rowTop(start) + moduleHeight(type) * 0.5F;
+            float slide = -7.25F * smooth(Mth.clamp((progress[start] - 0.35F) / 0.65F, 0.0F, 1.0F));
+            for (int slot = 0; slot < limit; slot++) {
+                ItemStack stack = contents.get(slot);
+                if (stack == null || stack.isEmpty()) continue;
+                SafeBoxDisplayLayout.Position layout = SafeBoxDisplayLayout.position(
+                        slot, type.inventorySlots(), trayHeight / 16.0D);
+                poseStack.pushPose();
+                poseStack.translate(layout.x(),
+                        (centerY + trayHeight * 0.5F - 0.65F) / 16.0D - layout.y(),
+                        slide / 16.0D + layout.z());
+                poseStack.mulPose(Axis.XP.rotationDegrees(84.0F));
+                poseStack.mulPose(Axis.ZP.rotationDegrees(((slot * 7) % 9) - 4.0F));
+                poseStack.scale(0.17F, 0.17F, 0.17F);
+                Minecraft.getInstance().getItemRenderer().renderStatic(
+                        stack.copyWithCount(1), ItemDisplayContext.FIXED, packedLight, packedOverlay,
+                        poseStack, bufferSource, Minecraft.getInstance().level,
+                        row.getBlockPos().hashCode() + slot);
+                poseStack.popPose();
+            }
+        }
+        poseStack.popPose();
     }
 }

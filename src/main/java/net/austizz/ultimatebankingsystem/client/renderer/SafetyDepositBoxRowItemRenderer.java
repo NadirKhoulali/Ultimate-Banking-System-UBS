@@ -53,8 +53,16 @@ public class SafetyDepositBoxRowItemRenderer extends BlockEntityWithoutLevelRend
     private static void applyItemTransform(ItemDisplayContext displayContext, PoseStack poseStack) {
         poseStack.translate(0.5D, 0.5D, 0.5D);
         if (displayContext == ItemDisplayContext.GUI) {
+            // Vanilla-block style isometric icon: 30-degree screen pitch, yawed so
+            // the DOOR side (entrance) faces the camera. The shell center sits 16px
+            // above the model origin, which lands at -13.86px after the flip+pitch —
+            // the 0.87 translate recenters.
             poseStack.scale(0.58F, 0.58F, 0.58F);
-            poseStack.translate(0.0D, 0.08D, 0.0D);
+            poseStack.translate(0.0D, 0.87D, 0.0D);
+            poseStack.mulPose(Axis.XP.rotationDegrees(30.0F));
+            poseStack.mulPose(Axis.YP.rotationDegrees(45.0F));
+            poseStack.mulPose(Axis.XP.rotationDegrees(180.0F));
+            return;
         } else if (displayContext == ItemDisplayContext.GROUND) {
             poseStack.scale(0.34F, 0.34F, 0.34F);
         } else if (displayContext == ItemDisplayContext.FIXED) {

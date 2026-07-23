@@ -1,6 +1,6 @@
 # Admin Commands
 
-UBS admin commands are server-operator tools for account moderation, central-bank policy, bank governance, migration, web dashboard control, shop repair, and test-data seeding.
+UBS admin commands are server-operator tools for account moderation, central-bank policy, bank governance, premises, heist recovery, migration, shop repair, and test-data seeding.
 
 Required permission: Minecraft permission level `3` for players. Server console can run these commands directly.
 
@@ -11,7 +11,6 @@ Required permission: Minecraft permission level `3` for players. Server console 
 | `/ubs admin ...` | Primary UBS admin command root. |
 | `/bank admin ...` | Compatibility alias for the same command tree as `/ubs admin ...`. |
 | `/centralbank ...` | Central-bank policy, audit, report, ledger, and open-market controls. |
-| `/ubs web ...` | Top-level web dashboard control shortcut. Same actions are also available under `/ubs admin web ...`. |
 | `/ubs centralbank ...` | Central-bank panel shortcut and legacy interest-rate setter. |
 | `/ubs bank ...` | Central-bank save and rename helpers. |
 | `/ubs money ...` | Direct account balance adjustment tools. |
@@ -21,49 +20,9 @@ Parameter notes:
 
 - `<player>` is an online player selector accepted by Minecraft's command parser.
 - `<accountId>`, `<paymentId>`, `<applicationId>`, `<appealId>`, and `<shopId>` are UUIDs.
-- `<bankName>` is a greedy string, so names with spaces work when placed at the end of the command.
+- `<bankName>` is a greedy string, so names with spaces work when placed at the end of the command. Premise commands also accept a bank UUID.
 - `<amount>` should be a positive numeric value unless the command explicitly says it can clear a value.
 - `[reason]` is optional. If omitted, UBS stores or shows a blank reason.
-
-## Dashboard and Admin Help
-
-### `/ubs admin web`
-
-Shows the web dashboard status panel. This is equivalent to `/ubs web`.
-
-Use it to confirm whether the dashboard is configured, running, which host/port it is bound to, and which URL should be opened by admins.
-
-### `/ubs admin web status`
-
-Shows the same dashboard status panel without toggling anything.
-
-This is useful after server startup or after changing dashboard config values.
-
-### `/ubs admin web on`
-
-Enables and starts the UBS web admin dashboard.
-
-If startup fails, the command tells the admin to check the server log. Typical causes are bind-port conflicts, blocked ports, or missing runtime classes.
-
-### `/ubs admin web off`
-
-Disables and stops the UBS web admin dashboard.
-
-Use this if you need to close the dashboard while the server is live or before changing dashboard config.
-
-### `/ubs admin web link`
-
-Sends clickable chat buttons for opening or copying the dashboard URL.
-
-If the dashboard is bound to `0.0.0.0`, the message reminds admins to replace `127.0.0.1` with the real server IP or domain for remote access.
-
-Top-level equivalents:
-
-- `/ubs web`
-- `/ubs web status`
-- `/ubs web on`
-- `/ubs web off`
-- `/ubs web link`
 
 ## Account and Player Moderation
 
@@ -419,6 +378,80 @@ Legacy typo alias for `/ubs admin deferrenewal <bankName>`.
 
 Keep this documented because older operator notes or command blocks may still reference it.
 
+## Bank Premise Administration
+
+### `/ubs admin bank premise`
+
+Shows the premise administration command list.
+
+### `/ubs admin bank premise list [bankNameOrId]`
+
+Without a bank, shows premise counts for every bank. With a bank name or UUID, lists that bank's premise IDs, readiness, access mode, safe-area count, and ready/total vault count. Listed premise IDs are underlined; hover for the copy hint and click an ID to copy it to the clipboard.
+
+### `/ubs admin bank premise info <premiseId>`
+
+Shows the owning bank, exact bounds, outside exit, access mode, readiness, safe-area/vault counts, and the blockers that would apply to an Owner-PC deletion. The premise ID is underlined and click-to-copy.
+
+### `/ubs admin bank premise add <bankNameOrId>`
+
+Starts the existing premise claim tool for the selected bank. This command must be run by an in-game admin because it temporarily replaces the hotbar with the corner, exit, apply, overlay, clear, and cancel tools. Applying the selection rechecks permission and commits through the same atomic premise mutation path as the Owner PC.
+
+### `/ubs admin bank premise delete <premiseId>`
+
+Force-deletes the selected premise without requiring an active Owner PC and without applying normal Owner-PC deletion blockers. This destructive admin path cancels active escorts for the premise, removes its teller routes, removes contained legacy safe-area records, clears affected assignment records and loaded row-door labels, then removes the premise. Account-held safe-box item data and existing escrow records are preserved rather than silently destroyed.
+
+The command still rejects a missing or ambiguous premise ID. Those are invalid targets, not gameplay enforcement rules.
+
+### `/ubs admin bank premise mode <premiseId> <public|staff_only>`
+
+Changes the premise access mode. `staff-only` is accepted as an alias for `staff_only`.
+
+### `/ubs admin bank premise exit <premiseId>`
+
+Starts the outside-exit replacement tool for the selected premise. This must be run in game and requires the captured exit to remain outside the premise in the same dimension.
+
+### `/ubs admin bank premise cancel`
+
+Cancels the active UBS safe/premise claim tool and restores the admin's original hotbar.
+
+## Heist Administration
+
+### `/ubs admin heist list`
+
+Lists planned and active sessions with ID, phase, target, and crew size.
+
+### `/ubs admin heist inspect <sessionId>`
+
+Shows phase, bank/premise, crew, alarm state, and loot for one session.
+
+### `/ubs admin heist abort <sessionId>`
+
+Stops a session, evacuates affected players, and restores tracked assets.
+
+### `/ubs admin heist recover <sessionId>`
+
+Runs the same authoritative cleanup for a session left behind after an interrupted server lifecycle.
+
+### `/ubs admin heist clearcooldown player <player>`
+
+Clears the selected online player's heist cooldown.
+
+### `/ubs admin heist clearcooldown bank <bankId>`
+
+Clears the target bank's cooldown by UUID.
+
+### `/ubs admin heist clearvictimprotection <playerId>`
+
+Clears post-heist victim protection for a player UUID.
+
+### `/ubs admin heist allowinsider [player]`
+
+Enables the development insider bypass for the executor or selected online player.
+
+### `/ubs admin heist disallowinsider [player]`
+
+Removes that bypass.
+
 ## Shop Admin
 
 ### `/ubs admin shop view <player>`
@@ -494,9 +527,9 @@ Seeded data includes:
 - open inter-bank lending offers
 - one active inter-bank loan
 - settlement ledger and suspense rows
-- web dashboard history snapshots
+- economy history snapshots
 
-Use this on development worlds when the dashboard, bank owner PC, lending market, settlement ledger, or central-bank reports need realistic data.
+Use this on development worlds when the Bank Owner PC, lending market, settlement ledger, or central-bank reports need realistic data.
 
 Do not run it on a production economy unless you intentionally want test banks and test balances in that world.
 

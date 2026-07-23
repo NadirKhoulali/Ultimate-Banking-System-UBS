@@ -11,10 +11,30 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankLevelService;
+import net.austizz.ultimatebankingsystem.bank.owner.premise.OwnerPcPremiseAdminService;
+import net.austizz.ultimatebankingsystem.bank.owner.premise.OwnerPcPremisePayloadBuilder;
+import net.austizz.ultimatebankingsystem.bank.owner.premise.OwnerPcPremiseService;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.bank.safebox.claim.SafeClaimToolPurpose;
+import net.austizz.ultimatebankingsystem.bank.safebox.setup.SafePremiseMode;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.SafeBoxViewingCoordinator;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomNbtStore;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomService;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomSnapshot;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomState;
+import net.austizz.ultimatebankingsystem.block.ModBlocks;
+import net.austizz.ultimatebankingsystem.block.custom.MoneyStackBlock;
+import net.austizz.ultimatebankingsystem.block.entity.custom.MetalPalletBlockEntity;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.events.BalanceChangedEvent;
 import net.austizz.ultimatebankingsystem.loan.LoanService;
+import net.austizz.ultimatebankingsystem.market.CommodityMarketService;
+import net.austizz.ultimatebankingsystem.heist.HeistSavedData;
+import net.austizz.ultimatebankingsystem.heist.HeistService;
+import net.austizz.ultimatebankingsystem.heist.HeistSession;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremiseActionPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPremisePayload;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPayment;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
@@ -31,6 +51,10 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -56,6 +80,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @EventBusSubscriber(modid = UltimateBankingSystem.MODID)
 public class UBSAdminCommands {
@@ -121,6 +146,7 @@ public class UBSAdminCommands {
         return Commands.literal("ubs")
                 .then(Commands.literal("centralbank")
                         .executes(context -> showCentralBankPanel(context.getSource()))
+                        .then(buildCentralBankMarketLiteral())
                         .then(Commands.literal("interest")
                                 .then(Commands.literal("set")
                                         .then(Commands.argument("rate", StringArgumentType.greedyString())
@@ -180,8 +206,159 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
-                .then(buildWebAdminLiteral())
+                .then(buildGiveLiteral())
                 .then(buildAdminLiteral());
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildGiveLiteral() {
+        LiteralArgumentBuilder<CommandSourceStack> moneyStacks = Commands.literal("money_stacks");
+        for (MoneyStackBlock.BillDenomination denomination : MoneyStackBlock.BillDenomination.values()) {
+            moneyStacks.then(palletAmountNodes(
+                    Commands.literal(denomination.getSerializedName()),
+                    () -> new ItemStack(denomination.stackItem()),
+                    true,
+                    "$" + denomination.value() + " money stack"
+            ));
+        }
+        LiteralArgumentBuilder<CommandSourceStack> bars = Commands.literal("bars")
+                .then(palletAmountNodes(
+                        Commands.literal("gold"),
+                        () -> new ItemStack(ModBlocks.GOLD_BAR.get().asItem()),
+                        false,
+                        "gold bar"
+                ))
+                .then(palletAmountNodes(
+                        Commands.literal("silver"),
+                        () -> new ItemStack(ModBlocks.SILVER_BAR.get().asItem()),
+                        false,
+                        "silver bar"
+                ));
+        return Commands.literal("give")
+                .then(Commands.argument("player", EntityArgument.player())
+                        .then(Commands.literal("metal_pallet")
+                                .then(moneyStacks)
+                                .then(bars)
+                        )
+                );
+    }
+
+    /**
+     * Shared amount grammar for one pallet content type: the bare type node
+     * and the literal "full" both fill the whole grid, "half" fills exactly
+     * half (full layers by construction: money 192 = 6x32, bars 36 = 3x12),
+     * and an integer fills an exact piece count within the grid capacity.
+     */
+    private static LiteralArgumentBuilder<CommandSourceStack> palletAmountNodes(
+            LiteralArgumentBuilder<CommandSourceStack> typeNode,
+            Supplier<ItemStack> contentSupplier,
+            boolean moneyGrid,
+            String contentLabel
+    ) {
+        int gridCapacity = moneyGrid
+                ? MetalPalletBlockEntity.MONEY_SLOT_COUNT
+                : MetalPalletBlockEntity.WIDE_SLOT_COUNT;
+        return typeNode
+                .executes(context -> adminGiveMetalPallet(
+                        context.getSource(),
+                        EntityArgument.getPlayer(context, "player"),
+                        contentSupplier.get(),
+                        moneyGrid,
+                        gridCapacity,
+                        contentLabel
+                ))
+                .then(Commands.literal("full")
+                        .executes(context -> adminGiveMetalPallet(
+                                context.getSource(),
+                                EntityArgument.getPlayer(context, "player"),
+                                contentSupplier.get(),
+                                moneyGrid,
+                                gridCapacity,
+                                contentLabel
+                        ))
+                )
+                .then(Commands.literal("half")
+                        .executes(context -> adminGiveMetalPallet(
+                                context.getSource(),
+                                EntityArgument.getPlayer(context, "player"),
+                                contentSupplier.get(),
+                                moneyGrid,
+                                gridCapacity / 2,
+                                contentLabel
+                        ))
+                )
+                .then(Commands.argument("amount", IntegerArgumentType.integer(1, gridCapacity))
+                        .executes(context -> adminGiveMetalPallet(
+                                context.getSource(),
+                                EntityArgument.getPlayer(context, "player"),
+                                contentSupplier.get(),
+                                moneyGrid,
+                                IntegerArgumentType.getInteger(context, "amount"),
+                                contentLabel
+                        ))
+                );
+    }
+
+    private static int adminGiveMetalPallet(CommandSourceStack source,
+                                            ServerPlayer target,
+                                            ItemStack content,
+                                            boolean moneyGrid,
+                                            int count,
+                                            String contentLabel) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+
+        ItemStack palletStack = MetalPalletBlockEntity.createFilledPalletItem(
+                content,
+                moneyGrid,
+                count,
+                source.registryAccess()
+        );
+
+        // Vanilla /give delivery: try the inventory first, otherwise drop the
+        // item at the target's feet with no pickup delay, locked to them.
+        boolean added = target.getInventory().add(palletStack);
+        if (added && palletStack.isEmpty()) {
+            target.level().playSound(
+                    null,
+                    target.getX(),
+                    target.getY(),
+                    target.getZ(),
+                    SoundEvents.ITEM_PICKUP,
+                    SoundSource.PLAYERS,
+                    0.2F,
+                    ((target.getRandom().nextFloat() - target.getRandom().nextFloat()) * 0.7F + 1.0F) * 2.0F
+            );
+            target.containerMenu.broadcastChanges();
+        } else {
+            ItemEntity dropped = target.drop(palletStack, false);
+            if (dropped != null) {
+                dropped.setNoPickUpDelay();
+                dropped.setTarget(target.getUUID());
+            }
+        }
+
+        int positionsPerLayer = moneyGrid
+                ? MetalPalletBlockEntity.MONEY_POSITIONS
+                : MetalPalletBlockEntity.WIDE_POSITIONS;
+        int fullLayers = count / positionsPerLayer;
+        int remainder = count % positionsPerLayer;
+        String layersText;
+        if (remainder == 0) {
+            layersText = fullLayers + (fullLayers == 1 ? " full layer" : " full layers");
+        } else if (fullLayers == 0) {
+            layersText = remainder + (remainder == 1 ? " piece" : " pieces");
+        } else {
+            layersText = fullLayers + (fullLayers == 1 ? " layer" : " layers")
+                    + " + " + remainder + (remainder == 1 ? " piece" : " pieces");
+        }
+
+        source.sendSystemMessage(moneyLiteral(
+                "§aGave §e" + target.getName().getString()
+                        + " §aa metal pallet with §6" + count + "x " + contentLabel + (count == 1 ? "" : "s")
+                        + " §7(" + layersText + ")"
+        ));
+        return 1;
     }
 
     private static int seedBankingDemo(CommandSourceStack source) {
@@ -277,6 +454,7 @@ public class UBSAdminCommands {
                                 .executes(context -> centralBankOpenMarketHistory(context.getSource()))
                         )
                 )
+                .then(buildCentralBankMarketLiteral())
                 .then(Commands.literal("audit")
                         .executes(context -> centralBankAudit(context.getSource(), ""))
                         .then(Commands.argument("bankName", StringArgumentType.greedyString())
@@ -300,20 +478,22 @@ public class UBSAdminCommands {
                 );
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> buildWebAdminLiteral() {
-        return Commands.literal("web")
-                .executes(context -> adminWebStatus(context.getSource()))
-                .then(Commands.literal("status")
-                        .executes(context -> adminWebStatus(context.getSource()))
+    private static LiteralArgumentBuilder<CommandSourceStack> buildCentralBankMarketLiteral() {
+        return Commands.literal("market")
+                .executes(context -> centralBankMarketShow(context.getSource()))
+                .then(Commands.literal("show")
+                        .executes(context -> centralBankMarketShow(context.getSource()))
                 )
-                .then(Commands.literal("on")
-                        .executes(context -> adminWebToggle(context.getSource(), true))
-                )
-                .then(Commands.literal("off")
-                        .executes(context -> adminWebToggle(context.getSource(), false))
-                )
-                .then(Commands.literal("link")
-                        .executes(context -> adminWebLink(context.getSource()))
+                .then(Commands.literal("set")
+                        .then(Commands.argument("commodity", StringArgumentType.word())
+                                .then(Commands.argument("price", StringArgumentType.greedyString())
+                                        .executes(context -> centralBankMarketSet(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "commodity"),
+                                                StringArgumentType.getString(context, "price")
+                                        ))
+                                )
+                        )
                 );
     }
 
@@ -713,6 +893,8 @@ public class UBSAdminCommands {
                                         )
                                 )
                         )
+                        .then(buildAdminBankPremiseLiteral())
+                        .then(buildAdminBankViewingRoomLiteral())
                 )
                 .then(Commands.literal("shop")
                         .then(Commands.literal("view")
@@ -759,10 +941,748 @@ public class UBSAdminCommands {
                                 )
                         )
                 )
-                .then(buildWebAdminLiteral())
+                .then(buildAdminHeistLiteral())
                 .then(Commands.literal("flags")
                         .executes(context -> adminListFlags(context.getSource()))
                 );
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildAdminHeistLiteral() {
+        return Commands.literal("heist")
+                .then(Commands.literal("list")
+                        .executes(context -> adminHeistList(context.getSource())))
+                .then(Commands.literal("inspect")
+                        .then(Commands.argument("sessionId", UuidArgument.uuid())
+                                .executes(context -> adminHeistInspect(context.getSource(),
+                                        UuidArgument.getUuid(context, "sessionId")))))
+                .then(Commands.literal("abort")
+                        .then(Commands.argument("sessionId", UuidArgument.uuid())
+                                .executes(context -> adminHeistFinish(context.getSource(),
+                                        UuidArgument.getUuid(context, "sessionId"), "Administrator aborted the heist."))))
+                .then(Commands.literal("recover")
+                        .then(Commands.argument("sessionId", UuidArgument.uuid())
+                                .executes(context -> adminHeistFinish(context.getSource(),
+                                        UuidArgument.getUuid(context, "sessionId"), "Administrator recovered the heist session."))))
+                .then(Commands.literal("clearcooldown")
+                        .then(Commands.literal("player")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> adminHeistClearPlayerCooldown(
+                                                context.getSource(), EntityArgument.getPlayer(context, "player")))))
+                        .then(Commands.literal("bank")
+                                .then(Commands.argument("bankId", UuidArgument.uuid())
+                                        .executes(context -> adminHeistClearBankCooldown(
+                                                context.getSource(), UuidArgument.getUuid(context, "bankId"))))))
+                .then(Commands.literal("clearvictimprotection")
+                        .then(Commands.argument("playerId", UuidArgument.uuid())
+                                .executes(context -> adminHeistClearVictim(context.getSource(),
+                                        UuidArgument.getUuid(context, "playerId")))))
+                .then(Commands.literal("allowinsider")
+                        .executes(context -> adminHeistSetInsiderBypass(
+                                context.getSource(), context.getSource().getPlayer(), true))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> adminHeistSetInsiderBypass(
+                                        context.getSource(), EntityArgument.getPlayer(context, "player"), true))))
+                .then(Commands.literal("disallowinsider")
+                        .executes(context -> adminHeistSetInsiderBypass(
+                                context.getSource(), context.getSource().getPlayer(), false))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> adminHeistSetInsiderBypass(
+                                        context.getSource(), EntityArgument.getPlayer(context, "player"), false))));
+    }
+
+    private static int adminHeistList(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) return 0;
+        var sessions = HeistSavedData.get(source.getServer()).sessions();
+        MutableComponent body = Component.empty();
+        if (sessions.isEmpty()) body.append(Component.literal("No planned or active heists."));
+        for (HeistSession session : sessions) {
+            body.append(Component.literal(session.id() + " | " + session.phase() + " | "
+                    + (session.bankName().isBlank() ? "No target" : session.bankName())
+                    + " | crew " + session.members().size() + "\n"));
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "Heist Sessions", body));
+        return 1;
+    }
+
+    private static int adminHeistInspect(CommandSourceStack source, UUID sessionId) {
+        if (!requireAdminPermission(source)) return 0;
+        HeistSession session = HeistSavedData.get(source.getServer()).session(sessionId);
+        if (session == null) {
+            source.sendSystemMessage(Component.literal("Heist session not found: " + sessionId));
+            return 0;
+        }
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "Heist " + session.id(), Component.literal(
+                "Phase: " + session.phase() + "\nBank: " + session.bankName() + " (" + session.bankId() + ")"
+                        + "\nPremise: " + session.premiseId() + "\nCrew: " + session.members().keySet()
+                        + "\nAlarm: " + session.alarmed() + " " + session.alarmReason()
+                        + "\nLoot cents: " + session.totalLootCents())));
+        return 1;
+    }
+
+    private static int adminHeistFinish(CommandSourceStack source, UUID sessionId, String reason) {
+        if (!requireAdminPermission(source)) return 0;
+        HeistSession session = HeistSavedData.get(source.getServer()).session(sessionId);
+        if (session == null) {
+            source.sendSystemMessage(Component.literal("Heist session not found: " + sessionId));
+            return 0;
+        }
+        HeistService.finish(source.getServer(), session, false, reason);
+        source.sendSystemMessage(Component.literal("Heist assets restored and session closed: " + sessionId));
+        return 1;
+    }
+
+    private static int adminHeistClearPlayerCooldown(CommandSourceStack source, ServerPlayer player) {
+        if (!requireAdminPermission(source)) return 0;
+        HeistSavedData.get(source.getServer()).setPlayerCooldown(player.getUUID(), 0L);
+        source.sendSystemMessage(Component.literal("Cleared player heist cooldown for "
+                + player.getGameProfile().getName() + " (" + player.getUUID() + ")"));
+        return 1;
+    }
+
+    private static int adminHeistClearBankCooldown(CommandSourceStack source, UUID bankId) {
+        if (!requireAdminPermission(source)) return 0;
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        Bank bank = resolveBankByName(centralBank, bankId.toString());
+        if (bank == null) {
+            source.sendSystemMessage(Component.literal("Bank not found: " + bankId));
+            return 0;
+        }
+        HeistSavedData.get(source.getServer()).setBankCooldown(bankId, 0L);
+        source.sendSystemMessage(Component.literal("Cleared bank heist cooldown for "
+                + bank.getBankName() + " (" + bankId + ")"));
+        return 1;
+    }
+
+    private static int adminHeistClearVictim(CommandSourceStack source, UUID playerId) {
+        if (!requireAdminPermission(source)) return 0;
+        HeistSavedData.get(source.getServer()).setVictimProtection(playerId, 0L);
+        source.sendSystemMessage(Component.literal("Cleared heist victim protection for " + playerId));
+        return 1;
+    }
+
+    private static int adminHeistSetInsiderBypass(CommandSourceStack source, ServerPlayer player, boolean enabled) {
+        if (!requireAdminPermission(source)) return 0;
+        if (player == null) {
+            source.sendSystemMessage(Component.literal("A player target is required when this command is run from console."));
+            return 0;
+        }
+        HeistService.Result result = HeistService.setDevInsiderBypass(player, enabled);
+        source.sendSystemMessage(Component.literal(result.message()));
+        if (source.getPlayer() != player) {
+            player.sendSystemMessage(Component.literal(result.message()));
+        }
+        return result.success() ? 1 : 0;
+    }
+
+    static LiteralArgumentBuilder<CommandSourceStack> buildAdminBankPremiseLiteral() {
+        return Commands.literal("premise")
+                .executes(context -> adminPremiseHelp(context.getSource()))
+                .then(Commands.literal("list")
+                        .executes(context -> adminPremiseList(context.getSource(), ""))
+                        .then(Commands.argument("bank", StringArgumentType.greedyString())
+                                .executes(context -> adminPremiseList(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bank")))
+                        )
+                )
+                .then(Commands.literal("info")
+                        .then(Commands.argument("premiseId", StringArgumentType.word())
+                                .executes(context -> adminPremiseInfo(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "premiseId")))
+                        )
+                )
+                .then(Commands.literal("add")
+                        .then(Commands.argument("bank", StringArgumentType.greedyString())
+                                .executes(context -> adminPremiseAdd(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "bank")))
+                        )
+                )
+                .then(Commands.literal("delete")
+                        .then(Commands.argument("premiseId", StringArgumentType.word())
+                                .executes(context -> adminPremiseDelete(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "premiseId")))
+                        )
+                )
+                .then(Commands.literal("mode")
+                        .then(Commands.argument("premiseId", StringArgumentType.word())
+                                .then(Commands.argument("mode", StringArgumentType.word())
+                                        .executes(context -> adminPremiseMode(
+                                                context.getSource(),
+                                                StringArgumentType.getString(context, "premiseId"),
+                                                StringArgumentType.getString(context, "mode")))
+                                )
+                        )
+                )
+                .then(Commands.literal("exit")
+                        .then(Commands.argument("premiseId", StringArgumentType.word())
+                                .executes(context -> adminPremiseExit(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "premiseId")))
+                        )
+                )
+                .then(Commands.literal("cancel")
+                        .executes(context -> adminPremiseCancel(context.getSource()))
+                );
+    }
+
+    static LiteralArgumentBuilder<CommandSourceStack> buildAdminBankViewingRoomLiteral() {
+        return Commands.literal("viewingroom")
+                .executes(context -> adminViewingRoomHelp(context.getSource()))
+                .then(Commands.literal("list")
+                        .executes(context -> adminViewingRoomList(context.getSource(), ""))
+                        .then(Commands.argument("bank", StringArgumentType.greedyString())
+                                .executes(context -> adminViewingRoomList(context.getSource(),
+                                        StringArgumentType.getString(context, "bank")))))
+                .then(Commands.literal("info")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .executes(context -> adminViewingRoomInfo(context.getSource(),
+                                        StringArgumentType.getString(context, "roomId")))))
+                .then(Commands.literal("claim")
+                        .then(Commands.argument("bank", StringArgumentType.greedyString())
+                                .executes(context -> adminViewingRoomClaim(context.getSource(),
+                                        StringArgumentType.getString(context, "bank")))))
+                .then(Commands.literal("rename")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .then(Commands.argument("name", StringArgumentType.greedyString())
+                                        .executes(context -> adminViewingRoomRename(context.getSource(),
+                                                StringArgumentType.getString(context, "roomId"),
+                                                StringArgumentType.getString(context, "name"))))))
+                .then(Commands.literal("anchor")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .then(Commands.argument("anchor", StringArgumentType.word())
+                                        .executes(context -> adminViewingRoomAnchor(context.getSource(),
+                                                StringArgumentType.getString(context, "roomId"),
+                                                StringArgumentType.getString(context, "anchor"))))))
+                .then(Commands.literal("validate")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .executes(context -> adminViewingRoomValidate(context.getSource(),
+                                        StringArgumentType.getString(context, "roomId")))))
+                .then(Commands.literal("suspend")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .executes(context -> adminViewingRoomSuspended(context.getSource(),
+                                        StringArgumentType.getString(context, "roomId"), true))))
+                .then(Commands.literal("reactivate")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .executes(context -> adminViewingRoomSuspended(context.getSource(),
+                                        StringArgumentType.getString(context, "roomId"), false))))
+                .then(Commands.literal("delete")
+                        .then(Commands.argument("roomId", StringArgumentType.word())
+                                .executes(context -> adminViewingRoomDelete(context.getSource(),
+                                        StringArgumentType.getString(context, "roomId")))))
+                .then(Commands.literal("cancel")
+                        .executes(context -> adminViewingRoomCancel(context.getSource())));
+    }
+
+    private static int adminViewingRoomList(CommandSourceStack source, String bankQuery) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            return premiseError(source, "Central bank data is not available.");
+        }
+        List<Bank> banks = bankQuery == null || bankQuery.isBlank()
+                ? allBanks(centralBank)
+                : Optional.ofNullable(resolveBankByName(centralBank, bankQuery)).map(List::of).orElse(List.of());
+        if (banks.isEmpty()) {
+            return premiseError(source, "Bank not found: " + bankQuery);
+        }
+        MutableComponent body = Component.empty();
+        int total = 0;
+        for (Bank bank : banks) {
+            List<ViewingRoomState> states = ViewingRoomService.states(source.getServer(), centralBank,
+                    bank.getBankId(), SafeBoxViewingCoordinator.activeRoomIds(source.getServer()));
+            body.append(Component.literal(bank.getBankName() + " [" + bank.getBankId() + "]\n")
+                    .withStyle(ChatFormatting.AQUA));
+            for (ViewingRoomState state : states) {
+                total++;
+                body.append(clickableViewingRoomId(state.room().id().toString()))
+                        .append(Component.literal(" | " + state.room().name() + " | " + state.status().name()
+                                + " | premise " + state.room().premiseId() + "\n")
+                                .withStyle(ChatFormatting.GRAY));
+            }
+        }
+        if (total == 0) {
+            body.append(Component.literal("No viewing rooms are configured.").withStyle(ChatFormatting.YELLOW));
+        }
+        source.sendSystemMessage(adminPremisePanel("Viewing Rooms", body));
+        return 1;
+    }
+
+    private static int adminViewingRoomInfo(CommandSourceStack source, String roomIdRaw) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        if (lookup == null) {
+            return 0;
+        }
+        ViewingRoomState state = ViewingRoomService.findState(source.getServer(), lookup.centralBank(),
+                lookup.bank().getBankId(), lookup.room().id(),
+                SafeBoxViewingCoordinator.activeRoomIds(source.getServer())).orElse(null);
+        String reasons = state == null || state.reasons().isEmpty()
+                ? "None" : String.join("; ", state.reasons());
+        MutableComponent body = Component.empty()
+                .append(clickableViewingRoomId(lookup.room().id().toString())).append(Component.literal("\n"))
+                .append(Component.literal("Name: " + lookup.room().name() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Bank: " + lookup.bank().getBankName() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Premise: " + lookup.room().premiseId() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Bounds: " + lookup.room().bounds() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Status: " + (state == null ? "UNKNOWN" : state.status().name())
+                        + "\nReasons: " + reasons).withStyle(ChatFormatting.GRAY));
+        source.sendSystemMessage(adminPremisePanel("Viewing Room", body));
+        return 1;
+    }
+
+    private static int adminViewingRoomClaim(CommandSourceStack source, String bankQuery) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        Bank bank = resolveBankByName(centralBank, bankQuery);
+        if (player == null || centralBank == null || bank == null) {
+            return premiseError(source, player == null
+                    ? "Run this command as a player to use the viewing-room claim tool."
+                    : "Bank not found: " + bankQuery);
+        }
+        SafetyDepositBoxService.ActionResult result = SafetyDepositBoxService.startViewingRoomClaimToolSession(
+                source.getServer(), centralBank, player, bank.getBankId(), true);
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminViewingRoomAnchor(CommandSourceStack source,
+                                              String roomIdRaw,
+                                              String anchorRaw) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        ViewingRoomService.AnchorKind kind = ViewingRoomService.AnchorKind.parse(anchorRaw);
+        if (player == null || lookup == null || kind == null) {
+            return premiseError(source, player == null
+                    ? "Run this command as a player to capture a viewing-room anchor."
+                    : "Anchor must be customer, teller, or display.");
+        }
+        SafeBoxViewingCoordinator.cancelRoom(source.getServer(), lookup.room().id());
+        SafetyDepositBoxService.ActionResult result = SafetyDepositBoxService.startViewingRoomAnchorToolSession(
+                source.getServer(), lookup.centralBank(), player, lookup.bank().getBankId(),
+                lookup.room().id(), kind, true);
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminViewingRoomRename(CommandSourceStack source,
+                                              String roomIdRaw,
+                                              String name) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        if (lookup == null) {
+            return 0;
+        }
+        SafeBoxViewingCoordinator.cancelRoom(source.getServer(), lookup.room().id());
+        ViewingRoomService.MutationResult result = ViewingRoomService.rename(
+                lookup.centralBank(), lookup.bank().getBankId(), lookup.room().id(), name);
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminViewingRoomSuspended(CommandSourceStack source,
+                                                 String roomIdRaw,
+                                                 boolean suspended) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        if (lookup == null) {
+            return 0;
+        }
+        SafeBoxViewingCoordinator.cancelRoom(source.getServer(), lookup.room().id());
+        ViewingRoomService.MutationResult result = ViewingRoomService.setAdminSuspended(
+                lookup.centralBank(), lookup.bank().getBankId(), lookup.room().id(), suspended);
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminViewingRoomDelete(CommandSourceStack source, String roomIdRaw) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        if (lookup == null) {
+            return 0;
+        }
+        int cancelled = SafeBoxViewingCoordinator.cancelRoom(source.getServer(), lookup.room().id());
+        ViewingRoomService.MutationResult result = ViewingRoomService.delete(
+                lookup.centralBank(), lookup.bank().getBankId(), lookup.room().id());
+        String message = result.message() + (cancelled > 0 ? " Cancelled " + cancelled + " active session(s)." : "");
+        return premiseResult(source, result.success(), message);
+    }
+
+    private static int adminViewingRoomValidate(CommandSourceStack source, String roomIdRaw) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminViewingRoomLookup lookup = uniqueViewingRoom(source, roomIdRaw);
+        if (lookup == null) {
+            return 0;
+        }
+        ViewingRoomState state = ViewingRoomService.findState(source.getServer(), lookup.centralBank(),
+                lookup.bank().getBankId(), lookup.room().id(),
+                SafeBoxViewingCoordinator.activeRoomIds(source.getServer())).orElse(null);
+        return premiseResult(source, state != null && (state.ready()
+                        || state.status() == net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomStatus.OCCUPIED),
+                state == null ? "Viewing room validation failed."
+                        : state.status().name() + (state.reasons().isEmpty() ? "" : ": " + String.join("; ", state.reasons())));
+    }
+
+    private static int adminViewingRoomCancel(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            return premiseError(source, "Run this command as a player to cancel a viewing-room picker.");
+        }
+        SafetyDepositBoxService.ActionResult result = SafetyDepositBoxService.finishSafeAreaClaimToolSession(
+                player, "Administrator viewing-room picker cancelled.");
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminViewingRoomHelp(CommandSourceStack source) {
+        MutableComponent body = Component.empty()
+                .append(Component.literal("/ubs admin bank viewingroom list [bank]\n"))
+                .append(Component.literal("/ubs admin bank viewingroom info <room ID>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom claim <bank>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom rename <room ID> <name>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom anchor <room ID> <customer|teller|display>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom validate <room ID>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom suspend|reactivate|delete <room ID>\n"))
+                .append(Component.literal("/ubs admin bank viewingroom cancel"));
+        source.sendSystemMessage(adminPremisePanel("Viewing Room Commands", body));
+        return 1;
+    }
+
+    private static AdminViewingRoomLookup uniqueViewingRoom(CommandSourceStack source, String roomIdRaw) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        UUID roomId;
+        try {
+            roomId = UUID.fromString(roomIdRaw == null ? "" : roomIdRaw.trim());
+        } catch (IllegalArgumentException ignored) {
+            premiseError(source, "Invalid viewing-room ID: " + roomIdRaw);
+            return null;
+        }
+        List<AdminViewingRoomLookup> matches = new ArrayList<>();
+        for (Bank bank : allBanks(centralBank)) {
+            CompoundTag metadata = centralBank.getBankMetadata().get(bank.getBankId());
+            if (metadata == null) {
+                continue;
+            }
+            ViewingRoomNbtStore.read(metadata).stream()
+                    .filter(room -> room.id().equals(roomId))
+                    .forEach(room -> matches.add(new AdminViewingRoomLookup(centralBank, bank, room)));
+        }
+        if (matches.size() != 1) {
+            premiseError(source, matches.isEmpty()
+                    ? "Viewing room not found: " + roomIdRaw
+                    : "Viewing-room ID is ambiguous: " + roomIdRaw);
+            return null;
+        }
+        return matches.getFirst();
+    }
+
+    private static Component clickableViewingRoomId(String roomId) {
+        String value = roomId == null ? "" : roomId;
+        return Component.literal(value).setStyle(Style.EMPTY
+                .withColor(ChatFormatting.AQUA).withUnderlined(true)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, value))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                        Component.literal("Click to copy viewing-room ID"))));
+    }
+
+    private record AdminViewingRoomLookup(CentralBank centralBank,
+                                          Bank bank,
+                                          ViewingRoomSnapshot room) {
+    }
+
+    private static int adminPremiseList(CommandSourceStack source, String bankQuery) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            return premiseError(source, "Central bank data is not available.");
+        }
+        if (bankQuery == null || bankQuery.isBlank()) {
+            MutableComponent body = Component.empty();
+            int total = 0;
+            for (Bank bank : allBanks(centralBank)) {
+                int count = premisePayloads(source.getServer(), centralBank, bank).size();
+                total += count;
+                body.append(Component.literal(bank.getBankName() + " [" + bank.getBankId()
+                        + "]: " + count + " premise(s)\n").withStyle(ChatFormatting.GRAY));
+            }
+            if (total == 0) {
+                body.append(Component.literal("No bank premises are configured.")
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+            source.sendSystemMessage(adminPremisePanel("Bank Premise Summary", body));
+            return 1;
+        }
+
+        Bank bank = resolveBankByName(centralBank, bankQuery);
+        if (bank == null) {
+            return premiseError(source, "Bank not found: " + bankQuery);
+        }
+        List<OwnerPcPremisePayload> premises = premisePayloads(
+                source.getServer(), centralBank, bank);
+        MutableComponent body = Component.empty();
+        body.append(Component.literal(bank.getBankName() + " [" + bank.getBankId() + "]\n")
+                .withStyle(ChatFormatting.AQUA));
+        if (premises.isEmpty()) {
+            body.append(Component.literal("No premises configured.")
+                    .withStyle(ChatFormatting.YELLOW));
+        } else {
+            for (OwnerPcPremisePayload premise : premises) {
+                body.append(clickablePremiseId(premise.premiseId()));
+                body.append(Component.literal(" | " + premise.status().name()
+                        + " | " + premise.mode().name()
+                        + " | areas " + premise.safeAreaCount()
+                        + " | vaults " + premise.readyVaultCount() + "/" + premise.vaultCount()
+                        + "\n").withStyle(ChatFormatting.GRAY));
+            }
+        }
+        source.sendSystemMessage(adminPremisePanel("Bank Premises", body));
+        return 1;
+    }
+
+    private static int adminPremiseInfo(CommandSourceStack source, String premiseId) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminPremiseLookup lookup = uniquePremise(source, premiseId);
+        if (lookup == null) {
+            return 0;
+        }
+        OwnerPcPremisePayload premise = lookup.premise();
+        String blockers = premise.deleteBlockers().isEmpty()
+                ? "None"
+                : String.join(", ", premise.deleteBlockers().stream().map(Enum::name).toList());
+        MutableComponent body = Component.empty()
+                .append(Component.literal("Bank: ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(lookup.bank().getBankName() + " ["
+                        + lookup.bank().getBankId() + "]\n").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal("Premise ID: ").withStyle(ChatFormatting.GRAY))
+                .append(clickablePremiseId(premise.premiseId()))
+                .append(Component.literal("\n"))
+                .append(Component.literal("Status: " + premise.status().name()
+                        + " | Mode: " + premise.mode().name() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Bounds: " + premise.dimension() + " "
+                        + premise.minX() + "," + premise.minY() + "," + premise.minZ()
+                        + " -> " + premise.maxX() + "," + premise.maxY() + "," + premise.maxZ()
+                        + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Exit: " + premise.exitDimension() + " "
+                        + premise.exitX() + "," + premise.exitY() + "," + premise.exitZ()
+                        + " yaw " + premise.exitYaw() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Safe areas: " + premise.safeAreaCount()
+                        + " | Ready vaults: " + premise.readyVaultCount() + "/"
+                        + premise.vaultCount() + "\n").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Owner-PC blockers: " + blockers)
+                        .withStyle(premise.canDelete() ? ChatFormatting.GREEN : ChatFormatting.RED));
+        source.sendSystemMessage(adminPremisePanel("Premise Details", body));
+        return 1;
+    }
+
+    private static int adminPremiseAdd(CommandSourceStack source, String bankQuery) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            return premiseError(source, "Run this command as a player to use the premise claim tool.");
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        Bank bank = resolveBankByName(centralBank, bankQuery);
+        if (bank == null) {
+            return premiseError(source, "Bank not found: " + bankQuery);
+        }
+        centralBank.getOrCreateBankMetadata(bank.getBankId());
+        SafetyDepositBoxService.ActionResult result = OwnerPcPremiseAdminService.startClaimSession(
+                source.getServer(), centralBank, player, bank.getBankId(),
+                SafeClaimToolPurpose.PREMISE_CREATE, "");
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminPremiseDelete(CommandSourceStack source, String premiseId) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        AdminPremiseLookup lookup = uniquePremise(source, premiseId);
+        if (lookup == null) {
+            return 0;
+        }
+        OwnerPcPremiseService.Result result = OwnerPcPremiseAdminService.forceDelete(
+                source.getServer(), lookup.centralBank(), source.getPlayer(),
+                lookup.bank().getBankId(), lookup.premise().premiseId());
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminPremiseMode(CommandSourceStack source,
+                                        String premiseId,
+                                        String modeRaw) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        SafePremiseMode mode = SafePremiseMode.parse(
+                modeRaw == null ? "" : modeRaw.replace('-', '_'));
+        if (mode == null) {
+            return premiseError(source, "Mode must be PUBLIC or STAFF_ONLY.");
+        }
+        AdminPremiseLookup lookup = uniquePremise(source, premiseId);
+        if (lookup == null) {
+            return 0;
+        }
+        OwnerPcPremiseService.Result result = OwnerPcPremiseAdminService.execute(
+                source.getServer(), lookup.centralBank(), source.getPlayer(),
+                new OwnerPcPremiseActionPayload(
+                        lookup.bank().getBankId(), OwnerPcPremiseActionPayload.Action.SET_MODE,
+                        lookup.premise().premiseId(), mode));
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminPremiseExit(CommandSourceStack source, String premiseId) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            return premiseError(source, "Run this command as a player to use the premise exit tool.");
+        }
+        AdminPremiseLookup lookup = uniquePremise(source, premiseId);
+        if (lookup == null) {
+            return 0;
+        }
+        SafetyDepositBoxService.ActionResult result = OwnerPcPremiseAdminService.startClaimSession(
+                source.getServer(), lookup.centralBank(), player, lookup.bank().getBankId(),
+                SafeClaimToolPurpose.PREMISE_EXIT_EDIT, lookup.premise().premiseId());
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminPremiseCancel(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            return premiseError(source, "Run this command as a player to cancel a claim tool.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.finishSafeAreaClaimToolSession(
+                        player, "Administrator premise claim cancelled.");
+        return premiseResult(source, result.success(), result.message());
+    }
+
+    private static int adminPremiseHelp(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 0;
+        }
+        MutableComponent body = Component.empty()
+                .append(Component.literal("/ubs admin bank premise list [bank name or ID]\n"))
+                .append(Component.literal("/ubs admin bank premise info <premise ID>\n"))
+                .append(Component.literal("/ubs admin bank premise add <bank name or ID>\n"))
+                .append(Component.literal("/ubs admin bank premise delete <premise ID>\n"))
+                .append(Component.literal("/ubs admin bank premise mode <premise ID> <public|staff_only>\n"))
+                .append(Component.literal("/ubs admin bank premise exit <premise ID>\n"))
+                .append(Component.literal("/ubs admin bank premise cancel"));
+        source.sendSystemMessage(adminPremisePanel("Premise Commands", body));
+        return 1;
+    }
+
+    private static AdminPremiseLookup uniquePremise(CommandSourceStack source, String premiseId) {
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            premiseError(source, "Central bank data is not available.");
+            return null;
+        }
+        List<AdminPremiseLookup> matches = new ArrayList<>();
+        for (Bank bank : allBanks(centralBank)) {
+            for (OwnerPcPremisePayload premise : premisePayloads(
+                    source.getServer(), centralBank, bank)) {
+                if (premise.premiseId().equalsIgnoreCase(premiseId == null ? "" : premiseId.trim())) {
+                    matches.add(new AdminPremiseLookup(centralBank, bank, premise));
+                }
+            }
+        }
+        if (matches.isEmpty()) {
+            premiseError(source, "Premise not found: " + premiseId);
+            return null;
+        }
+        if (matches.size() > 1) {
+            premiseError(source, "Premise ID is ambiguous across banks: " + premiseId);
+            return null;
+        }
+        return matches.getFirst();
+    }
+
+    private static List<OwnerPcPremisePayload> premisePayloads(MinecraftServer server,
+                                                                CentralBank centralBank,
+                                                                Bank bank) {
+        if (server == null || centralBank == null || bank == null) {
+            return List.of();
+        }
+        CompoundTag metadata = centralBank.getBankMetadata().get(bank.getBankId());
+        return metadata == null
+                ? List.of()
+                : OwnerPcPremisePayloadBuilder.build(server, metadata, bank.getBankId());
+    }
+
+    private static List<Bank> allBanks(CentralBank centralBank) {
+        if (centralBank == null) {
+            return List.of();
+        }
+        List<Bank> banks = new ArrayList<>();
+        banks.add(centralBank);
+        centralBank.getBanks().values().stream()
+                .filter(bank -> bank != null && !centralBank.getBankId().equals(bank.getBankId()))
+                .sorted(Comparator.comparing(Bank::getBankName, String.CASE_INSENSITIVE_ORDER))
+                .forEach(banks::add);
+        return List.copyOf(banks);
+    }
+
+    private static int premiseResult(CommandSourceStack source, boolean success, String message) {
+        source.sendSystemMessage(Component.literal(message == null ? "" : message)
+                .withStyle(success ? ChatFormatting.GREEN : ChatFormatting.RED));
+        return success ? 1 : 0;
+    }
+
+    private static int premiseError(CommandSourceStack source, String message) {
+        return premiseResult(source, false, message);
+    }
+
+    private static Component adminPremisePanel(String title, Component body) {
+        return Component.literal("Ultimate Banking System - ")
+                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
+                .append(Component.literal(title + "\n").withStyle(ChatFormatting.AQUA))
+                .append(body);
+    }
+
+    private static Component clickablePremiseId(String premiseId) {
+        String value = premiseId == null ? "" : premiseId;
+        return Component.literal(value).setStyle(Style.EMPTY
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, value))
+                .withHoverEvent(new HoverEvent(
+                        HoverEvent.Action.SHOW_TEXT,
+                        Component.literal("Click to copy premise ID"))));
+    }
+
+    private record AdminPremiseLookup(CentralBank centralBank,
+                                      Bank bank,
+                                      OwnerPcPremisePayload premise) {
     }
 
     private static int showCentralBankPanel(CommandSourceStack source) {
@@ -801,6 +1721,11 @@ public class UBSAdminCommands {
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs centralbank interest set "))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Suggest /ubs centralbank interest set <rate>")))));
         body.append(moneyLiteral("\n"));
+        body.append(moneyLiteral("§f§l[§6Spot Market§f§l]")
+                .setStyle(Style.EMPTY
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs centralbank market set gold "))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Seed Central Bank gold or silver spot prices")))));
+        body.append(moneyLiteral("\n"));
         body.append(moneyLiteral("§f§l[§2Deposit§f§l]")
                 .setStyle(Style.EMPTY
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/ubs money deposit <accountId> <amount>"))
@@ -818,6 +1743,65 @@ public class UBSAdminCommands {
 
         source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "§eCentral Bank", body));
         return 1;
+    }
+
+    private static int centralBankMarketShow(CommandSourceStack source) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        MutableComponent body = Component.empty();
+        body.append(moneyLiteral("§7Global spot quotes published by the Central Bank.\n\n"));
+        for (CommodityMarketService.MarketQuote quote : CommodityMarketService.quotes(source.getServer())) {
+            String spot = quote.priced() ? MoneyText.abbreviateRoundedWithDollar(quote.spot()) : "Unpriced";
+            String bid = quote.priced() ? MoneyText.abbreviateRoundedWithDollar(quote.bid()) : "-";
+            String ask = quote.priced() ? MoneyText.abbreviateRoundedWithDollar(quote.ask()) : "-";
+            String change = quote.priced()
+                    ? (quote.changePercent().signum() >= 0 ? "+" : "")
+                    + quote.changePercent().stripTrailingZeros().toPlainString() + "%"
+                    : "Seed required";
+            body.append(moneyLiteral("§8- §e" + quote.displayName()
+                    + " §7Spot: §a" + spot
+                    + " §7Bid/Ask: §f" + bid + " / " + ask
+                    + " §7Change: §b" + change + "\n"));
+            body.append(moneyLiteral("  §8" + quote.formula() + " Source: " + quote.source() + "\n"));
+        }
+        body.append(moneyLiteral("\n§7Set first spot prices per ingot:\n"
+                + "§f/centralbank market set gold <price>\n"
+                + "§f/centralbank market set silver <price>"));
+        source.sendSystemMessage(ubsPanel(ChatFormatting.GOLD, "Central Bank Spot Market", body));
+        return 1;
+    }
+
+    private static int centralBankMarketSet(CommandSourceStack source, String commodityRaw, String priceRaw) {
+        if (!requireAdminPermission(source)) {
+            return 1;
+        }
+        CentralBank centralBank = BankManager.getCentralBank(source.getServer());
+        if (centralBank == null) {
+            source.sendSystemMessage(moneyLiteral("§cCentral bank data is not available."));
+            return 1;
+        }
+        String cleaned = priceRaw == null ? "" : priceRaw.replace("$", "").replace(",", "").trim();
+        BigDecimal price = parsePositiveAmount(source, cleaned);
+        if (price == null) {
+            return 1;
+        }
+        try {
+            CommodityMarketService.MarketQuote quote = CommodityMarketService.setSpot(
+                    source.getServer(),
+                    commodityRaw,
+                    price,
+                    source.getTextName()
+            );
+            String spot = MoneyText.abbreviateRoundedWithDollar(quote.spot());
+            source.sendSystemMessage(ubsPanel(ChatFormatting.GREEN, "Central Bank Spot Market",
+                    moneyLiteral("§a" + quote.displayName() + " spot set to §6" + spot
+                            + "§a per " + quote.unitName() + ".\n§7Phone Spot Market app now reflects this quote.")));
+            return 1;
+        } catch (IllegalArgumentException ex) {
+            source.sendSystemMessage(moneyLiteral("§c" + ex.getMessage()));
+            return 1;
+        }
     }
 
     private static int setCentralBankInterestRate(CommandSourceStack source, String rateStr) {
@@ -1918,131 +2902,6 @@ public class UBSAdminCommands {
         }
         source.sendSystemMessage(ubsPanel(ChatFormatting.RED, "§cFraud / Flag Queue", body));
         return 1;
-    }
-
-    private static int adminWebToggle(CommandSourceStack source, boolean enable) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        boolean running = mod.setWebAdminEnabled(source.getServer(), enable);
-        if (enable && !running) {
-            source.sendSystemMessage(moneyLiteral(
-                    "§cWeb dashboard failed to start. Check latest log for dependency/startup errors."
-            ));
-            return 1;
-        }
-
-        source.sendSystemMessage(moneyLiteral(enable
-                ? "§aWeb dashboard enabled."
-                : "§eWeb dashboard disabled."
-        ));
-        return adminWebStatus(source);
-    }
-
-    private static int adminWebStatus(CommandSourceStack source) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        boolean enabled = Config.WEB_ADMIN_ENABLED.get();
-        boolean running = mod.isWebAdminRunning();
-        String bindHost = mod.getWebAdminBindHost();
-        int bindPort = mod.getWebAdminBindPort();
-        String dashboardUrl = mod.getWebAdminDisplayUrl();
-
-        MutableComponent body = Component.empty();
-        body.append(moneyLiteral("§7Configured: " + (enabled ? "§aENABLED" : "§cDISABLED") + "\n"));
-        body.append(moneyLiteral("§7Runtime: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
-        body.append(moneyLiteral("§7Bind: §f" + bindHost + ":" + bindPort + "\n"));
-        body.append(moneyLiteral("§7Dashboard: §b" + dashboardUrl + "\n"));
-        if (isWildcardHost(bindHost)) {
-            body.append(moneyLiteral("§8Note: wildcard bind detected. Replace 127.0.0.1 with your server IP for remote clients.\n"));
-        }
-        body.append(moneyLiteral("\n§7Actions: "));
-        body.append(webActionButton("§aEnable", "/ubs web on", "Enable and start web dashboard"));
-        body.append(moneyLiteral(" "));
-        body.append(webActionButton("§cDisable", "/ubs web off", "Disable and stop web dashboard"));
-        body.append(moneyLiteral(" "));
-        body.append(webActionButton("§bLink", "/ubs web link", "Send clickable dashboard link"));
-
-        source.sendSystemMessage(ubsPanel(
-                running ? ChatFormatting.GREEN : ChatFormatting.YELLOW,
-                running ? "§aWeb Dashboard" : "§eWeb Dashboard",
-                body
-        ));
-        return 1;
-    }
-
-    private static int adminWebLink(CommandSourceStack source) {
-        if (!requireAdminPermission(source)) {
-            return 1;
-        }
-        UltimateBankingSystem mod = resolveModInstance(source);
-        if (mod == null) {
-            return 1;
-        }
-
-        String bindHost = mod.getWebAdminBindHost();
-        String dashboardUrl = mod.getWebAdminDisplayUrl();
-        boolean running = mod.isWebAdminRunning();
-
-        MutableComponent body = Component.empty();
-        body.append(moneyLiteral("§7Status: " + (running ? "§aRUNNING" : "§cSTOPPED") + "\n"));
-        body.append(moneyLiteral("§7URL: §b" + dashboardUrl + "\n\n"));
-        body.append(moneyLiteral("§f§l[§bOpen Dashboard§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, dashboardUrl))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Open dashboard in browser")))));
-        body.append(moneyLiteral(" "));
-        body.append(moneyLiteral("§f§l[§aCopy URL§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, dashboardUrl))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral("Copy dashboard URL")))));
-        if (isWildcardHost(bindHost)) {
-            body.append(moneyLiteral("\n§8For remote players, replace 127.0.0.1 with your server IP/domain."));
-        }
-
-        source.sendSystemMessage(ubsPanel(
-                running ? ChatFormatting.AQUA : ChatFormatting.GRAY,
-                "§bWeb Dashboard Link",
-                body
-        ));
-        return 1;
-    }
-
-    private static MutableComponent webActionButton(String label, String command, String hoverText) {
-        return moneyLiteral("§f§l[" + label + "§f§l]")
-                .setStyle(Style.EMPTY
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, moneyLiteral(hoverText))));
-    }
-
-    private static UltimateBankingSystem resolveModInstance(CommandSourceStack source) {
-        UltimateBankingSystem mod = UltimateBankingSystem.getInstance();
-        if (mod == null) {
-            source.sendSystemMessage(moneyLiteral("§cUBS mod instance is not available yet."));
-        }
-        return mod;
-    }
-
-    private static boolean isWildcardHost(String host) {
-        if (host == null || host.isBlank()) {
-            return true;
-        }
-        String cleaned = host.trim();
-        return "0.0.0.0".equals(cleaned)
-                || "::".equals(cleaned)
-                || "[::]".equals(cleaned)
-                || "*".equals(cleaned);
     }
 
     /**
@@ -3354,6 +4213,22 @@ public class UBSAdminCommands {
         String requested = bankNameRaw.trim();
         if (requested.isBlank()) {
             return null;
+        }
+        try {
+            UUID requestedId = UUID.fromString(requested);
+            if (requestedId.equals(centralBank.getBankId())) {
+                return centralBank;
+            }
+            Bank byId = centralBank.getBank(requestedId);
+            if (byId != null) {
+                return byId;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Continue with case-insensitive name matching.
+        }
+        if (centralBank.getBankName() != null
+                && centralBank.getBankName().trim().equalsIgnoreCase(requested)) {
+            return centralBank;
         }
         return centralBank.getBanks().values().stream()
                 .filter(bank -> bank.getBankName() != null)

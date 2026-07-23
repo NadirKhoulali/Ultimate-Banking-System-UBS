@@ -30,6 +30,10 @@ public final class PickpocketKeyMappings {
         return PICKPOCKET_KEY.isDown() && Screen.hasShiftDown();
     }
 
+    public static boolean isHeistActionDown() {
+        return PICKPOCKET_KEY.isDown() && !Screen.hasShiftDown();
+    }
+
     public static String getBoundKeyName() {
         return PICKPOCKET_KEY.getTranslatedKeyMessage().getString();
     }

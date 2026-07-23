@@ -1,0 +1,45 @@
+﻿{
+    "credit":  "Made with Blockbench MCP template for Ultimate Banking System",
+    "parent":  "minecraft:block/block",
+    "ambientocclusion":  false,
+    "textures":  {
+                     "front":  "ultimatebankingsystem:item/quarter_american_front",
+                     "particle":  "ultimatebankingsystem:item/quarter_american_front",
+                     "back":  "ultimatebankingsystem:item/quarter_american_back"
+                 },
+    "elements":  [
+                     {
+                         "name":  "coin_layer_1",
+                         "from":  [
+                                      5.25,
+                                      0,
+                                      5.25
+                                  ],
+                         "to":  [
+                                    10.75,
+                                    0.13,
+                                    10.75
+                                ],
+                         "faces":  {
+                                       "up":  {
+                                                  "uv":  [
+                                                             0,
+                                                             0,
+                                                             16,
+                                                             16
+                                                         ],
+                                                  "texture":  "#front"
+                                              },
+                                       "down":  {
+                                                    "uv":  [
+                                                               0,
+                                                               0,
+                                                               16,
+                                                               16
+                                                           ],
+                                                    "texture":  "#back"
+                                                }
+                                   }
+                     }
+                 ]
+}

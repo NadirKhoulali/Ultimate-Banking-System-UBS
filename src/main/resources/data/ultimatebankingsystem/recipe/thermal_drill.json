@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IPI", "RDR", "III"],
+  "key": {
+    "I": { "item": "minecraft:iron_block" },
+    "P": { "item": "minecraft:piston" },
+    "R": { "item": "minecraft:redstone_block" },
+    "D": { "item": "minecraft:diamond" }
+  },
+  "result": { "id": "ultimatebankingsystem:thermal_drill", "count": 1 }
+}

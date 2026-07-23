@@ -1,0 +1,16 @@
+# Adapted for the NeoForge OBJ loader from the source materials.
+newmtl m_2a8ea953-6179-0551-ce79-9765363f8d11
+Ka 1.000000 1.000000 1.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.000000
+illum 2
+map_Kd ultimatebankingsystem:block/heist_drill_screen
+
+newmtl m_88f5d01e-a1cd-78ae-4d07-8a17550c43a7
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.000000
+illum 2
+map_Kd ultimatebankingsystem:block/heist_drill

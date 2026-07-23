@@ -11,11 +11,16 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-
+    public static final int DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT = 20;
 
     public static final ModConfigSpec.IntValue TRANSACTIONS_PER_MINUTE = BUILDER
             .comment("The Amount of transactions possible per player per minute")
             .defineInRange("TransactionsPerMinute", 10, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.IntValue ACCOUNT_TRANSACTION_LOG_LIMIT = BUILDER
+            .comment("Maximum number of newest transaction log entries saved per account. "
+                    + "Keeping this bounded reduces banking world-data save time and file size.")
+            .defineInRange("AccountTransactionLogLimit", DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT, 1, 1000);
 
     public static final ModConfigSpec.IntValue PAYMENT_TERMINAL_FEEDBACK_TICKS = BUILDER
             .comment("Legacy terminal feedback setting. Terminal payment lock/feedback is currently fixed to 2 seconds.")
@@ -549,22 +554,6 @@ public class Config {
             )
             .defineInRange("MaxCustomBankInterestRate", 100.00, 0.01, Double.MAX_VALUE);
 
-    public static final ModConfigSpec.BooleanValue WEB_ADMIN_ENABLED = BUILDER
-            .comment("Enable embedded UBS web admin panel (HTTP + WebSocket).")
-            .define("WebAdminEnabled", false);
-
-    public static final ModConfigSpec.ConfigValue<String> WEB_ADMIN_BIND_HOST = BUILDER
-            .comment("Bind host for embedded web admin server (for example: 0.0.0.0, 127.0.0.1).")
-            .define("WebAdminBindHost", "0.0.0.0");
-
-    public static final ModConfigSpec.IntValue WEB_ADMIN_PORT = BUILDER
-            .comment("Bind port for embedded web admin server.")
-            .defineInRange("WebAdminPort", 8080, 1, 65535);
-
-    public static final ModConfigSpec.BooleanValue WEB_ADMIN_WARN_UNSECURED = BUILDER
-            .comment("Log a startup warning when web admin is enabled without authentication.")
-            .define("WebAdminWarnUnsecured", true);
-
     // a list of strings that are treated as resource locations for items
     public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER
             .comment("A list of items to log on common setup.")
@@ -583,12 +572,18 @@ public class Config {
             .define("HudEnabledByDefault", true);
 
     public static final ModConfigSpec.ConfigValue<String> HUD_CORNER = BUILDER
-            .comment("HUD anchor corner: TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT.")
+            .comment("Default balance HUD anchor: TOP_LEFT, TOP_RIGHT, MIDDLE_LEFT, MIDDLE_RIGHT, "
+                    + "BOTTOM_LEFT, or BOTTOM_RIGHT.")
             .define("HudCorner", "TOP_RIGHT");
 
     public static final ModConfigSpec.IntValue HUD_TEXT_COLOR = BUILDER
-            .comment("HUD text color as packed RGB integer (example: 0x55FF55).")
+            .comment("Balance HUD amount and accent color as packed RGB integer (example: 0x55FF55).")
             .defineInRange("HudTextColor", 0x55FF55, 0x000000, 0xFFFFFF);
+
+    public static final ModConfigSpec.BooleanValue CLAIM_OUTLINES_SHOW_ALL_PLAYERS = BUILDER
+            .comment("Whether claim-mode outlines may show claims owned by other players. "
+                    + "Disabled by default so players only see their own claims.")
+            .define("ClaimOutlinesShowAllPlayers", false);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

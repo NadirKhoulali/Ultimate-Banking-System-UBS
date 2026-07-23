@@ -1,0 +1,16 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "pattern": [
+  "SSS",
+  "SSS"
+ ],
+ "key": {
+  "S": {
+   "tag": "c:ingots/silver"
+  }
+ },
+ "result": {
+  "id": "ultimatebankingsystem:silver_bar",
+  "count": 1
+ }
+}

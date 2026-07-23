@@ -1,6 +1,79 @@
 {
-  "parent": "minecraft:item/generated",
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "gui_light": "front",
   "textures": {
-    "layer0": "ultimatebankingsystem:block/safety_deposit_box_row"
+    "box": "ultimatebankingsystem:block/safety_deposit_box_row",
+    "particle": "ultimatebankingsystem:block/safety_deposit_box_row"
+  },
+  "elements": [
+    {
+      "from": [2, 3.25, 3],
+      "to": [14, 13, 13],
+      "faces": {
+        "north": {"texture": "#box"},
+        "east": {"texture": "#box"},
+        "south": {"texture": "#box"},
+        "west": {"texture": "#box"},
+        "up": {"texture": "#box"},
+        "down": {"texture": "#box"}
+      }
+    },
+    {
+      "from": [2.45, 3.8, 2.25],
+      "to": [13.55, 12.45, 3.15],
+      "faces": {
+        "north": {"texture": "#box"},
+        "east": {"texture": "#box"},
+        "south": {"texture": "#box"},
+        "west": {"texture": "#box"},
+        "up": {"texture": "#box"},
+        "down": {"texture": "#box"}
+      }
+    },
+    {
+      "from": [10.9, 7.1, 1.95],
+      "to": [12.35, 8.55, 2.7],
+      "faces": {
+        "north": {"texture": "#box"},
+        "east": {"texture": "#box"},
+        "south": {"texture": "#box"},
+        "west": {"texture": "#box"},
+        "up": {"texture": "#box"},
+        "down": {"texture": "#box"}
+      }
+    }
+  ],
+  "display": {
+    "gui": {
+      "rotation": [30, -135, 0],
+      "translation": [0, -0.25, 0],
+      "scale": [0.66, 0.66, 0.66]
+    },
+    "ground": {
+      "translation": [0, 3, 0],
+      "scale": [0.3, 0.3, 0.3]
+    },
+    "thirdperson_righthand": {
+      "rotation": [75, 45, 0],
+      "translation": [0, 2.5, 0],
+      "scale": [0.38, 0.38, 0.38]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [75, 45, 0],
+      "translation": [0, 2.5, 0],
+      "scale": [0.38, 0.38, 0.38]
+    },
+    "firstperson_righthand": {
+      "rotation": [0, 80, 0],
+      "scale": [0.38, 0.38, 0.38]
+    },
+    "firstperson_lefthand": {
+      "rotation": [0, 80, 0],
+      "scale": [0.38, 0.38, 0.38]
+    },
+    "fixed": {
+      "scale": [0.5, 0.5, 0.5]
+    }
   }
 }

@@ -1,337 +1,222 @@
 # Developer Integration Tutorial
 
-This guide explains how to integrate UBS into another mod dev environment for the current NeoForge 1.21.1 branch.
+This guide targets UBS `2.0.0`, Minecraft `1.21.1`, NeoForge, and Java `21`.
 
-## 1. UBS coordinates and mod id
+## 1. Identity
 
-Current UBS identity:
-
-- Maven group: `net.austizz.ultimatebankingsystem`
+- Mod ID: `ultimatebankingsystem`
+- Group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
-- Mod id: `ultimatebankingsystem`
-- Current version in this repo: `1.2.5`
+- API version: `2.0.0`
 
-Dependency coordinate format:
+## 2. Add UBS to Development
 
-```text
-net.austizz.ultimatebankingsystem:ultimatebankingsystem:<ubs_version>
-```
-
-## 2. Do you need Gradle dependency?
-
-Yes, if your code imports UBS classes (for example `UltimateBankingApiProvider`), your mod must have UBS on the compile classpath.
-
-You also need UBS present at runtime for tests/dev runs if you actually call UBS APIs.
-
-## 3. Choose integration mode
-
-Use one:
-
-1. Composite build (best when developing both mods locally)
-2. `mavenLocal()` (best if UBS is built/published locally)
-3. `libs/` jar dependency (quick local setup)
-
-## 4. Mode A: Composite build (recommended)
-
-### 4.1 In your mod's `settings.gradle`
-
-```gradle
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-    }
-}
-
-plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
-}
-
-includeBuild("../Ultimate-Banking-System-UBS-")
-```
-
-Point the path to your local UBS clone.
-
-### 4.2 In your mod's `build.gradle`
-
-```gradle
-dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
-
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
-}
-```
-
-## 5. Mode B: Publish UBS to `mavenLocal()`
-
-### 5.1 In UBS repo
-
-```bash
-./gradlew publishToMavenLocal
-```
-
-Windows:
-
-```bat
-gradlew.bat publishToMavenLocal
-```
-
-### 5.2 In your mod `build.gradle`
+For a local jar:
 
 ```gradle
 repositories {
-    mavenLocal()
-    maven { url "https://libraries.minecraft.net" }
-    // other repos...
+    flatDir { dirs "libs" }
 }
 
 dependencies {
-    compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
-    runtimeOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:1.2.4"
+    compileOnly name: "ultimatebankingsystem-2.0.0"
+    localRuntime name: "ultimatebankingsystem-2.0.0"
 }
 ```
 
-## 6. Mode C: Local `libs/` jar
-
-### 6.1 Build UBS jar
-
-```bash
-./gradlew build
-```
-
-Take the produced UBS jar from `build/libs/` and place it in your mod's `libs/`.
-
-### 6.2 In your mod `build.gradle`
+For local Maven publication, run `gradlew.bat publishToMavenLocal` in UBS and add `mavenLocal()` plus:
 
 ```gradle
-repositories {
-    flatDir {
-        dirs "libs"
-    }
-}
-
-dependencies {
-    compileOnly name: "ultimatebankingsystem-1.2.4"
-    runtimeOnly name: "ultimatebankingsystem-1.2.4"
-}
+compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.0.0"
+localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.0.0"
 ```
 
-## 7. Declare mod dependency in `mods.toml`
+Do not shade or jarJar UBS.
 
-In your mod's `src/main/resources/META-INF/mods.toml`, replace `<your_modid>` with your mod id.
+## 3. Declare the NeoForge Dependency
 
-### Required UBS
+Required integration:
 
 ```toml
-[[dependencies.<your_modid>]]
+[[dependencies.yourmod]]
 modId="ultimatebankingsystem"
 type="required"
-versionRange="[1.2.0,)"
+versionRange="[2.0.0,)"
 ordering="AFTER"
 side="BOTH"
 ```
 
-### Optional UBS integration
-
-```toml
-[[dependencies.<your_modid>]]
-modId="ultimatebankingsystem"
-type="optional"
-versionRange="[1.2.0,)"
-ordering="AFTER"
-side="BOTH"
-```
-
-Use `required` if your mod cannot function without UBS.  
-Use `optional` if UBS features are add-ons.
-
-## 8. Required vs optional code patterns
-
-### 8.1 Required pattern
-
-You can call UBS API directly during normal server lifecycle points.
+For optional integration, use `type="optional"` and isolate all UBS-linked classes until the mod is present.
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-if (!api.isServerAvailable()) {
+if (!ModList.get().isLoaded("ultimatebankingsystem")) {
     return;
 }
 ```
 
-### 8.2 Optional pattern (important)
-
-Guard integration so your mod does not crash when UBS is missing.
+## 4. Obtain APIs
 
 ```java
-import net.neoforged.fml.ModList;
-
-boolean hasUbs = ModList.get().isLoaded("ultimatebankingsystem");
-if (!hasUbs) {
-    return;
-}
+UltimateBankingApi finance = UltimateBankingApiProvider.get();
+UltimateServerApi server = UltimateBankingApiProvider.server();
+UltimateBankManagementApi banks = UltimateBankingApiProvider.banks();
+UltimateShopManagementApi shops = UltimateBankingApiProvider.shops();
+UltimateHeistApi heists = UltimateBankingApiProvider.heists();
 ```
 
-Keep UBS-specific code in classes only touched when UBS is loaded.
+At server startup, `isAvailable()` can be false until the world and Central Bank data are ready.
 
-Do not `jarJar`/shade UBS into your own mod jar. UBS should load as a separate mod.
+## 5. Settle a Payment
 
-## 9. Basic API bootstrap
-
-```java
-import net.austizz.ultimatebankingsystem.api.UltimateBankingApi;
-import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
-
-UltimateBankingApi api = UltimateBankingApiProvider.get();
-String apiVersion = api.getApiVersion();
-```
-
-Dashboard API bootstrap:
+Run on the server thread:
 
 ```java
-import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApi;
-import net.austizz.ultimatebankingsystem.api.dashboard.UltimateBankingDashboardApiProvider;
-
-UltimateBankingDashboardApi dashboardApi = UltimateBankingDashboardApiProvider.get();
-String dashboardApiVersion = dashboardApi.getDashboardApiVersion();
-```
-
-Use the dashboard API when your mod wants to appear in the UBS web dashboard instead of hosting its own web server. Full step-by-step docs: [Dashboard Addon API](Dashboard-Addon-API.md).
-
-## 10. Common usage examples
-
-### Account read/write
-
-```java
-import java.math.BigDecimal;
-
-var bal = api.getBalance(accountId);
-if (bal.success()) {
-    // bal.balanceAfter()
-}
-
-var tx = api.transfer(senderAccountId, receiverAccountId, new BigDecimal("250.50"), "EXAMPLE_ORDER:1234");
-if (!tx.success()) {
-    // tx.reason()
-}
-```
-
-### Money display labels
-
-```java
-String cardPrice = api.formatMoneyRounded(new BigDecimal("1250.75")); // "$1.25K" by default
-String wholeDollarPrice = api.formatMoneyRounded(1250L);
-```
-
-Use `formatMoneyRounded` for player-facing UI labels, alerts, and cards. Keep raw `BigDecimal` values for validation, settlement, sorting, and saved data.
-
-### Player account checks
-
-```java
-import java.util.List;
-import java.util.UUID;
-
-if (!api.playerHasAnyAccount(playerId)) {
-    // Ask the player to create a UBS account before using this integration.
-}
-
-List<UUID> accountIds = api.getPlayerAccountIds(playerId);
-
-if (api.playerHasAvailablePrimaryAccount(playerId)
-        && api.primaryAccountCanSend(playerId, new BigDecimal("250.50"))) {
-    // The player's primary account exists and can send this payment.
-}
-```
-
-`playerHasAvailablePrimaryAccount`, `primaryAccountCanSend`, and `primaryAccountCanReceive` require an explicitly selected primary account. Use `playerHasAvailableAccount` when any usable owned account is acceptable.
-
-### UI alerts
-
-```java
-import net.austizz.ultimatebankingsystem.api.ApiAlertTone;
-
-api.sendUiAlert(
-        playerId,
-        "Auction House",
-        "Your bid was accepted.",
-        ApiAlertTone.SUCCESS,
-        4200
+ApiTransactionResult result = finance.transfer(
+        buyerAccountId,
+        sellerAccountId,
+        new BigDecimal("249.95"),
+        "AUCTION:" + auctionId
 );
 
-api.sendUiAlert(
-        playerId,
-        "Auction House",
-        "Raw payload-style warning.",
-        true,
-        5000,
-        ApiAlertTone.WARNING.id()
-);
-```
-
-### Cheque / note issue
-
-```java
-var cheque = api.issueCheque(
-        sourceAccountId,
-        recipientPlayerId,
-        300L,
-        writerPlayerId,
-        "Cashier",
-        "Recipient"
-);
-
-if (cheque.success()) {
-    ItemStack stack = cheque.itemStack();
+if (!result.success()) {
+    // Show result.reason(); do not apply the sale.
 }
 ```
 
-### Cash bills
+Use unique, meaningful references for auditability and idempotency in your own system.
+
+## 6. Ownership Checks
 
 ```java
-var cash = api.giveDollarBills(playerId, 20, 5); // 5x $20 bills
-int cashOnHand = api.getPlayerCashOnHand(playerId);
+if (finance.playerOwnsAnyShop(playerId)) {
+    List<UUID> shopIds = finance.getPlayerOwnedShopIds(playerId);
+}
+
+if (banks.playerOwnsAnyBank(playerId)) {
+    List<ApiBankManagementSnapshot> owned = banks.getOwnedBanks(playerId);
+}
+
+boolean canManage = shops.playerCanManageShop(playerId, shopId);
+boolean canBuild = shops.playerCanBuildInShop(playerId, shopId);
 ```
 
-### Coins
+Use management APIs when you need full snapshots; root finance helpers are intended for lightweight compatibility checks.
+
+## 7. Create or Manage a Shop
 
 ```java
-var coins = api.giveCoins(playerId, 25, 8); // 8x quarters
-int quarterCount = api.getPlayerCoinCount(playerId, 25);
+ApiManagementResult created = shops.createShop(ownerId, "North Market", "RETAIL");
+if (!created.success()) {
+    // owner may be offline, at capacity, or validation may have failed
+}
+
+shops.setOpeningHours(ownerId, shopId, "ALL|09:00|21:00");
+shops.setParticipantRole(ownerId, shopId, employeeId, "MANAGER");
 ```
 
-### Shop/terminal-style payment to a specific merchant account
+Never assume role strings. Read `getSupportedParticipantRoles()` and shop types from `getSupportedShopTypes()`.
+
+## 8. Read Bank Operations
 
 ```java
-var pay = api.shopPurchase(
-        payerAccountId,
-        merchantAccountId,
-        45L,
-        "Coffee Counter",
-        "pos-terminal-01"
+banks.getBank(bankId).ifPresent(bank -> {
+    BigDecimal deposits = bank.totalDeposits();
+    boolean attacked = bank.underAttack();
+    int readyVaults = bank.readyVaultCount();
+});
+
+ApiSafeDepositSetupSnapshot setup = banks.getSafeDepositSetup(bankId);
+if (!setup.enabled()) {
+    setup.missingRequirements().forEach(logger::warn);
+}
+```
+
+Safe Access changes and rates still require an authorized actor ID.
+
+## 9. Read and Control Heist Planning
+
+```java
+Optional<ApiHeistSessionSnapshot> current = heists.getPlayerSession(playerId);
+long cooldownMs = heists.getPlayerCooldownRemainingMillis(playerId);
+
+ApiManagementResult ready = heists.setReady(playerId, true);
+```
+
+World target scans and all actions belong on the server thread. Do not use these methods from client render code.
+
+## 10. Listen for Heists
+
+```java
+@SubscribeEvent
+public static void onHeist(HeistLifecycleEvent event) {
+    if (event.stage() == HeistLifecycleEvent.Stage.ALARMED) {
+        // Trigger your own server-side security integration.
+    }
+}
+```
+
+Register the listener on `NeoForge.EVENT_BUS`.
+
+## 11. Value Custom Loot
+
+Implement `HeistLootValueProvider`, then:
+
+```java
+HeistLootValueRegistry.register(provider);
+```
+
+Return a value only for stacks your mod owns. Let other providers or UBS handle unknown stacks.
+
+For modded doors, implement `HeistDoorAdapter` and register it with `HeistDoorAdapterRegistry`.
+
+## 12. Notifications
+
+```java
+finance.sendNotification(playerId,
+        ApiNotificationRequest.security("Vault access was denied")
+                .source("Your Security Mod")
+                .channel("security")
+                .priority(ApiNotificationPriority.HIGH)
+                .build());
+```
+
+Use stable IDs for progress/state replacement and channels for scoped cleanup. Use legacy alerts only when maintaining an older integration.
+
+## 13. Market Values
+
+```java
+ApiShopPriceStatistics prices = finance.getItemShopPriceStatistics(
+        itemStack,
+        ApiShopPriceScope.REGULAR
 );
+
+if (prices.available()) {
+    long fairValueCents = prices.medianPriceCents();
+}
 ```
 
-## 11. Verification checklist
+Median is usually safer for player markets; average is also exposed when your design explicitly needs it.
 
-After setup:
+## 14. Thread Handoff
 
-1. `./gradlew build` succeeds in your mod.
-2. Game starts with both mods in dev run.
-3. `ModList.get().isLoaded("ultimatebankingsystem")` reports true when expected.
-4. `api.isServerAvailable()` becomes true after server data init.
-5. A test API call (for example `getPlayerAccountCount`) returns expected values.
+When an asynchronous service needs UBS data, schedule the call:
 
-## 12. Common mistakes
+```java
+minecraftServer.execute(() -> {
+    ApiManagementResult result = shops.renameShop(actorId, shopId, newName);
+    // Return the result to your async system after this block.
+});
+```
 
-- Missing UBS on compile classpath:
-  - Causes compile errors for UBS imports.
-- Missing UBS on runtime classpath:
-  - Causes `ClassNotFound`/`NoClassDefFound` during dev run.
-- `optional` mods.toml but unguarded UBS class usage:
-  - Crashes when UBS is not installed.
-- Wrong version range in mods.toml:
-  - Dependency mismatch at load.
+Do not call mutations or live target scans directly from HTTP threads, database pools, render threads, or arbitrary executors.
 
-## 13. Related docs
+## 15. Failure Handling
 
-- [Developer API](Developer-API.md)
-- [Configuration](Configuration.md)
-- [Admin Commands](Admin-Commands.md)
+- Treat empty `Optional` and `success=false` as expected outcomes.
+- Show `reason`/`message` to operators where appropriate.
+- Do not retry financial mutations blindly.
+- Re-fetch snapshots after a successful mutation.
+- Never edit UBS saved NBT to simulate an API operation.
+
+Full method and record reference: [Developer API](Developer-API.md).
+

@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,mount=floor": { "model": "ultimatebankingsystem:block/heist_drill" },
+    "facing=east,mount=floor": { "model": "ultimatebankingsystem:block/heist_drill", "y": 90 },
+    "facing=south,mount=floor": { "model": "ultimatebankingsystem:block/heist_drill", "y": 180 },
+    "facing=west,mount=floor": { "model": "ultimatebankingsystem:block/heist_drill", "y": 270 },
+    "facing=north,mount=target": { "model": "ultimatebankingsystem:block/heist_drill" },
+    "facing=east,mount=target": { "model": "ultimatebankingsystem:block/heist_drill", "y": 90 },
+    "facing=south,mount=target": { "model": "ultimatebankingsystem:block/heist_drill", "y": 180 },
+    "facing=west,mount=target": { "model": "ultimatebankingsystem:block/heist_drill", "y": 270 }
+  }
+}

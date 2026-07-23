@@ -16,7 +16,6 @@ import net.minecraft.world.entity.player.Player;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -248,43 +247,19 @@ public class UserTransaction {
         if (sender == null) {
             return BigDecimal.ZERO;
         }
-        LocalDate today = LocalDate.now();
-        BigDecimal total = BigDecimal.ZERO;
-        for (UserTransaction tx : sender.getTransactions().values()) {
-            if (tx == null) {
-                continue;
-            }
-            if (!sender.getAccountUUID().equals(tx.getSenderUUID())) {
-                continue;
-            }
-            if (tx.getTimestamp().toLocalDate().isEqual(today)) {
-                total = total.add(tx.getAmount());
-            }
-        }
-        return total.setScale(2, RoundingMode.HALF_EVEN);
+        return sender.getDailyOutgoingTransactionVolume().setScale(2, RoundingMode.HALF_EVEN);
     }
 
     private static BigDecimal computeBankDailyOutgoing(Bank bank) {
         if (bank == null) {
             return BigDecimal.ZERO;
         }
-        LocalDate today = LocalDate.now();
         BigDecimal total = BigDecimal.ZERO;
         for (AccountHolder account : bank.getBankAccounts().values()) {
             if (account == null) {
                 continue;
             }
-            for (UserTransaction tx : account.getTransactions().values()) {
-                if (tx == null) {
-                    continue;
-                }
-                if (!account.getAccountUUID().equals(tx.getSenderUUID())) {
-                    continue;
-                }
-                if (tx.getTimestamp().toLocalDate().isEqual(today)) {
-                    total = total.add(tx.getAmount());
-                }
-            }
+            total = total.add(account.getDailyOutgoingTransactionVolume());
         }
         return total.setScale(2, RoundingMode.HALF_EVEN);
     }

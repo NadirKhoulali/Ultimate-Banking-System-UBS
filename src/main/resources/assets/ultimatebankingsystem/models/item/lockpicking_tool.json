@@ -1,0 +1,78 @@
+{
+  "gui_light": "front",
+  "textures": {
+    "metal": "minecraft:block/iron_block",
+    "grip": "minecraft:block/polished_blackstone"
+  },
+  "elements": [
+    {
+      "from": [6.4, 1.0, 7.0],
+      "to": [9.6, 5.1, 9.0],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": -22.5},
+      "faces": {
+        "north": {"texture": "#grip"}, "east": {"texture": "#grip"},
+        "south": {"texture": "#grip"}, "west": {"texture": "#grip"},
+        "up": {"texture": "#grip"}, "down": {"texture": "#grip"}
+      }
+    },
+    {
+      "from": [7.55, 4.5, 7.45],
+      "to": [8.45, 13.4, 8.55],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": -22.5},
+      "faces": {
+        "north": {"texture": "#metal"}, "east": {"texture": "#metal"},
+        "south": {"texture": "#metal"}, "west": {"texture": "#metal"},
+        "up": {"texture": "#metal"}, "down": {"texture": "#metal"}
+      }
+    },
+    {
+      "from": [7.55, 12.4, 7.45],
+      "to": [10.2, 13.4, 8.55],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": -22.5},
+      "faces": {
+        "north": {"texture": "#metal"}, "east": {"texture": "#metal"},
+        "south": {"texture": "#metal"}, "west": {"texture": "#metal"},
+        "up": {"texture": "#metal"}, "down": {"texture": "#metal"}
+      }
+    },
+    {
+      "from": [6.8, 1.2, 5.6],
+      "to": [9.2, 4.4, 7.2],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": 22.5},
+      "faces": {
+        "north": {"texture": "#grip"}, "east": {"texture": "#grip"},
+        "south": {"texture": "#grip"}, "west": {"texture": "#grip"},
+        "up": {"texture": "#grip"}, "down": {"texture": "#grip"}
+      }
+    },
+    {
+      "from": [7.65, 4.0, 5.9],
+      "to": [8.35, 13.6, 6.9],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": 22.5},
+      "faces": {
+        "north": {"texture": "#metal"}, "east": {"texture": "#metal"},
+        "south": {"texture": "#metal"}, "west": {"texture": "#metal"},
+        "up": {"texture": "#metal"}, "down": {"texture": "#metal"}
+      }
+    },
+    {
+      "from": [5.8, 12.8, 5.9],
+      "to": [8.3, 13.6, 6.9],
+      "rotation": {"origin": [8, 8, 8], "axis": "z", "angle": 22.5},
+      "faces": {
+        "north": {"texture": "#metal"}, "east": {"texture": "#metal"},
+        "south": {"texture": "#metal"}, "west": {"texture": "#metal"},
+        "up": {"texture": "#metal"}, "down": {"texture": "#metal"}
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {"rotation": [0, 90, -35], "translation": [0, 2, 1], "scale": [0.75, 0.75, 0.75]},
+    "thirdperson_lefthand": {"rotation": [0, -90, 35], "translation": [0, 2, 1], "scale": [0.75, 0.75, 0.75]},
+    "firstperson_righthand": {"rotation": [0, 90, -25], "translation": [1.13, 3.2, 1.13], "scale": [0.7, 0.7, 0.7]},
+    "firstperson_lefthand": {"rotation": [0, -90, 25], "translation": [1.13, 3.2, 1.13], "scale": [0.7, 0.7, 0.7]},
+    "ground": {"translation": [0, 2, 0], "scale": [0.5, 0.5, 0.5]},
+    "gui": {"rotation": [20, 30, 0], "scale": [0.9, 0.9, 0.9]},
+    "fixed": {"rotation": [0, 180, 0], "scale": [0.75, 0.75, 0.75]}
+  }
+}

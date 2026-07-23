@@ -984,4 +984,14 @@ public class BankVaultDoorBlockEntityModel {
 	public void renderToBuffer(PoseStack poseStack, VertexConsumer vertexConsumer, int packedLight, int packedOverlay, int color) {
 		bank_vault_door_block_entity_root.render(poseStack, vertexConsumer, packedLight, packedOverlay, color);
 	}
+
+	public void renderItemPreviewToBuffer(PoseStack poseStack, VertexConsumer vertexConsumer, int packedLight, int packedOverlay, int color) {
+		boolean staticVisible = static_bank_wall_and_opening.visible;
+		static_bank_wall_and_opening.visible = false;
+		try {
+			bank_vault_door_block_entity_root.render(poseStack, vertexConsumer, packedLight, packedOverlay, color);
+		} finally {
+			static_bank_wall_and_opening.visible = staticVisible;
+		}
+	}
 }

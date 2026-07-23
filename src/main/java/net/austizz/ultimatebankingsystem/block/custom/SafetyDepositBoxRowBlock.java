@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRow
 import net.austizz.ultimatebankingsystem.item.SafetyDepositBoxInsertItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
@@ -32,6 +33,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class SafetyDepositBoxRowBlock extends HorizontalDirectionalBlock implements EntityBlock {
     public static final MapCodec<SafetyDepositBoxRowBlock> CODEC = simpleCodec(SafetyDepositBoxRowBlock::new);
+    private static final int MAX_VERTICAL_STACK_ROWS = 4;
     private static final VoxelShape WALL_SHAPE = Block.box(0.0D, 0.0D, 0.0D, 16.0D, 16.0D, 16.0D);
 
     public SafetyDepositBoxRowBlock(Properties properties) {
@@ -46,7 +48,17 @@ public class SafetyDepositBoxRowBlock extends HorizontalDirectionalBlock impleme
 
     @Override
     public @Nullable BlockState getStateForPlacement(BlockPlaceContext context) {
-        return defaultBlockState().setValue(FACING, context.getHorizontalDirection());
+        if (wouldExceedVerticalStackLimit(context)) {
+            Player player = context.getPlayer();
+            if (player instanceof ServerPlayer serverPlayer) {
+                serverPlayer.sendSystemMessage(Component.literal("Safety deposit box rows can only be stacked up to "
+                        + MAX_VERTICAL_STACK_ROWS + " high."));
+            }
+            return null;
+        }
+        // Opposite of the player's look direction so the door side (model north /
+        // entrance) faces the player who placed it.
+        return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
     }
 
     @Override
@@ -133,10 +145,38 @@ public class SafetyDepositBoxRowBlock extends HorizontalDirectionalBlock impleme
         return true;
     }
 
-    private static int doorIndexForHit(BlockState state, BlockPos pos, BlockHitResult hit) {
+    public static int doorIndexForHit(BlockState state, BlockPos pos, BlockHitResult hit) {
         Vec3 local = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
         double v = 1.0D - local.y;
         int index = (int) Math.floor(Math.max(0.0D, Math.min(0.999D, v)) * SafetyDepositBoxRowBlockEntity.DOOR_COUNT);
         return Math.max(0, Math.min(SafetyDepositBoxRowBlockEntity.DOOR_COUNT - 1, index));
+    }
+
+    private static boolean wouldExceedVerticalStackLimit(BlockPlaceContext context) {
+        if (context == null || context.getLevel() == null) {
+            return false;
+        }
+        Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        if (!level.getBlockState(pos).canBeReplaced(context)) {
+            pos = pos.relative(context.getClickedFace());
+        }
+        int rows = 1
+                + countStackedRows(level, pos, Direction.UP)
+                + countStackedRows(level, pos, Direction.DOWN);
+        return rows > MAX_VERTICAL_STACK_ROWS;
+    }
+
+    private static int countStackedRows(Level level, BlockPos origin, Direction direction) {
+        int count = 0;
+        BlockPos.MutableBlockPos cursor = origin.mutable();
+        while (count < MAX_VERTICAL_STACK_ROWS) {
+            cursor.move(direction);
+            if (!(level.getBlockState(cursor).getBlock() instanceof SafetyDepositBoxRowBlock)) {
+                break;
+            }
+            count++;
+        }
+        return count;
     }
 }

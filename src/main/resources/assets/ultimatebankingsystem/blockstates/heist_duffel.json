@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "ultimatebankingsystem:block/heist_duffel" },
+    "facing=east": { "model": "ultimatebankingsystem:block/heist_duffel", "y": 90 },
+    "facing=south": { "model": "ultimatebankingsystem:block/heist_duffel", "y": 180 },
+    "facing=west": { "model": "ultimatebankingsystem:block/heist_duffel", "y": 270 }
+  }
+}

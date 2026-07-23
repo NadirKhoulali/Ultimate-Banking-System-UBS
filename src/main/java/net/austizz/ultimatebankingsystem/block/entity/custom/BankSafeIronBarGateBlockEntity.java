@@ -1,5 +1,7 @@
 package net.austizz.ultimatebankingsystem.block.entity.custom;
 
+import net.austizz.ultimatebankingsystem.bank.safebox.SafeAccessAuditService;
+
 import net.austizz.ultimatebankingsystem.block.custom.BankSafeIronBarGateBlock;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.minecraft.core.BlockPos;
@@ -20,6 +22,8 @@ public class BankSafeIronBarGateBlockEntity extends BlockEntity {
     private float previousAnimationProgress;
     private float animationProgress;
     private boolean targetOpen;
+    private boolean auditStateInitialized;
+    private boolean lastAuditedOpen;
 
     public BankSafeIronBarGateBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.BANK_SAFE_IRON_BAR_GATE.get(), pos, state);
@@ -46,6 +50,10 @@ public class BankSafeIronBarGateBlockEntity extends BlockEntity {
             return;
         }
         gate.previousAnimationProgress = gate.animationProgress;
+        if (!level.isClientSide() && !gate.auditStateInitialized) {
+            gate.lastAuditedOpen = gate.animationProgress >= 1.0F;
+            gate.auditStateInitialized = true;
+        }
         boolean shouldOpen = state.hasProperty(BankSafeIronBarGateBlock.POWERED)
                 && state.getValue(BankSafeIronBarGateBlock.POWERED);
         gate.targetOpen = shouldOpen;
@@ -62,6 +70,11 @@ public class BankSafeIronBarGateBlockEntity extends BlockEntity {
             BankSafeIronBarGateBlock.setOpenStateIfNeeded(level, pos, state, shouldOpen && next >= 1.0F);
             if (next == 0.0F || next == 1.0F) {
                 gate.setChanged();
+                boolean fullyOpen = next == 1.0F;
+                if (fullyOpen != gate.lastAuditedOpen && level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                    gate.lastAuditedOpen = fullyOpen;
+                    SafeAccessAuditService.recordDoorTransition(serverLevel, pos, "Safe Iron Bar Gate", fullyOpen);
+                }
             }
         }
     }

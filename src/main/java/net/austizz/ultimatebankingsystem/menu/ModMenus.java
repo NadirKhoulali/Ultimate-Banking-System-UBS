@@ -37,6 +37,18 @@ public final class ModMenus {
             MENUS.register("safety_deposit_box", () ->
                     IMenuTypeExtension.create(SafetyDepositBoxMenu::fromNetwork));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<SecureSafeMenu>> SECURE_SAFE =
+            MENUS.register("secure_safe", () ->
+                    IMenuTypeExtension.create(SecureSafeMenu::fromNetwork));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<HeistDuffelMenu>> HEIST_DUFFEL =
+            MENUS.register("heist_duffel", () -> IMenuTypeExtension.create((id, inventory, data) ->
+                    new HeistDuffelMenu(id, inventory, data.readBlockPos())));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<HeistDuffelMenu>> HEIST_DUFFEL_ITEM =
+            MENUS.register("heist_duffel_item", () -> IMenuTypeExtension.create((id, inventory, data) ->
+                    HeistDuffelMenu.forItem(id, inventory, data.readEnum(InteractionHand.class))));
+
     private ModMenus() {
     }
 

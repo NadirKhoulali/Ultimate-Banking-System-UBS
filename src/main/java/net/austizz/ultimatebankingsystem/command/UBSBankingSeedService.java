@@ -20,7 +20,7 @@ import java.util.UUID;
 
 final class UBSBankingSeedService {
     private static final String SEED_NAMESPACE = "ultimatebankingsystem:demo-seed:";
-    private static final String HISTORY_KIND = "webadmin_hourly_v1";
+    private static final String HISTORY_KIND = "economy_hourly_v1";
     private static final long ONE_HOUR_MS = 60L * 60L * 1000L;
     private static final long ONE_DAY_TICKS = 24_000L;
 
@@ -369,7 +369,7 @@ final class UBSBankingSeedService {
         BigDecimal deposits = totalDeposits(centralBank);
         BigDecimal reserves = totalReserves(centralBank);
         for (int i = 0; i < 8; i++) {
-            UUID snapshotId = id("webadmin-history:" + i);
+            UUID snapshotId = id("economy-history:" + i);
             BigDecimal depositsPoint = deposits.subtract(BigDecimal.valueOf((7L - i) * 3_200L)).max(BigDecimal.ZERO);
             BigDecimal reservesPoint = reserves.subtract(BigDecimal.valueOf((7L - i) * 1_100L)).max(BigDecimal.ZERO);
             CompoundTag tag = new CompoundTag();

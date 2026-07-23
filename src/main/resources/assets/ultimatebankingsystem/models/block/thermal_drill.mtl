@@ -1,0 +1,24 @@
+# Materials exported from the converted GTA drawable and adapted for NeoForge.
+newmtl m_ae9d6ceb-fc08-7df4-6d17-e411bcf4bf42
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.000000
+illum 2
+map_Kd ultimatebankingsystem:block/thermal_drill_1
+
+newmtl m_fc87d31c-7ee2-7bba-67b4-2d31aa392bda
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.000000
+illum 2
+map_Kd ultimatebankingsystem:block/thermal_drill_2
+
+newmtl m_2edeff1e-940d-d108-99fd-04ecb4004682
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.000000
+illum 2
+map_Kd ultimatebankingsystem:block/thermal_drill_3

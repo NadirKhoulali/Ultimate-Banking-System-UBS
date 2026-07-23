@@ -1,0 +1,58 @@
+{
+  "variants": {
+    "facing=north,half=lower,open=false": {
+      "model": "ultimatebankingsystem:block/compact_safe_body"
+    },
+    "facing=north,half=lower,open=true": {
+      "model": "ultimatebankingsystem:block/compact_safe_body"
+    },
+    "facing=north,half=upper,open=false": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=north,half=upper,open=true": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=east,half=lower,open=false": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 90
+    },
+    "facing=east,half=lower,open=true": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 90
+    },
+    "facing=east,half=upper,open=false": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=east,half=upper,open=true": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=south,half=lower,open=false": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 180
+    },
+    "facing=south,half=lower,open=true": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 180
+    },
+    "facing=south,half=upper,open=false": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=south,half=upper,open=true": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=west,half=lower,open=false": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 270
+    },
+    "facing=west,half=lower,open=true": {
+      "model": "ultimatebankingsystem:block/compact_safe_body",
+      "y": 270
+    },
+    "facing=west,half=upper,open=false": {
+      "model": "ultimatebankingsystem:block/empty"
+    },
+    "facing=west,half=upper,open=true": {
+      "model": "ultimatebankingsystem:block/empty"
+    }
+  }
+}

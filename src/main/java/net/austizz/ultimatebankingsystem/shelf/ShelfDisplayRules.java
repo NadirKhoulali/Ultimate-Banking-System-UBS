@@ -32,8 +32,8 @@ public final class ShelfDisplayRules {
         if (item == ModItems.CREDIT_CARD.get()) {
             return "Credit cards cannot be sold through shelf displays.";
         }
-        if (DollarBills.isCashTenderItem(item)) {
-            return "Cash bills and coins cannot be sold through shelf displays.";
+        if (DollarBills.isPhysicalTenderItem(item)) {
+            return "Cash bills, coins, and money stacks cannot be sold through shelf displays.";
         }
         if (item == ModItems.HANDHELD_PAYMENT_TERMINAL.get()) {
             return "Payment terminals cannot be sold through shelf displays.";

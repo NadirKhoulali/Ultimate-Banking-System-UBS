@@ -6,10 +6,14 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.owner.setup.BankSetupObjectiveSyncService;
 import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.claim.ClaimModeService;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.austizz.ultimatebankingsystem.block.entity.custom.CardboardBoxBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.HeistDuffelBlockEntity;
+import net.austizz.ultimatebankingsystem.block.entity.custom.MetalPalletBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.PalletBlockEntity;
 import net.austizz.ultimatebankingsystem.block.entity.custom.ShoppingBagBlockEntity;
 import net.austizz.ultimatebankingsystem.command.UBSCommands;
@@ -25,9 +29,13 @@ import net.austizz.ultimatebankingsystem.npc.BankTellerPaymentInteractionManager
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.ScheduledPaymentService;
 import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
+import net.austizz.ultimatebankingsystem.phone.SmartphoneService;
+import net.austizz.ultimatebankingsystem.recipe.ModRecipeSerializers;
+import net.austizz.ultimatebankingsystem.sound.ModSounds;
 import net.austizz.ultimatebankingsystem.shelf.ShelfBasketSessionService;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
+import net.austizz.ultimatebankingsystem.network.BankSetupObjectivesPayload;
 import net.austizz.ultimatebankingsystem.network.ModPayloads;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
@@ -44,8 +52,8 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
@@ -74,6 +82,7 @@ public class UltimateBankingSystem {
     private long lastInterestTick = -1L;
     private long lastHudSyncTick = -1L;
     private final ConcurrentHashMap<UUID, String> hudStateCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, String> bankSetupObjectiveCache = new ConcurrentHashMap<>();
     private final ArrayDeque<Long> modTickWindowNanos = new ArrayDeque<>();
     private final ArrayDeque<Long> modAllocWindowBytes = new ArrayDeque<>();
     private long modTickWindowTotalNanos;
@@ -83,8 +92,6 @@ public class UltimateBankingSystem {
     private long modLastAllocBytes;
     private long modLastSampleEpochMillis;
     private long modLastHeapUsedBytes = -1L;
-    private Object webAdminService;
-    private boolean webAdminUnavailableLogged;
 
     public UltimateBankingSystem(IEventBus modEventBus, ModContainer modContainer) {
         INSTANCE = this;
@@ -98,6 +105,8 @@ public class UltimateBankingSystem {
         ModEntities.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         ModMenus.register(modEventBus);
+        ModRecipeSerializers.register(modEventBus);
+        ModSounds.register(modEventBus);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
@@ -111,7 +120,9 @@ public class UltimateBankingSystem {
     private void registerCapabilities(RegisterCapabilitiesEvent event) {
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.CARDBOARD_BOX.get(), (CardboardBoxBlockEntity blockEntity, net.minecraft.core.Direction side) -> blockEntity.getItemHandler());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.PALLET.get(), (PalletBlockEntity blockEntity, net.minecraft.core.Direction side) -> blockEntity.getItemHandler());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.METAL_PALLET.get(), (MetalPalletBlockEntity blockEntity, net.minecraft.core.Direction side) -> blockEntity.getItemHandler());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.SHOPPING_BAG.get(), (ShoppingBagBlockEntity blockEntity, net.minecraft.core.Direction side) -> blockEntity.getItemHandler());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.HEIST_DUFFEL.get(), (HeistDuffelBlockEntity blockEntity, net.minecraft.core.Direction side) -> blockEntity.getItemHandler());
     }
 
     @SubscribeEvent
@@ -123,141 +134,27 @@ public class UltimateBankingSystem {
         lastInterestTick = -1L;
         lastHudSyncTick = -1L;
         hudStateCache.clear();
+        bankSetupObjectiveCache.clear();
         resetPerformanceAnalytics();
-    }
-
-    @SubscribeEvent
-    public void onServerStarted(ServerStartedEvent event) {
-        BankManager.init(event.getServer());
-        if (Config.WEB_ADMIN_ENABLED.get()) {
-            startWebAdmin(event.getServer());
-        }
     }
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         hudStateCache.clear();
+        bankSetupObjectiveCache.clear();
         resetPerformanceAnalytics();
         PickpocketService.onServerStopping();
         WorldCashEconomyService.onServerStopping();
-        stopWebAdmin();
+        SafetyDepositBoxService.onServerStopping();
+        ShopService.clearClaimSessionsOnServerStopping();
+        ClaimModeService.onServerStopping();
         BankManager.shutdown();
     }
 
-    /**
-     * Runtime toggle used by admin commands so owners can enable/disable the panel
-     * without rebooting the server process.
-     */
-    public synchronized boolean setWebAdminEnabled(MinecraftServer server, boolean enabled) {
-        Config.WEB_ADMIN_ENABLED.set(enabled);
-        persistConfigChanges();
-
-        if (enabled) {
-            webAdminUnavailableLogged = false;
-            startWebAdmin(server);
-        } else {
-            stopWebAdmin();
-        }
-        return isWebAdminRunning();
-    }
-
-    public synchronized boolean isWebAdminRunning() {
-        Object running = invokeWebAdminMethod("isRunning");
-        return running instanceof Boolean value && value;
-    }
-
-    public synchronized String getWebAdminBindHost() {
-        Object host = invokeWebAdminMethod("bindHost");
-        if (host instanceof String value && !value.isBlank()) {
-            return value.trim();
-        }
-        String configured = Config.WEB_ADMIN_BIND_HOST.get();
-        return configured == null || configured.isBlank() ? "0.0.0.0" : configured.trim();
-    }
-
-    public synchronized int getWebAdminBindPort() {
-        Object port = invokeWebAdminMethod("bindPort");
-        if (port instanceof Number number) {
-            int value = number.intValue();
-            if (value >= 1 && value <= 65535) {
-                return value;
-            }
-        }
-        int configured = Config.WEB_ADMIN_PORT.get();
-        return Math.max(1, Math.min(65535, configured));
-    }
-
-    public synchronized String getWebAdminDisplayUrl() {
-        String host = getWebAdminBindHost();
-        if (isWildcardHost(host)) {
-            host = "127.0.0.1";
-        }
-        return "http://" + host + ":" + getWebAdminBindPort() + "/ubs-admin/";
-    }
-
-    private synchronized void startWebAdmin(MinecraftServer server) {
-        if (server == null) {
-            return;
-        }
-        try {
-            if (webAdminService == null) {
-                Class<?> serviceClass = Class.forName("net.austizz.ultimatebankingsystem.webadmin.WebAdminService");
-                webAdminService = serviceClass.getDeclaredConstructor().newInstance();
-            }
-            webAdminService.getClass()
-                    .getMethod("start", MinecraftServer.class)
-                    .invoke(webAdminService, server);
-        } catch (Throwable throwable) {
-            if (!webAdminUnavailableLogged) {
-                webAdminUnavailableLogged = true;
-                LOGGER.error("[UBS WebAdmin] Disabled due to missing runtime dependencies or startup failure.", throwable);
-            }
-            webAdminService = null;
-        }
-    }
-
-    private synchronized void stopWebAdmin() {
-        if (webAdminService == null) {
-            return;
-        }
-        try {
-            webAdminService.getClass()
-                    .getMethod("stop")
-                    .invoke(webAdminService);
-        } catch (Throwable throwable) {
-            LOGGER.warn("[UBS WebAdmin] Failed to stop cleanly: {}", throwable.getMessage());
-        } finally {
-            webAdminService = null;
-        }
-    }
-
-    private void persistConfigChanges() {
-        try {
-            Config.SPEC.getClass().getMethod("save").invoke(Config.SPEC);
-        } catch (Throwable ignored) {
-            // Keep runtime toggles working even if the config backend does not support direct save calls.
-        }
-    }
-
-    private static boolean isWildcardHost(String host) {
-        if (host == null || host.isBlank()) {
-            return true;
-        }
-        String cleaned = host.trim();
-        return "0.0.0.0".equals(cleaned)
-                || "::".equals(cleaned)
-                || "[::]".equals(cleaned)
-                || "*".equals(cleaned);
-    }
-
-    private Object invokeWebAdminMethod(String methodName) {
-        if (webAdminService == null || methodName == null || methodName.isBlank()) {
-            return null;
-        }
-        try {
-            return webAdminService.getClass().getMethod(methodName).invoke(webAdminService);
-        } catch (Throwable ignored) {
-            return null;
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            SmartphoneService.onPlayerLogin(player);
         }
     }
 
@@ -284,6 +181,7 @@ public class UltimateBankingSystem {
             ShopCashierInteractionManager.tick(server);
             ShopService.tickSessions(server);
             SafetyDepositBoxService.tickSessions(server);
+            ClaimModeService.tick(server);
             ShelfBasketSessionService.tick(server);
             PickpocketService.tick(server);
             WorldCashEconomyService.tick(server);
@@ -518,8 +416,15 @@ public class UltimateBankingSystem {
             if (!signature.equals(previous)) {
                 PacketDistributor.sendToPlayer(player, payload);
             }
+            BankSetupObjectivesPayload bankObjectives = BankSetupObjectiveSyncService.build(server, centralBank, playerId);
+            String bankObjectiveSignature = bankObjectives.signature();
+            String previousBankObjective = bankSetupObjectiveCache.put(playerId, bankObjectiveSignature);
+            if (!bankObjectiveSignature.equals(previousBankObjective)) {
+                PacketDistributor.sendToPlayer(player, bankObjectives);
+            }
         }
         hudStateCache.keySet().removeIf(id -> !online.contains(id));
+        bankSetupObjectiveCache.keySet().removeIf(id -> !online.contains(id));
         UBSCommands.clearHudMonitorOverridesForMissingPlayers(online);
         UBSCommands.clearHudStateForMissingPlayers(online);
     }

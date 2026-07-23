@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["WRW", "LBL", " W "],
+  "key": {
+    "W": { "item": "minecraft:white_wool" },
+    "R": { "item": "minecraft:red_dye" },
+    "B": { "item": "minecraft:blue_dye" },
+    "L": { "item": "minecraft:leather" }
+  },
+  "result": { "id": "ultimatebankingsystem:dallas_mask", "count": 1 }
+}

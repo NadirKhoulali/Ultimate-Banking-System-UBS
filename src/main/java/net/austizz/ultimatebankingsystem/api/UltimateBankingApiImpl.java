@@ -10,6 +10,8 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.shop.ShopMarketPriceService;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.ChatFormatting;
@@ -40,7 +42,7 @@ import java.util.regex.Pattern;
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
     private static final UUID API_EXTERNAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:api-external".getBytes());
-    private static final String API_VERSION = "1.2.2";
+    private static final String API_VERSION = "2.0.0";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final int MAX_REFERENCE_LENGTH = 160;
@@ -925,6 +927,107 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
     }
 
     @Override
+    public ApiNotificationResult sendNotification(UUID playerId, ApiNotificationRequest request) {
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiNotificationResult.fail("Player is not online", playerId);
+        }
+        if (request == null) {
+            return ApiNotificationResult.fail("Notification request is required", playerId);
+        }
+        if (request.message().isBlank()) {
+            return ApiNotificationResult.fail("Notification message is required", playerId);
+        }
+        try {
+            String notificationId = ServerNotification.send(player, request);
+            if (notificationId.isBlank()) {
+                return ApiNotificationResult.fail("UBS notification system is unavailable", playerId);
+            }
+            return ApiNotificationResult.ok(playerId, notificationId, request.channel());
+        } catch (LinkageError | RuntimeException ex) {
+            return ApiNotificationResult.fail("UBS notification system is unavailable", playerId);
+        }
+    }
+
+    @Override
+    public ApiNotificationResult dismissNotification(UUID playerId, String notificationId) {
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiNotificationResult.fail("Player is not online", playerId);
+        }
+        if (notificationId == null || notificationId.isBlank()) {
+            return ApiNotificationResult.fail("Notification ID is required", playerId);
+        }
+        ServerNotification.dismiss(player, notificationId);
+        return ApiNotificationResult.ok(playerId, notificationId.trim(), "");
+    }
+
+    @Override
+    public ApiNotificationResult clearNotificationChannel(UUID playerId, String channel) {
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiNotificationResult.fail("Player is not online", playerId);
+        }
+        if (channel == null || channel.isBlank()) {
+            return ApiNotificationResult.fail("Notification channel is required", playerId);
+        }
+        String normalizedChannel = channel.trim();
+        ServerNotification.clearChannel(player, normalizedChannel);
+        return ApiNotificationResult.ok(playerId, "", normalizedChannel);
+    }
+
+    @Override
+    public ApiNotificationResult clearNotifications(UUID playerId) {
+        ServerPlayer player = resolveOnlinePlayer(playerId);
+        if (player == null) {
+            return ApiNotificationResult.fail("Player is not online", playerId);
+        }
+        ServerNotification.clearAll(player);
+        return ApiNotificationResult.ok(playerId, "", "");
+    }
+
+    @Override
+    public List<ApiNotificationType> getSupportedNotificationTypes() {
+        return List.of(ApiNotificationType.values());
+    }
+
+    @Override
+    public List<ApiNotificationPriority> getSupportedNotificationPriorities() {
+        return List.of(ApiNotificationPriority.values());
+    }
+
+    @Override
+    public List<ApiNotificationPlacement> getSupportedNotificationPlacements() {
+        return List.of(ApiNotificationPlacement.values());
+    }
+
+    @Override
+    public ApiShopPriceStatistics getItemShopPriceStatistics(ItemStack item, ApiShopPriceScope scope) {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        return ShopMarketPriceService.statistics(server, item, scope);
+    }
+
+    @Override
+    public ApiShopPriceStatistics getRegularShopPriceStatistics(ItemStack item) {
+        return getItemShopPriceStatistics(item, ApiShopPriceScope.REGULAR);
+    }
+
+    @Override
+    public ApiShopPriceStatistics getAllShelfPriceStatistics(ItemStack item) {
+        return getItemShopPriceStatistics(item, ApiShopPriceScope.INCLUDE_ALL);
+    }
+
+    @Override
+    public ApiShopPriceStatistics getNonCreativeShelfPriceStatistics(ItemStack item) {
+        return getItemShopPriceStatistics(item, ApiShopPriceScope.ALL_SHELVES_EXCLUDE_CREATIVE);
+    }
+
+    @Override
+    public ApiShopPriceStatistics getCreativeShelfPriceStatistics(ItemStack item) {
+        return getItemShopPriceStatistics(item, ApiShopPriceScope.CREATIVE_ONLY);
+    }
+
+    @Override
     public Optional<ApiAccountSnapshot> getAccountSnapshot(UUID accountId) {
         return Optional.ofNullable(resolveAccount(accountId)).map(this::toAccountSnapshot);
     }
@@ -1083,6 +1186,49 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         }
         Bank bank = centralBank.getBank(bankId);
         return bank != null && playerId.equals(bank.getBankOwnerId());
+    }
+
+    @Override
+    public boolean playerOwnsAnyBank(UUID playerId) {
+        if (playerId == null) {
+            return false;
+        }
+        CentralBank centralBank = resolveCentralBank();
+        return centralBank != null && centralBank.getBanks().values().stream()
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(bank -> playerId.equals(bank.getBankOwnerId()));
+    }
+
+    @Override
+    public List<ApiBankSnapshot> getPlayerOwnedBanks(UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+        return getBanks().stream()
+                .filter(bank -> playerId.equals(bank.ownerId()))
+                .toList();
+    }
+
+    @Override
+    public boolean shopExists(UUID shopId) {
+        return UltimateBankingApiProvider.shops().shopExists(shopId);
+    }
+
+    @Override
+    public boolean playerOwnsShop(UUID playerId, UUID shopId) {
+        return UltimateBankingApiProvider.shops().playerOwnsShop(playerId, shopId);
+    }
+
+    @Override
+    public boolean playerOwnsAnyShop(UUID playerId) {
+        return UltimateBankingApiProvider.shops().playerOwnsAnyShop(playerId);
+    }
+
+    @Override
+    public List<UUID> getPlayerOwnedShopIds(UUID playerId) {
+        return UltimateBankingApiProvider.shops().getOwnedShops(playerId).stream()
+                .map(shop -> shop.shopId())
+                .toList();
     }
 
     @Override

@@ -10,16 +10,27 @@ import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.owner.BankOwnerPcService;
+import net.austizz.ultimatebankingsystem.bank.owner.setup.BankSafeSetupPayloadBuilder;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafeAccessLogService;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafeVaultReadinessOperation;
 import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.SafeBoxViewingCoordinator;
+import net.austizz.ultimatebankingsystem.bank.safebox.setup.SafeVaultReadinessResolver;
+import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
 import net.austizz.ultimatebankingsystem.network.BankTellerAccountSummary;
 import net.austizz.ultimatebankingsystem.network.BankTellerOpenPayload;
+import net.austizz.ultimatebankingsystem.network.BankTellerSafeBoxState;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -60,6 +71,10 @@ public final class BankTellerService {
         public static ActionResult beginExternalPayment(String message) {
             return new ActionResult(true, MoneyText.abbreviateCurrencyTokens(message == null ? "" : message), false, true);
         }
+
+        public static ActionResult beginEscort(String message) {
+            return new ActionResult(true, MoneyText.abbreviateCurrencyTokens(message == null ? "" : message), false, true);
+        }
     }
 
     public record ExternalFeePayment(
@@ -85,6 +100,15 @@ public final class BankTellerService {
     ) {}
 
     private record HeldNote(ItemStack stack, NoteData note) {}
+
+    private record SafeBoxAssignment(UUID accountId,
+                                     String boxNumber,
+                                     String dimension,
+                                     int x,
+                                     int y,
+                                     int z,
+                                     int doorIndex,
+                                     boolean locked) {}
 
     private BankTellerService() {}
 
@@ -113,7 +137,9 @@ public final class BankTellerService {
                     "0",
                     "0",
                     false,
-                    List.of()
+                    List.of(),
+                    List.of(),
+                    BankTellerSafeBoxState.unavailable(null, null, "Bank teller service is unavailable.")
             );
         }
 
@@ -123,6 +149,7 @@ public final class BankTellerService {
         String motto = "";
         String issueFee = "0";
         String replacementFee = "0";
+        List<String> safeBoxPolicies = List.of();
 
         if (boundBankId != null) {
             Bank boundBank = centralBank.getBank(boundBankId);
@@ -135,6 +162,7 @@ public final class BankTellerService {
             motto = metadata.getString("motto");
             issueFee = CreditCardService.getIssueFee(centralBank, boundBankId).toPlainString();
             replacementFee = CreditCardService.getReplacementFee(centralBank, boundBankId).toPlainString();
+            safeBoxPolicies = BankOwnerPcService.buildSafePolicyRows(server, centralBank, boundBankId);
         }
 
         List<AccountHolder> playerAccounts = new ArrayList<>(centralBank.SearchForAccount(player.getUUID()).values());
@@ -171,6 +199,8 @@ public final class BankTellerService {
 
         Bank openTarget = resolveOpenAccountTargetBank(centralBank, teller);
         boolean openAccountFree = isCentralBankTarget(centralBank, openTarget);
+        BankTellerSafeBoxState safeBoxState = buildSafeBoxState(
+                new SafeBoxStateRequest(server, centralBank, teller, playerAccounts));
 
         String tellerLabel = teller.getName() == null ? "Bank Teller" : teller.getName().getString();
         return new BankTellerOpenPayload(
@@ -182,7 +212,9 @@ public final class BankTellerService {
                 issueFee,
                 replacementFee,
                 openAccountFree,
-                summaries
+                safeBoxPolicies,
+                summaries,
+                safeBoxState
         );
     }
 
@@ -221,6 +253,9 @@ public final class BankTellerService {
         if (player.level() != teller.level() || player.distanceToSqr(teller) > MAX_INTERACT_DISTANCE_SQ) {
             return ActionResult.fail("You are too far away from the bank teller.");
         }
+        if (!teller.refreshCustomerUse(player)) {
+            return ActionResult.fail("This bank teller is currently assisting another customer.");
+        }
 
         String action = actionRaw == null ? "" : actionRaw.trim().toUpperCase(Locale.ROOT);
         PaymentMode paymentMode = parsePaymentMode(paymentModeRaw);
@@ -237,7 +272,9 @@ public final class BankTellerService {
             case "ISSUE_CARD" -> handleIssueCard(server, centralBank, player, teller, accountIdRaw, paymentMode, externalFeePayment);
             case "REPLACE_CARD" -> handleReplaceCard(server, centralBank, player, teller, accountIdRaw, confirmed, paymentMode, externalFeePayment);
             case "OPEN_ACCOUNT" -> handleOpenAccountAtTeller(server, centralBank, player, teller, accountIdRaw, amountRaw, recipientRaw, paymentMode, externalFeePayment);
-            case "REQUEST_SAFE_BOX" -> handleRequestSafeBox(server, centralBank, player, teller, accountIdRaw);
+            case "REQUEST_SAFE_BOX" -> handleRequestSafeBox(server, centralBank, player, teller, accountIdRaw, amountRaw);
+            case "REQUEST_OPEN_SAFE_BOX" -> handleRequestOpenSafeBox(
+                    new OpenSafeBoxRequest(server, centralBank, player, teller, accountIdRaw));
             default -> ActionResult.fail("Unknown teller action.");
         };
     }
@@ -412,13 +449,13 @@ public final class BankTellerService {
             return ActionResult.fail("Deposit amount must be at least $0.01.");
         }
 
-        int[] available = DollarBills.getAvailableCashCounts(player);
+        int[] available = DollarBills.getAvailableTenderAsCashCounts(player);
         int[] plan = DollarBills.findCashDepositPlan(cents, available);
         if (plan == null) {
             return ActionResult.fail("You do not carry an exact cash combination for $" + amount.toPlainString() + ".");
         }
 
-        DollarBills.removeCash(player, plan);
+        DollarBills.removeTender(player, plan);
         if (!destination.AddBalance(amount)) {
             // Safety rollback: if account mutation fails, give tender back immediately.
             DollarBills.giveCash(player, plan);
@@ -443,16 +480,16 @@ public final class BankTellerService {
             return ActionResult.fail("Select one of your accounts first.");
         }
 
-        int[] available = DollarBills.getAvailableCashCounts(player);
-        int totalCents = DollarBills.totalCashValueCents(available);
-        if (totalCents <= 0) {
+        int[] available = DollarBills.getAvailableTenderAsCashCounts(player);
+        long totalCents = DollarBills.totalCashValueCentsLong(available);
+        if (totalCents <= 0L) {
             return ActionResult.fail("You are not carrying any cash to deposit.");
         }
 
         BigDecimal amount = BigDecimal.valueOf(totalCents, 2).setScale(2, RoundingMode.UNNECESSARY);
         int[] fullPlan = available.clone();
 
-        DollarBills.removeCash(player, fullPlan);
+        DollarBills.removeTender(player, fullPlan);
         if (!destination.AddBalance(amount)) {
             DollarBills.giveCash(player, fullPlan);
             return ActionResult.fail("Could not deposit into the selected account.");
@@ -958,7 +995,8 @@ public final class BankTellerService {
                                                      CentralBank centralBank,
                                                      ServerPlayer player,
                                                      BankTellerEntity teller,
-                                                     String accountIdRaw) {
+                                                     String accountIdRaw,
+                                                     String sizeRaw) {
         AccountHolder account = resolveOwnedAccount(centralBank, player, accountIdRaw);
         if (account == null) {
             return ActionResult.fail("Select one of your accounts first.");
@@ -971,9 +1009,171 @@ public final class BankTellerService {
             return ActionResult.fail("This teller can only request safety boxes for accounts at "
                     + resolveBankName(centralBank, tellerBankId) + ".");
         }
+        SafetyDepositBoxRowBlockEntity.ModuleType requestedType = SafetyDepositBoxService.parseAssignableType(sizeRaw);
+        if (requestedType == null) {
+            return ActionResult.fail("Choose a safety deposit box size first.");
+        }
         SafetyDepositBoxService.ActionResult result =
-                SafetyDepositBoxService.assignFirstFreeBox(server, centralBank, tellerBankId, account.getAccountUUID());
+                SafetyDepositBoxService.assignFirstFreeBox(server, centralBank, tellerBankId, account.getAccountUUID(), requestedType);
+        if (result.success()) {
+            SafeAccessLogService.record(centralBank, tellerBankId, player,
+                    SafeAccessLogService.CATEGORY_ASSIGNMENT, SafeAccessLogService.OUTCOME_SUCCESS,
+                    "BOX_RENTED", account.getAccountUUID().toString(), result.message(),
+                    teller.level().dimension().location().toString(), teller.blockPosition());
+        }
         return result.success() ? ActionResult.ok(result.message()) : ActionResult.fail(result.message());
+    }
+
+    private static ActionResult handleRequestOpenSafeBox(OpenSafeBoxRequest request) {
+        MinecraftServer server = request.server();
+        CentralBank centralBank = request.centralBank();
+        ServerPlayer player = request.player();
+        BankTellerEntity teller = request.teller();
+        String accountIdRaw = request.accountIdRaw();
+        AccountHolder account = resolveOwnedAccount(centralBank, player, accountIdRaw);
+        if (account == null) {
+            return ActionResult.fail("Select one of your accounts first.");
+        }
+        UUID tellerBankId = teller.getBoundBankId();
+        if (tellerBankId == null) {
+            return ActionResult.fail("This teller is not linked to a bank with safe-deposit boxes.");
+        }
+        if (!tellerBankId.equals(account.getBankId())) {
+            return ActionResult.fail("This teller can only open safety boxes for accounts at "
+                    + resolveBankName(centralBank, tellerBankId) + ".");
+        }
+        BankTellerSafeBoxState state = buildSafeBoxState(
+                new SafeBoxStateRequest(server, centralBank, teller, List.of(account)));
+        BankTellerSafeBoxState.OpenRequestResult result =
+                state.validateOpenRequest(teller.getUUID(), account.getAccountUUID());
+        if (result.success()) {
+            SafeBoxViewingCoordinator.StartResult started = SafeBoxViewingCoordinator.start(
+                    server, centralBank, player, teller, result.assignment());
+            return started.success()
+                    ? ActionResult.beginEscort(started.message())
+                    : ActionResult.fail(started.message());
+        }
+        return switch (result.failure()) {
+            case INVALID_TELLER -> ActionResult.fail("Bank teller validation failed.");
+            case NO_ASSIGNMENT -> ActionResult.fail("Selected account does not have an assigned safety deposit box.");
+            case BANK_NOT_READY -> ActionResult.fail("Safety deposit vault is unavailable: " + result.message());
+            case ASSIGNMENT_UNAVAILABLE -> ActionResult.fail("Selected safety deposit box is unavailable: " + result.message());
+            case QUEUE_BUSY -> ActionResult.fail("Safe-deposit teller is busy. No queue was created.");
+            case NONE -> ActionResult.fail("Safe-deposit request could not be started.");
+        };
+    }
+
+    public static boolean handleSessionControl(MinecraftServer server,
+                                               ServerPlayer player,
+                                               UUID tellerId,
+                                               String actionRaw) {
+        String action = actionRaw == null ? "" : actionRaw.trim().toUpperCase(Locale.ROOT);
+        if (!"KEEPALIVE".equals(action) && !"CLOSE_SESSION".equals(action)) {
+            return false;
+        }
+        if (server == null || player == null || tellerId == null) {
+            return true;
+        }
+        BankTellerEntity teller = findTeller(server, tellerId);
+        if (teller == null || !teller.isAlive()) {
+            return true;
+        }
+        if ("KEEPALIVE".equals(action)) {
+            teller.refreshCustomerUse(player);
+        } else {
+            teller.endCustomerUse(player.getUUID());
+        }
+        return true;
+    }
+
+    private static BankTellerSafeBoxState buildSafeBoxState(SafeBoxStateRequest request) {
+        MinecraftServer server = request.server();
+        CentralBank centralBank = request.centralBank();
+        BankTellerEntity teller = request.teller();
+        List<AccountHolder> accounts = request.accounts();
+        UUID tellerId = teller == null ? null : teller.getUUID();
+        UUID bankId = teller == null ? null : teller.getBoundBankId();
+        if (server == null || centralBank == null || teller == null) {
+            return BankTellerSafeBoxState.unavailable(tellerId, bankId, "Bank teller service is unavailable.");
+        }
+        if (bankId == null || centralBank.getBank(bankId) == null) {
+            return BankTellerSafeBoxState.unavailable(tellerId, bankId,
+                    "This teller is not linked to an available bank.");
+        }
+
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bankId);
+        BankSafeSetupPayloadBuilder.Result setup = BankSafeSetupPayloadBuilder.build(server, metadata);
+        SafeVaultReadinessOperation readinessOperation =
+                SafetyDepositBoxService.safeDepositVaultReadinessOperation(server, metadata);
+        List<BankTellerSafeBoxState.AccountAssignment> assignmentSummaries = new ArrayList<>();
+        if (accounts != null) {
+            for (AccountHolder account : accounts) {
+                if (account == null || account.getAccountUUID() == null || !bankId.equals(account.getBankId())) {
+                    continue;
+                }
+                SafeBoxAssignment assignment = findSafeBoxAssignment(metadata, account.getAccountUUID());
+                if (assignment == null) {
+                    continue;
+                }
+                SafeVaultReadinessResolver.RowReadiness readiness =
+                        readinessOperation.resolve(new SafeVaultReadinessResolver.RowLocation(
+                                assignment.dimension(),
+                                new BlockPos(assignment.x(), assignment.y(), assignment.z())));
+                List<String> reasons = new ArrayList<>();
+                if (assignment.locked()) {
+                    reasons.add("This safety deposit box is locked for overdue rent.");
+                }
+                if (!readiness.mapped()) {
+                    reasons.add("This safety deposit box is not mapped to a configured vault.");
+                } else {
+                    reasons.addAll(readiness.humanMissingReasons());
+                }
+                boolean ready = !assignment.locked() && readiness.mapped() && readiness.summary().ready();
+                assignmentSummaries.add(new BankTellerSafeBoxState.AccountAssignment(
+                        account.getAccountUUID(),
+                        assignment.boxNumber(),
+                        assignment.dimension(),
+                        assignment.x(),
+                        assignment.y(),
+                        assignment.z(),
+                        assignment.doorIndex(),
+                        readiness.vault() == null ? "" : readiness.vault().id(),
+                        ready,
+                        assignment.locked(),
+                        reasons
+                ));
+            }
+        }
+        return new BankTellerSafeBoxState(
+                tellerId,
+                bankId,
+                setup.objective().ready(),
+                setup.objective().missingSteps(),
+                assignmentSummaries
+        );
+    }
+
+    private static SafeBoxAssignment findSafeBoxAssignment(CompoundTag metadata, UUID accountId) {
+        if (metadata == null || accountId == null) {
+            return null;
+        }
+        ListTag assignments = metadata.getList(SafetyDepositBoxService.ASSIGNMENTS_KEY, Tag.TAG_COMPOUND);
+        for (int i = 0; i < assignments.size(); i++) {
+            CompoundTag tag = assignments.getCompound(i);
+            if (tag.hasUUID("accountId") && accountId.equals(tag.getUUID("accountId"))) {
+                return new SafeBoxAssignment(
+                        accountId,
+                        tag.getString("boxNumber"),
+                        tag.getString("dimension"),
+                        tag.getInt("x"),
+                        tag.getInt("y"),
+                        tag.getInt("z"),
+                        tag.getInt("doorIndex"),
+                        tag.getBoolean("locked")
+                );
+            }
+        }
+        return null;
     }
 
     private static AccountHolder resolveOwnedAccount(CentralBank centralBank, ServerPlayer player, String accountIdRaw) {
@@ -1351,5 +1551,18 @@ public final class BankTellerService {
         }
         String raw = uuid.toString();
         return raw.substring(0, Math.min(8, raw.length()));
+    }
+
+    private record SafeBoxStateRequest(MinecraftServer server,
+                                       CentralBank centralBank,
+                                       BankTellerEntity teller,
+                                       List<AccountHolder> accounts) {
+    }
+
+    private record OpenSafeBoxRequest(MinecraftServer server,
+                                      CentralBank centralBank,
+                                      ServerPlayer player,
+                                      BankTellerEntity teller,
+                                      String accountIdRaw) {
     }
 }

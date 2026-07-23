@@ -47,6 +47,18 @@ The desktop app supports owner/delegated-role actions for:
 - webshop flows (filtered catalog, cart, account selection, delivery target selection, checkout, cancel/refund, replacement order)
 - courier order board actions (report/accept/cancel)
 
+The business-type panel now uses the same responsive desktop layout, controls, colors, and scroll containers as the other shop panels without removing any business-type options.
+
+## Claims
+
+Shop plot, stockroom, and delivery-pallet selection use the unified UBS claim mode. It replaces the normal HUD during selection, renders grounded tactical outlines, keeps staged pallet additions green and removals red until save, and rejects overlap with another owner's hidden or visible bank/shop claim. By default players only see their own claim outlines; servers can enable shared outline visibility.
+
+See [Claim Tools](Claim-Tools.md).
+
+## Opening Hours and Timezones
+
+The hours panel shows the server timezone used for enforcement. Players can switch display between server time and their client-local timezone without changing the authoritative schedule. Weekly day schedules and overnight windows remain server-controlled.
+
 ## Retail Webshop
 
 The Retail Webshop utility app uses the same desktop theme as the shop and order-board tools.

@@ -1,140 +1,86 @@
 # Ultimate Banking System (UBS)
 
-UBS is a Forge `1.20.1` banking/economy mod focused on an in-world loop: ATM UI, physical legal tender, payment terminals, player-owned banks, central-bank policy, retail commerce systems, and admin migration tooling.
+Ultimate Banking System is a NeoForge `1.21.1` economy, banking, retail, security, and heist mod built around physical world interactions and multiplayer server management.
 
-Current release target: `1.4.0`
-Current worktree: retail/shop stack, redesigned retail webshop, wallet payments, dashboard addon API, order tracking, world cash economy, pickpocket, extended desktop apps.
+Current release: `2.0.0`
 
-## What UBS Includes
+## Highlights
 
-- Multi-account support per player: `Checking`, `Saving`, `Money Market`, `Certificate`
-- ATM flow with account selection, PIN setup/login, and account switching
-- Physical USD legal tender:
-  - bills: `$1`, `$2`, `$5`, `$10`, `$20`, `$50`, `$100`
-  - coins: `$0.01`, `$0.05`, `$0.10`, `$0.25`, `$0.50`
-- ATM cash behavior:
-  - withdraw: bills only
-  - deposit: bills + coins (exact inventory match)
-- Teller and terminal payment flows:
-  - bank teller cash-out (bills + coins)
-  - `payment_terminal` block + `handheld_payment_terminal`
-  - wallet cash/card tender support for teller and cashier payments
-  - success/denied feedback and configurable terminal redstone output
-- Expanded retail/shop systems:
-  - shelf/display blocks (shelves, tables, coolers, modular/glass displays)
-  - shopping baskets/bags and cashier interaction flow
-  - stockroom claims, pallet assignment, restock tooling, order workflows
-  - webshop catalog/cart/checkout/tracking flow with account and delivery-target modals
-  - delivery queue and courier board features
-- World cash economy systems:
-  - structure chest cash loot injection
-  - mob cash drops
-  - configurable player death cash-drop handling
-- Pickpocket system:
-  - hold-to-complete pickpocket interaction
-  - per-player opt-out toggle and cooldowns
-- Banking and governance systems:
-  - transfers, transaction history, limits, pay requests
-  - joint/business accounts, notes, cheques, safe boxes
-  - player-owned bank ownership modes, staffing, loan products, interbank lending
-  - central bank policy (`rate`, `opm`, audits, report, clearing ledger)
-- Admin moderation and migration tooling (`csv`, `EssentialsX`, `CMI`, `iConomy`)
-- Web admin dashboard addon API for UBS-styled addon panels and component pages
+- Multi-account banking with checking, saving, money-market, certificate, joint, and business workflows
+- ATMs, bank tellers, payment terminals, cards, wallets, cheques, notes, and physical USD cash
+- Player-owned banks with staffing, lending, governance, premises, vaults, alarms, and safety-deposit operations
+- Player-owned shops with claims, staff roles, stockrooms, displays, pallets, cashiers, delivery orders, webshop checkout, and opening hours
+- Smartphone with banking, per-account login, contacts, realtime messenger, pay requests, gifts, notes, settings, and optional mod bridges
+- Physical standing and compact safes, cash stacks, gold/silver bars, metal pallets, and market-linked valuation
+- RFID readers, programmable access cards, signal targets, per-player door authorization, and heist spoofing
+- Multiplayer bank heists with crews, planning, masks, saws, lockpicks, thermal drills, computer hacks, duffel loot, alarms, extraction zones, cooldowns, and recovery safeguards
+- Unified claim mode with tactical outlines, collision validation, private claim visibility, and responsive controls
+- Public Java API `2.0.0` for finance, notifications, market prices, server discovery, bank management, shop management, and heist state/actions
+
+The release jar does not contain an embedded HTTP server or browser-based administration panel. Server management remains in game and through the Java API.
 
 ## Core Commands
 
-Player-facing examples:
+```text
+/account open
+/account info list
+/account transfer <senderAccountId> <receiverAccountId> <amount>
+/account payrequest <player> <amount> [destinationAccountId]
+/account hud toggle|primary|account <accountId>|move <position>
+/account safebox list|deposit|withdraw <slot>
+/heist
+/heist abandon
+/bank reserve
+/centralbank report [history]
+/ubs admin ...
+```
 
-- `/account open <accountType> [certificateTier] <bankName>`
-- `/account info list`
-- `/account transfer <senderAccountUUID> <receiverAccountUUID> <amount>`
-- `/account payrequest <player> <amount> [destinationAccountId]`
-- `/account hud toggle|primary|account <accountId>`
-- `/account pickpocket toggle|status`
-- `/account safebox list|deposit|withdraw <slot>`
-- `/account shop pay <amount> [shop]`
-- `/bank reserve`
-- `/bank dashboard`
-- `/cashier cancel` and `/bankteller cancel` for active NPC sessions
-
-Admin-facing examples:
-
-- `/ubs admin view <player>`
-- `/ubs admin freeze <player> [reason]`
-- `/ubs admin applications`, `/ubs admin appeals`
-- `/ubs admin import csv|essentialsx|cmi|iconomy <path>`
-- `/centralbank rate`, `/centralbank rate set <rate>`
-- `/centralbank opm inject|withdraw <amount>`
-- `/centralbank audit [bankName]`
-- `/centralbank report [history]`
-- `/centralbank ledger [suspense]`
+`/account open` creates a default Central Bank checking account. Additional accounts at player-owned banks are opened through that bank's teller.
 
 ## Build
 
 Requirements:
 
-- Java `17+` (CI currently runs JDK `21`)
-- Forge toolchain for Minecraft `1.20.1`
-
-Build:
+- Java `21`
+- NeoForge `21.1.x`
+- Minecraft `1.21.1`
 
 ```bash
 ./gradlew build
 ```
 
-On Windows shell environments, run via `gradlew.bat`.
+On Windows, use `gradlew.bat build`.
 
 ## Documentation
 
-- Player quick guide: [`PLAYER_GUIDE.md`](PLAYER_GUIDE.md)
-- Wiki sources for GitHub wiki publishing: [`docs/wiki`](docs/wiki)
-  - [`Home.md`](docs/wiki/Home.md)
-  - [`Player-Guide.md`](docs/wiki/Player-Guide.md)
-  - [`ATM-Flow.md`](docs/wiki/ATM-Flow.md)
-  - [`Currency-Legal-Tender.md`](docs/wiki/Currency-Legal-Tender.md)
-  - [`Payment-Terminal-Guide.md`](docs/wiki/Payment-Terminal-Guide.md)
-  - [`Retail-Shop-System.md`](docs/wiki/Retail-Shop-System.md)
-  - [`Bank-Owner-PC.md`](docs/wiki/Bank-Owner-PC.md)
-  - [`Admin-Commands.md`](docs/wiki/Admin-Commands.md)
-  - [`Developer-API.md`](docs/wiki/Developer-API.md)
-  - [`Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)
-  - [`Configuration.md`](docs/wiki/Configuration.md)
-  - [`Migration-Guide.md`](docs/wiki/Migration-Guide.md)
+- [Player Guide](PLAYER_GUIDE.md)
+- [Wiki Home](docs/wiki/Home.md)
+- [Retail and Shop System](docs/wiki/Retail-Shop-System.md)
+- [Safety Deposit Boxes](docs/wiki/Safety-Deposit-Boxes.md)
+- [Bank Heists](docs/wiki/Bank-Heists.md)
+- [RFID and Security](docs/wiki/RFID-and-Security.md)
+- [Claim Tools](docs/wiki/Claim-Tools.md)
+- [Smartphone](docs/wiki/Smartphone.md)
+- [Admin Commands](docs/wiki/Admin-Commands.md)
+- [Developer API](docs/wiki/Developer-API.md)
+- [Integration Tutorial](docs/wiki/Developer-Integration-Tutorial.md)
+- [Configuration](docs/wiki/Configuration.md)
+- [Changelog](CHANGELOG.md)
 
-## Developer API (Quick View)
-
-Java entry point:
+## Developer API
 
 ```java
-UltimateBankingApi api = UltimateBankingApiProvider.get();
+UltimateBankingApi finance = UltimateBankingApiProvider.get();
+UltimateServerApi server = UltimateBankingApiProvider.server();
+UltimateBankManagementApi banks = UltimateBankingApiProvider.banks();
+UltimateShopManagementApi shops = UltimateBankingApiProvider.shops();
+UltimateHeistApi heists = UltimateBankingApiProvider.heists();
 ```
 
-Highlights:
+API snapshots are immutable. Mutations validate existing UBS permissions and must run on the logical server thread. See the [API reference](docs/wiki/Developer-API.md) for complete method and data-model coverage.
 
-- Core money ops: balance/deposit/withdraw/transfer/shopPurchase
-- Paper instruments + cash API:
-  - issue tagged `bank_note` and `cheque` item stacks
-  - give/take USD bills by `denomination + billCount`
-  - give/take USD coins by `denominationCents + coinCount`
-  - cash inventory helpers (`getPlayerBillCount`, `getPlayerCoinCount`, `getPlayerCashOnHand`)
-- Typed snapshots:
-  - `ApiAccountSnapshot` via account/player/bank lookup
-  - `ApiBankSnapshot` via bank lookup/list
-  - `ApiTransactionSnapshot` via transaction/account/player history
-- Pickpocket metrics:
-  - `hasPlayerEverStolen(playerId)`
-  - `getPlayersStolenFrom(playerId)`
-- Placeholder resolver for scoreboards/HUD:
-  - `resolvePlaceholder(playerId, token)`
-  - `resolvePlaceholders(playerId, text)`
-  - `getSupportedPlaceholders()`
+## Project
 
-Full reference: [`docs/wiki/Developer-API.md`](docs/wiki/Developer-API.md)
+- Organization: [PixelForgeMods](https://github.com/PixelForgeMods)
+- Repository: [Ultimate-Banking-System-UBS](https://github.com/PixelForgeMods/Ultimate-Banking-System-UBS)
 
-Integration walkthrough: [`docs/wiki/Developer-Integration-Tutorial.md`](docs/wiki/Developer-Integration-Tutorial.md)
-
-## Release
-
-- Changelog: [`CHANGELOG.md`](CHANGELOG.md)
-- Release checklist: [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md)
-- CurseForge WYSIWYG description source: [`docs/release/CURSEFORGE_DESCRIPTION_WYSIWYG.html`](docs/release/CURSEFORGE_DESCRIPTION_WYSIWYG.html)

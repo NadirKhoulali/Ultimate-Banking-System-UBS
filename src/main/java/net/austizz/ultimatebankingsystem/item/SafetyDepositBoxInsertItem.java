@@ -3,6 +3,7 @@ package net.austizz.ultimatebankingsystem.item;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.bank.safebox.setup.SafePremiseAccessPolicy;
 import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -46,8 +47,23 @@ public class SafetyDepositBoxInsertItem extends Item {
             return InteractionResult.FAIL;
         }
         if (!canInstallInRow(serverPlayer, level, pos)) {
-            serverPlayer.sendSystemMessage(Component.literal("Only bank owners, directors, and operators can install safety deposit box inserts here."));
+            serverPlayer.sendSystemMessage(Component.literal(
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage(
+                            "install safety deposit box inserts here")));
             return InteractionResult.FAIL;
+        }
+        if (moduleType == SafetyDepositBoxRowBlockEntity.ModuleType.COVER) {
+            CentralBank centralBank = BankManager.getCentralBank(serverPlayer.server);
+            SafetyDepositBoxService.ActionResult coverResult = SafetyDepositBoxService.validateCoverInstallation(
+                    serverPlayer.getServer(),
+                    centralBank,
+                    level,
+                    pos
+            );
+            if (!coverResult.success()) {
+                serverPlayer.sendSystemMessage(Component.literal(coverResult.message()));
+                return InteractionResult.FAIL;
+            }
         }
 
         int startRow = row.firstAvailableStart(moduleType);
@@ -84,11 +100,30 @@ public class SafetyDepositBoxInsertItem extends Item {
     }
 
     private static boolean canInstallInRow(ServerPlayer player, Level level, BlockPos pos) {
-        if (player.hasPermissions(3) || player.getAbilities().instabuild) {
+        if (player.hasPermissions(3)) {
             return true;
         }
         CentralBank centralBank = BankManager.getCentralBank(player.server);
         UUID bankId = SafetyDepositBoxService.findBankIdForSafeArea(centralBank, level, pos);
-        return bankId != null && SafetyDepositBoxService.canManageSafeArea(centralBank, player, bankId);
+        boolean claimedBankAreaExists = bankId != null;
+        boolean legacyManagementAccess = claimedBankAreaExists
+                && SafetyDepositBoxService.canManageSafeArea(centralBank, player, bankId);
+        return SafetyDepositBoxInsertAuthorization.canInstallInRow(
+                claimedBankAreaExists,
+                legacyManagementAccess
+        );
+    }
+}
+
+final class SafetyDepositBoxInsertAuthorization {
+    private SafetyDepositBoxInsertAuthorization() {
+    }
+
+    static boolean canInstallInRow(boolean claimedBankAreaExists,
+                                   boolean legacyManagementAccess) {
+        return SafePremiseAccessPolicy.decideInsertInstallation(
+                claimedBankAreaExists,
+                legacyManagementAccess
+        ).allowed();
     }
 }

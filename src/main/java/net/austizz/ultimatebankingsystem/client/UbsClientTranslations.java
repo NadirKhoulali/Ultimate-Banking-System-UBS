@@ -81,7 +81,17 @@ public final class UbsClientTranslations {
             "Showing ",
             "Loading ",
             "Refresh ",
-            "Brand color updated to "
+            "Brand color updated to ",
+            "Premise ",
+            "Ready | ",
+            "Setup required | ",
+            "Next: ",
+            "Vault ",
+            "Request ",
+            "Assign a free ",
+            "No free ",
+            "Ordered steps: ",
+            "Target "
     };
     private static volatile String languageCode = "";
 

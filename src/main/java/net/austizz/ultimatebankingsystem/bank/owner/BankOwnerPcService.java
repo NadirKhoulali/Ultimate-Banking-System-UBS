@@ -3,38 +3,64 @@ package net.austizz.ultimatebankingsystem.bank.owner;
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.account.AccountReadSnapshot;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankLevelService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.bank.owner.premise.OwnerPcPremisePayloadBuilder;
+import net.austizz.ultimatebankingsystem.bank.owner.staffing.BankEmployeeRemovalService;
+import net.austizz.ultimatebankingsystem.bank.owner.staffing.BankStaffingRoster;
+import net.austizz.ultimatebankingsystem.bank.owner.staffing.BankStaffingService;
+import net.austizz.ultimatebankingsystem.bank.owner.setup.BankSafeSetupPayloadBuilder;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafeAccessLogService;
+import net.austizz.ultimatebankingsystem.bank.safebox.SafeAlarmSettingsService;
 import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
+import net.austizz.ultimatebankingsystem.bank.safebox.VaultStorageSnapshotService;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomAnchor;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomService;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.ViewingRoomState;
+import net.austizz.ultimatebankingsystem.bank.safebox.viewing.SafeBoxViewingCoordinator;
+import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.custom.SafetyDepositBoxRowBlockEntity;
 import net.austizz.ultimatebankingsystem.command.UBSAdminCommands;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.heist.HeistSavedData;
+import net.austizz.ultimatebankingsystem.heist.HeistSession;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
 import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
+import net.austizz.ultimatebankingsystem.util.RegistryKeysCompat;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankAppSummary;
+import net.austizz.ultimatebankingsystem.network.OwnerPcBankTellerPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcBankDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcDesktopDataPayload;
 import net.austizz.ultimatebankingsystem.network.OwnerPcFileEntry;
+import net.austizz.ultimatebankingsystem.network.OwnerPcPlayerEmployeePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSetupObjectivePayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSafeAccessLogPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcSafeAlarmPayload;
+import net.austizz.ultimatebankingsystem.network.OwnerPcViewingRoomPayload;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
+import net.austizz.ultimatebankingsystem.network.StockroomLocateRenderPayload;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -107,6 +133,27 @@ public final class BankOwnerPcService {
                                      List<String> lockedQueue) {
     }
 
+    private record SafeAssignmentView(UUID bankId,
+                                      UUID accountId,
+                                      String dimension,
+                                      BlockPos pos,
+                                      int doorIndex,
+                                      String boxNumber,
+                                      boolean locked,
+                                      long assignedAtMillis,
+                                      BigDecimal paidAmount,
+                                      long rentPeriodTicks) {
+    }
+
+    private record SafeRowView(int index,
+                               String dimension,
+                               BlockPos pos,
+                               SafetyDepositBoxRowBlockEntity row) {
+    }
+
+    private record SafeLocateTarget(String dimension, BlockPos pos, int doorIndex) {
+    }
+
     private record DesktopContext(String dimensionId, int x, int y, int z, String machineId) {
         private String coordinateKey() {
             return normalizeDim(dimensionId) + "|" + x + "|" + y + "|" + z;
@@ -119,6 +166,13 @@ public final class BankOwnerPcService {
         private String label() {
             return normalizeDim(dimensionId) + " (" + x + ", " + y + ", " + z + ")";
         }
+    }
+
+    public record ValidDesktopContext(String computerId,
+                                      String dimensionId,
+                                      int x,
+                                      int y,
+                                      int z) {
     }
 
     private static final ConcurrentHashMap<UUID, Long> LAST_BANK_CREATE_ATTEMPT_MILLIS = new ConcurrentHashMap<>();
@@ -249,6 +303,126 @@ public final class BankOwnerPcService {
         String normalizedDim = normalizeDim(dimensionId);
         String machineId = resolveOrCreateDesktopMachineId(centralBank, normalizedDim, x, y, z, true);
         ACTIVE_DESKTOP_CONTEXT.put(playerId, new DesktopContext(normalizedDim, x, y, z, machineId));
+    }
+
+    static void clearRememberedDesktopContext(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        ACTIVE_DESKTOP_CONTEXT.remove(playerId);
+        DESKTOP_UNLOCKED_SESSIONS.values().forEach(players -> players.remove(playerId));
+        DESKTOP_UNLOCKED_SESSIONS.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+    }
+
+    public static boolean hasValidDesktopContext(MinecraftServer server,
+                                                 ServerPlayer player,
+                                                 boolean requireNearby) {
+        if (server == null || player == null) {
+            return false;
+        }
+        DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(player.getUUID());
+        if (context == null) {
+            return false;
+        }
+        ResourceLocation dimension = ResourceLocation.tryParse(context.dimensionId());
+        if (dimension == null) {
+            return false;
+        }
+        ServerLevel level = server.getLevel(RegistryKeysCompat.createValueKey(
+                RegistryKeysCompat.DIMENSION_REGISTRY_KEY, dimension));
+        BlockPos pos = new BlockPos(context.x(), context.y(), context.z());
+        if (level == null || !level.hasChunkAt(pos)
+                || !level.getBlockState(pos).is(ModBlocks.BANK_OWNER_PC.get())) {
+            return false;
+        }
+        if (!requireNearby) {
+            return true;
+        }
+        return player.level() == level
+                && player.position().distanceToSqr(
+                pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D) <= 100.0D;
+    }
+
+    public static ValidDesktopContext getValidDesktopContext(MinecraftServer server,
+                                                              CentralBank centralBank,
+                                                              ServerPlayer player,
+                                                              boolean requireNearby) {
+        if (centralBank == null || !hasValidDesktopContext(server, player, requireNearby)) {
+            return null;
+        }
+        DesktopContext context = ACTIVE_DESKTOP_CONTEXT.get(player.getUUID());
+        if (context == null) {
+            return null;
+        }
+        String machineId = resolveOrCreateDesktopMachineId(centralBank,
+                context.dimensionId(), context.x(), context.y(), context.z(), true);
+        if (machineId.isBlank()) {
+            return null;
+        }
+        DesktopContext resolved = new DesktopContext(
+                context.dimensionId(), context.x(), context.y(), context.z(), machineId);
+        ACTIVE_DESKTOP_CONTEXT.put(player.getUUID(), resolved);
+        return new ValidDesktopContext(machineId, resolved.dimensionId(),
+                resolved.x(), resolved.y(), resolved.z());
+    }
+
+    private static OwnerPcActionPolicy.MutationContext directMutationContext(
+            MinecraftServer server,
+            CentralBank centralBank,
+            ServerPlayer player) {
+        DesktopContext context = player == null ? null : ACTIVE_DESKTOP_CONTEXT.get(player.getUUID());
+        if (server == null || centralBank == null || player == null || context == null) {
+            return OwnerPcMutationContextCollector.collect(null, null, null);
+        }
+
+        ResourceLocation dimension = ResourceLocation.tryParse(context.dimensionId());
+        ServerLevel level = dimension == null ? null : server.getLevel(
+                RegistryKeysCompat.createValueKey(RegistryKeysCompat.DIMENSION_REGISTRY_KEY, dimension));
+        BlockPos pos = new BlockPos(context.x(), context.y(), context.z());
+        boolean chunkLoaded = level != null && level.hasChunkAt(pos);
+        OwnerPcMutationContextCollector.BlockKind blockKind = !chunkLoaded
+                ? OwnerPcMutationContextCollector.BlockKind.UNAVAILABLE
+                : level.getBlockState(pos).is(ModBlocks.BANK_OWNER_PC.get())
+                ? OwnerPcMutationContextCollector.BlockKind.OWNER_PC
+                : OwnerPcMutationContextCollector.BlockKind.OTHER;
+
+        CompoundTag centralMeta = centralBank.readBankMetadata(centralBank.getBankId());
+        CompoundTag machineIndex = getDesktopMachineIndexTag(centralMeta);
+        String indexedMachineId = machineIndex.contains(context.coordinateKey(), NBT_STRING)
+                ? machineIndex.getString(context.coordinateKey()).trim().toLowerCase(Locale.ROOT)
+                : "";
+        OwnerPcMutationContextCollector.RememberedPc remembered =
+                new OwnerPcMutationContextCollector.RememberedPc(
+                        context.dimensionId(), context.x(), context.y(), context.z(), context.machineId());
+        OwnerPcMutationContextCollector.PlayerLocation playerLocation =
+                new OwnerPcMutationContextCollector.PlayerLocation(
+                        player.level().dimension().location().toString(),
+                        player.getX(), player.getY(), player.getZ());
+        OwnerPcMutationContextCollector.LoadedPc unresolvedPower =
+                new OwnerPcMutationContextCollector.LoadedPc(
+                        level != null, chunkLoaded, blockKind, indexedMachineId, false, false);
+        OwnerPcActionPolicy.MutationContext physical = OwnerPcMutationContextCollector.collect(
+                remembered, unresolvedPower, playerLocation);
+
+        CompoundTag storageRoot = getDesktopStorageRoot(centralMeta);
+        CompoundTag pcTag = physical.machineMatches() && physical.withinRange()
+                && storageRoot.contains(context.storageKey(), NBT_COMPOUND)
+                ? storageRoot.getCompound(context.storageKey())
+                : new CompoundTag();
+        boolean poweredOn = physical.machineMatches() && physical.withinRange() && isDesktopPoweredOn(pcTag);
+        CompoundTag users = pcTag.contains("users", NBT_COMPOUND)
+                ? pcTag.getCompound("users")
+                : new CompoundTag();
+        CompoundTag userTag = users.contains(player.getUUID().toString(), NBT_COMPOUND)
+                ? users.getCompound(player.getUUID().toString())
+                : new CompoundTag();
+        boolean sessionUnlocked = poweredOn && isDesktopSessionUnlockedReadOnly(
+                indexedMachineId, player.getUUID(), userTag);
+        return OwnerPcMutationContextCollector.collect(remembered,
+                new OwnerPcMutationContextCollector.LoadedPc(
+                        level != null, chunkLoaded, blockKind, indexedMachineId,
+                        poweredOn, sessionUnlocked),
+                playerLocation);
     }
 
     public static void unregisterDesktopMachine(MinecraftServer server, String dimensionId, int x, int y, int z) {
@@ -1212,6 +1386,13 @@ public final class BankOwnerPcService {
         return bank != null && playerId.equals(bank.getBankOwnerId());
     }
 
+    public static boolean canAccessProtectedSafeArea(CentralBank centralBank, UUID playerId, UUID bankId) {
+        if (centralBank == null || playerId == null || bankId == null) {
+            return false;
+        }
+        return SafetyDepositBoxService.canAccessProtectedSafeArea(centralBank, playerId, bankId);
+    }
+
     public static OwnerPcBankDataPayload buildBankDataPayload(MinecraftServer server,
                                                                CentralBank centralBank,
                                                                UUID playerId,
@@ -1236,10 +1417,8 @@ public final class BankOwnerPcService {
             return null;
         }
 
-        long gameTime = currentOverworldGameTime(server);
-        refreshBankOperationalState(centralBank, bank, gameTime, server);
-
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bankId);
+        CompoundTag metadata = OwnerPcBankReadSupport.operationalMetadataSnapshot(
+                centralBank, bank, currentOverworldGameTime(server));
         boolean ownerView = isOwner(centralBank, playerId, bankId)
                 || (allowCentralBankAccess && bankId.equals(centralBank.getBankId()));
 
@@ -1268,10 +1447,14 @@ public final class BankOwnerPcService {
         BigDecimal dailyCap = getDailyCapForBank(bank, metadata);
         BigDecimal dailyUsed = readBigDecimal(metadata, "dailyWithdrawn").setScale(2, RoundingMode.HALF_EVEN);
         BigDecimal dailyRemaining = dailyCap.subtract(dailyUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN);
-        String singleLimit = configuredLimitValue(metadata, "limitSingle");
-        String dailyPlayerLimit = configuredLimitValue(metadata, "limitDailyPlayer");
-        String dailyBankLimit = configuredLimitValue(metadata, "limitDailyBank");
-        String tellerLimit = configuredLimitValue(metadata, "limitTeller");
+        String singleLimit = OwnerPcBankReadSupport.positiveLimit(metadata, "limitSingle",
+                BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()), null);
+        String dailyPlayerLimit = OwnerPcBankReadSupport.positiveLimit(metadata, "limitDailyPlayer",
+                BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get()), null);
+        String dailyBankLimit = OwnerPcBankReadSupport.positiveLimit(metadata, "limitDailyBank",
+                BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get()), null);
+        String tellerLimit = OwnerPcBankReadSupport.positiveLimit(metadata, "limitTeller",
+                DEFAULT_TELLER_WITHDRAWAL_LIMIT, MAX_TELLER_WITHDRAWAL_LIMIT);
 
         List<String> roles = new ArrayList<>();
         decodeUuidStringMap(metadata.getString("roles")).entrySet().stream()
@@ -1288,11 +1471,33 @@ public final class BankOwnerPcService {
                 .sorted(Comparator.comparing(UUID::toString))
                 .forEach(id -> cofounders.add(resolvePlayerName(server, id)));
 
-        List<String> employees = new ArrayList<>();
-        decodeEmployeeMap(metadata.getString("employees")).forEach((id, spec) -> employees.add(
-                resolvePlayerName(server, id) + " - " + spec.role() + " ($" + spec.salary().toPlainString() + ")"
-        ));
-        employees.sort(String.CASE_INSENSITIVE_ORDER);
+        BankStaffingRoster staffingRoster = BankStaffingService.readRoster(server, metadata, bankId);
+        List<String> employees = staffingRoster.playerEmployees().stream()
+                .map(employee -> employee.resolvedName() + " - " + employee.role()
+                        + " ($" + employee.salary().toPlainString() + ")")
+                .toList();
+        List<OwnerPcPlayerEmployeePayload> playerEmployees = staffingRoster.playerEmployees().stream()
+                .map(employee -> new OwnerPcPlayerEmployeePayload(
+                        employee.playerId(),
+                        employee.resolvedName(),
+                        employee.role(),
+                        employee.salary().setScale(2, RoundingMode.HALF_EVEN).toPlainString(),
+                        employee.online(),
+                        employee.safeAccessGranted()
+                ))
+                .toList();
+        List<OwnerPcBankTellerPayload> bankTellers = staffingRoster.bankTellers().stream()
+                .map(teller -> new OwnerPcBankTellerPayload(
+                        teller.entityId(),
+                        teller.displayName(),
+                        teller.variant(),
+                        teller.dimension(),
+                        (int) Math.floor(teller.x()),
+                        (int) Math.floor(teller.y()),
+                        (int) Math.floor(teller.z()),
+                        teller.active()
+                ))
+                .toList();
 
         List<String> loanProducts = decodeLoanProducts(metadata.getString("loanProducts")).stream()
                 .map(product -> product.name() + " | max $" + product.maxAmount().toPlainString()
@@ -1301,25 +1506,29 @@ public final class BankOwnerPcService {
                 .toList();
 
         List<String> interbankOffers = new ArrayList<>();
-        centralBank.getInterbankOffers().values().stream()
+        centralBank.readInterbankOffers().values().stream()
                 .filter(tag -> tag.hasUUID("lenderBankId") && bankId.equals(tag.getUUID("lenderBankId"))
                         || tag.hasUUID("acceptedByBankId") && bankId.equals(tag.getUUID("acceptedByBankId")))
                 .sorted(Comparator.comparingLong(tag -> tag.contains("createdTick") ? tag.getLong("createdTick") : 0L))
                 .forEach(tag -> {
-                    String id = shortId(tag.hasUUID("id") ? tag.getUUID("id") : UUID.randomUUID());
+                    String id = tag.hasUUID("id")
+                            ? shortId(tag.getUUID("id"))
+                            : OwnerPcBankReadSupport.stableTagId(tag);
                     String amount = readBigDecimal(tag, "amount").toPlainString();
                     String state = normalizeStatus(tag.getString("status"));
                     interbankOffers.add(id + " | $" + amount + " | " + state);
                 });
 
         List<String> interbankLoans = new ArrayList<>();
-        centralBank.getInterbankLoans().values().stream()
+        centralBank.readInterbankLoans().values().stream()
                 .filter(tag -> tag.hasUUID("lenderBankId") && bankId.equals(tag.getUUID("lenderBankId"))
                         || tag.hasUUID("borrowerBankId") && bankId.equals(tag.getUUID("borrowerBankId"))
                         || tag.hasUUID("bankId") && bankId.equals(tag.getUUID("bankId")))
                 .sorted(Comparator.comparingLong(tag -> tag.contains("createdTick") ? tag.getLong("createdTick") : 0L))
                 .forEach(tag -> {
-                    String id = shortId(tag.hasUUID("id") ? tag.getUUID("id") : UUID.randomUUID());
+                    String id = tag.hasUUID("id")
+                            ? shortId(tag.getUUID("id"))
+                            : OwnerPcBankReadSupport.stableTagId(tag);
                     String remaining = readBigDecimal(tag, "remaining").toPlainString();
                     String type = tag.contains("type") ? tag.getString("type") : "UNKNOWN";
                     String state = normalizeStatus(tag.getString("status"));
@@ -1344,7 +1553,27 @@ public final class BankOwnerPcService {
                 .toList();
 
         SafeDashboardData safe = buildSafeDashboardData(server, centralBank, bankId, bank, metadata);
+        BankSafeSetupPayloadBuilder.Result safeSetup = BankSafeSetupPayloadBuilder.build(server, metadata);
         BankLevelService.BankLevelSnapshot bankLevel = BankLevelService.snapshot(centralBank, bank);
+        List<OwnerPcSafeAccessLogPayload> safeAccessLogs = SafeAccessLogService.snapshot(metadata).stream()
+                .map(entry -> new OwnerPcSafeAccessLogPayload(
+                        entry.eventId(), entry.occurredAtMillis(), entry.category(), entry.outcome(),
+                        entry.action(), entry.actorName(), entry.subject(), entry.detail(), entry.dimension(),
+                        entry.x(), entry.y(), entry.z()))
+                .toList();
+        SafeAlarmSettingsService.Settings alarmSettings = SafeAlarmSettingsService.read(metadata);
+        HeistSession activeAlarm = HeistSavedData.get(server).sessions().stream()
+                .filter(session -> bankId.equals(session.bankId())
+                        && session.phase().isRunning() && session.alarmed())
+                .findFirst()
+                .orElse(null);
+        var safeSetupSnapshot = SafetyDepositBoxService.safeDepositSetupSnapshot(metadata);
+        OwnerPcSafeAlarmPayload safeAlarm = new OwnerPcSafeAlarmPayload(
+                alarmSettings.enabled(), alarmSettings.soundEventId(), alarmSettings.volume(),
+                alarmSettings.primaryPitch(), alarmSettings.secondaryPitch(), alarmSettings.intervalTicks(),
+                activeAlarm != null, activeAlarm == null ? "" : activeAlarm.alarmReason(),
+                SafeAlarmSettingsService.countLoadedLinkedScanners(
+                        server, safeSetupSnapshot, bankId, bank.getBankName()));
 
         return new OwnerPcBankDataPayload(
                 bankId,
@@ -1366,8 +1595,8 @@ public final class BankOwnerPcService {
                 dailyPlayerLimit,
                 dailyBankLimit,
                 tellerLimit,
-                CreditCardService.getIssueFee(centralBank, bankId).toPlainString(),
-                CreditCardService.getReplacementFee(centralBank, bankId).toPlainString(),
+                OwnerPcBankReadSupport.cardIssueFee(metadata).toPlainString(),
+                OwnerPcBankReadSupport.cardReplacementFee(metadata).toPlainString(),
                 BigDecimal.valueOf(centralBank.getFederalFundsRate()).setScale(2, RoundingMode.HALF_EVEN).toPlainString(),
                 String.valueOf(bankLevel.level()),
                 String.valueOf(bankLevel.derivedLevel()),
@@ -1400,8 +1629,55 @@ public final class BankOwnerPcService {
                 safe.overdueTicks(),
                 safe.areaSummaries(),
                 safe.boxAssignments(),
-                safe.lockedQueue()
+                safe.lockedQueue(),
+                playerEmployees,
+                bankTellers,
+                safeSetup.vaults(),
+                safeSetup.objective(),
+                OwnerPcPremisePayloadBuilder.build(server, metadata, bankId),
+                bankLevel.viewingRoomCapacity(),
+                buildViewingRoomPayloads(server, centralBank, bankId),
+                safeAccessLogs,
+                safeAlarm,
+                VaultStorageSnapshotService.build(server, safeSetupSnapshot)
         );
+    }
+
+    private static List<OwnerPcViewingRoomPayload> buildViewingRoomPayloads(MinecraftServer server,
+                                                                             CentralBank centralBank,
+                                                                             UUID bankId) {
+        return ViewingRoomService.states(server, centralBank, bankId,
+                        SafeBoxViewingCoordinator.activeRoomIds(server)).stream()
+                .map(state -> {
+                    var room = state.room();
+                    return new OwnerPcViewingRoomPayload(
+                            room.id().toString(), room.name(), room.premiseId(), room.bounds().dimension(),
+                            room.bounds().minX() + "," + room.bounds().minY() + "," + room.bounds().minZ()
+                                    + " -> " + room.bounds().maxX() + "," + room.bounds().maxY() + "," + room.bounds().maxZ(),
+                            state.status().name(), state.reasons(),
+                            formatViewingRoomAnchor(room.customerAnchor()),
+                            formatViewingRoomAnchor(room.tellerAnchor()),
+                            formatViewingRoomAnchor(room.displayAnchor()));
+                })
+                .toList();
+    }
+
+    private static String formatViewingRoomAnchor(ViewingRoomAnchor anchor) {
+        if (anchor == null) {
+            return "";
+        }
+        return String.format(Locale.ROOT, "%s | %.2f, %.2f, %.2f | yaw %.1f",
+                anchor.dimension(), anchor.x(), anchor.y(), anchor.z(), anchor.yaw());
+    }
+
+    public static OwnerPcSetupObjectivePayload buildSafeDepositSetupObjective(MinecraftServer server,
+                                                                               CentralBank centralBank,
+                                                                               UUID bankId) {
+        if (centralBank == null || bankId == null) {
+            return OwnerPcSetupObjectivePayload.unavailable();
+        }
+        SafetyDepositBoxService.ensureSafeDepositSetup(centralBank, bankId);
+        return BankSafeSetupPayloadBuilder.build(server, centralBank.getOrCreateBankMetadata(bankId)).objective();
     }
 
     private static SafeDashboardData buildSafeDashboardData(MinecraftServer server,
@@ -1415,13 +1691,9 @@ public final class BankOwnerPcService {
         ListTag escrow = safeMetadata.getList(SafetyDepositBoxService.ESCROW_KEY, Tag.TAG_COMPOUND);
 
         int rowCapacity = BankLevelService.safeRowCapacity(centralBank, bank);
-        int claimedRowUnits = SafetyDepositBoxService.countClaimedRows(centralBank, bankId);
-        int loadedRows = countLoadedSafeRows(server, areas);
-        int assigned = assignments.size();
-        int tierSlots = Math.max(0, rowCapacity) * SafetyDepositBoxRowBlockEntity.DOOR_COUNT;
-        int loadedSlots = Math.max(0, loadedRows) * SafetyDepositBoxRowBlockEntity.DOOR_COUNT;
-        int totalSlots = Math.max(Math.max(tierSlots, loadedSlots), assigned);
-        int locked = 0;
+        int loadedRowBlocks = SafetyDepositBoxService.countLoadedSafeRowBlocks(server, areas);
+        List<SafeRowView> liveRows = collectLoadedSafeRows(server, areas);
+        Map<String, SafeAssignmentView> assignmentsByLocation = new HashMap<>();
 
         List<String> areaSummaries = new ArrayList<>();
         for (int i = 0; i < areas.size(); i++) {
@@ -1438,31 +1710,36 @@ public final class BankOwnerPcService {
 
         List<String> boxAssignments = new ArrayList<>();
         List<String> lockedQueue = new ArrayList<>();
+        int assignmentCount = 0;
+        int locked = 0;
         for (int i = 0; i < assignments.size(); i++) {
             CompoundTag tag = assignments.getCompound(i);
-            if (!tag.hasUUID("accountId")) {
+            SafeAssignmentView assignment = readSafeAssignment(tag, safeMetadata);
+            if (assignment == null) {
                 continue;
             }
-            UUID accountId = tag.getUUID("accountId");
+            assignmentsByLocation.put(safeAssignmentLocationKey(assignment.dimension(), assignment.pos(), assignment.doorIndex()), assignment);
+            assignmentCount++;
+            UUID accountId = assignment.accountId();
             AccountHolder account = centralBank.SearchForAccountByAccountId(accountId);
             String accountName = account == null ? "Missing account" : resolvePlayerName(server, account.getPlayerUUID());
-            String status = tag.getBoolean("locked") ? "LOCKED" : "ASSIGNED";
+            String status = assignment.locked() ? "LOCKED" : "ASSIGNED";
             if ("LOCKED".equals(status)) {
                 locked++;
             }
-            String boxNumber = tag.getString("boxNumber");
+            String boxNumber = assignment.boxNumber();
             if (boxNumber == null || boxNumber.isBlank()) {
                 boxNumber = "SDB-" + shortId(accountId);
             }
-            String pos = tag.getInt("x") + "," + tag.getInt("y") + "," + tag.getInt("z");
+            String pos = assignment.pos().getX() + "," + assignment.pos().getY() + "," + assignment.pos().getZ();
             String row = safeField(boxNumber)
                     + "|" + safeField(accountName)
                     + "|" + accountId
-                    + "|" + safeField(tag.getString("dimension"))
+                    + "|" + safeField(assignment.dimension())
                     + "|" + pos
-                    + "|" + tag.getInt("doorIndex")
+                    + "|" + assignment.doorIndex()
                     + "|" + status
-                    + "|" + tag.getLong("assignedAtMillis");
+                    + "|" + assignment.assignedAtMillis();
             boxAssignments.add(row);
             if ("LOCKED".equals(status)) {
                 lockedQueue.add(row);
@@ -1489,10 +1766,23 @@ public final class BankOwnerPcService {
                 ? safeMetadata.getLong(SafetyDepositBoxService.OVERDUE_TICKS_KEY)
                 : 3L * 24L * 60L * 60L * 20L;
 
+        List<String> liveMapRows = buildSafeBoxWallMapRows(server, centralBank, liveRows, assignmentsByLocation, safeMetadata);
+        List<String> policyRows = OwnerPcSafePolicySnapshot.rows(server, safeMetadata);
+        if (!liveMapRows.isEmpty()) {
+            boxAssignments.addAll(0, liveMapRows);
+        }
+        if (!policyRows.isEmpty()) {
+            boxAssignments.addAll(0, policyRows);
+        }
+        int liveTotalBoxes = countLiveSafeBoxes(liveRows);
+        int liveAssignedBoxes = countLiveAssignedBoxes(liveRows, assignmentsByLocation);
+        int totalSlots = liveRows.isEmpty() ? assignmentCount : liveTotalBoxes;
+        int assigned = liveRows.isEmpty() ? assignmentCount : liveAssignedBoxes;
+
         return new SafeDashboardData(
                 String.valueOf(areas.size()),
                 String.valueOf(rowCapacity),
-                String.valueOf(claimedRowUnits),
+                String.valueOf(loadedRowBlocks),
                 String.valueOf(totalSlots),
                 String.valueOf(assigned),
                 String.valueOf(Math.max(0, totalSlots - assigned)),
@@ -1508,30 +1798,294 @@ public final class BankOwnerPcService {
         );
     }
 
-    private static int countLoadedSafeRows(MinecraftServer server, ListTag areas) {
-        if (server == null || areas == null || areas.isEmpty()) {
-            return 0;
+    private static List<SafeRowView> collectLoadedSafeRows(MinecraftServer server, ListTag areas) {
+        List<SafetyDepositBoxService.LoadedSafeRow> loadedRows = SafetyDepositBoxService.collectLoadedSafeRows(server, areas);
+        if (loadedRows.isEmpty()) {
+            return List.of();
         }
-        int rows = 0;
-        for (int i = 0; i < areas.size(); i++) {
-            CompoundTag area = areas.getCompound(i);
-            ServerLevel level = levelForSafeDashboard(server, area.getString("dimension"));
-            if (level == null) {
+        List<SafeRowView> rows = new ArrayList<>();
+        for (SafetyDepositBoxService.LoadedSafeRow loaded : loadedRows) {
+            if (loaded == null || loaded.pos() == null || loaded.row() == null) {
                 continue;
             }
-            for (int y = area.getInt("minY"); y <= area.getInt("maxY"); y++) {
-                for (int z = area.getInt("minZ"); z <= area.getInt("maxZ"); z++) {
-                    for (int x = area.getInt("minX"); x <= area.getInt("maxX"); x++) {
-                        BlockPos pos = new BlockPos(x, y, z);
-                        if (level.hasChunkAt(pos)
-                                && level.getBlockEntity(pos) instanceof SafetyDepositBoxRowBlockEntity) {
-                            rows++;
-                        }
+            rows.add(new SafeRowView(
+                    rows.size() + 1,
+                    normalizeDim(loaded.dimension()),
+                    loaded.pos().immutable(),
+                    loaded.row()
+            ));
+        }
+        rows.sort(Comparator
+                .comparing(SafeRowView::dimension, String.CASE_INSENSITIVE_ORDER)
+                .thenComparingInt(view -> view.pos().getY())
+                .thenComparingInt(view -> view.pos().getX())
+                .thenComparingInt(view -> view.pos().getZ()));
+        List<SafeRowView> indexed = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            SafeRowView row = rows.get(i);
+            indexed.add(new SafeRowView(i + 1, row.dimension(), row.pos(), row.row()));
+        }
+        return indexed;
+    }
+
+    public static List<String> buildSafePolicyRows(MinecraftServer server, CentralBank centralBank, UUID bankId) {
+        return centralBank == null || bankId == null
+                ? List.of()
+                : OwnerPcSafePolicySnapshot.rows(
+                        server, OwnerPcBankReadSupport.metadataSnapshot(centralBank, bankId));
+    }
+
+    private static List<String> buildSafeBoxWallMapRows(MinecraftServer server,
+                                                        CentralBank centralBank,
+                                                        List<SafeRowView> rows,
+                                                        Map<String, SafeAssignmentView> assignmentsByLocation,
+                                                        CompoundTag safeMetadata) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<String> lines = new ArrayList<>();
+        for (SafeRowView view : rows) {
+            if (view == null || view.row() == null || view.pos() == null) {
+                continue;
+            }
+            int boxCount = 0;
+            int assignedCount = 0;
+            int lockedCount = 0;
+            int coverCount = 0;
+            int emptyCount = 0;
+            List<String> boxLines = new ArrayList<>();
+            for (int door = 0; door < SafetyDepositBoxRowBlockEntity.DOOR_COUNT; door++) {
+                int moduleStart = view.row().getModuleStartForRow(door);
+                if (moduleStart >= 0 && moduleStart != door) {
+                    continue;
+                }
+                SafetyDepositBoxRowBlockEntity.ModuleType type = moduleStart < 0
+                        ? SafetyDepositBoxRowBlockEntity.ModuleType.EMPTY
+                        : view.row().getModuleType(door);
+                if (type == null) {
+                    type = SafetyDepositBoxRowBlockEntity.ModuleType.EMPTY;
+                }
+                boolean assignable = type.assignable() && view.row().isAssignableBoxStart(door);
+                SafeAssignmentView assignment = assignable
+                        ? assignmentsByLocation.get(safeAssignmentLocationKey(view.dimension(), view.pos(), door))
+                        : null;
+                UUID assignedAccountId = assignment == null ? view.row().getAssignedAccountId(door) : assignment.accountId();
+                AccountHolder account = assignedAccountId == null ? null : centralBank.SearchForAccountByAccountId(assignedAccountId);
+                String owner = assignedAccountId == null
+                        ? ""
+                        : (account == null ? "Missing account" : resolvePlayerName(server, account.getPlayerUUID()));
+                String status;
+                if (assignable) {
+                    boxCount++;
+                    if (assignedAccountId != null) {
+                        assignedCount++;
                     }
+                    if (assignment != null && assignment.locked()) {
+                        lockedCount++;
+                        status = "LOCKED";
+                    } else {
+                        status = assignedAccountId == null ? "FREE" : "ASSIGNED";
+                    }
+                } else if (type == SafetyDepositBoxRowBlockEntity.ModuleType.COVER) {
+                    coverCount++;
+                    status = "COVER";
+                } else {
+                    emptyCount++;
+                    status = "EMPTY";
+                }
+
+                String boxNumber = assignment == null ? view.row().getBoxNumber(door) : assignment.boxNumber();
+                if (boxNumber == null || boxNumber.isBlank()) {
+                    boxNumber = assignable && assignedAccountId != null ? "SDB-" + shortId(assignedAccountId) : "";
+                }
+                BigDecimal paidAmount = assignment == null ? safePolicyAmount(safeMetadata, type) : assignment.paidAmount();
+                long rentPeriod = assignment == null ? safeRentPeriodTicks(safeMetadata, type) : assignment.rentPeriodTicks();
+                int rowSpan = Math.max(1, type.rowSpan());
+                boxLines.add("@safe_box="
+                        + view.index()
+                        + "|" + door
+                        + "|" + safeField(type.name())
+                        + "|" + safeField(safeModuleLabel(type))
+                        + "|" + rowSpan
+                        + "|" + status
+                        + "|" + safeField(boxNumber)
+                        + "|" + safeField(owner)
+                        + "|" + (assignedAccountId == null ? "" : assignedAccountId)
+                        + "|" + paidAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN).toPlainString()
+                        + "|" + Math.max(1L, rentPeriod)
+                        + "|" + (assignment == null ? 0L : Math.max(0L, assignment.assignedAtMillis()))
+                        + "|" + safeField(encodeSafeLocateTarget(view.dimension(), view.pos(), door)));
+            }
+
+            lines.add("@safe_row="
+                    + view.index()
+                    + "|" + safeField(view.dimension())
+                    + "|" + view.pos().getX()
+                    + "|" + view.pos().getY()
+                    + "|" + view.pos().getZ()
+                    + "|" + safeField(encodeSafeLocateTarget(view.dimension(), view.pos(), 0))
+                    + "|" + boxCount
+                    + "|" + assignedCount
+                    + "|" + lockedCount
+                    + "|" + coverCount
+                    + "|" + emptyCount);
+            lines.addAll(boxLines);
+        }
+        return lines;
+    }
+
+    private static int countLiveSafeBoxes(List<SafeRowView> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (SafeRowView view : rows) {
+            if (view == null || view.row() == null) {
+                continue;
+            }
+            for (int door = 0; door < SafetyDepositBoxRowBlockEntity.DOOR_COUNT; door++) {
+                if (view.row().isAssignableBoxStart(door)) {
+                    total++;
                 }
             }
         }
-        return rows;
+        return total;
+    }
+
+    private static int countLiveAssignedBoxes(List<SafeRowView> rows, Map<String, SafeAssignmentView> assignmentsByLocation) {
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (SafeRowView view : rows) {
+            if (view == null || view.row() == null) {
+                continue;
+            }
+            for (int door = 0; door < SafetyDepositBoxRowBlockEntity.DOOR_COUNT; door++) {
+                if (!view.row().isAssignableBoxStart(door)) {
+                    continue;
+                }
+                boolean assigned = view.row().getAssignedAccountId(door) != null
+                        || (assignmentsByLocation != null
+                        && assignmentsByLocation.containsKey(safeAssignmentLocationKey(view.dimension(), view.pos(), door)));
+                if (assigned) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private static SafeAssignmentView readSafeAssignment(CompoundTag tag, CompoundTag safeMetadata) {
+        if (tag == null || !tag.hasUUID("accountId") || !tag.hasUUID("bankId")) {
+            return null;
+        }
+        int doorIndex = tag.getInt("doorIndex");
+        if (doorIndex < 0 || doorIndex >= SafetyDepositBoxRowBlockEntity.DOOR_COUNT) {
+            return null;
+        }
+        BlockPos pos = new BlockPos(tag.getInt("x"), tag.getInt("y"), tag.getInt("z"));
+        String boxNumber = tag.getString("boxNumber");
+        if (boxNumber == null) {
+            boxNumber = "";
+        }
+        BigDecimal paidAmount = tag.contains("paidAmount")
+                ? readBigDecimal(tag, "paidAmount")
+                : safePolicyAmount(safeMetadata);
+        long rentPeriod = tag.contains("rentPeriodTicks")
+                ? tag.getLong("rentPeriodTicks")
+                : safeRentPeriodTicks(safeMetadata);
+        return new SafeAssignmentView(
+                tag.getUUID("bankId"),
+                tag.getUUID("accountId"),
+                normalizeDim(tag.getString("dimension")),
+                pos,
+                doorIndex,
+                boxNumber,
+                tag.getBoolean("locked"),
+                tag.getLong("assignedAtMillis"),
+                paidAmount,
+                Math.max(1L, rentPeriod)
+        );
+    }
+
+    private static String safeAssignmentLocationKey(String dimension, BlockPos pos, int doorIndex) {
+        if (pos == null) {
+            return normalizeDim(dimension) + "|0|0|0|" + doorIndex;
+        }
+        return normalizeDim(dimension)
+                + "|" + pos.getX()
+                + "|" + pos.getY()
+                + "|" + pos.getZ()
+                + "|" + Math.max(0, doorIndex);
+    }
+
+    private static BigDecimal safePolicyAmount(CompoundTag safeMetadata) {
+        return safePolicyAmount(safeMetadata, SafetyDepositBoxRowBlockEntity.ModuleType.SMALL);
+    }
+
+    private static BigDecimal safePolicyAmount(CompoundTag safeMetadata, SafetyDepositBoxRowBlockEntity.ModuleType type) {
+        return SafetyDepositBoxService.pricingPolicy(safeMetadata, type).amount();
+    }
+
+    private static long safeRentPeriodTicks(CompoundTag safeMetadata) {
+        return safeRentPeriodTicks(safeMetadata, SafetyDepositBoxRowBlockEntity.ModuleType.SMALL);
+    }
+
+    private static long safeRentPeriodTicks(CompoundTag safeMetadata, SafetyDepositBoxRowBlockEntity.ModuleType type) {
+        return SafetyDepositBoxService.pricingPolicy(safeMetadata, type).rentPeriodTicks();
+    }
+
+    private static String encodeSafeLocateTarget(String dimension, BlockPos pos, int doorIndex) {
+        if (pos == null) {
+            return "";
+        }
+        return normalizeDim(dimension)
+                + ";" + pos.getX()
+                + ";" + pos.getY()
+                + ";" + pos.getZ()
+                + ";" + Math.max(0, doorIndex);
+    }
+
+    private static SafeLocateTarget parseSafeLocateTarget(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String[] parts = raw.trim().split(";", -1);
+        if (parts.length < 5) {
+            return null;
+        }
+        try {
+            String dimension = normalizeDim(parts[0]);
+            int x = Integer.parseInt(parts[1].trim());
+            int y = Integer.parseInt(parts[2].trim());
+            int z = Integer.parseInt(parts[3].trim());
+            int door = Integer.parseInt(parts[4].trim());
+            if (dimension.isBlank()) {
+                return null;
+            }
+            return new SafeLocateTarget(dimension, new BlockPos(x, y, z), door);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static boolean isInsideSafeAreas(ListTag areas, String dimension, BlockPos pos) {
+        return SafetyDepositBoxService.containsSafeRowScanBounds(areas, dimension, pos);
+    }
+
+    private static String safeModuleLabel(SafetyDepositBoxRowBlockEntity.ModuleType type) {
+        if (type == null) {
+            return "Empty";
+        }
+        return switch (type) {
+            case SMALL -> "Small";
+            case MEDIUM -> "Medium";
+            case LARGE -> "Large";
+            case EXTRA_LARGE -> "Extra Large";
+            case COVER -> "Cover";
+            default -> "Empty";
+        };
     }
 
     private static ServerLevel levelForSafeDashboard(MinecraftServer server, String dimension) {
@@ -1562,9 +2116,43 @@ public final class BankOwnerPcService {
                                              String arg2,
                                              String arg3,
                                              String arg4) {
+        return executeAction(server, centralBank, player, bankId, action, arg1, arg2, arg3, arg4,
+                OwnerPcActionPolicy.Channel.TRUSTED_REMOTE);
+    }
+
+    public static ActionResult executeDirectAction(MinecraftServer server,
+                                                   CentralBank centralBank,
+                                                   ServerPlayer player,
+                                                   UUID bankId,
+                                                   String action,
+                                                   String arg1,
+                                                   String arg2,
+                                                   String arg3,
+                                                   String arg4) {
+        return executeAction(server, centralBank, player, bankId, action, arg1, arg2, arg3, arg4,
+                OwnerPcActionPolicy.Channel.DIRECT_OWNER_PC);
+    }
+
+    private static ActionResult executeAction(MinecraftServer server,
+                                              CentralBank centralBank,
+                                              ServerPlayer player,
+                                              UUID bankId,
+                                              String action,
+                                              String arg1,
+                                              String arg2,
+                                              String arg3,
+                                              String arg4,
+                                              OwnerPcActionPolicy.Channel channel) {
         if (server == null || centralBank == null || player == null || bankId == null) {
             return new ActionResult(false, "Bank data is unavailable.");
         }
+        OwnerPcActionPolicy.Action classifiedAction = OwnerPcActionPolicy.classify(action);
+        if (classifiedAction == null) {
+            OwnerPcActionPolicy.Decision unknown = OwnerPcActionPolicy.authorize(
+                    action, channel, null);
+            return new ActionResult(false, unknown.message());
+        }
+
         boolean allowCentralBankAccess = bankId.equals(centralBank.getBankId()) && player.hasPermissions(3);
         if (!canAccessBank(centralBank, player.getUUID(), bankId, allowCentralBankAccess)) {
             return new ActionResult(false, "You do not have access to this bank app.");
@@ -1575,41 +2163,77 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Bank no longer exists.");
         }
 
-        boolean owner = player.getUUID().equals(bank.getBankOwnerId()) || allowCentralBankAccess;
-        String normalizedAction = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        OwnerPcActionPolicy.MutationContext mutationContext =
+                channel == OwnerPcActionPolicy.Channel.DIRECT_OWNER_PC
+                        && classifiedAction.access() == OwnerPcActionPolicy.Access.MUTATION
+                        ? directMutationContext(server, centralBank, player)
+                        : null;
+        OwnerPcActionPolicy.Decision decision = OwnerPcActionPolicy.authorize(
+                action, channel, mutationContext);
+        if (!decision.allowed()) {
+            return new ActionResult(false, decision.message());
+        }
 
-        return switch (normalizedAction) {
-            case "SHOW_INFO", "SHOW_RESERVE", "SHOW_DASHBOARD", "SHOW_ACCOUNTS", "SHOW_CDS",
-                 "SHOW_LIMITS", "SHOW_ROLES", "SHOW_SHARES", "SHOW_COFOUNDERS", "SHOW_EMPLOYEES",
-                 "SHOW_LOAN_PRODUCTS", "SHOW_LOANS", "SHOW_MARKET" ->
-                    buildShowActionResult(server, centralBank, bank, normalizedAction, player.getUUID(), allowCentralBankAccess);
-            case "BANK_LEVEL_ROADMAP" -> new ActionResult(normalizedAction, true, BankLevelService.levelRoadmapReport(centralBank, bank));
-            case "SET_MOTTO" -> handleSetMotto(centralBank, bank, owner, arg1);
-            case "SET_COLOR" -> handleSetColor(centralBank, bank, owner, arg1);
-            case "SET_LIMIT" -> handleSetLimit(centralBank, bank, owner, arg1, arg2);
-            case "SET_CARD_FEES" -> handleSetCardFees(centralBank, bank, owner, arg1, arg2);
-            case "ROLE_ASSIGN" -> handleRoleAssign(server, centralBank, bank, owner, arg1, arg2);
-            case "ROLE_REVOKE" -> handleRoleRevoke(server, centralBank, bank, owner, arg1);
-            case "SHARES_SET" -> handleSharesSet(server, centralBank, bank, owner, arg1, arg2);
-            case "COFOUNDER_ADD" -> handleCofounderAdd(server, centralBank, bank, owner, arg1);
-            case "HIRE" -> handleHire(server, centralBank, bank, owner, arg1, arg2, arg3);
-            case "FIRE" -> handleFire(server, centralBank, bank, owner, arg1);
-            case "TELLER_ISSUE" -> handleTellerIssue(server, bank, player, owner);
-            case "TELLER_COUNT" -> handleTellerCount(server, bank, owner);
-            case "BORROW" -> handleBorrow(server, centralBank, bank, owner, arg1);
-            case "LEND_OFFER" -> handleLendOffer(server, centralBank, bank, owner, arg1, arg2, arg3);
-            case "LEND_ACCEPT" -> handleLendAccept(server, centralBank, bank, owner, arg1);
-            case "APPEAL" -> handleAppeal(server, centralBank, bank, player, owner, arg1);
-            case "CREATE_LOAN_PRODUCT" -> handleCreateLoanProduct(centralBank, bank, owner, arg1, arg2, arg3, arg4);
-            case "ACCOUNT_DETAIL" -> handleAccountDetail(server, centralBank, bank, arg1, arg2, "");
-            case "ACCOUNT_FREEZE" -> handleAccountFreeze(server, centralBank, bank, owner, arg1, arg2);
-            case "ACCOUNT_UNFREEZE" -> handleAccountUnfreeze(server, centralBank, bank, owner, arg1);
-            case "ACCOUNT_TEMP_LIMIT" -> handleAccountTemporaryLimit(server, centralBank, bank, owner, arg1, arg2, arg3);
-            case "SAFE_AREA_CLAIM_TOOL" -> handleSafeAreaClaimTool(server, centralBank, bank, player);
-            case "SAFE_BOX_ASSIGN" -> handleSafeBoxAssign(server, centralBank, bank, player, arg1);
-            case "SAFE_BOX_POLICY" -> handleSafeBoxPolicy(centralBank, bank, player, arg1, arg2, arg3, arg4);
-            case "SAFE_BOX_SEIZE" -> handleSafeBoxSeize(centralBank, bank, player, arg1);
-            default -> new ActionResult(false, "Unknown action: " + normalizedAction);
+        boolean owner = player.getUUID().equals(bank.getBankOwnerId()) || allowCentralBankAccess;
+        String normalizedAction = classifiedAction.name();
+
+        return switch (classifiedAction) {
+            case SHOW_INFO, SHOW_RESERVE, SHOW_DASHBOARD, SHOW_ACCOUNTS, SHOW_CDS,
+                 SHOW_LIMITS, SHOW_ROLES, SHOW_SHARES, SHOW_COFOUNDERS, SHOW_EMPLOYEES,
+                 SHOW_LOAN_PRODUCTS, SHOW_LOANS, SHOW_MARKET ->
+                    buildShowActionResult(server, centralBank, bank, normalizedAction,
+                            player.getUUID(), allowCentralBankAccess);
+            case BANK_LEVEL_ROADMAP -> new ActionResult(normalizedAction, true,
+                    BankLevelService.levelRoadmapReport(centralBank, bank));
+            case SET_MOTTO -> handleSetMotto(centralBank, bank, owner, arg1);
+            case SET_COLOR -> handleSetColor(centralBank, bank, owner, arg1);
+            case SET_LIMIT -> handleSetLimit(centralBank, bank, owner, arg1, arg2);
+            case SET_CARD_FEES -> handleSetCardFees(centralBank, bank, owner, arg1, arg2);
+            case ROLE_ASSIGN -> handleRoleAssign(server, centralBank, bank, owner, arg1, arg2);
+            case ROLE_REVOKE -> handleRoleRevoke(server, centralBank, bank, owner, arg1);
+            case SHARES_SET -> handleSharesSet(server, centralBank, bank, owner, arg1, arg2);
+            case COFOUNDER_ADD -> handleCofounderAdd(server, centralBank, bank, owner, arg1);
+            case HIRE -> handleHire(server, centralBank, bank, owner, arg1, arg2, arg3);
+            case FIRE -> handleFire(server, centralBank, bank, owner, arg1);
+            case TELLER_ISSUE -> handleTellerIssue(server, bank, player, owner);
+            case TELLER_COUNT -> handleTellerCount(server, bank, owner);
+            case BORROW -> handleBorrow(server, centralBank, bank, owner, arg1);
+            case LEND_OFFER -> handleLendOffer(server, centralBank, bank, owner, arg1, arg2, arg3);
+            case LEND_ACCEPT -> handleLendAccept(server, centralBank, bank, owner, arg1);
+            case APPEAL -> handleAppeal(server, centralBank, bank, player, owner, arg1);
+            case CREATE_LOAN_PRODUCT -> handleCreateLoanProduct(
+                    centralBank, bank, owner, arg1, arg2, arg3, arg4);
+            case ACCOUNT_DETAIL -> handleAccountDetail(server, centralBank, bank, arg1, arg2, "");
+            case ACCOUNT_FREEZE -> handleAccountFreeze(server, centralBank, bank, owner, arg1, arg2);
+            case ACCOUNT_UNFREEZE -> handleAccountUnfreeze(server, centralBank, bank, owner, arg1);
+            case ACCOUNT_TEMP_LIMIT -> handleAccountTemporaryLimit(
+                    server, centralBank, bank, owner, arg1, arg2, arg3);
+            case SAFE_AREA_CLAIM_TOOL -> handleSafeAreaClaimTool(server, centralBank, bank, player);
+            case SAFE_BOX_ASSIGN -> handleSafeBoxAssign(server, centralBank, bank, player, arg1);
+            case SAFE_BOX_LOCATE -> handleSafeBoxLocate(server, centralBank, bank, player, arg1);
+            case SAFE_BOX_POLICY -> handleSafeBoxPolicy(
+                    centralBank, bank, player, arg1, arg2, arg3, arg4);
+            case SAFE_BOX_SEIZE -> handleSafeBoxSeize(centralBank, bank, player, arg1);
+            case SAFE_ACCESS_GRANT -> handleSafeAccess(
+                    server, centralBank, bank, player, arg1, true);
+            case SAFE_ACCESS_REVOKE -> handleSafeAccess(
+                    server, centralBank, bank, player, arg1, false);
+            case SAFE_ALARM_CONFIG -> handleSafeAlarmConfig(
+                    centralBank, bank, player, arg1, arg2, arg3, arg4, true);
+            case SAFE_ALARM_TEST -> handleSafeAlarmTest(
+                    centralBank, bank, player, arg1, arg2, arg3, arg4);
+            case SAFE_ALARM_STOP_TEST -> handleSafeAlarmStopTest(centralBank, bank, player);
+            case SAFE_ALARM_RESET -> handleSafeAlarmReset(centralBank, bank, player);
+            case VIEWING_ROOM_CLAIM_TOOL -> handleViewingRoomClaimTool(
+                    server, centralBank, bank, player);
+            case VIEWING_ROOM_ANCHOR -> handleViewingRoomAnchor(
+                    server, centralBank, bank, player, arg1, arg2);
+            case VIEWING_ROOM_RENAME -> handleViewingRoomRename(
+                    server, centralBank, bank, player, arg1, arg2);
+            case VIEWING_ROOM_SUSPEND -> handleViewingRoomSuspend(
+                    server, centralBank, bank, player, arg1, arg2);
+            case VIEWING_ROOM_DELETE -> handleViewingRoomDelete(
+                    server, centralBank, bank, player, arg1);
         };
     }
 
@@ -1676,38 +2300,18 @@ public final class BankOwnerPcService {
             }
             case "SHOW_ACCOUNTS" -> body = formatList("Account Roster (" + data.accountRoster().size() + ")", data.accountRoster());
             case "SHOW_CDS" -> body = formatList("Certificates (" + data.certificateSchedule().size() + ")", data.certificateSchedule());
-            case "SHOW_LIMITS" -> {
-                CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-                BigDecimal singleLimit = metadata.contains("limitSingle")
-                        ? readBigDecimal(metadata, "limitSingle")
-                        : BigDecimal.valueOf(Config.GLOBAL_MAX_SINGLE_TRANSACTION.get());
-                BigDecimal dailyPlayerLimit = metadata.contains("limitDailyPlayer")
-                        ? readBigDecimal(metadata, "limitDailyPlayer")
-                        : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get());
-                BigDecimal dailyBankLimit = metadata.contains("limitDailyBank")
-                        ? readBigDecimal(metadata, "limitDailyBank")
-                        : BigDecimal.valueOf(Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get());
-                BigDecimal tellerLimit = metadata.contains("limitTeller")
-                        ? readBigDecimal(metadata, "limitTeller")
-                        : DEFAULT_TELLER_WITHDRAWAL_LIMIT;
-                if (tellerLimit.compareTo(BigDecimal.ZERO) <= 0) {
-                    tellerLimit = DEFAULT_TELLER_WITHDRAWAL_LIMIT;
-                } else if (tellerLimit.compareTo(MAX_TELLER_WITHDRAWAL_LIMIT) > 0) {
-                    tellerLimit = MAX_TELLER_WITHDRAWAL_LIMIT;
-                }
-                body = joinLines(
-                        "Single Tx Limit: $" + singleLimit.toPlainString(),
-                        "Daily Player Limit: $" + dailyPlayerLimit.toPlainString(),
-                        "Daily Bank Limit: $" + dailyBankLimit.toPlainString(),
-                        "Teller Cash Limit: $" + tellerLimit.toPlainString(),
-                        "Daily Cap: $" + data.dailyCap(),
-                        "Daily Used: $" + data.dailyUsed(),
-                        "Daily Remaining: $" + data.dailyRemaining(),
-                        "Minimum Reserve: $" + data.minReserve(),
-                        "Card Issue Fee: $" + data.cardIssueFee(),
-                        "Card Replacement Fee: $" + data.cardReplacementFee()
-                );
-            }
+            case "SHOW_LIMITS" -> body = joinLines(
+                    "Single Tx Limit: $" + data.singleLimit(),
+                    "Daily Player Limit: $" + data.dailyPlayerLimit(),
+                    "Daily Bank Limit: $" + data.dailyBankLimit(),
+                    "Teller Cash Limit: $" + data.tellerLimit(),
+                    "Daily Cap: $" + data.dailyCap(),
+                    "Daily Used: $" + data.dailyUsed(),
+                    "Daily Remaining: $" + data.dailyRemaining(),
+                    "Minimum Reserve: $" + data.minReserve(),
+                    "Card Issue Fee: $" + data.cardIssueFee(),
+                    "Card Replacement Fee: $" + data.cardReplacementFee()
+            );
             case "SHOW_ROLES" -> body = formatList("Roles (" + data.roles().size() + ")", data.roles());
             case "SHOW_SHARES" -> body = formatList("Shares (" + data.shares().size() + ")", data.shares());
             case "SHOW_COFOUNDERS" -> body = formatList("Cofounders (" + data.cofounders().size() + ")", data.cofounders());
@@ -1716,7 +2320,7 @@ public final class BankOwnerPcService {
             case "SHOW_LOANS" -> body = formatList("Interbank Loans (" + data.interbankLoans().size() + ")", data.interbankLoans());
             case "SHOW_MARKET" -> {
                 long nowTick = currentOverworldGameTime(server);
-                List<String> market = centralBank.getInterbankOffers().values().stream()
+                List<String> market = centralBank.readInterbankOffers().values().stream()
                         .filter(tag -> "OPEN".equalsIgnoreCase(tag.getString("status")))
                         .filter(tag -> !tag.contains("expiryTick") || tag.getLong("expiryTick") >= nowTick)
                         .sorted(Comparator.comparingLong(tag -> tag.contains("createdTick") ? tag.getLong("createdTick") : 0L))
@@ -1730,7 +2334,9 @@ public final class BankOwnerPcService {
                             String amount = readBigDecimal(tag, "amount").toPlainString();
                             String rate = String.valueOf(tag.contains("annualRate") ? tag.getDouble("annualRate") : 0.0);
                             String term = String.valueOf(tag.contains("termTicks") ? tag.getLong("termTicks") : 0L);
-                            UUID id = tag.hasUUID("id") ? tag.getUUID("id") : UUID.randomUUID();
+                            String id = tag.hasUUID("id")
+                                    ? tag.getUUID("id").toString()
+                                    : OwnerPcBankReadSupport.stableTagId(tag);
                             return id + " | " + lender + " | $" + amount + " | APR " + rate + "% | " + term + " ticks";
                         })
                         .toList();
@@ -1757,9 +2363,9 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Account detail failed: account is not in this bank.");
         }
         long gameTime = currentOverworldGameTime(server);
-        account.getEffectiveWithdrawalLimit(gameTime);
+        AccountReadSnapshot accountSnapshot = account.readOnlySnapshot(gameTime);
 
-        List<UserTransaction> transactions = account.getTransactions().values().stream()
+        List<UserTransaction> transactions = account.readOnlyTransactions().values().stream()
                 .filter(tx -> tx != null)
                 .sorted(Comparator.comparing(UserTransaction::getTimestamp, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
                 .toList();
@@ -1783,17 +2389,17 @@ public final class BankOwnerPcService {
         lines.add("account.frozen_reason=" + sanitizeLine(account.getFrozenReason()));
         lines.add("account.access_type=" + sanitizeLine(account.getAccountAccessType()));
         lines.add("account.business_label=" + sanitizeLine(account.getBusinessLabel()));
-        lines.add("daily.limit=" + account.getConfiguredDailyWithdrawalLimit().toPlainString());
-        lines.add("daily.used=" + account.getDailyWithdrawnAmount().toPlainString());
-        lines.add("daily.remaining=" + account.getRemainingDailyWithdrawalLimit().toPlainString());
-        BigDecimal tempLimit = account.getTemporaryWithdrawalLimitIfActive(gameTime);
-        long tempExpires = account.getTemporaryWithdrawalLimitExpiresAtEpochMillis(gameTime);
+        lines.add("daily.limit=" + accountSnapshot.dailyLimit().toPlainString());
+        lines.add("daily.used=" + accountSnapshot.dailyUsed().toPlainString());
+        lines.add("daily.remaining=" + accountSnapshot.dailyRemaining().toPlainString());
+        BigDecimal tempLimit = accountSnapshot.temporaryLimit();
+        long tempExpires = accountSnapshot.temporaryExpiresAtEpochMillis();
         lines.add("temp.limit=" + (tempLimit == null ? "" : tempLimit.toPlainString()));
         lines.add("temp.expires_millis=" + Math.max(-1L, tempExpires));
         lines.add("credit.score=" + account.getCreditScore());
         lines.add("credit.defaulted=" + account.isDefaulted());
         lines.add("certificate.tier=" + sanitizeLine(account.getCertificateTier()));
-        lines.add("certificate.locked=" + account.isCertificateLocked(gameTime));
+        lines.add("certificate.locked=" + accountSnapshot.certificateLocked());
         lines.add("history.page=0");
         lines.add("history.page_size=" + ACCOUNT_DETAIL_HISTORY_LIMIT);
         lines.add("history.total=" + total);
@@ -1825,10 +2431,94 @@ public final class BankOwnerPcService {
                                                         Bank bank,
                                                         ServerPlayer player) {
         if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
-            return new ActionResult(false, "Only bank owners, directors, and server operators can claim safe areas.");
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("claim safe areas"));
         }
         SafetyDepositBoxService.ActionResult result =
                 SafetyDepositBoxService.startSafeAreaClaimToolSession(server, centralBank, player, bank.getBankId());
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleViewingRoomClaimTool(MinecraftServer server,
+                                                            CentralBank centralBank,
+                                                            Bank bank,
+                                                            ServerPlayer player) {
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.startViewingRoomClaimToolSession(
+                        server, centralBank, player, bank.getBankId(), false);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleViewingRoomAnchor(MinecraftServer server,
+                                                         CentralBank centralBank,
+                                                         Bank bank,
+                                                         ServerPlayer player,
+                                                         String roomIdRaw,
+                                                         String kindRaw) {
+        UUID roomId = parseUuid(roomIdRaw);
+        ViewingRoomService.AnchorKind kind = ViewingRoomService.AnchorKind.parse(kindRaw);
+        if (SafeBoxViewingCoordinator.isRoomActive(server, roomId)) {
+            return new ActionResult(false, "An active viewing session must finish before changing room anchors.");
+        }
+        SafetyDepositBoxService.ActionResult result =
+                SafetyDepositBoxService.startViewingRoomAnchorToolSession(
+                        server, centralBank, player, bank.getBankId(), roomId, kind, false);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleViewingRoomRename(MinecraftServer server,
+                                                         CentralBank centralBank,
+                                                         Bank bank,
+                                                         ServerPlayer player,
+                                                         String roomIdRaw,
+                                                         String name) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("rename viewing rooms"));
+        }
+        UUID roomId = parseUuid(roomIdRaw);
+        if (SafeBoxViewingCoordinator.isRoomActive(server, roomId)) {
+            return new ActionResult(false, "An active viewing session must finish before renaming this room.");
+        }
+        ViewingRoomService.MutationResult result = ViewingRoomService.rename(
+                centralBank, bank.getBankId(), roomId, name);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleViewingRoomSuspend(MinecraftServer server,
+                                                          CentralBank centralBank,
+                                                          Bank bank,
+                                                          ServerPlayer player,
+                                                          String roomIdRaw,
+                                                          String suspendedRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("suspend viewing rooms"));
+        }
+        UUID roomId = parseUuid(roomIdRaw);
+        if (SafeBoxViewingCoordinator.isRoomActive(server, roomId)) {
+            return new ActionResult(false, "An active viewing session must finish before suspending this room.");
+        }
+        boolean suspended = Boolean.parseBoolean(suspendedRaw);
+        ViewingRoomService.MutationResult result = ViewingRoomService.setAdminSuspended(
+                centralBank, bank.getBankId(), roomId, suspended);
+        return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleViewingRoomDelete(MinecraftServer server,
+                                                         CentralBank centralBank,
+                                                         Bank bank,
+                                                         ServerPlayer player,
+                                                         String roomIdRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("delete viewing rooms"));
+        }
+        UUID roomId = parseUuid(roomIdRaw);
+        if (SafeBoxViewingCoordinator.isRoomActive(server, roomId)) {
+            return new ActionResult(false, "An active viewing session must finish before deleting this room.");
+        }
+        ViewingRoomService.MutationResult result = ViewingRoomService.delete(
+                centralBank, bank.getBankId(), roomId);
         return new ActionResult(result.success(), result.message());
     }
 
@@ -1838,7 +2528,7 @@ public final class BankOwnerPcService {
                                                     ServerPlayer player,
                                                     String accountIdRaw) {
         if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
-            return new ActionResult(false, "Only bank owners, directors, and server operators can assign safety boxes.");
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("assign safety boxes"));
         }
         UUID accountId = parseUuid(accountIdRaw);
         if (accountId == null) {
@@ -1846,6 +2536,12 @@ public final class BankOwnerPcService {
         }
         SafetyDepositBoxService.ActionResult result =
                 SafetyDepositBoxService.assignFirstFreeBox(server, centralBank, bank.getBankId(), accountId);
+        if (result.success()) {
+            SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                    SafeAccessLogService.CATEGORY_ASSIGNMENT, SafeAccessLogService.OUTCOME_SUCCESS,
+                    "BOX_ASSIGNED", shortId(accountId), result.message(),
+                    player.level().dimension().location().toString(), player.blockPosition());
+        }
         return new ActionResult(result.success(), result.message());
     }
 
@@ -1857,11 +2553,77 @@ public final class BankOwnerPcService {
                                                     String periodTicksRaw,
                                                     String overdueTicksRaw) {
         if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
-            return new ActionResult(false, "Only bank owners, directors, and server operators can edit safety box pricing.");
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("edit safety box pricing"));
+        }
+        String sizeRaw = "";
+        String cleanModeRaw = modeRaw;
+        if (modeRaw != null) {
+            int separator = modeRaw.indexOf(':');
+            if (separator > 0) {
+                sizeRaw = modeRaw.substring(0, separator);
+                cleanModeRaw = modeRaw.substring(separator + 1);
+            }
         }
         SafetyDepositBoxService.ActionResult result =
-                SafetyDepositBoxService.setPricingPolicy(centralBank, bank.getBankId(), modeRaw, amountRaw, periodTicksRaw, overdueTicksRaw);
+                SafetyDepositBoxService.setPricingPolicy(centralBank, bank.getBankId(), sizeRaw, cleanModeRaw, amountRaw, periodTicksRaw, overdueTicksRaw);
+        if (result.success()) {
+            SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                    SafeAccessLogService.CATEGORY_SYSTEM, SafeAccessLogService.OUTCOME_SUCCESS,
+                    "PRICING_POLICY_UPDATED", sizeRaw.isBlank() ? "All box sizes" : sizeRaw,
+                    result.message(), player.level().dimension().location().toString(), player.blockPosition());
+        }
         return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleSafeBoxLocate(MinecraftServer server,
+                                                    CentralBank centralBank,
+                                                    Bank bank,
+                                                    ServerPlayer player,
+                                                    String locateTargetRaw) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("locate safety boxes"));
+        }
+        SafeLocateTarget target = parseSafeLocateTarget(locateTargetRaw);
+        if (target == null) {
+            return new ActionResult(false, "Safety box locate failed: invalid target.");
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        ListTag areas = metadata.getList(SafetyDepositBoxService.AREAS_KEY, Tag.TAG_COMPOUND);
+        if (!isInsideSafeAreas(areas, target.dimension(), target.pos())) {
+            return new ActionResult(false, "Safety box locate failed: target is outside this bank's safe claim area.");
+        }
+        ServerLevel level = levelForSafeDashboard(server, target.dimension());
+        if (level == null || !level.hasChunkAt(target.pos())) {
+            return new ActionResult(false, "Safety box locate failed: target dimension or chunk is not loaded.");
+        }
+        if (!(level.getBlockEntity(target.pos()) instanceof SafetyDepositBoxRowBlockEntity row)) {
+            return new ActionResult(false, "Safety box locate failed: row block is missing.");
+        }
+        int door = Math.max(0, Math.min(SafetyDepositBoxRowBlockEntity.DOOR_COUNT - 1, target.doorIndex()));
+        int moduleStart = row.getModuleStartForRow(door);
+        if (moduleStart < 0) {
+            moduleStart = door;
+        }
+        SafetyDepositBoxRowBlockEntity.ModuleType type = row.getModuleType(moduleStart);
+        if (type == null || type == SafetyDepositBoxRowBlockEntity.ModuleType.EMPTY) {
+            return new ActionResult(false, "Safety box locate failed: selected shell row is empty.");
+        }
+        PacketDistributor.sendToPlayer(player, new StockroomLocateRenderPayload(
+                true,
+                normalizeDim(level.dimension().location().toString()),
+                target.pos().getX(),
+                target.pos().getY(),
+                target.pos().getZ(),
+                door + 1
+        ));
+        String label = type.assignable() ? safeModuleLabel(type) + " box" : safeModuleLabel(type) + " plate";
+        String message = "Locating " + label + " at "
+                + normalizeDim(level.dimension().location().toString())
+                + " (" + target.pos().getX() + ", " + target.pos().getY() + ", " + target.pos().getZ()
+                + "), door " + (door + 1) + ".";
+        player.displayClientMessage(Component.literal("§b" + message), true);
+        ServerNotification.send(player, "Safe Box Locate", message, DeliveryAlertPayload.AlertTone.INFO, 5200);
+        return new ActionResult(true, message);
     }
 
     private static ActionResult handleSafeBoxSeize(CentralBank centralBank,
@@ -1869,7 +2631,7 @@ public final class BankOwnerPcService {
                                                    ServerPlayer player,
                                                    String accountIdRaw) {
         if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
-            return new ActionResult(false, "Only bank owners, directors, and server operators can seize overdue safety boxes.");
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("seize overdue safety boxes"));
         }
         UUID accountId = parseUuid(accountIdRaw);
         if (accountId == null) {
@@ -1877,7 +2639,139 @@ public final class BankOwnerPcService {
         }
         SafetyDepositBoxService.ActionResult result =
                 SafetyDepositBoxService.seizeOverdueBox(centralBank, bank.getBankId(), accountId);
+        if (result.success()) {
+            SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                    SafeAccessLogService.CATEGORY_ASSIGNMENT, SafeAccessLogService.OUTCOME_SUCCESS,
+                    "BOX_SEIZED", shortId(accountId), result.message(),
+                    player.level().dimension().location().toString(), player.blockPosition());
+        }
         return new ActionResult(result.success(), result.message());
+    }
+
+    private static ActionResult handleSafeAccess(MinecraftServer server,
+                                                 CentralBank centralBank,
+                                                 Bank bank,
+                                                 ServerPlayer player,
+                                                 String targetRaw,
+                                                 boolean grant) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false, SafetyDepositBoxService.safeAreaManagementDeniedMessage("manage employee Safe Access"));
+        }
+        UUID targetId = resolvePlayerId(server, targetRaw);
+        if (targetId == null) {
+            return new ActionResult(false, "Target employee not found. Use online name or UUID.");
+        }
+        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
+        if (!BankStaffingService.hasEmployee(metadata, targetId)) {
+            return new ActionResult(false,
+                    resolvePlayerName(server, targetId) + " is not employed at " + bank.getBankName() + ".");
+        }
+        boolean changed = grant
+                ? BankStaffingService.grantSafeAccess(metadata, targetId)
+                : BankStaffingService.revokeSafeAccess(metadata, targetId);
+        centralBank.putBankMetadata(bank.getBankId(), metadata);
+        String verb = grant ? "granted" : "revoked";
+        String suffix = changed ? "." : " (already " + (grant ? "granted" : "revoked") + ").";
+        SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                SafeAccessLogService.CATEGORY_SECURITY, SafeAccessLogService.OUTCOME_SUCCESS,
+                grant ? "SAFE_ACCESS_GRANTED" : "SAFE_ACCESS_REVOKED",
+                resolvePlayerName(server, targetId), "Employee safe access " + verb + suffix,
+                player.level().dimension().location().toString(), player.blockPosition());
+        return new ActionResult(true,
+                "Safe Access " + verb + " for " + resolvePlayerName(server, targetId) + suffix);
+    }
+
+    private static ActionResult handleSafeAlarmConfig(CentralBank centralBank,
+                                                       Bank bank,
+                                                       ServerPlayer player,
+                                                       String enabledRaw,
+                                                       String soundRaw,
+                                                       String tonesRaw,
+                                                       String intervalRaw,
+                                                       boolean persist) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("configure safe alarms"));
+        }
+        SafeAlarmSettingsService.Settings settings;
+        try {
+            String[] tones = tonesRaw == null ? new String[0] : tonesRaw.split(",", -1);
+            if (tones.length != 3 || ResourceLocation.tryParse(soundRaw == null ? "" : soundRaw.trim()) == null) {
+                throw new IllegalArgumentException();
+            }
+            settings = new SafeAlarmSettingsService.Settings(
+                    Boolean.parseBoolean(enabledRaw),
+                    soundRaw,
+                    Float.parseFloat(tones[0].trim()),
+                    Float.parseFloat(tones[1].trim()),
+                    Float.parseFloat(tones[2].trim()),
+                    Integer.parseInt(intervalRaw == null ? "" : intervalRaw.trim()));
+        } catch (IllegalArgumentException ex) {
+            return new ActionResult(false,
+                    "Alarm settings are invalid. Check sound ID, volume, pitches, and interval.");
+        }
+        if (persist) {
+            SafeAlarmSettingsService.save(centralBank, bank.getBankId(), settings);
+            SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                    SafeAccessLogService.CATEGORY_SECURITY, SafeAccessLogService.OUTCOME_SUCCESS,
+                    "ALARM_SETTINGS_UPDATED", bank.getBankName(),
+                    "Sound " + settings.soundEventId() + ", interval " + settings.intervalTicks() + " ticks.",
+                    player.level().dimension().location().toString(), player.blockPosition());
+        }
+        return new ActionResult(true, persist
+                ? "Safe alarm settings saved."
+                : "Safe alarm settings validated.");
+    }
+
+    private static ActionResult handleSafeAlarmTest(CentralBank centralBank,
+                                                     Bank bank,
+                                                     ServerPlayer player,
+                                                     String enabledRaw,
+                                                     String soundRaw,
+                                                     String tonesRaw,
+                                                     String intervalRaw) {
+        ActionResult validated = handleSafeAlarmConfig(
+                centralBank, bank, player, enabledRaw, soundRaw, tonesRaw, intervalRaw, false);
+        if (!validated.success()) return validated;
+        String[] tones = tonesRaw.split(",", -1);
+        SafeAlarmSettingsService.Settings preview = new SafeAlarmSettingsService.Settings(
+                true, soundRaw,
+                Float.parseFloat(tones[0].trim()), Float.parseFloat(tones[1].trim()),
+                Float.parseFloat(tones[2].trim()), Integer.parseInt(intervalRaw.trim()));
+        SafeAlarmSettingsService.playPreview(player, preview);
+        SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                SafeAccessLogService.CATEGORY_SECURITY, SafeAccessLogService.OUTCOME_INFO,
+                "ALARM_TESTED", bank.getBankName(), "Alarm audio preview played.",
+                player.level().dimension().location().toString(), player.blockPosition());
+        return new ActionResult(true, "Alarm preview restarted for you.");
+    }
+
+    private static ActionResult handleSafeAlarmStopTest(CentralBank centralBank,
+                                                         Bank bank,
+                                                         ServerPlayer player) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("stop alarm previews"));
+        }
+        boolean stopped = SafeAlarmSettingsService.stopPreview(player);
+        return new ActionResult(true, stopped
+                ? "Alarm preview stopped."
+                : "No alarm preview is currently playing.");
+    }
+
+    private static ActionResult handleSafeAlarmReset(CentralBank centralBank,
+                                                      Bank bank,
+                                                      ServerPlayer player) {
+        if (!SafetyDepositBoxService.canManageSafeArea(centralBank, player, bank.getBankId())) {
+            return new ActionResult(false,
+                    SafetyDepositBoxService.safeAreaManagementDeniedMessage("reset safe alarms"));
+        }
+        SafeAlarmSettingsService.reset(centralBank, bank.getBankId());
+        SafeAccessLogService.record(centralBank, bank.getBankId(), player,
+                SafeAccessLogService.CATEGORY_SECURITY, SafeAccessLogService.OUTCOME_SUCCESS,
+                "ALARM_SETTINGS_RESET", bank.getBankName(), "Restored the default two-tone bell alarm.",
+                player.level().dimension().location().toString(), player.blockPosition());
+        return new ActionResult(true, "Safe alarm settings restored to the default two-tone bell.");
     }
 
     private static ActionResult handleAccountFreeze(MinecraftServer server,
@@ -2389,15 +3283,12 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Target player not found. Use online name or UUID.");
         }
 
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bank.getBankId());
-        Map<UUID, EmployeeSpec> employees = decodeEmployeeMap(metadata.getString("employees"));
-        EmployeeSpec removed = employees.remove(targetId);
-        if (removed == null) {
+        boolean removed = BankEmployeeRemovalService.removeAndPersist(
+                centralBank, bank.getBankId(), targetId);
+        if (!removed) {
             return new ActionResult(false,
                     resolvePlayerName(server, targetId) + " is not employed at " + bank.getBankName() + ".");
         }
-        metadata.putString("employees", encodeEmployeeMap(employees));
-        centralBank.putBankMetadata(bank.getBankId(), metadata);
 
         ServerPlayer onlineTarget = server.getPlayerList().getPlayer(targetId);
         if (onlineTarget != null) {
@@ -2891,7 +3782,7 @@ public final class BankOwnerPcService {
         if (founder.getInventory().getFreeSlot() < 0) {
             String warning = "Inventory full: private bank card was not delivered. Visit your bank teller to issue it.";
             founder.sendSystemMessage(Component.literal("§e" + warning));
-            ServerActionAlert.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
+            ServerNotification.send(founder, "Banking", warning, DeliveryAlertPayload.AlertTone.WARNING, 6800);
             return "Private card pending teller issue (inventory full).";
         }
 
@@ -2911,7 +3802,7 @@ public final class BankOwnerPcService {
         String masked = CreditCardService.maskCardNumber(issued.cardNumber());
         String success = "Private bank card issued: " + masked + ".";
         founder.sendSystemMessage(Component.literal("§a" + success));
-        ServerActionAlert.send(founder, "Banking", success, DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
+        ServerNotification.send(founder, "Banking", success, DeliveryAlertPayload.AlertTone.SUCCESS, 6000);
         return success;
     }
 
@@ -3101,7 +3992,7 @@ public final class BankOwnerPcService {
     }
 
     private static String resolveRoleLabel(CentralBank centralBank, UUID bankId, UUID playerId) {
-        CompoundTag metadata = centralBank.getOrCreateBankMetadata(bankId);
+        CompoundTag metadata = OwnerPcBankReadSupport.metadataSnapshot(centralBank, bankId);
 
         Map<UUID, String> roles = decodeUuidStringMap(metadata.getString("roles"));
         String role = roles.get(playerId);
@@ -3177,14 +4068,6 @@ public final class BankOwnerPcService {
             }
         }
         return configuredCap.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN);
-    }
-
-    private static String configuredLimitValue(CompoundTag metadata, String key) {
-        if (metadata == null || key == null || key.isBlank() || !metadata.contains(key)) {
-            return "";
-        }
-        BigDecimal amount = readBigDecimal(metadata, key).setScale(2, RoundingMode.HALF_EVEN);
-        return amount.compareTo(BigDecimal.ZERO) > 0 ? amount.toPlainString() : "";
     }
 
     private static BigDecimal readBigDecimal(CompoundTag tag, String key) {
@@ -3364,6 +4247,21 @@ public final class BankOwnerPcService {
         }
         Set<UUID> unlocked = DESKTOP_UNLOCKED_SESSIONS.get(machineId);
         return unlocked != null && unlocked.contains(playerId);
+    }
+
+    private static boolean isDesktopSessionUnlockedReadOnly(String machineId,
+                                                            UUID playerId,
+                                                            CompoundTag userTag) {
+        if (isDesktopSessionUnlocked(machineId, playerId)) {
+            return true;
+        }
+        if (machineId == null || machineId.isBlank() || playerId == null || userTag == null) {
+            return false;
+        }
+        String persistedMachine = userTag.getString(DESKTOP_SESSION_MACHINE_TAG);
+        return persistedMachine != null
+                && !persistedMachine.isBlank()
+                && persistedMachine.equalsIgnoreCase(machineId);
     }
 
     private static boolean isDesktopSessionUnlocked(CentralBank centralBank,

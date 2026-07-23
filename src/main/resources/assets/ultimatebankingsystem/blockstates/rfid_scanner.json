@@ -1,0 +1,49 @@
+{
+  "variants": {
+    "facing=north,status=idle": {
+      "model": "ultimatebankingsystem:block/rfid_scanner"
+    },
+    "facing=east,status=idle": {
+      "model": "ultimatebankingsystem:block/rfid_scanner",
+      "y": 90
+    },
+    "facing=south,status=idle": {
+      "model": "ultimatebankingsystem:block/rfid_scanner",
+      "y": 180
+    },
+    "facing=west,status=idle": {
+      "model": "ultimatebankingsystem:block/rfid_scanner",
+      "y": 270
+    },
+    "facing=north,status=success": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_success"
+    },
+    "facing=east,status=success": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_success",
+      "y": 90
+    },
+    "facing=south,status=success": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_success",
+      "y": 180
+    },
+    "facing=west,status=success": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_success",
+      "y": 270
+    },
+    "facing=north,status=fail": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_fail"
+    },
+    "facing=east,status=fail": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_fail",
+      "y": 90
+    },
+    "facing=south,status=fail": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_fail",
+      "y": 180
+    },
+    "facing=west,status=fail": {
+      "model": "ultimatebankingsystem:block/rfid_scanner_fail",
+      "y": 270
+    }
+  }
+}

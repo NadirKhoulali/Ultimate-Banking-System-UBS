@@ -1,6 +1,7 @@
 package net.austizz.ultimatebankingsystem.block.custom;
 
 import com.mojang.serialization.MapCodec;
+import net.austizz.ultimatebankingsystem.bank.safebox.LoadedSafeStructureIndex;
 import net.austizz.ultimatebankingsystem.block.ModBlocks;
 import net.austizz.ultimatebankingsystem.block.entity.ModBlockEntities;
 import net.austizz.ultimatebankingsystem.block.entity.custom.BankVaultDoorBlockEntity;
@@ -98,18 +99,8 @@ public class BankVaultDoorBlock extends HorizontalDirectionalBlock implements En
         Direction facing = context.getHorizontalDirection().getOpposite();
         BlockPos masterPos = context.getClickedPos();
         Level level = context.getLevel();
-        for (int partD = 0; partD <= MAX_PART_D; partD++) {
-            for (int partY = 0; partY <= 3; partY++) {
-                if (masterPos.getY() + partY >= level.getMaxBuildHeight()) {
-                    return null;
-                }
-                for (int partX = 0; partX <= 4; partX++) {
-                    BlockPos partPos = getPartPos(masterPos, facing, partX, partY, partD);
-                    if (!level.getBlockState(partPos).canBeReplaced(context)) {
-                        return null;
-                    }
-                }
-            }
+        if (findPlacementIssue(context) != null) {
+            return null;
         }
         boolean powered = hasAnyPartNeighborSignal(level, masterPos, facing);
         return defaultBlockState()
@@ -158,6 +149,39 @@ public class BankVaultDoorBlock extends HorizontalDirectionalBlock implements En
         if (level.getBlockEntity(pos) instanceof BankVaultDoorBlockEntity vault) {
             vault.setTargetOpen(powered);
         }
+        LoadedSafeStructureIndex.register(level, pos, LoadedSafeStructureIndex.Kind.VAULT_DOOR_MASTER);
+    }
+
+    public @Nullable PlacementIssue findPlacementIssue(BlockPlaceContext context) {
+        if (context == null) {
+            return new PlacementIssue(null, "Vault door placement failed: placement context is unavailable.");
+        }
+        Direction facing = context.getHorizontalDirection().getOpposite();
+        BlockPos masterPos = context.getClickedPos();
+        Level level = context.getLevel();
+        for (int partD = 0; partD < PART_D_COUNT; partD++) {
+            for (int partY = 0; partY < PART_Y_COUNT; partY++) {
+                BlockPos heightProbe = masterPos.above(partY);
+                if (heightProbe.getY() < level.getMinBuildHeight()
+                        || heightProbe.getY() >= level.getMaxBuildHeight()) {
+                    return new PlacementIssue(heightProbe, "Vault door placement failed: its 5 x 4 x 4 footprint exceeds the build height.");
+                }
+                for (int partX = 0; partX < PART_X_COUNT; partX++) {
+                    BlockPos partPos = getPartPos(masterPos, facing, partX, partY, partD);
+                    BlockState existing = level.getBlockState(partPos);
+                    if (!existing.canBeReplaced(context)) {
+                        String blockedBy = existing.getBlock().getName().getString();
+                        return new PlacementIssue(partPos, "Vault door placement failed: clear the full 5 x 4 x 4 footprint. "
+                                + "Blocked at " + partPos.getX() + ", " + partPos.getY() + ", " + partPos.getZ()
+                                + " by " + blockedBy + ".");
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public record PlacementIssue(@Nullable BlockPos blockedPos, String message) {
     }
 
     @Override
@@ -270,6 +294,74 @@ public class BankVaultDoorBlock extends HorizontalDirectionalBlock implements En
         return pos.relative(getRightDirection(facing), MASTER_PART_X - partX)
                 .below(partY - MASTER_PART_Y)
                 .relative(facing, partD - MASTER_PART_D);
+    }
+
+    public static boolean isCompleteMultiblock(BlockGetter level, BlockPos pos) {
+        if (level == null || pos == null) {
+            return false;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!state.is(ModBlocks.BANK_VAULT_DOOR.get())) {
+            return false;
+        }
+        BlockPos masterPos = getMasterPos(state, pos);
+        BlockState masterState = level.getBlockState(masterPos);
+        if (!masterState.is(ModBlocks.BANK_VAULT_DOOR.get())
+                || masterState.getValue(PART_X) != MASTER_PART_X
+                || masterState.getValue(PART_Y) != MASTER_PART_Y
+                || masterState.getValue(PART_D) != MASTER_PART_D) {
+            return false;
+        }
+        Direction facing = masterState.getValue(FACING);
+        for (int partD = 0; partD < PART_D_COUNT; partD++) {
+            for (int partY = 0; partY < PART_Y_COUNT; partY++) {
+                for (int partX = 0; partX < PART_X_COUNT; partX++) {
+                    BlockState partState = level.getBlockState(getPartPos(masterPos, facing, partX, partY, partD));
+                    if (!partState.is(ModBlocks.BANK_VAULT_DOOR.get())
+                            || partState.getValue(FACING) != facing
+                            || partState.getValue(PART_X) != partX
+                            || partState.getValue(PART_Y) != partY
+                            || partState.getValue(PART_D) != partD) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    public static List<BlockPos> plannedPartPositions(BlockState state, BlockPos pos) {
+        if (state == null || pos == null || !state.hasProperty(FACING)
+                || !state.hasProperty(PART_X) || !state.hasProperty(PART_Y) || !state.hasProperty(PART_D)) {
+            return List.of();
+        }
+        BlockPos masterPos = getMasterPos(state, pos);
+        Direction facing = state.getValue(FACING);
+        List<BlockPos> positions = new ArrayList<>(PART_X_COUNT * PART_Y_COUNT * PART_D_COUNT);
+        for (int partD = 0; partD < PART_D_COUNT; partD++) {
+            for (int partY = 0; partY < PART_Y_COUNT; partY++) {
+                for (int partX = 0; partX < PART_X_COUNT; partX++) {
+                    positions.add(getPartPos(masterPos, facing, partX, partY, partD));
+                }
+            }
+        }
+        return List.copyOf(positions);
+    }
+
+    public static List<BlockPos> multiblockPartPositions(BlockGetter level, BlockPos pos) {
+        if (level == null || pos == null) {
+            return List.of();
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!state.is(ModBlocks.BANK_VAULT_DOOR.get())) {
+            return List.of();
+        }
+        BlockPos masterPos = getMasterPos(state, pos);
+        BlockState masterState = level.getBlockState(masterPos);
+        if (!masterState.is(ModBlocks.BANK_VAULT_DOOR.get())) {
+            return List.of();
+        }
+        return plannedPartPositions(masterState, masterPos);
     }
 
     private static VoxelShape getVaultShape(BlockState state, BlockGetter level, BlockPos pos) {

@@ -8,7 +8,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -282,7 +282,7 @@ public class Bank {
                     if (holder != null) {
                         String message = "§eMoney Market rate changed: §f" + previousRate + "% §7-> §f" + annualRate + "%";
                         holder.sendSystemMessage(Component.literal(message));
-                        ServerActionAlert.sendLegacy(
+                        ServerNotification.sendLegacy(
                                 holder,
                                 "Banking",
                                 message,
@@ -301,7 +301,7 @@ public class Bank {
                             + " §a(" + annualRate + "% APR) New balance: §f"
                             + MoneyText.abbreviateWithDollar(account.getBalance());
                     holder.sendSystemMessage(Component.literal(message));
-                    ServerActionAlert.sendLegacy(
+                    ServerNotification.sendLegacy(
                             holder,
                             "Banking",
                             message,
@@ -374,7 +374,7 @@ public class Bank {
             String message = "§aYour CD matured. Interest credited: §6" + MoneyText.abbreviateWithDollar(interest)
                     + " §a(new balance: §f" + MoneyText.abbreviateWithDollar(account.getBalance()) + "§a).";
             holder.sendSystemMessage(Component.literal(message));
-            ServerActionAlert.sendLegacy(
+            ServerNotification.sendLegacy(
                     holder,
                     "Banking",
                     message,

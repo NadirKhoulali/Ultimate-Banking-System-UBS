@@ -12,11 +12,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 public final class SmartphoneOverlay {
@@ -36,10 +39,11 @@ public final class SmartphoneOverlay {
     private static final int PHONE_DISPLAY_INSET = 9;
     private static final int PHONE_CONTENT_INSET = 25;
     private static final int BANK_DISPLAY_BLEED = PHONE_CONTENT_INSET - PHONE_DISPLAY_INSET;
-    private static final int PHONE_APP_TOP_BLEED = 39;
+    private static final int PHONE_APP_TOP_BLEED = 45;
     private static final int CHAT_COMPOSER_MAX_LINES = 4;
     private static final int CHAT_COMPOSER_WRAP_MAX_LINES = 64;
     private static final int CHAT_MESSAGE_MAX_LINES = 10;
+    private static final int MAX_GRADIENT_FILL_BANDS = 96;
     private static final int BANK_BG = 0xFF161622;
     private static final int BANK_PANEL = 0xFF27273A;
     private static final int BANK_PANEL_SOFT = 0xFF1E1E2D;
@@ -51,6 +55,15 @@ public final class SmartphoneOverlay {
     private static final int BANK_INPUT = 0xFF1E1E2D;
     private static final int BANK_INPUT_ACTIVE = 0xFF22274B;
     private static final int BANK_DANGER = 0xFFFF3F60;
+    private static final int BANK_LIGHT_BG = 0xFFF6F7FB;
+    private static final int BANK_LIGHT_PANEL = 0xFFFFFFFF;
+    private static final int BANK_LIGHT_PANEL_SOFT = 0xFFEDEFF7;
+    private static final int BANK_LIGHT_PANEL_DEEP = 0xFFE3E8F5;
+    private static final int BANK_LIGHT_LINE = 0xFFD9DEEA;
+    private static final int BANK_LIGHT_TEXT = 0xFF151926;
+    private static final int BANK_LIGHT_MUTED = 0xFF687085;
+    private static final int BANK_LIGHT_INPUT = 0xFFF1F4FA;
+    private static final int BANK_LIGHT_INPUT_ACTIVE = 0xFFE8F0FF;
     private static final ResourceLocation CARD_CHIP_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             UltimateBankingSystem.MODID, "textures/gui/phone/card_chip_dark.png");
     private static final int CARD_CHIP_TEXTURE_WIDTH = 116;
@@ -139,7 +152,62 @@ public final class SmartphoneOverlay {
                                      List<String> lines) {
     }
 
+    private static List<SmartphoneClientState.PhoneMessage> cachedChatLayoutMessages = List.of();
+    private static int cachedChatLayoutWidth = -1;
+    private static List<ChatMessageLayout> cachedChatLayouts = List.of();
+    private static List<SmartphoneClientState.PhoneTransaction> cachedSortedTransactionSource = List.of();
+    private static List<SmartphoneClientState.PhoneTransaction> cachedSortedTransactions = List.of();
+    private static List<SmartphoneClientState.PhoneTransaction> cachedHistoryFilterSource = List.of();
+    private static String cachedHistoryFilterQuery = "";
+    private static List<SmartphoneClientState.PhoneTransaction> cachedHistoryFilterRows = List.of();
+    private static List<SmartphoneClientState.PhoneTransaction> cachedMonthFilterSource = List.of();
+    private static String cachedMonthFilterKey = "";
+    private static List<SmartphoneClientState.PhoneTransaction> cachedMonthFilterRows = List.of();
+    private static List<SmartphoneClientState.PhoneTransaction> cachedStatsMonthKeysSource = List.of();
+    private static String cachedStatsMonthKeysSelected = "";
+    private static List<String> cachedStatsMonthKeys = List.of();
+
     private SmartphoneOverlay() {
+    }
+
+    private static boolean bankLightMode() {
+        return SmartphoneClientState.bankLightMode();
+    }
+
+    private static int bankBg() {
+        return bankLightMode() ? BANK_LIGHT_BG : BANK_BG;
+    }
+
+    private static int bankPanel() {
+        return bankLightMode() ? BANK_LIGHT_PANEL : BANK_PANEL;
+    }
+
+    private static int bankPanelSoft() {
+        return bankLightMode() ? BANK_LIGHT_PANEL_SOFT : BANK_PANEL_SOFT;
+    }
+
+    private static int bankPanelDeep() {
+        return bankLightMode() ? BANK_LIGHT_PANEL_DEEP : BANK_PANEL_DEEP;
+    }
+
+    private static int bankLine() {
+        return bankLightMode() ? BANK_LIGHT_LINE : BANK_LINE;
+    }
+
+    private static int bankText() {
+        return bankLightMode() ? BANK_LIGHT_TEXT : BANK_TEXT;
+    }
+
+    private static int bankMuted() {
+        return bankLightMode() ? BANK_LIGHT_MUTED : BANK_MUTED;
+    }
+
+    private static int bankInput() {
+        return bankLightMode() ? BANK_LIGHT_INPUT : BANK_INPUT;
+    }
+
+    private static int bankInputActive() {
+        return bankLightMode() ? BANK_LIGHT_INPUT_ACTIVE : BANK_INPUT_ACTIVE;
     }
 
     public static SmartphoneClientState.Rect lastPhoneRect() {
@@ -251,18 +319,20 @@ public final class SmartphoneOverlay {
     private static void drawPhoneShellLogical(Minecraft mc, GuiGraphics g, int x, int y, int w, int h,
                                               List<SmartphoneClientState.Hitbox> hitboxes) {
         Font font = mc.font;
-        int r = 18;
+        int r = Mth.clamp(Math.round(w * 0.085F), 24, 34);
+        int edgeR = Math.max(1, r - 4);
+        int glassR = Math.max(1, r - 8);
+        int displayR = Math.max(16, r - 10);
         int bottomBezelH = 54;
         fillRounded(g, x, y, w, h, r, PHONE_BLACK);
-        fillRounded(g, x + 3, y + 3, w - 6, h - 6, 16, PHONE_EDGE_BLACK);
-        fillRounded(g, x + 6, y + 6, w - 12, h - 12, 13, PHONE_GLASS_BLACK);
-        fillVertical(g, x + PHONE_DISPLAY_INSET, y + PHONE_DISPLAY_INSET,
-                w - PHONE_DISPLAY_INSET * 2, h - PHONE_DISPLAY_INSET * 2 - bottomBezelH,
-                SmartphoneClientState.wallpaperTop(), SmartphoneClientState.wallpaperBottom());
+        fillRounded(g, x + 3, y + 3, w - 6, h - 6, edgeR, PHONE_EDGE_BLACK);
+        fillRounded(g, x + 6, y + 6, w - 12, h - 12, glassR, PHONE_GLASS_BLACK);
+        drawPhoneWallpaper(g, x + PHONE_DISPLAY_INSET, y + PHONE_DISPLAY_INSET,
+                w - PHONE_DISPLAY_INSET * 2, h - PHONE_DISPLAY_INSET * 2 - bottomBezelH);
         fillRounded(g, x + PHONE_DISPLAY_INSET, y + h - bottomBezelH - PHONE_DISPLAY_INSET,
-                w - PHONE_DISPLAY_INSET * 2, bottomBezelH, 12, PHONE_BLACK);
+                w - PHONE_DISPLAY_INSET * 2, bottomBezelH, displayR, PHONE_BLACK);
         g.fill(x + 16, y + h - bottomBezelH - 9, x + w - 16, y + h - bottomBezelH - 8, 0xFF101010);
-        fillRounded(g, x + w / 2 - 35, y + 11, 70, 13, 7, PHONE_BLACK);
+        drawClassicTopHardware(g, x, y, w);
         int homeCenterX = x + w / 2;
         int homeCenterY = y + h - bottomBezelH / 2 - 3;
         drawHardwareHomeButton(g, homeCenterX, homeCenterY);
@@ -299,26 +369,38 @@ public final class SmartphoneOverlay {
                 || SmartphoneClientState.activeApp() == SmartphoneClientState.App.ACCOUNT
                 || SmartphoneClientState.activeApp() == SmartphoneClientState.App.TRANSACTION_DETAIL
                 || SmartphoneClientState.activeApp() == SmartphoneClientState.App.TAP;
-        if (!bankingSurface) {
+        boolean utilitySurface = SmartphoneClientState.activeApp() == SmartphoneClientState.App.HOME
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.CALCULATOR
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.SPOT_MARKET
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.PAINT
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.CONTACTS
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.NOTES
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.SETTINGS;
+        if (!bankingSurface && !utilitySurface) {
             drawStatusBar(g, font, sx, y + 16, sw);
             g.drawString(font, "UBS Phone", sx, sy, 0xFFEAF8FF, false);
             String mode = SmartphoneClientState.mode() == SmartphoneClientState.Mode.PASSIVE ? "Press P" : "Live";
             g.drawString(font, mode, x + w - 18 - font.width(mode), sy, 0xFFEAF8FF, false);
         }
 
-        int contentY = bankingSurface ? sy + 24 : sy + 18;
+        int contentY = bankingSurface ? sy + 24 : (utilitySurface ? sy + 22 : sy + 18);
         int contentH = Math.max(60, screenBottom - contentY - 8);
+        // The foreground bezel masks spillover; a top-level scissor here can clip all content under scaled phone poses.
         try {
             if (bankingSurface) {
-                fillRounded(g, displayX, displayY, displayW, displayH, 13, BANK_BG);
+                fillRounded(g, displayX, displayY, displayW, displayH, 13, bankBg());
             }
             if (bankingSurface && SmartphoneClientState.bankingLoadingActive()) {
                 drawBankingLoading(g, font, sx, contentY, sw, contentH);
-                drawBankStatusToast(g, font, sx, displayY, displayH, sw);
+                return;
+            }
+            if (SmartphoneClientState.phoneLocked()) {
+                drawLockScreen(g, font, displayX, displayY, displayW, displayH, hitboxes);
                 return;
             }
             switch (SmartphoneClientState.activeApp()) {
-                case HOME -> drawHome(g, font, sx, contentY, sw, contentH, hitboxes);
+                case HOME -> drawHome(g, font, displayX + 10, displayY + 43,
+                        Math.max(1, displayW - 20), Math.max(60, screenBottom - (displayY + 43) - 8), hitboxes);
                 case BANKING -> drawBanking(g, font, sx, contentY, sw, contentH, hitboxes);
                 case STATISTICS -> drawStatistics(g, font, sx, contentY, sw, contentH, hitboxes);
                 case HISTORY -> drawHistory(g, font, sx, contentY, sw, contentH, hitboxes);
@@ -341,30 +423,31 @@ public final class SmartphoneOverlay {
                 case ACCOUNT -> drawAccount(g, font, sx, contentY, sw, contentH, hitboxes);
                 case TRANSACTION_DETAIL -> drawTransactionDetail(g, font, sx, contentY, sw, contentH, hitboxes);
                 case TAP -> drawTap(g, font, sx, contentY, sw, contentH, hitboxes);
+                case SPOT_MARKET -> drawSpotMarket(g, font, sx, contentY, sw, contentH, hitboxes);
                 case CALCULATOR -> drawCalculator(g, font, sx, contentY, sw, contentH, hitboxes);
                 case PAINT -> drawPaint(g, font, sx, contentY, sw, contentH, hitboxes);
                 case CONTACTS -> drawContacts(g, font, sx, contentY, sw, contentH, hitboxes);
                 case MESSENGER -> drawMessenger(g, font, sx, contentY, sw, contentH, hitboxes);
                 case NOTES -> drawNotes(g, font, sx, contentY, sw, contentH, hitboxes);
                 case SETTINGS -> drawSettings(g, font, sx, contentY, sw, contentH, hitboxes);
-                case JOURNEYMAP, AUCTION, REAL_ESTATE -> drawBridge(g, font, sx, contentY, sw, contentH);
             }
 
-            drawBankStatusToast(g, font, sx, displayY, displayH, sw);
         } finally {
-            maskRoundedRectCorners(g, displayX, displayY, displayW, displayH, 13, PHONE_GLASS_BLACK);
-            drawPhoneForegroundBezel(g, x, y, w, h, bottomBezelH, displayX, displayY, displayW, displayH);
+            drawPhoneNotification(g, font, displayX, displayY, displayW);
+            maskRoundedRectCorners(g, displayX, displayY, displayW, displayH, displayR, PHONE_GLASS_BLACK);
+            drawPhoneForegroundBezel(g, x, y, w, h, bottomBezelH, displayX, displayY, displayW, displayH, displayR);
         }
     }
 
     private static void drawPhoneForegroundBezel(GuiGraphics g, int x, int y, int w, int h, int bottomBezelH,
-                                                 int displayX, int displayY, int displayW, int displayH) {
+                                                 int displayX, int displayY, int displayW, int displayH,
+                                                 int displayR) {
         g.fill(x, y, x + w, displayY, PHONE_BLACK);
         g.fill(x, displayY, displayX, displayY + displayH, PHONE_BLACK);
         g.fill(displayX + displayW, displayY, x + w, displayY + displayH, PHONE_BLACK);
         g.fill(x, displayY + displayH, x + w, y + h, PHONE_BLACK);
-        maskRoundedRectCorners(g, displayX, displayY, displayW, displayH, 13, PHONE_GLASS_BLACK);
-        fillRounded(g, x + w / 2 - 35, y + 11, 70, 13, 7, PHONE_BLACK);
+        maskRoundedRectCorners(g, displayX, displayY, displayW, displayH, displayR, PHONE_GLASS_BLACK);
+        drawClassicTopHardware(g, x, y, w);
         g.fill(x + 16, y + h - bottomBezelH - 9, x + w - 16, y + h - bottomBezelH - 8, 0xFF101010);
         drawHardwareHomeButton(g, x + w / 2, y + h - bottomBezelH / 2 - 3);
     }
@@ -375,39 +458,670 @@ public final class SmartphoneOverlay {
                 : (0x66000000 | (color & 0x00FFFFFF));
     }
 
-    private static void drawBankStatusToast(GuiGraphics g, Font font, int x, int phoneY, int phoneH, int w) {
-        String status = SmartphoneClientState.statusMessage();
-        if (status == null || status.isBlank()) {
+    private static void drawPhoneNotification(GuiGraphics g, Font font, int displayX, int displayY, int displayW) {
+        String status = SmartphoneClientState.statusNotificationMessage();
+        float progress = SmartphoneClientState.statusNotificationProgress();
+        if (status == null || status.isBlank() || progress <= 0.01F) {
             return;
         }
-        g.fill(x, phoneY + phoneH - 64, x + w, phoneY + phoneH - 46, 0xCC06101D);
-        drawPhoneText(g, trim(font, status, w - 8), x + 4, phoneY + phoneH - 60,
-                SmartphoneClientState.accentColor(), 8.5F);
+        int margin = Math.max(12, Math.round(displayW * 0.04F));
+        int bannerW = Math.max(1, displayW - margin * 2);
+        int bannerH = 44;
+        int hiddenY = displayY - bannerH - 10;
+        int targetY = displayY + 30;
+        int bannerY = Math.round(hiddenY + (targetY - hiddenY) * progress);
+        int alpha = Mth.clamp(Math.round(242.0F * Math.min(1.0F, progress * 1.35F)), 0, 242);
+        int bg = withAlpha(0xFFF2F4F8, alpha);
+        int shadow = withAlpha(0xFF000000, Math.round(54.0F * progress));
+        fillRounded(g, displayX + margin, bannerY + 2, bannerW, bannerH, 16, shadow);
+        fillRounded(g, displayX + margin, bannerY, bannerW, bannerH, 16, bg);
+        drawRoundedBorder(g, displayX + margin, bannerY, bannerW, bannerH, 16,
+                withAlpha(0xFFFFFFFF, Math.round(130.0F * progress)), bg);
+
+        int iconSize = 26;
+        int iconX = displayX + margin + 10;
+        int iconY = bannerY + 9;
+        fillRounded(g, iconX, iconY, iconSize, iconSize, 8, SmartphoneClientState.accentColor());
+        drawPhoneText(g, "$", iconX + 9, iconY + 6, 0xFFFFFFFF, 8.5F);
+
+        int textX = iconX + iconSize + 9;
+        int textW = Math.max(1, bannerW - (textX - (displayX + margin)) - 10);
+        drawPhoneText(g, SmartphoneClientState.statusNotificationTitle(), textX, bannerY + 8, 0xFF1B1C22, 8.5F);
+        drawPhoneText(g, trim(font, status, textW), textX, bannerY + 23, 0xFF4D5260, 7.8F);
+    }
+
+    private static void drawPhoneWallpaper(GuiGraphics g, int x, int y, int w, int h) {
+        int top = SmartphoneClientState.wallpaperTop();
+        int bottom = SmartphoneClientState.wallpaperBottom();
+        fillVertical(g, x, y, w, h, top, bottom);
+        String wallpaper = SmartphoneClientState.wallpaperName().toLowerCase(Locale.ROOT);
+        int warm = switch (wallpaper) {
+            case "forest" -> 0x6636D08A;
+            case "dusk" -> 0x77FF9C5C;
+            case "mono" -> 0x66FFCA5C;
+            default -> 0x6652D7FF;
+        };
+        int cool = switch (wallpaper) {
+            case "forest" -> 0x552A7E5F;
+            case "dusk" -> 0x667C54FF;
+            case "mono" -> 0x553B4657;
+            default -> 0x66006BFF;
+        };
+        int bright = switch (wallpaper) {
+            case "forest" -> 0x5534FFB5;
+            case "dusk" -> 0x55FFD36A;
+            case "mono" -> 0x44FFD36A;
+            default -> 0x55FF7AD9;
+        };
+        fillRounded(g, x + Math.round(w * 0.03F), y + h / 12,
+                Math.max(1, Math.round(w * 0.94F)), Math.max(34, h / 4), Math.max(22, w / 5), warm);
+        fillRounded(g, x + Math.round(w * 0.22F), y + h / 4,
+                Math.max(1, Math.round(w * 0.72F)), Math.max(42, h / 3), Math.max(24, w / 4), cool);
+        fillRounded(g, x + Math.round(w * 0.08F), y + h / 2,
+                Math.max(1, Math.round(w * 0.84F)), Math.max(48, h / 3), Math.max(28, w / 4), bright);
+        g.fill(x, y, x + w, y + Math.max(1, h / 5), 0x22000000);
+        g.fill(x, y + h - Math.max(1, h / 4), x + w, y + h, 0x18000000);
+    }
+
+    private static void drawLockScreen(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                       List<SmartphoneClientState.Hitbox> hitboxes) {
+        drawStatusBar(g, font, x + 12, y + 14, Math.max(1, w - 24), 0xFFF7FBFF, 0xFF173052);
+        boolean setup = !SmartphoneClientState.phonePasscodeSet();
+        boolean panelOpen = SmartphoneClientState.lockPanelOpen();
+        float panelT = SmartphoneClientState.lockPanelAnimation();
+        int centerX = x + w / 2;
+        int clockY = y + Math.max(58, Math.round(h * 0.13F));
+        if (!panelOpen || panelT < 0.92F) {
+            String localTime = localClockText();
+            String serverTime = serverClockText();
+            drawPhoneText(g, localTime, centerX - phoneTextWidth(localTime, 42.0F) / 2,
+                    clockY, 0xFFF7FBFF, 42.0F);
+            drawScaledCentered(g, font, "Local " + localTime + "  |  Server " + serverTime,
+                    centerX, clockY + 49, 0xCFF7FBFF, 0.72F);
+            drawScaledCentered(g, font, setup ? "Set a phone passcode" : "Phone locked",
+                    centerX, clockY + 67, 0xDDF7FBFF, 0.92F);
+        }
+
+        int hintY = y + h - 38;
+        if (!panelOpen) {
+            drawScaledCentered(g, font, setup ? "Swipe up to begin" : "Swipe up to unlock",
+                    centerX, hintY - 18, 0xEAF7FBFF, 0.82F);
+        }
+        drawLockHomeIndicator(g, centerX, hintY, panelOpen ? 0x66FFFFFF : 0xDDFFFFFF);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y + Math.max(1, h / 2), w, h / 2),
+                "LOCK_SWIPE", "", "", ""));
+
+        if (panelT <= 0.01F) {
+            return;
+        }
+        int sheetMin = Math.min(260, Math.max(150, h - 72));
+        int sheetMax = Math.max(sheetMin, h - 42);
+        int sheetH = Mth.clamp(Math.round(h * 0.62F), sheetMin, sheetMax);
+        int panelY = y + h - Math.round(sheetH * panelT);
+        fillRounded(g, x + 8, panelY, w - 16, sheetH + 22, 24, 0xF00F1221);
+        drawRoundedBorder(g, x + 8, panelY, w - 16, sheetH + 22, 24, 0x22FFFFFF, 0xF00F1221);
+        drawScaledCentered(g, font, setup
+                        ? (SmartphoneClientState.phonePasscodeConfirmStep() ? "Verify Passcode" : "Create Passcode")
+                        : "Enter Passcode",
+                centerX, panelY + 25, 0xFFF7FBFF, 1.08F);
+        String error = SmartphoneClientState.phonePasscodeError();
+        String subtitle = error.isBlank()
+                ? (setup ? "Use 4 digits for this phone." : "Enter your 4 digit passcode.")
+                : error;
+        drawScaledCentered(g, font, trim(font, subtitle, w - 42), centerX, panelY + 47,
+                error.isBlank() ? 0xBCE8EDF7 : 0xFFFF8A8A, 0.72F);
+
+        String draft = SmartphoneClientState.phonePasscodeDraft();
+        int dotGap = 20;
+        int dotsW = dotGap * 3 + 48;
+        int dotsX = centerX - dotsW / 2;
+        int dotsY = panelY + 82;
+        for (int i = 0; i < 4; i++) {
+            boolean filled = i < draft.length();
+            fillCircle(g, dotsX + i * dotGap + 6, dotsY, filled ? 6 : 5,
+                    filled ? 0xFFF7FBFF : 0x55F7FBFF);
+            if (!filled) {
+                fillCircle(g, dotsX + i * dotGap + 6, dotsY, 3, 0xF00F1221);
+            }
+        }
+
+        int keypadTop = panelY + 112;
+        int availableKeyH = Math.max(90, y + h - 24 - keypadTop);
+        int gapX = Mth.clamp(Math.round(w * 0.065F), 12, 22);
+        int gapY = Mth.clamp(Math.round(availableKeyH * 0.035F), 7, 13);
+        int key = Math.min((w - gapX * 4) / 3, (availableKeyH - gapY * 3) / 4);
+        key = Mth.clamp(key, 34, 54);
+        int startX = centerX - (key * 3 + gapX * 2) / 2;
+        String[] labels = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "Cancel", "0", "Del"};
+        for (int i = 0; i < labels.length; i++) {
+            int row = i / 3;
+            int col = i % 3;
+            int keyX = startX + col * (key + gapX);
+            int keyY = keypadTop + row * (key + gapY);
+            String label = labels[i];
+            String action = switch (label) {
+                case "Cancel" -> "LOCK_CANCEL";
+                case "Del" -> "PHONE_PASSCODE_DELETE";
+                default -> "PHONE_PASSCODE_DIGIT";
+            };
+            String value = label.length() == 1 && Character.isDigit(label.charAt(0)) ? label : "";
+            drawLockKey(g, font, keyX, keyY, key, label, action, value, hitboxes);
+        }
+    }
+
+    private static void drawLockHomeIndicator(GuiGraphics g, int centerX, int y, int color) {
+        fillRounded(g, centerX - 42, y, 84, 4, 2, color);
+    }
+
+    private static void drawLockKey(GuiGraphics g, Font font, int x, int y, int size, String label,
+                                    String action, String value, List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean command = label.length() > 1;
+        if (!command) {
+            fillCircle(g, x + size / 2, y + size / 2, size / 2, 0x33FFFFFF);
+            drawScaledCentered(g, font, label, x + size / 2, y + Math.round(size * 0.30F), 0xFFF7FBFF, 1.24F);
+        } else {
+            drawScaledCentered(g, font, label, x + size / 2, y + Math.round(size * 0.36F), 0xEAF7FBFF, 0.78F);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, size, size),
+                action, value, "", ""));
     }
 
     private static void drawHome(GuiGraphics g, Font font, int x, int y, int w, int h,
                                  List<SmartphoneClientState.Hitbox> hitboxes) {
-        int cols = 4;
-        int cell = Math.max(44, (w - 12) / cols);
-        int icon = Math.min(40, cell - 8);
-        int i = 0;
-        for (SmartphoneClientState.PhoneApp app : SmartphoneClientState.apps()) {
-            int cx = x + (i % cols) * cell + 4;
-            int cy = y + 8 + (i / cols) * 58;
-            int color = appColor(app.id());
-            fillRounded(g, cx, cy, icon, icon, 9, color);
-            g.drawString(font, iconGlyph(app.id()), cx + icon / 2 - 3, cy + 13, 0xFFFFFFFF, false);
-            drawCentered(g, font, trim(font, app.label(), cell - 2), cx + icon / 2, cy + icon + 5, 0xFFEAF8FF);
-            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(cx, cy, icon, icon + 18), "APP", app.id(), "", ""));
-            i++;
+        drawStatusBar(g, font, x, y - 31, w);
+        List<SmartphoneClientState.PhoneApp> apps = SmartphoneClientState.apps();
+        boolean compact = h < 300;
+        boolean micro = h < 150;
+
+        int sideInset = Mth.clamp(Math.round(w * 0.024F), micro ? 2 : 4,
+                micro ? 6 : (compact ? 9 : 12));
+        int safeX = x + sideInset;
+        int safeW = Math.max(1, w - sideInset * 2);
+        int minColumnW = micro ? 24 : (compact ? 34 : 46);
+        int cols = Mth.clamp(Math.max(1, safeW / minColumnW), 1, 4);
+        int gridAvailableW = Math.max(cols * minColumnW, safeW);
+        int columnW = Math.max(minColumnW, gridAvailableW / cols);
+        int gridW = Math.min(safeW, columnW * cols);
+        int startX = safeX + (safeW - gridW) / 2;
+        int icon = Mth.clamp(Math.round(w * (micro ? 0.105F : 0.135F)), micro ? 16 : (compact ? 28 : 38),
+                micro ? 28 : (compact ? 40 : 48));
+        int labelGap = micro ? 2 : (compact ? 4 : 6);
+        int labelLines = micro ? 1 : 2;
+        int labelLineH = micro ? 8 : (compact ? 10 : 12);
+        int labelH = labelLineH * labelLines;
+        int rowH = Math.max(icon + labelGap + labelH + (micro ? 2 : (compact ? 6 : 11)),
+                Math.round(h * (compact ? 0.088F : 0.098F)));
+        int topPad = Mth.clamp(Math.round(h * (micro ? 0.040F : (compact ? 0.095F : 0.105F))),
+                micro ? 6 : (compact ? 28 : 42), micro ? 18 : (compact ? 42 : 58));
+        int dockCount = Math.min(Math.min(4, cols), apps.size());
+        int dockH = Mth.clamp(icon + (micro ? 8 : (compact ? 14 : 22)), micro ? 26 : (compact ? 46 : 58),
+                micro ? 38 : (compact ? 56 : 68));
+        int dockY = y + h - dockH - (micro ? 3 : (compact ? 6 : 10));
+        int dotY = dockY - (micro ? 5 : (compact ? 9 : 14));
+        int gridBottom = dotY - (micro ? 4 : (compact ? 10 : 16));
+        int gridApps = Math.max(0, apps.size() - dockCount);
+        int gridH = Math.max(0, gridBottom - (y + topPad));
+        int minGridRow = icon + labelGap + labelH;
+        if (compact && gridApps > 0 && gridH < minGridRow) {
+            dockCount = 0;
+            dockH = 0;
+            dockY = y + h;
+            dotY = y + h - 8;
+            gridBottom = y + h - 8;
+            topPad = Mth.clamp(Math.round(h * (micro ? 0.025F : 0.055F)), micro ? 4 : 18, micro ? 12 : 30);
+            gridApps = apps.size();
+            gridH = Math.max(0, gridBottom - (y + topPad));
         }
+        if (compact && gridApps > 0 && gridH > 0 && gridH < minGridRow) {
+            icon = Math.max(8, Math.min(icon, gridH - labelGap - labelH));
+            rowH = Math.max(1, gridH);
+            minGridRow = Math.max(1, Math.min(gridH, icon + labelGap + labelH));
+        }
+        int visibleRows = gridH >= minGridRow ? Math.max(1, gridH / rowH) : 0;
+        int pageSize = Math.max(1, visibleRows * cols);
+        int totalPages = Math.max(1, (gridApps + pageSize - 1) / pageSize);
+        SmartphoneClientState.syncHomeGridScroll(totalPages, 1);
+        int page = SmartphoneClientState.homeGridScrollOffset();
+        int startIndex = dockCount + page * pageSize;
+        int itemsOnPage = Math.min(pageSize, Math.max(0, apps.size() - startIndex));
+        int rowsOnPage = itemsOnPage <= 0 ? 0 : (itemsOnPage + cols - 1) / cols;
+        int usedRows = Math.max(0, Math.min(visibleRows, rowsOnPage));
+        int visualGridTop = y + topPad;
+        if (usedRows > 0) {
+            int freeY = Math.max(0, gridH - usedRows * rowH);
+            visualGridTop += Math.min(micro ? 4 : (compact ? 10 : 18), freeY / 2);
+        }
+        for (int i = 0; i < pageSize && startIndex + i < apps.size(); i++) {
+            SmartphoneClientState.PhoneApp app = apps.get(startIndex + i);
+            int columnX = startX + (i % cols) * columnW;
+            int cx = columnX + (columnW - icon) / 2;
+            int cy = visualGridTop + (i / cols) * rowH;
+            int labelAllowance = labelGap + labelH + (micro ? 1 : 3);
+            if (cy + icon + labelAllowance > gridBottom) {
+                break;
+            }
+            int color = appColor(app.id());
+            drawHomeAppIcon(g, app.id(), cx, cy, icon, color);
+            int labelX = columnX + columnW / 2;
+            int labelY = cy + icon + labelGap;
+            float labelScale = compact ? 0.66F : 0.72F;
+            drawHomeAppLabel(g, font, app.label(), labelX, labelY, columnW - 4, labelScale, labelLines);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(columnX, cy - 2, columnW,
+                    icon + labelAllowance + 4), "APP", app.id(), "", ""));
+        }
+        if (visibleRows > 0 && gridApps > 0) {
+            drawHomePageDots(g, x + w / 2, dotY, totalPages, page, hitboxes);
+        }
+        if (dockCount > 0) {
+            drawHomeDock(g, safeX, dockY, safeW, dockH, apps, dockCount, icon, compact, hitboxes);
+        }
+    }
+
+    private static void drawHomeAppLabel(GuiGraphics g, Font font, String label, int centerX, int y,
+                                         int maxW, float scale, int maxLines) {
+        String safe = label == null ? "" : label.trim();
+        if (safe.isBlank() || maxW <= 0 || maxLines <= 0) {
+            return;
+        }
+        float textSize = Math.max(5.0F, font.lineHeight * scale);
+        List<String> wrapped = new ArrayList<>(wrapPhoneText(font, safe, maxW, textSize, maxLines + 1));
+        if (wrapped.size() > maxLines) {
+            wrapped = new ArrayList<>(wrapped.subList(0, maxLines));
+            int last = wrapped.size() - 1;
+            wrapped.set(last, ellipsizePhoneText(wrapped.get(last), maxW, textSize));
+        } else if (wrapped.size() == 1) {
+            wrapped.set(0, trimPhoneText(wrapped.get(0), maxW, textSize));
+        }
+        int lineStep = Math.max(7, Math.round(font.lineHeight * scale + 2.0F));
+        for (int i = 0; i < wrapped.size(); i++) {
+            String line = wrapped.get(i);
+            int lineY = y + i * lineStep;
+            drawScaledCentered(g, font, line, centerX + 1, lineY + 1, 0x88000000, scale);
+            drawScaledCentered(g, font, line, centerX, lineY, 0xFFEAF8FF, scale);
+        }
+    }
+
+    private static String ellipsizePhoneText(String raw, int width, float size) {
+        String value = raw == null ? "" : raw.trim();
+        String ellipsis = "...";
+        while (!value.isEmpty() && phoneTextWidth(value + ellipsis, size) > width) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+        return value.isBlank() ? ellipsis : value + ellipsis;
+    }
+
+    private static void drawHomeDock(GuiGraphics g, int x, int y, int w, int h,
+                                     List<SmartphoneClientState.PhoneApp> apps, int count, int icon,
+                                     boolean compact,
+                                     List<SmartphoneClientState.Hitbox> hitboxes) {
+        if (count <= 0) {
+            return;
+        }
+        int inset = compact ? 5 : 7;
+        fillRounded(g, x + inset, y, w - inset * 2, h, Math.max(18, h / 3), 0x44FFFFFF);
+        drawRoundedBorder(g, x + inset, y, w - inset * 2, h, Math.max(18, h / 3), 0x33FFFFFF, 0x22FFFFFF);
+        int dockInnerW = Math.max(1, w - inset * 2);
+        int slotW = Math.max(32, dockInnerW / Math.max(1, count));
+        int dockStartX = x + inset + Math.max(0, (dockInnerW - slotW * count) / 2);
+        int iconY = y + Math.max(5, (h - icon) / 2);
+        for (int i = 0; i < count; i++) {
+            SmartphoneClientState.PhoneApp app = apps.get(i);
+            int slotX = dockStartX + i * slotW;
+            int iconX = slotX + (slotW - icon) / 2;
+            drawHomeAppIcon(g, app.id(), iconX, iconY, icon, appColor(app.id()));
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(slotX, y, slotW, h),
+                    "APP", app.id(), "", ""));
+        }
+    }
+
+    private static void drawHomePageDots(GuiGraphics g, int centerX, int y, int totalRows, int activeRow,
+                                         List<SmartphoneClientState.Hitbox> hitboxes) {
+        if (totalRows <= 1) {
+            return;
+        }
+        int visibleDots = Math.min(totalRows, 5);
+        int gap = 10;
+        int startX = centerX - ((visibleDots - 1) * gap) / 2;
+        int active = Mth.clamp(activeRow, 0, Math.max(0, totalRows - 1));
+        int first = Mth.clamp(active - visibleDots / 2, 0, Math.max(0, totalRows - visibleDots));
+        for (int i = 0; i < visibleDots; i++) {
+            int row = first + i;
+            int dotX = startX + i * gap;
+            fillCircle(g, dotX, y, row == active ? 3 : 2,
+                    row == active ? 0xCCFFFFFF : 0x66FFFFFF);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(dotX - 5, y - 7, 10, 14),
+                    "HOME_PAGE", String.valueOf(row), "", ""));
+        }
+    }
+
+    private static void drawHomeAppIcon(GuiGraphics g, String appId, int x, int y, int size, int color) {
+        int maxRadius = Math.max(1, size / 2);
+        int minRadius = Math.min(maxRadius, Math.max(2, size / 5));
+        int radius = Mth.clamp(Math.round(size * 0.22F), minRadius, Math.min(12, maxRadius));
+        fillRoundedVertical(g, x, y, size, size, radius,
+                lerpColor(color, 0xFFFFFFFF, 0.10F),
+                lerpColor(color, 0xFF000000, 0.14F));
+        if (size > radius * 2 + 2) {
+            g.fill(x + radius, y + 2, x + size - radius, y + 3, 0x33FFFFFF);
+        }
+        drawHomeAppSymbol(g, appId, x, y, size, color);
+    }
+
+    private static void drawHomeAppSymbol(GuiGraphics g, String appId, int x, int y, int size, int tileColor) {
+        String id = appId == null ? "" : appId.toLowerCase(Locale.ROOT);
+        if (id.startsWith("account:")) {
+            drawAccountShortcutSymbol(g, x, y, size, tileColor);
+            return;
+        }
+
+        int cx = x + size / 2;
+        int cy = y + size / 2;
+        int white = 0xFFF8FBFF;
+        int soft = 0xCCF8FBFF;
+        int dark = 0x66000000;
+        int one = Math.max(1, Math.round(size / 42.0F));
+        int two = Math.max(2, Math.round(size / 20.0F));
+        int three = Math.max(2, Math.round(size / 16.0F));
+        int four = Math.max(3, Math.round(size / 12.0F));
+        int five = Math.max(4, Math.round(size / 9.0F));
+        int six = Math.max(5, Math.round(size / 7.0F));
+        int eight = Math.max(7, Math.round(size / 5.2F));
+        int nine = Math.max(8, Math.round(size / 4.7F));
+        switch (id) {
+            case "banking" -> drawBankingHomeSymbol(g, cx, cy, size, tileColor);
+            case "market" -> {
+                fillCircle(g, cx - Math.round(size * 0.18F), cy + Math.round(size * 0.16F),
+                        Math.max(5, Math.round(size * 0.14F)), 0xFFFFD66B);
+                fillCircle(g, cx + Math.round(size * 0.18F), cy + Math.round(size * 0.10F),
+                        Math.max(5, Math.round(size * 0.14F)), 0xFFFFB13D);
+                int chartLeft = cx - Math.round(size * 0.30F);
+                int chartBottom = cy + Math.round(size * 0.18F);
+                drawSoftLine(g, chartLeft, chartBottom, chartLeft + Math.round(size * 0.17F),
+                        chartBottom - Math.round(size * 0.18F), white);
+                drawSoftLine(g, chartLeft + Math.round(size * 0.17F), chartBottom - Math.round(size * 0.18F),
+                        chartLeft + Math.round(size * 0.34F), chartBottom - Math.round(size * 0.08F), white);
+                drawSoftLine(g, chartLeft + Math.round(size * 0.34F), chartBottom - Math.round(size * 0.08F),
+                        chartLeft + Math.round(size * 0.60F), chartBottom - Math.round(size * 0.31F), white);
+                g.fill(cx - one, cy - Math.round(size * 0.30F), cx + one + 1, cy + Math.round(size * 0.28F), soft);
+                g.fill(cx - Math.round(size * 0.31F), cy - one, cx + Math.round(size * 0.31F), cy + one + 1, soft);
+            }
+            case "tap" -> {
+                int phoneW = Math.round(size * 0.31F);
+                int phoneH = Math.round(size * 0.49F);
+                drawRoundedBorder(g, cx - phoneW / 2 - five, cy - phoneH / 2, phoneW, phoneH,
+                        Math.max(4, two), white, tileColor);
+                g.fill(cx - phoneW / 2 - two, cy + phoneH / 2 - four, cx - phoneW / 2 + four, cy + phoneH / 2 - three, soft);
+                drawSoftLine(g, cx + three, cy - eight, cx + eight, cy - four, white);
+                drawSoftLine(g, cx + eight, cy - four, cx + eight, cy + four, white);
+                drawSoftLine(g, cx + three, cy + eight, cx + eight, cy + four, white);
+                drawSoftLine(g, cx + eight + three, cy - six, cx + eight + six, cy - two, soft);
+                drawSoftLine(g, cx + eight + six, cy - two, cx + eight + six, cy + two, soft);
+                drawSoftLine(g, cx + eight + three, cy + six, cx + eight + six, cy + two, soft);
+            }
+            case "calculator" -> {
+                int calcW = Math.round(size * 0.48F);
+                int calcH = Math.round(size * 0.58F);
+                fillRounded(g, cx - calcW / 2, cy - calcH / 2, calcW, calcH, four, white);
+                fillRounded(g, cx - calcW / 2 + three, cy - calcH / 2 + three,
+                        calcW - six, Math.max(5, Math.round(size * 0.16F)), two, 0xFF2B3444);
+                int dot = Math.max(2, Math.round(size * 0.055F));
+                int startX = cx - calcW / 2 + four;
+                int startY = cy - calcH / 2 + Math.round(size * 0.25F);
+                for (int row = 0; row < 3; row++) {
+                    for (int col = 0; col < 3; col++) {
+                        fillCircle(g, startX + col * Math.max(6, Math.round(size * 0.14F)),
+                                startY + row * Math.max(6, Math.round(size * 0.13F)), dot, 0xFF2B3444);
+                    }
+                }
+            }
+            case "paint" -> {
+                fillCircle(g, cx - one, cy, Math.round(size * 0.25F), white);
+                fillCircle(g, cx - Math.round(size * 0.12F), cy - Math.round(size * 0.10F), two, tileColor);
+                fillCircle(g, cx + Math.round(size * 0.05F), cy - Math.round(size * 0.13F), two, tileColor);
+                fillCircle(g, cx - Math.round(size * 0.07F), cy + Math.round(size * 0.09F), two, tileColor);
+                drawSoftLine(g, cx + six, cy + six, cx + Math.round(size * 0.30F), cy + Math.round(size * 0.29F), white);
+                drawSoftLine(g, cx + five, cy + eight, cx + Math.round(size * 0.20F), cy + Math.round(size * 0.30F), soft);
+                fillRounded(g, cx + three, cy + two, Math.max(8, Math.round(size * 0.20F)),
+                        Math.max(5, Math.round(size * 0.10F)), three, 0xFFFFD264);
+            }
+            case "contacts" -> {
+                fillCircle(g, cx - six, cy - five, five, white);
+                fillCircle(g, cx + six, cy - five, five, soft);
+                fillRounded(g, cx - Math.round(size * 0.30F), cy + two, Math.round(size * 0.28F),
+                        Math.round(size * 0.18F), six, white);
+                fillRounded(g, cx + two, cy + two, Math.round(size * 0.28F),
+                        Math.round(size * 0.18F), six, soft);
+                fillCircle(g, cx, cy - two, six, white);
+                fillRounded(g, cx - eight, cy + five, eight * 2, Math.round(size * 0.20F), eight, white);
+            }
+            case "messenger" -> {
+                int bw = Math.round(size * 0.57F);
+                int bh = Math.round(size * 0.42F);
+                fillRounded(g, cx - bw / 2, cy - bh / 2, bw, bh, eight, white);
+                g.fill(cx - six, cy + bh / 2 - one, cx - two, cy + bh / 2 + five, white);
+                drawSoftLine(g, cx - eight, cy - two, cx - two, cy - two, tileColor);
+                drawSoftLine(g, cx + two, cy - two, cx + eight, cy - two, tileColor);
+                drawSoftLine(g, cx - five, cy + five, cx + five, cy + five, tileColor);
+            }
+            case "notes" -> {
+                int pageW = Math.round(size * 0.48F);
+                int pageH = Math.round(size * 0.58F);
+                fillRounded(g, cx - pageW / 2, cy - pageH / 2, pageW, pageH, three, white);
+                g.fill(cx - pageW / 2, cy - pageH / 2 + five, cx + pageW / 2, cy - pageH / 2 + six, 0xFFFFB13D);
+                for (int line = 0; line < 4; line++) {
+                    int ly = cy - pageH / 2 + Math.round(size * 0.20F) + line * four;
+                    g.fill(cx - pageW / 2 + five, ly, cx + pageW / 2 - four, ly + one, 0xFFB99331);
+                }
+            }
+            case "settings" -> {
+                drawCircleRing(g, cx, cy, eight, three, white, tileColor);
+                fillCircle(g, cx, cy, three, white);
+                g.fill(cx - one, cy - eight - five, cx + one + 1, cy - eight + one, white);
+                g.fill(cx - one, cy + eight - one, cx + one + 1, cy + eight + five, white);
+                g.fill(cx - eight - five, cy - one, cx - eight + one, cy + one + 1, white);
+                g.fill(cx + eight - one, cy - one, cx + eight + five, cy + one + 1, white);
+                drawSoftLine(g, cx - eight, cy - eight, cx - five, cy - five, soft);
+                drawSoftLine(g, cx + eight, cy - eight, cx + five, cy - five, soft);
+                drawSoftLine(g, cx - eight, cy + eight, cx - five, cy + five, soft);
+                drawSoftLine(g, cx + eight, cy + eight, cx + five, cy + five, soft);
+            }
+            default -> {
+                fillCircle(g, cx - five, cy - five, three, white);
+                fillCircle(g, cx + five, cy - five, three, white);
+                fillCircle(g, cx - five, cy + five, three, white);
+                fillCircle(g, cx + five, cy + five, three, white);
+            }
+        }
+        g.fill(x + size - two - one, y + two, x + size - two, y + size - two, dark);
+    }
+
+    private static void drawBankingHomeSymbol(GuiGraphics g, int cx, int cy, int size, int tileColor) {
+        int ring = Math.max(7, Math.round(size * 0.17F));
+        int thickness = Math.max(2, Math.round(size * 0.055F));
+        int offset = Math.max(6, Math.round(size * 0.14F));
+        drawCircleRing(g, cx - offset, cy, ring, thickness, 0xFFF8FBFF, tileColor);
+        drawCircleRing(g, cx + offset, cy, ring, thickness, 0xFFB9FFF2, tileColor);
+        drawSoftLine(g, cx - offset + ring - thickness, cy, cx + offset - ring + thickness, cy, 0xFFF8FBFF);
+        fillCircle(g, cx, cy, Math.max(2, Math.round(size * 0.055F)), 0xFFF8FBFF);
+        g.fill(cx - Math.round(size * 0.25F), cy + Math.round(size * 0.25F),
+                cx + Math.round(size * 0.25F), cy + Math.round(size * 0.25F) + Math.max(2, thickness), 0xCCF8FBFF);
+    }
+
+    private static void drawAccountShortcutSymbol(GuiGraphics g, int x, int y, int size, int tileColor) {
+        int cx = x + size / 2;
+        int cy = y + size / 2;
+        int cardW = Math.round(size * 0.58F);
+        int cardH = Math.round(size * 0.40F);
+        fillRounded(g, cx - cardW / 2, cy - cardH / 2, cardW, cardH, Math.max(4, Math.round(size * 0.10F)), 0xFFF8FBFF);
+        g.fill(cx - cardW / 2 + 4, cy - cardH / 2 + 5, cx + cardW / 2 - 4, cy - cardH / 2 + 7, tileColor);
+        fillRounded(g, cx - cardW / 2 + 5, cy - 1, Math.max(8, Math.round(size * 0.18F)),
+                Math.max(6, Math.round(size * 0.13F)), Math.max(2, Math.round(size * 0.04F)), 0xFFFFC44A);
+        g.fill(cx - 1, cy + Math.round(size * 0.12F), cx + cardW / 2 - 5, cy + Math.round(size * 0.12F) + 1, 0xFF1D3B83);
+    }
+
+    private static void drawSpotMarket(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                       List<SmartphoneClientState.Hitbox> hitboxes) {
+        int bg = 0xFF10131D;
+        int panel = 0xFF1B2030;
+        int panelDeep = 0xFF151927;
+        int line = 0xFF2D3548;
+        int text = 0xFFF8FAFF;
+        int muted = 0xFFA4AAB9;
+        int gold = 0xFFFFC857;
+        int green = 0xFF39D98A;
+        drawPhoneAppSurface(g, x, y, w, h, bg);
+        fillVertical(g, x - BANK_DISPLAY_BLEED, y - PHONE_APP_TOP_BLEED,
+                w + BANK_DISPLAY_BLEED * 2, Math.max(1, h / 2), 0xFF161A29, bg);
+        drawStatusBar(g, font, x, y - 40, w, text, bg);
+
+        float sx = w / 335.0F;
+        float sy = h / 758.0F;
+        int headerButton = Math.max(34, Math.round(42 * sx));
+        drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, headerButton);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, headerButton, headerButton),
+                "APP", "home", "", ""));
+        int refreshSize = headerButton;
+        int refreshX = x + w - refreshSize;
+        fillCircle(g, refreshX + refreshSize / 2, y + refreshSize / 2, refreshSize / 2, 0xFF202638);
+        drawCircleRing(g, refreshX + refreshSize / 2, y + refreshSize / 2, Math.max(8, refreshSize / 4),
+                Math.max(2, refreshSize / 12), gold, 0xFF202638);
+        drawScaledCentered(g, font, "R", refreshX + refreshSize / 2, y + Math.max(9, refreshSize / 2 - 5),
+                gold, 0.82F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(refreshX, y, refreshSize, refreshSize),
+                "MARKET_REFRESH", "", "", ""));
+
+        drawScaledCentered(g, font, "Spot Market", x + w / 2, y + Math.round(9 * sy), text, 1.10F);
+        drawScaledCentered(g, font, "Central Bank Global Desk", x + w / 2, y + Math.round(31 * sy), muted, 0.74F);
+
+        List<SmartphoneClientState.MarketQuote> quotes = SmartphoneClientState.marketQuotes();
+        SmartphoneClientState.MarketQuote hero = quotes.stream()
+                .filter(SmartphoneClientState.MarketQuote::seeded)
+                .findFirst()
+                .orElse(quotes.isEmpty() ? null : quotes.get(0));
+
+        int heroY = y + Math.round(70 * sy);
+        int heroH = Math.max(116, Math.round(142 * sy));
+        fillRoundedVertical(g, x, heroY, w, heroH, Math.max(18, Math.round(22 * sx)),
+                0xFF262A3D, 0xFF171B2B);
+        drawRoundedBorder(g, x, heroY, w, heroH, Math.max(18, Math.round(22 * sx)), 0x663F4965, 0xFF171B2B);
+        g.fill(x + Math.round(18 * sx), heroY + Math.round(18 * sy),
+                x + w - Math.round(18 * sx), heroY + Math.round(19 * sy), 0x33FFFFFF);
+        int coinX = x + Math.round(28 * sx);
+        int coinY = heroY + Math.round(40 * sy);
+        fillCircle(g, coinX, coinY, Math.max(17, Math.round(22 * sx)), 0x44FFD36B);
+        fillCircle(g, coinX, coinY, Math.max(12, Math.round(16 * sx)), gold);
+        drawScaledCentered(g, font, "$", coinX, coinY - Math.round(7 * sy), 0xFF5B3A00, 1.0F);
+        String title = hero == null ? "No commodities" : hero.displayName();
+        String spot = hero == null ? "Unpriced" : hero.spotLabel();
+        String change = hero == null ? "Seed required" : hero.changeLabel();
+        drawScaledString(g, font, trim(font, title, w - Math.round(96 * sx)),
+                x + Math.round(62 * sx), heroY + Math.round(26 * sy), text, 0.96F);
+        drawScaledString(g, font, trim(font, spot, w - Math.round(84 * sx)),
+                x + Math.round(62 * sx), heroY + Math.round(52 * sy), gold, 1.72F);
+        drawScaledString(g, font, "Spot per " + (hero == null ? "unit" : hero.unitName()),
+                x + Math.round(64 * sx), heroY + Math.round(84 * sy), muted, 0.78F);
+        int chipW = Math.max(58, Math.round(76 * sx));
+        fillRounded(g, x + w - chipW - Math.round(16 * sx), heroY + Math.round(28 * sy),
+                chipW, Math.max(25, Math.round(30 * sy)), Math.max(12, Math.round(14 * sx)),
+                change.startsWith("-") ? 0x33FF4D6D : 0x3339D98A);
+        drawScaledCentered(g, font, change, x + w - chipW / 2 - Math.round(16 * sx),
+                heroY + Math.round(37 * sy), change.startsWith("-") ? 0xFFFF6B84 : green, 0.82F);
+
+        int statY = heroY + heroH - Math.max(44, Math.round(50 * sy));
+        int statGap = Math.max(8, Math.round(10 * sx));
+        int statW = (w - statGap) / 2;
+        drawMarketStat(g, font, x, statY, statW, Math.max(38, Math.round(42 * sy)),
+                "Bid", hero == null ? "-" : hero.bidLabel(), panelDeep, green);
+        drawMarketStat(g, font, x + statW + statGap, statY, statW, Math.max(38, Math.round(42 * sy)),
+                "Ask", hero == null ? "-" : hero.askLabel(), panelDeep, gold);
+
+        int quoteHeaderY = heroY + heroH + Math.max(22, Math.round(28 * sy));
+        drawScaledString(g, font, "Quotes", x + 2, quoteHeaderY, text, 1.12F);
+        String updated = hero == null ? "No feed" : marketUpdatedLabel(hero.updatedAtMillis());
+        drawScaledString(g, font, trim(font, updated, Math.round(w * 0.40F)),
+                x + w - phoneTextWidth(trim(font, updated, Math.round(w * 0.40F)), 7.0F),
+                quoteHeaderY + 4, muted, 0.78F);
+
+        int listY = quoteHeaderY + Math.max(23, Math.round(28 * sy));
+        int cardH = Math.max(84, Math.round(94 * sy));
+        int gap = Math.max(8, Math.round(10 * sy));
+        int visibleRows = Math.max(1, (y + h - listY) / Math.max(1, cardH + gap));
+        SmartphoneClientState.syncMarketScroll(quotes.size(), visibleRows);
+        int offset = SmartphoneClientState.marketScrollOffset();
+        if (quotes.isEmpty()) {
+            drawMarketEmpty(g, font, x, listY, w, Math.max(120, y + h - listY), panel, line, muted, gold);
+            return;
+        }
+        for (int i = 0; i < visibleRows && offset + i < quotes.size(); i++) {
+            int rowY = listY + i * (cardH + gap);
+            if (rowY + cardH > y + h) {
+                break;
+            }
+            drawMarketQuoteCard(g, font, x, rowY, w, cardH, quotes.get(offset + i), panel, line, text, muted, gold, green);
+        }
+    }
+
+    private static void drawMarketStat(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                       String label, String value, int bg, int accent) {
+        fillRounded(g, x, y, w, h, Math.max(10, h / 4), bg);
+        g.fill(x + 10, y + h - 2, x + w - 10, y + h - 1, withAlpha(accent, 110));
+        drawScaledString(g, font, label, x + 12, y + 8, 0xFFA4AAB9, 0.72F);
+        drawScaledString(g, font, trim(font, value, w - 24), x + 12, y + 22, 0xFFF8FAFF, 0.90F);
+    }
+
+    private static void drawMarketQuoteCard(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                            SmartphoneClientState.MarketQuote quote, int panel, int line,
+                                            int text, int muted, int gold, int green) {
+        fillRounded(g, x, y, w, h, Math.max(14, h / 6), panel);
+        drawRoundedBorder(g, x, y, w, h, Math.max(14, h / 6), line, panel);
+        int accent = quote.seeded() ? gold : 0xFF6C7486;
+        g.fill(x, y + 12, x + 3, y + h - 12, accent);
+        fillCircle(g, x + 24, y + 26, 15, withAlpha(accent, quote.seeded() ? 230 : 120));
+        drawScaledCentered(g, font, quote.seeded() ? "$" : "?", x + 24, y + 19, 0xFF151927, 0.92F);
+        drawScaledString(g, font, trim(font, quote.displayName(), w - 118), x + 48, y + 13, text, 0.96F);
+        drawScaledString(g, font, quote.id(), x + 48, y + 31, muted, 0.64F);
+        drawScaledString(g, font, trim(font, quote.spotLabel(), Math.round(w * 0.32F)),
+                x + w - Math.round(w * 0.32F), y + 13, quote.seeded() ? gold : muted, 1.02F);
+        String lowHigh = "L " + quote.lowLabel() + "  H " + quote.highLabel();
+        drawScaledString(g, font, trim(font, lowHigh, w - 60), x + 48, y + 52, muted, 0.70F);
+        String spread = "Bid " + quote.bidLabel() + " / Ask " + quote.askLabel();
+        drawScaledString(g, font, trim(font, spread, w - 60), x + 48, y + 67, quote.seeded() ? green : muted, 0.68F);
+    }
+
+    private static void drawMarketEmpty(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                        int panel, int line, int muted, int gold) {
+        fillRounded(g, x, y, w, Math.min(h, 148), 18, panel);
+        drawRoundedBorder(g, x, y, w, Math.min(h, 148), 18, line, panel);
+        fillCircle(g, x + w / 2, y + 42, 18, withAlpha(gold, 120));
+        drawScaledCentered(g, font, "$", x + w / 2, y + 34, gold, 1.1F);
+        drawScaledCentered(g, font, "No market quotes yet", x + w / 2, y + 72, 0xFFF8FAFF, 1.0F);
+        drawScaledCentered(g, font, "Seed gold from Central Bank commands.", x + w / 2, y + 94, muted, 0.72F);
+    }
+
+    private static String marketUpdatedLabel(long updatedAtMillis) {
+        if (updatedAtMillis <= 0L) {
+            return "Awaiting seed";
+        }
+        long ageSeconds = Math.max(0L, (System.currentTimeMillis() - updatedAtMillis) / 1000L);
+        if (ageSeconds < 60L) {
+            return "Updated " + ageSeconds + "s ago";
+        }
+        long minutes = ageSeconds / 60L;
+        if (minutes < 60L) {
+            return "Updated " + minutes + "m ago";
+        }
+        long hours = minutes / 60L;
+        if (hours < 48L) {
+            return "Updated " + hours + "h ago";
+        }
+        return "Updated " + (hours / 24L) + "d ago";
     }
 
     private static void drawBanking(GuiGraphics g, Font font, int x, int y, int w, int h,
                                     List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         if (SmartphoneClientState.bankingLoadingActive()) {
             drawBankingLoading(g, font, x, y, w, h);
             return;
@@ -427,9 +1141,9 @@ public final class SmartphoneOverlay {
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, avatar, avatar),
                 "APP", "bank-profile", "", ""));
         drawScaledString(g, font, "Welcome back,", x + Math.round(66 * sx), y + Math.round(4 * sy),
-                BANK_MUTED, 1.0F);
+                bankMuted(), 1.0F);
         drawScaledString(g, font, trim(font, SmartphoneClientState.ownerName(), Math.round(w * 0.56F)),
-                x + Math.round(66 * sx), y + Math.round(26 * sy), BANK_TEXT, 1.18F);
+                x + Math.round(66 * sx), y + Math.round(26 * sy), bankText(), 1.18F);
 
         int searchSize = Math.max(34, Math.round(42 * sx));
         int searchX = x + w - searchSize;
@@ -447,7 +1161,8 @@ public final class SmartphoneOverlay {
             drawBankingAccountMeta(g, font, x, cardY + cardH + Math.round(7 * sy), w, selected, hitboxes);
         }
 
-        int actionsY = y + Math.round(319 * sy);
+        int accountMetaSpacing = Math.round(22 * sy);
+        int actionsY = y + Math.round(319 * sy) + accountMetaSpacing;
         drawFigmaHomeAction(g, font, x + Math.round(0 * sx), actionsY, Math.round(54 * sx),
                 "Sent", "send", BANK_BLUE, hitboxes, "APP", "send-money");
         drawFigmaHomeAction(g, font, x + Math.round(94 * sx), actionsY, Math.round(54 * sx),
@@ -457,8 +1172,8 @@ public final class SmartphoneOverlay {
         drawFigmaHomeAction(g, font, x + Math.round(281 * sx), actionsY, Math.round(54 * sx),
                 "Tap to Pay", "tap", 0xFFFFB13D, hitboxes, "APP", "tap");
 
-        int headingY = y + Math.round(415 * sy);
-        drawScaledString(g, font, "Transaction", x, headingY, BANK_TEXT, 1.28F);
+        int headingY = y + Math.round(415 * sy) + accountMetaSpacing;
+        drawScaledString(g, font, "Transaction", x, headingY, bankText(), 1.28F);
         String seeAll = "See All";
         int seeAllW = phoneTextWidth(seeAll, 9.0F);
         drawScaledString(g, font, seeAll, x + w - seeAllW, headingY + 2, BANK_BLUE, 1.0F);
@@ -466,7 +1181,7 @@ public final class SmartphoneOverlay {
                 "APP", "history", "", ""));
 
         int navY = bankDisplayNavY(y, h, w);
-        int rowY = y + Math.round(454 * sy);
+        int rowY = y + Math.round(454 * sy) + accountMetaSpacing;
         List<SmartphoneClientState.PhoneTransaction> txs = SmartphoneClientState.transactionsForSelectedAccount();
         int rowStep = Math.max(52, Math.round(64 * sy));
         int maxRows = Math.max(2, (navY - rowY - 8) / rowStep);
@@ -488,7 +1203,7 @@ public final class SmartphoneOverlay {
         int primaryW = account.primary() ? Math.max(52, Math.round(57 * sx)) : 0;
         int bankMaxW = Math.max(44, copyX - x - primaryW - Math.round(12 * sx));
         String bankLabel = trim(font, bankName, bankMaxW);
-        drawScaledString(g, font, bankLabel, x, y + Math.round(1 * sy), BANK_TEXT, 0.88F);
+        drawScaledString(g, font, bankLabel, x, y + Math.round(1 * sy), bankText(), 0.88F);
 
         if (account.primary()) {
             int badgeX = x + Math.min(bankMaxW, phoneTextWidth(bankLabel, 8.0F)) + Math.round(6 * sx);
@@ -496,19 +1211,19 @@ public final class SmartphoneOverlay {
             drawScaledCentered(g, font, "PRIMARY", badgeX + primaryW / 2, y + Math.round(4 * sy), 0xFF20C985, 0.68F);
         }
 
-        fillRounded(g, copyX, copyY, copyW, copyH, Math.max(6, Math.round(8 * sx)), BANK_PANEL_SOFT);
-        drawScaledCentered(g, font, "Copy ID", copyX + copyW / 2, copyY + Math.round(4 * sy), BANK_TEXT, 0.74F);
+        fillRounded(g, copyX, copyY, copyW, copyH, Math.max(6, Math.round(8 * sx)), bankPanelSoft());
+        drawScaledCentered(g, font, "Copy ID", copyX + copyW / 2, copyY + Math.round(4 * sy), bankText(), 0.74F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(copyX, copyY, copyW, copyH),
                 "COPY_SELECTED_ACCOUNT_ID", "", "", ""));
 
         String idLabel = "ID " + shortUuid(account.id());
-        drawScaledString(g, font, idLabel, x, y + Math.round(18 * sy), BANK_MUTED, 0.72F);
+        drawScaledString(g, font, idLabel, x, y + Math.round(18 * sy), bankMuted(), 0.72F);
     }
 
     private static void drawBankWelcome(GuiGraphics g, Font font, int x, int y, int w, int h,
                                         List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
@@ -517,7 +1232,7 @@ public final class SmartphoneOverlay {
                 "APP", "home", "", ""));
 
         int titleY = y + Math.round(94 * sy);
-        drawScaledString(g, font, "Sign Up", x, titleY, BANK_TEXT, 1.9F);
+        drawScaledString(g, font, "Sign Up", x, titleY, bankText(), 1.9F);
 
         int fieldY = y + Math.round(166 * sy);
         drawFigmaSignupStaticField(g, font, x, fieldY, w, sy, "Full Name", "user", SmartphoneClientState.ownerName());
@@ -534,7 +1249,7 @@ public final class SmartphoneOverlay {
                 hitboxes, "OPEN_DEFAULT_ACCOUNT", "", "", "");
 
         int copyY = Math.min(y + Math.round(628 * sy), y + h - Math.round(35 * sy));
-        drawScaledCentered(g, font, "Already have an account.", x + w / 2 - Math.round(22 * sx), copyY, BANK_MUTED, 0.86F);
+        drawScaledCentered(g, font, "Already have an account.", x + w / 2 - Math.round(22 * sx), copyY, bankMuted(), 0.86F);
         drawScaledString(g, font, "Sign In", x + w / 2 + Math.round(48 * sx), copyY, BANK_BLUE, 0.86F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w / 2 + Math.round(42 * sx), copyY - 6,
                 Math.round(70 * sx), 20), "APP", "bank-sign-in", "", ""));
@@ -543,47 +1258,47 @@ public final class SmartphoneOverlay {
     private static void drawFigmaSignupStaticField(GuiGraphics g, Font font, int x, int y, int w, float sy,
                                                    String label, String icon, String value) {
         float sx = w / 335.0F;
-        drawScaledString(g, font, label, x, y, BANK_MUTED, 0.92F);
+        drawScaledString(g, font, label, x, y, bankMuted(), 0.92F);
         int rowY = y + Math.round(31 * sy);
-        drawFigmaProfileIcon(g, icon, x + Math.round(11 * sx), rowY + Math.round(11 * sy), BANK_MUTED);
+        drawFigmaProfileIcon(g, icon, x + Math.round(11 * sx), rowY + Math.round(11 * sy), bankMuted());
         drawScaledString(g, font, trim(font, value == null ? "" : value, w - Math.round(58 * sx)),
-                x + Math.round(38 * sx), rowY + Math.round(3 * sy), BANK_TEXT, 0.95F);
-        g.fill(x, rowY + Math.round(32 * sy), x + w, rowY + Math.round(33 * sy), BANK_LINE);
+                x + Math.round(38 * sx), rowY + Math.round(3 * sy), bankText(), 0.95F);
+        g.fill(x, rowY + Math.round(32 * sy), x + w, rowY + Math.round(33 * sy), bankLine());
     }
 
     private static void drawFigmaSignupPinField(GuiGraphics g, Font font, int x, int y, int w, float sy,
                                                 List<SmartphoneClientState.Hitbox> hitboxes) {
         float sx = w / 335.0F;
-        drawScaledString(g, font, "Password", x, y, BANK_MUTED, 0.92F);
+        drawScaledString(g, font, "Password", x, y, bankMuted(), 0.92F);
         int rowY = y + Math.round(31 * sy);
-        drawDarkLockGlyph(g, x + Math.round(11 * sx), rowY + Math.round(11 * sy), BANK_MUTED, BANK_BG);
+        drawDarkLockGlyph(g, x + Math.round(11 * sx), rowY + Math.round(11 * sy), bankMuted(), bankBg());
         String pin = SmartphoneClientState.signupPin();
         boolean pinActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.SIGNUP_PIN;
         String dots = passwordDots(pin);
         drawScaledString(g, font, dots.isBlank() ? (pinActive ? "" : "4 digit PIN") : dots,
-                x + Math.round(38 * sx), rowY + Math.round(3 * sy), dots.isBlank() ? BANK_MUTED : BANK_TEXT, 0.95F);
+                x + Math.round(38 * sx), rowY + Math.round(3 * sy), dots.isBlank() ? bankMuted() : bankText(), 0.95F);
         if (pinActive) {
             int caretX = x + Math.round(38 * sx) + (dots.isBlank() ? 0 : Math.min(phoneTextWidth(dots, 8.55F), w - Math.round(58 * sx))) + 2;
             g.fill(caretX, rowY + Math.round(2 * sy), caretX + 1, rowY + Math.round(14 * sy),
-                    activeCaretColor(BANK_TEXT));
+                    activeCaretColor(bankText()));
         }
-        drawEyeGlyph(g, x + w - Math.round(13 * sx), rowY + Math.round(11 * sy), BANK_MUTED, BANK_BG);
-        g.fill(x, rowY + Math.round(32 * sy), x + w, rowY + Math.round(33 * sy), BANK_LINE);
+        drawEyeGlyph(g, x + w - Math.round(13 * sx), rowY + Math.round(11 * sy), bankMuted(), bankBg());
+        g.fill(x, rowY + Math.round(32 * sy), x + w, rowY + Math.round(33 * sy), bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y + Math.round(22 * sy),
                 w, Math.round(48 * sy)), "INPUT", SmartphoneClientState.InputTarget.SIGNUP_PIN.name(), "", ""));
     }
 
     private static void drawFigmaAvatar(GuiGraphics g, Font font, int x, int y, int size) {
-        fillCircle(g, x + size / 2, y + size / 2, size / 2, BANK_PANEL_SOFT);
+        fillCircle(g, x + size / 2, y + size / 2, size / 2, bankPanelSoft());
         ResourceLocation skin = resolveLocalSkin();
         int inset = Math.max(3, Math.round(size * 0.08F));
         if (skin != null) {
             PlayerFaceRenderer.draw(g, skin, x + inset, y + inset, Math.max(1, size - inset * 2));
-            maskOutsideCircle(g, x, y, size, x + size / 2, y + size / 2, size / 2, BANK_BG);
+            maskOutsideCircle(g, x, y, size, x + size / 2, y + size / 2, size / 2, bankBg());
         } else {
             fillCircle(g, x + size / 2, y + size / 2, Math.max(1, size / 2 - inset), BANK_BLUE);
             drawScaledCentered(g, font, initials(SmartphoneClientState.ownerName()), x + size / 2,
-                    y + Math.round(size * 0.38F), BANK_TEXT, Mth.clamp(size / 38.0F, 0.72F, 1.18F));
+                    y + Math.round(size * 0.38F), bankText(), Mth.clamp(size / 38.0F, 0.72F, 1.18F));
         }
     }
 
@@ -621,9 +1336,9 @@ public final class SmartphoneOverlay {
                                             List<SmartphoneClientState.Hitbox> hitboxes,
                                             String action, String p1) {
         int safeSize = Math.max(38, size);
-        fillCircle(g, x + safeSize / 2, y + safeSize / 2, safeSize / 2, BANK_PANEL_SOFT);
+        fillCircle(g, x + safeSize / 2, y + safeSize / 2, safeSize / 2, bankPanelSoft());
         drawFigmaActionIcon(g, icon, x + safeSize / 2, y + safeSize / 2, safeSize, color);
-        drawScaledCentered(g, font, label, x + safeSize / 2, y + safeSize + 7, BANK_MUTED, 0.92F);
+        drawScaledCentered(g, font, label, x + safeSize / 2, y + safeSize + 7, bankMuted(), 0.92F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x - 4, y - 4, safeSize + 8, safeSize + 28),
                 action, p1, "", ""));
     }
@@ -646,7 +1361,7 @@ public final class SmartphoneOverlay {
             iconH = Math.max(19, Math.round(circleSize * 0.45F));
         } else if ("stats".equals(id)) {
             int ring = Math.max(10, Math.round(circleSize * 0.22F));
-            drawCircleRing(g, centerX, centerY, ring, Math.max(1, Math.round(circleSize * 0.03F)), color, BANK_PANEL_SOFT);
+            drawCircleRing(g, centerX, centerY, ring, Math.max(1, Math.round(circleSize * 0.03F)), color, bankPanelSoft());
             iconW = Math.max(6, Math.round(circleSize * 0.14F));
             iconH = Math.max(11, Math.round(circleSize * 0.25F));
         } else {
@@ -728,7 +1443,7 @@ public final class SmartphoneOverlay {
     private static void drawBankBottomTab(GuiGraphics g, Font font, int x, int y, int w, float scale,
                                           String id, String label, String active) {
         boolean selected = id.equals(active);
-        int color = selected ? BANK_BLUE : BANK_MUTED;
+        int color = selected ? BANK_BLUE : bankMuted();
         int centerX = x + w / 2;
         int iconY = y + Math.round(10 * scale);
         drawFigmaBottomIcon(g, id, centerX, iconY, color, scale);
@@ -774,18 +1489,18 @@ public final class SmartphoneOverlay {
             }
             case "cards" -> {
                 drawRoundedBorder(g, centerX - ten, centerY - seven, ten * 2, Math.max(13, Math.round(14 * scale)),
-                        three, color, BANK_PANEL);
+                        three, color, bankPanel());
                 g.fill(centerX - eight, centerY - three, centerX + eight, centerY - one, color);
                 g.fill(centerX - seven, centerY + four, centerX - one, centerY + five, color);
             }
             case "stats" -> {
-                drawCircleRing(g, centerX - one, centerY, nine, two, color, BANK_PANEL);
-                fillCircle(g, centerX - one, centerY, Math.max(4, Math.round(5 * scale)), BANK_PANEL);
+                drawCircleRing(g, centerX - one, centerY, nine, two, color, bankPanel());
+                fillCircle(g, centerX - one, centerY, Math.max(4, Math.round(5 * scale)), bankPanel());
                 drawSoftLine(g, centerX - one, centerY, centerX - one, centerY - nine, color);
                 drawSoftLine(g, centerX - one, centerY, centerX + eight, centerY + four, color);
             }
             case "settings" -> {
-                drawCircleRing(g, centerX, centerY, eight, two, color, BANK_PANEL);
+                drawCircleRing(g, centerX, centerY, eight, two, color, bankPanel());
                 fillCircle(g, centerX, centerY, three, color);
                 g.fill(centerX - one, centerY - ten, centerX + one, centerY - eight, color);
                 g.fill(centerX - one, centerY + eight, centerX + one, centerY + ten, color);
@@ -798,8 +1513,8 @@ public final class SmartphoneOverlay {
 
     private static void drawStatistics(GuiGraphics g, Font font, int x, int y, int w, int h,
                                        List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount selected = SmartphoneClientState.selectedAccount();
         List<SmartphoneClientState.PhoneTransaction> txs = SmartphoneClientState.transactionsForSelectedAccount();
         String selectedMonth = normalizeStatsMonthKey(txs);
@@ -810,15 +1525,15 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "Statistics", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
-        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
-        drawBellGlyph(g, x + w - circle / 2, y + circle / 2, BANK_TEXT, BANK_PANEL_SOFT);
+        drawScaledCentered(g, font, "Statistics", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
+        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
+        drawBellGlyph(g, x + w - circle / 2, y + circle / 2, bankText(), bankPanelSoft());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "bank-pay-requests", "", ""));
 
-        drawScaledCentered(g, font, "Current Balance", x + w / 2, y + Math.round(73 * sy), BANK_MUTED, 1.38F);
+        drawScaledCentered(g, font, "Current Balance", x + w / 2, y + Math.round(73 * sy), bankMuted(), 1.38F);
         drawScaledCentered(g, font, selected == null ? totalBalanceLabel(SmartphoneClientState.accounts()) : selected.shortBalance(),
-                x + w / 2, y + Math.round(105 * sy), BANK_TEXT, 1.85F);
+                x + w / 2, y + Math.round(105 * sy), bankText(), 1.85F);
 
         int chartY = y + Math.round(162 * sy);
         int chartH = Math.max(132, Math.round(204 * sy));
@@ -841,14 +1556,14 @@ public final class SmartphoneOverlay {
                 hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(monthX, monthY - 8, pillW, 30),
                         "STATS_MONTH", key, "", ""));
             } else {
-                drawScaledString(g, font, label, monthX, monthY, BANK_MUTED, 0.98F);
+                drawScaledString(g, font, label, monthX, monthY, bankMuted(), 0.98F);
                 hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(monthX - 6, monthY - 8, 50, 30),
                         "STATS_MONTH", key, "", ""));
             }
         }
 
         int headingY = y + Math.round(437 * sy);
-        drawScaledString(g, font, "Transaction", x, headingY, BANK_TEXT, 1.28F);
+        drawScaledString(g, font, "Transaction", x, headingY, bankText(), 1.28F);
         String seeAll = "See All";
         int seeAllW = phoneTextWidth(seeAll, 9.0F);
         drawScaledString(g, font, seeAll, x + w - seeAllW, headingY + 2, BANK_BLUE, 1.0F);
@@ -910,7 +1625,7 @@ public final class SmartphoneOverlay {
         int[] gridOffsets = {18, 78, 137, 197, 258, 318};
         for (int offset : gridOffsets) {
             int gx = x + Math.round(offset * (w / 335.0F));
-            g.fill(gx, y, gx + 1, y + h, BANK_LINE);
+            g.fill(gx, y, gx + 1, y + h, bankLine());
         }
 
         SmartphoneChartData.ChartSeries series = SmartphoneChartData.buildStatisticsChartSeries(txs, x, y, w, h);
@@ -946,7 +1661,7 @@ public final class SmartphoneOverlay {
             }
         }
         fillCircle(g, series.markerX(), series.markerY(), 11, BANK_BLUE);
-        fillCircle(g, series.markerX(), series.markerY(), 6, BANK_TEXT);
+        fillCircle(g, series.markerX(), series.markerY(), 6, bankText());
     }
 
     private static float catmullRom(float p0, float p1, float p2, float p3, float t) {
@@ -960,8 +1675,8 @@ public final class SmartphoneOverlay {
 
     private static void drawHistory(GuiGraphics g, Font font, int x, int y, int w, int h,
                                     List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
@@ -969,14 +1684,14 @@ public final class SmartphoneOverlay {
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
         drawScaledCentered(g, font, "Transaction History", x + w / 2, y + Math.round(10 * sy),
-                BANK_TEXT, 1.22F);
-        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
-        drawFigmaRefreshGlyph(g, x + w - circle / 2, y + circle / 2, BANK_TEXT, BANK_PANEL_SOFT);
+                bankText(), 1.22F);
+        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
+        drawFigmaRefreshGlyph(g, x + w - circle / 2, y + circle / 2, bankText(), bankPanelSoft());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "history", "", ""));
 
         int headingY = y + Math.round(72 * sy);
-        drawScaledString(g, font, "Today", x, headingY, BANK_TEXT, 1.34F);
+        drawScaledString(g, font, "Today", x, headingY, bankText(), 1.34F);
         String seeAll = "See All";
         int seeW = phoneTextWidth(seeAll, 9.0F);
         drawScaledString(g, font, seeAll, x + w - seeW, headingY + 2, BANK_BLUE, 1.0F);
@@ -1009,8 +1724,8 @@ public final class SmartphoneOverlay {
 
     private static void drawSearch(GuiGraphics g, Font font, int x, int y, int w, int h,
                                    List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
 
@@ -1018,28 +1733,28 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "Search", x + w / 2, y + Math.round(10 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Search", x + w / 2, y + Math.round(10 * sy), bankText(), 1.35F);
         drawFigmaHeaderButton(g, HEADER_CLOSE_TEXTURE, x + w - circle, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "banking", "", ""));
 
         int searchY = y + Math.round(74 * sy);
         int searchH = Math.max(38, Math.round(44 * sy));
-        fillRounded(g, x, searchY, w, searchH, Math.max(9, Math.round(10 * sx)), BANK_INPUT);
+        fillRounded(g, x, searchY, w, searchH, Math.max(9, Math.round(10 * sx)), bankInput());
         int searchGlyph = Math.max(18, Math.round(20 * sx));
-        drawSearchGlyph(g, x + Math.round(18 * sx) + searchGlyph / 2, searchY + searchH / 2, BANK_MUTED);
+        drawSearchGlyph(g, x + Math.round(18 * sx) + searchGlyph / 2, searchY + searchH / 2, bankMuted());
         String query = SmartphoneClientState.historySearch();
         boolean searchActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.HISTORY_SEARCH;
         String searchText = query == null || query.isBlank() ? (searchActive ? "" : "Search") : trim(font, query, w - Math.round(96 * sx));
         drawScaledString(g, font, searchText, x + Math.round(46 * sx), searchY + (searchH - 8) / 2,
-                query == null || query.isBlank() ? BANK_MUTED : BANK_TEXT, 1.05F);
+                query == null || query.isBlank() ? bankMuted() : bankText(), 1.05F);
         if (searchActive) {
             int caretX = x + Math.round(46 * sx)
                     + (query == null || query.isBlank() ? 0 : Math.min(phoneTextWidth(trim(font, query, w - Math.round(96 * sx)), 9.45F), w - Math.round(96 * sx))) + 2;
             g.fill(caretX, searchY + (searchH - 12) / 2, caretX + 1, searchY + (searchH + 12) / 2,
-                    activeCaretColor(BANK_TEXT));
+                    activeCaretColor(bankText()));
         }
-        drawFigmaCloseGlyph(g, x + w - Math.round(28 * sx), searchY + searchH / 2, BANK_MUTED, sx * 0.82F);
+        drawFigmaCloseGlyph(g, x + w - Math.round(28 * sx), searchY + searchH / 2, bankMuted(), sx * 0.82F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, searchY, w, searchH),
                 "INPUT", SmartphoneClientState.InputTarget.HISTORY_SEARCH.name(), "", ""));
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - Math.round(48 * sx), searchY, Math.round(48 * sx), searchH),
@@ -1066,9 +1781,7 @@ public final class SmartphoneOverlay {
                                             List<SmartphoneClientState.PhoneTransaction> txs,
                                             int offset,
                                             List<SmartphoneClientState.Hitbox> hitboxes) {
-        List<SmartphoneClientState.PhoneTransaction> rows = txs == null ? List.of() : txs.stream()
-                .sorted(Comparator.comparingLong(SmartphoneClientState.PhoneTransaction::timestampMillis).reversed())
-                .toList();
+        List<SmartphoneClientState.PhoneTransaction> rows = sortedTransactions(txs);
         if (rows.isEmpty()) {
             drawEmptyState(g, font, x, rowY + 28, w, "No transactions yet", "This account has no recorded history.");
             return;
@@ -1090,28 +1803,28 @@ public final class SmartphoneOverlay {
     }
 
     private static void drawEmptyState(GuiGraphics g, Font font, int x, int y, int w, String title, String detail) {
-        fillRounded(g, x, y, w, 86, 15, BANK_PANEL_SOFT);
-        drawScaledCentered(g, font, title, x + w / 2, y + 24, BANK_TEXT, 1.05F);
-        drawScaledCentered(g, font, detail, x + w / 2, y + 46, BANK_MUTED, 0.85F);
+        fillRounded(g, x, y, w, 86, 15, bankPanelSoft());
+        drawScaledCentered(g, font, title, x + w / 2, y + 24, bankText(), 1.05F);
+        drawScaledCentered(g, font, detail, x + w / 2, y + 46, bankMuted(), 0.85F);
     }
 
     private static void drawFigmaSearchRow(GuiGraphics g, Font font, int x, int y, int w,
                                            String title, String subtitle, String amount, String icon,
                                            boolean positiveAmountBlue) {
         int iconSize = Math.max(36, Math.round(w * 42.0F / 335.0F));
-        fillCircle(g, x + iconSize / 2, y + iconSize / 2, iconSize / 2, BANK_PANEL_SOFT);
+        fillCircle(g, x + iconSize / 2, y + iconSize / 2, iconSize / 2, bankPanelSoft());
         drawFigmaSearchIcon(g, font, icon, x + iconSize / 2, y + iconSize / 2);
         String rawValue = amount == null || amount.isBlank() ? "$0" : amount;
         String value = figmaAmountLabel(rawValue);
         float amountScale = 1.35F;
         int amountW = phoneTextWidth(value, font.lineHeight * amountScale);
-        int amountColor = !rawValue.contains("-") && positiveAmountBlue ? BANK_BLUE : BANK_TEXT;
+        int amountColor = !rawValue.contains("-") && positiveAmountBlue ? BANK_BLUE : bankText();
         int textX = x + Math.round(w * 58.0F / 335.0F);
         int textMax = Math.max(48, w - (textX - x) - amountW - Math.round(w * 18.0F / 335.0F));
         drawScaledString(g, font, trim(font, title == null || title.isBlank() ? "Transaction" : title,
-                Math.round(textMax / 1.32F)), textX, y + 4, BANK_TEXT, 1.32F);
+                Math.round(textMax / 1.32F)), textX, y + 4, bankText(), 1.32F);
         drawScaledString(g, font, trim(font, subtitle == null || subtitle.isBlank() ? "Transaction" : subtitle,
-                textMax), textX, y + 25, BANK_MUTED, 1.0F);
+                textMax), textX, y + 25, bankMuted(), 1.0F);
         drawScaledString(g, font, value, x + w - amountW, y + 10, amountColor, amountScale);
     }
 
@@ -1204,7 +1917,7 @@ public final class SmartphoneOverlay {
 
     private static void drawSearchGlyph(GuiGraphics g, int centerX, int centerY, int color) {
         fillCircle(g, centerX - 2, centerY - 2, 5, color);
-        fillCircle(g, centerX - 2, centerY - 2, 3, BANK_PANEL_SOFT);
+        fillCircle(g, centerX - 2, centerY - 2, 3, bankPanelSoft());
         g.fill(centerX + 3, centerY + 3, centerX + 8, centerY + 5, color);
     }
 
@@ -1256,15 +1969,15 @@ public final class SmartphoneOverlay {
 
     private static void drawTransactionDetail(GuiGraphics g, Font font, int x, int y, int w, int h,
                                               List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "history", "", ""));
-        drawScaledCentered(g, font, "Transaction", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Transaction", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         SmartphoneClientState.PhoneTransaction tx = SmartphoneClientState.selectedTransaction();
         if (tx == null) {
@@ -1280,15 +1993,15 @@ public final class SmartphoneOverlay {
                 rawAmount.contains("-") ? 0x33FF3F60 : 0x3320C985);
         drawFigmaSearchIcon(g, font, iconForTransaction(tx, 0), x + w / 2, heroY + Math.round(28 * sy));
         drawScaledCentered(g, font, heroAmount, x + w / 2, heroY + Math.round(76 * sy),
-                rawAmount.contains("-") ? BANK_TEXT : BANK_BLUE, 1.78F);
+                rawAmount.contains("-") ? bankText() : BANK_BLUE, 1.78F);
         drawScaledCentered(g, font, transactionTitle(tx), x + w / 2, heroY + Math.round(108 * sy),
-                BANK_MUTED, 0.96F);
+                bankMuted(), 0.96F);
 
         int detailY = y + Math.round(246 * sy);
         int availableDetailH = Math.max(180, y + h - detailY - 8);
         int detailH = Math.min(availableDetailH, Math.max(360, Math.round(430 * sy)));
-        fillRounded(g, x, detailY, w, detailH, Math.max(16, Math.round(18 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, detailY, w, detailH, Math.max(16, Math.round(18 * sx)), BANK_LINE, BANK_PANEL_SOFT);
+        fillRounded(g, x, detailY, w, detailH, Math.max(16, Math.round(18 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, x, detailY, w, detailH, Math.max(16, Math.round(18 * sx)), bankLine(), bankPanelSoft());
         int rowY = detailY + Math.round(26 * sy);
         rowY = drawDetailLine(g, font, x + Math.round(18 * sx), rowY, w - Math.round(36 * sx),
                 "Status", "Completed");
@@ -1313,9 +2026,9 @@ public final class SmartphoneOverlay {
     }
 
     private static int drawDetailLine(GuiGraphics g, Font font, int x, int y, int w, String label, String value) {
-        drawScaledString(g, font, label, x, y, BANK_MUTED, 0.88F);
-        drawScaledString(g, font, trim(font, value == null ? "" : value, w), x, y + 16, BANK_TEXT, 0.94F);
-        g.fill(x, y + 34, x + w, y + 35, BANK_LINE);
+        drawScaledString(g, font, label, x, y, bankMuted(), 0.88F);
+        drawScaledString(g, font, trim(font, value == null ? "" : value, w), x, y + 16, bankText(), 0.94F);
+        g.fill(x, y + 34, x + w, y + 35, bankLine());
         return y + 43;
     }
 
@@ -1337,34 +2050,34 @@ public final class SmartphoneOverlay {
 
     private static void drawBankPayRequests(GuiGraphics g, Font font, int x, int y, int w, int h,
                                             List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-profile", "", ""));
-        drawScaledCentered(g, font, "Pay Requests", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.3F);
-        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
-        drawFigmaRefreshGlyph(g, x + w - circle / 2, y + circle / 2, BANK_TEXT, BANK_PANEL_SOFT);
+        drawScaledCentered(g, font, "Pay Requests", x + w / 2, y + Math.round(11 * sy), bankText(), 1.3F);
+        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
+        drawFigmaRefreshGlyph(g, x + w - circle / 2, y + circle / 2, bankText(), bankPanelSoft());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "PAY_REQUESTS_REFRESH", "", "", ""));
 
         int summaryY = y + Math.round(74 * sy);
         int summaryH = Math.max(92, Math.round(108 * sy));
-        fillRounded(g, x, summaryY, w, summaryH, Math.max(14, Math.round(18 * sx)), BANK_PANEL_SOFT);
-        fillCircle(g, x + Math.round(34 * sx), summaryY + Math.round(34 * sy), Math.max(19, Math.round(22 * sx)), BANK_INPUT);
+        fillRounded(g, x, summaryY, w, summaryH, Math.max(14, Math.round(18 * sx)), bankPanelSoft());
+        fillCircle(g, x + Math.round(34 * sx), summaryY + Math.round(34 * sy), Math.max(19, Math.round(22 * sx)), bankInput());
         drawFigmaActionIcon(g, "receive", x + Math.round(34 * sx), summaryY + Math.round(34 * sy), BANK_BLUE);
         drawScaledString(g, font, SmartphoneClientState.payRequests().size() + " Pending",
-                x + Math.round(66 * sx), summaryY + Math.round(18 * sy), BANK_TEXT, 1.12F);
+                x + Math.round(66 * sx), summaryY + Math.round(18 * sy), bankText(), 1.12F);
         drawScaledString(g, font, trim(font, "Primary: " + SmartphoneClientState.payRequestsPrimaryLabel(), w - Math.round(86 * sx)),
-                x + Math.round(66 * sx), summaryY + Math.round(40 * sy), BANK_MUTED, 0.9F);
+                x + Math.round(66 * sx), summaryY + Math.round(40 * sy), bankMuted(), 0.9F);
         drawScaledString(g, font, "Approve or decline requests securely.",
-                x + Math.round(66 * sx), summaryY + Math.round(61 * sy), BANK_MUTED, 0.86F);
+                x + Math.round(66 * sx), summaryY + Math.round(61 * sy), bankMuted(), 0.86F);
 
         int rowY = summaryY + summaryH + Math.round(30 * sy);
-        drawScaledString(g, font, "Pending Requests", x, rowY, BANK_TEXT, 1.16F);
+        drawScaledString(g, font, "Pending Requests", x, rowY, bankText(), 1.16F);
         rowY += Math.round(28 * sy);
         int shown = 0;
         for (var request : SmartphoneClientState.payRequests()) {
@@ -1376,11 +2089,11 @@ public final class SmartphoneOverlay {
         }
         if (shown == 0) {
             int emptyH = Math.max(126, Math.round(148 * sy));
-            fillRounded(g, x, rowY, w, emptyH, Math.max(14, Math.round(18 * sx)), BANK_PANEL_SOFT);
-            fillCircle(g, x + w / 2, rowY + Math.round(34 * sy), Math.max(19, Math.round(22 * sx)), BANK_INPUT);
+            fillRounded(g, x, rowY, w, emptyH, Math.max(14, Math.round(18 * sx)), bankPanelSoft());
+            fillCircle(g, x + w / 2, rowY + Math.round(34 * sy), Math.max(19, Math.round(22 * sx)), bankInput());
             drawFigmaActionIcon(g, "receive", x + w / 2, rowY + Math.round(34 * sy), 0xFF20C985);
-            drawScaledCentered(g, font, "No pending pay requests", x + w / 2, rowY + Math.round(68 * sy), BANK_TEXT, 1.02F);
-            drawScaledCentered(g, font, "Refresh or create a new request.", x + w / 2, rowY + Math.round(88 * sy), BANK_MUTED, 0.9F);
+            drawScaledCentered(g, font, "No pending pay requests", x + w / 2, rowY + Math.round(68 * sy), bankText(), 1.02F);
+            drawScaledCentered(g, font, "Refresh or create a new request.", x + w / 2, rowY + Math.round(88 * sy), bankMuted(), 0.9F);
             mobileButton(g, font, x + Math.round(20 * sx), rowY + emptyH - Math.round(44 * sy),
                     w - Math.round(40 * sx), Math.max(30, Math.round(36 * sy)), "Create Request", 0xFF20C985,
                     hitboxes, "APP", "request-money", "", "");
@@ -1401,9 +2114,9 @@ public final class SmartphoneOverlay {
                                       String buttonAction,
                                       int accent,
                                       boolean requestFlow) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount account = SmartphoneClientState.selectedAccount();
         float sx = w / 335.0F;
         float sy = h / 758.0F;
@@ -1411,7 +2124,7 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, title, x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, title, x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         drawMoneyFlowBackdrop(g, x, y, w, sx, sy);
 
@@ -1427,51 +2140,51 @@ public final class SmartphoneOverlay {
 
         int peopleY = y + Math.round(303 * sy);
         int peopleH = Math.max(104, Math.round(129 * sy));
-        fillRounded(g, x, peopleY, w, peopleH, Math.max(12, Math.round(14 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, peopleY, w, peopleH, Math.max(12, Math.round(14 * sx)), BANK_LINE, BANK_PANEL_SOFT);
+        fillRounded(g, x, peopleY, w, peopleH, Math.max(12, Math.round(14 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, x, peopleY, w, peopleH, Math.max(12, Math.round(14 * sx)), bankLine(), bankPanelSoft());
         drawScaledString(g, font, requestFlow ? "Request from" : "Send to",
-                x + Math.round(12 * sx), peopleY + Math.round(15 * sy), BANK_TEXT, 1.0F);
+                x + Math.round(12 * sx), peopleY + Math.round(15 * sy), bankText(), 1.0F);
         drawPaymentContacts(g, font, x + Math.round(12 * sx), peopleY + Math.round(46 * sy),
                 w - Math.round(24 * sx), requestFlow, hitboxes);
         boolean targetActive = SmartphoneClientState.inputTarget() == targetInput;
         String targetShown = targetValue == null || targetValue.isBlank() ? (targetActive ? "" : targetLabel) : targetValue;
         int targetLineY = peopleY + peopleH - Math.round(18 * sy);
         drawScaledString(g, font, trim(font, targetShown, w - Math.round(32 * sx)),
-                x + Math.round(16 * sx), targetLineY, targetValue == null || targetValue.isBlank() ? BANK_MUTED : BANK_TEXT, 0.82F);
+                x + Math.round(16 * sx), targetLineY, targetValue == null || targetValue.isBlank() ? bankMuted() : bankText(), 0.82F);
         if (targetActive) {
             int caretX = x + Math.round(16 * sx) + (targetValue == null || targetValue.isBlank()
                     ? 0 : Math.min(phoneTextWidth(trim(font, targetValue, w - Math.round(32 * sx)), 7.4F), w - Math.round(32 * sx)));
-            g.fill(caretX + 2, targetLineY - 1, caretX + 3, targetLineY + 10, activeCaretColor(BANK_TEXT));
+            g.fill(caretX + 2, targetLineY - 1, caretX + 3, targetLineY + 10, activeCaretColor(bankText()));
         }
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, targetLineY - 8, w, 26),
                 "INPUT", targetInput.name(), "", ""));
 
         int amountY = y + Math.round(462 * sy);
         int amountH = Math.max(94, Math.round(116 * sy));
-        fillRounded(g, x, amountY, w, amountH, Math.max(12, Math.round(14 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, amountY, w, amountH, Math.max(12, Math.round(14 * sx)), BANK_LINE, BANK_PANEL_SOFT);
+        fillRounded(g, x, amountY, w, amountH, Math.max(12, Math.round(14 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, x, amountY, w, amountH, Math.max(12, Math.round(14 * sx)), bankLine(), bankPanelSoft());
         drawScaledString(g, font, requestFlow ? "Enter Request Amount" : "Enter Your Amount",
-                x + Math.round(16 * sx), amountY + Math.round(29 * sy), BANK_MUTED, 0.88F);
+                x + Math.round(16 * sx), amountY + Math.round(29 * sy), bankMuted(), 0.88F);
         String balanceLabel = account == null ? "" : "Balance " + account.shortBalance();
         if (!balanceLabel.isBlank()) {
             int balanceMax = Math.round(128 * sx);
             String balanceShown = trim(font, balanceLabel, balanceMax);
             int balanceW = Math.min(phoneTextWidth(balanceShown, 7.92F), balanceMax);
             drawScaledString(g, font, balanceShown, x + w - balanceW,
-                    amountY + Math.round(29 * sy), BANK_MUTED, 0.88F);
+                    amountY + Math.round(29 * sy), bankMuted(), 0.88F);
         }
         drawScaledString(g, font, "USD", x + Math.round(16 * sx),
                 amountY + Math.round(61 * sy), 0xFF9BB2D4, 1.65F);
         boolean amountActive = SmartphoneClientState.inputTarget() == amountInput;
         String amountShown = amountValue == null || amountValue.isBlank() ? (amountActive ? "" : "0.00") : amountValue.replace("$", "");
         drawScaledString(g, font, trim(font, amountShown, Math.round(w * 0.44F)),
-                x + Math.round(81 * sx), amountY + Math.round(61 * sy), BANK_TEXT, 1.65F);
+                x + Math.round(81 * sx), amountY + Math.round(61 * sy), bankText(), 1.65F);
         if (amountActive) {
             int maxTextW = Math.round(w * 0.44F);
             int caretX = x + Math.round(81 * sx)
                     + (amountValue == null || amountValue.isBlank() ? 0 : Math.min(phoneTextWidth(trim(font, amountShown, maxTextW), 14.85F), maxTextW)) + 2;
             g.fill(caretX, amountY + Math.round(60 * sy), caretX + 1, amountY + Math.round(78 * sy),
-                    activeCaretColor(BANK_TEXT));
+                    activeCaretColor(bankText()));
         }
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, amountY, w, amountH),
                 "INPUT", amountInput.name(), "", ""));
@@ -1494,14 +2207,14 @@ public final class SmartphoneOverlay {
         int modalH = Math.max(196, Math.round(224 * sy));
         int modalX = x + (w - modalW) / 2;
         int modalY = y + Math.round(238 * sy);
-        fillRounded(g, modalX, modalY, modalW, modalH, Math.max(18, Math.round(20 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, modalX, modalY, modalW, modalH, Math.max(18, Math.round(20 * sx)), BANK_LINE, BANK_PANEL_SOFT);
+        fillRounded(g, modalX, modalY, modalW, modalH, Math.max(18, Math.round(20 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, modalX, modalY, modalW, modalH, Math.max(18, Math.round(20 * sx)), bankLine(), bankPanelSoft());
         drawScaledString(g, font, "Add recipient", modalX + Math.round(18 * sx), modalY + Math.round(20 * sy),
-                BANK_TEXT, 1.18F);
+                bankText(), 1.18F);
         drawScaledString(g, font, SmartphoneClientState.paymentTargetModalRequest()
                         ? "Use an online player name with a primary account."
                         : "Use an online player name or a bank account ID.",
-                modalX + Math.round(18 * sx), modalY + Math.round(47 * sy), BANK_MUTED, 0.82F);
+                modalX + Math.round(18 * sx), modalY + Math.round(47 * sy), bankMuted(), 0.82F);
         SmartphoneClientState.InputTarget target = SmartphoneClientState.paymentTargetModalRequest()
                 ? SmartphoneClientState.InputTarget.REQUEST_TARGET
                 : SmartphoneClientState.InputTarget.TRANSFER_TO;
@@ -1515,7 +2228,7 @@ public final class SmartphoneOverlay {
         int cancelW = Math.round((modalW - Math.round(36 * sx) - gap) * 0.42F);
         int confirmW = modalW - Math.round(36 * sx) - gap - cancelW;
         mobileButton(g, font, modalX + Math.round(18 * sx), buttonY, cancelW, Math.max(36, Math.round(42 * sy)),
-                "Cancel", BANK_PANEL, hitboxes, "CLOSE_PAYMENT_TARGET_MODAL", "", "", "");
+                "Cancel", bankPanel(), hitboxes, "CLOSE_PAYMENT_TARGET_MODAL", "", "", "");
         mobileButton(g, font, modalX + Math.round(18 * sx) + cancelW + gap, buttonY, confirmW,
                 Math.max(36, Math.round(42 * sy)), "Add", BANK_BLUE,
                 hitboxes, "CONFIRM_PAYMENT_TARGET_MODAL", "", "", "");
@@ -1540,7 +2253,7 @@ public final class SmartphoneOverlay {
         g.blit(PAY_ADD_CONTACT_TEXTURE, x, y, avatar, avatar, 0.0F, 0.0F,
                 PAY_CONTACT_TEXTURE_SIZE, PAY_CONTACT_TEXTURE_SIZE,
                 PAY_CONTACT_TEXTURE_SIZE, PAY_CONTACT_TEXTURE_SIZE);
-        drawScaledCentered(g, font, "Add", addCx, y + avatar + 7, BANK_TEXT, 0.78F);
+        drawScaledCentered(g, font, "Add", addCx, y + avatar + 7, bankText(), 0.78F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x - 4, y - 4, avatar + 8, avatar + 28),
                 "OPEN_PAYMENT_TARGET_MODAL", requestFlow ? "request" : "send", "", ""));
 
@@ -1555,7 +2268,7 @@ public final class SmartphoneOverlay {
             if (recipient.online()) {
                 fillCircle(g, cx + Math.round(14 * iconScale), cy + Math.round(14 * iconScale), 4, 0xFF20C985);
             }
-            drawScaledCentered(g, font, trim(font, label, Math.max(42, Math.round(step - 4))), cx, y + avatar + 7, BANK_TEXT, 0.78F);
+            drawScaledCentered(g, font, trim(font, label, Math.max(42, Math.round(step - 4))), cx, y + avatar + 7, bankText(), 0.78F);
             hitboxes.add(new SmartphoneClientState.Hitbox(
                     new SmartphoneClientState.Rect(left - 4, y - 4, avatar + 8, avatar + 28),
                     requestFlow ? "REQUEST_CONTACT" : "TRANSFER_CONTACT",
@@ -1566,23 +2279,23 @@ public final class SmartphoneOverlay {
         if (SmartphoneClientState.paymentContactOffset() > 0) {
             int arrowX = x + avatar + Math.max(2, Math.round(3 * iconScale));
             int arrowY = y + avatar / 2;
-            fillCircle(g, arrowX, arrowY, Math.max(9, Math.round(10 * iconScale)), BANK_PANEL);
-            drawFigmaChevronLeft(g, arrowX, arrowY, Math.max(4, Math.round(5 * iconScale)), BANK_TEXT);
+            fillCircle(g, arrowX, arrowY, Math.max(9, Math.round(10 * iconScale)), bankPanel());
+            drawFigmaChevronLeft(g, arrowX, arrowY, Math.max(4, Math.round(5 * iconScale)), bankText());
             hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(arrowX - 13, arrowY - 13, 26, 26),
                     "PAYMENT_CONTACTS_PREV", "", "", ""));
         }
         if (SmartphoneClientState.paymentContactOffset() + visible < allRecipientCount) {
             int arrowX = x + w - Math.max(8, Math.round(10 * iconScale));
             int arrowY = y + avatar / 2;
-            fillCircle(g, arrowX, arrowY, Math.max(9, Math.round(10 * iconScale)), BANK_PANEL);
-            drawFigmaChevronRight(g, arrowX, arrowY, Math.max(4, Math.round(5 * iconScale)), BANK_TEXT);
+            fillCircle(g, arrowX, arrowY, Math.max(9, Math.round(10 * iconScale)), bankPanel());
+            drawFigmaChevronRight(g, arrowX, arrowY, Math.max(4, Math.round(5 * iconScale)), bankText());
             hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(arrowX - 13, arrowY - 13, 26, 26),
                     "PAYMENT_CONTACTS_NEXT", "", "", ""));
         }
         if (allRecipientCount <= 0) {
             int emptyX = x + avatar + Math.max(12, Math.round(14 * iconScale));
             drawScaledString(g, font, "No players with primary accounts online", emptyX,
-                    y + Math.round(18 * iconScale), BANK_MUTED, 0.78F);
+                    y + Math.round(18 * iconScale), bankMuted(), 0.78F);
         }
     }
 
@@ -1590,7 +2303,7 @@ public final class SmartphoneOverlay {
                                                    SmartphoneClientState.PaymentRecipient recipient,
                                                    int cx, int cy, int avatar) {
         String type = recipient == null || recipient.type() == null ? "" : recipient.type().toLowerCase(Locale.ROOT);
-        fillCircle(g, cx, cy, avatar / 2, BANK_INPUT);
+        fillCircle(g, cx, cy, avatar / 2, bankInput());
         if ("player".equals(type) && recipient != null && recipient.online()) {
             ResourceLocation skin = resolveSkin(recipient.id());
             if (skin != null) {
@@ -1598,7 +2311,7 @@ public final class SmartphoneOverlay {
                 int left = cx - avatar / 2;
                 int top = cy - avatar / 2;
                 PlayerFaceRenderer.draw(g, skin, left + inset, top + inset, Math.max(1, avatar - inset * 2));
-                maskOutsideCircle(g, left, top, avatar, cx, cy, avatar / 2, BANK_INPUT);
+                maskOutsideCircle(g, left, top, avatar, cx, cy, avatar / 2, bankInput());
                 return;
             }
         }
@@ -1614,14 +2327,14 @@ public final class SmartphoneOverlay {
     private static void drawPayRequestRow(GuiGraphics g, Font font, int x, int y, int w,
                                           net.austizz.ultimatebankingsystem.network.PayRequestEntry request,
                                           List<SmartphoneClientState.Hitbox> hitboxes) {
-        fillRounded(g, x, y, w, 82, 18, BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, y, w, 82, 18, BANK_LINE, BANK_PANEL_SOFT);
-        fillCircle(g, x + 27, y + 28, 18, BANK_INPUT);
+        fillRounded(g, x, y, w, 82, 18, bankPanelSoft());
+        drawRoundedBorder(g, x, y, w, 82, 18, bankLine(), bankPanelSoft());
+        fillCircle(g, x + 27, y + 28, 18, bankInput());
         fillCircle(g, x + 27, y + 28, 14, BANK_BLUE);
         drawCentered(g, font, initials(request.requesterName()), x + 27, y + 24, 0xFFFFFFFF);
-        drawScaledString(g, font, trim(font, request.requesterName(), w - 128), x + 54, y + 11, BANK_TEXT, 0.94F);
+        drawScaledString(g, font, trim(font, request.requesterName(), w - 128), x + 54, y + 11, bankText(), 0.94F);
         drawScaledString(g, font, trim(font, "Requested " + request.createdAt(), w - 128), x + 54, y + 28,
-                BANK_MUTED, 0.78F);
+                bankMuted(), 0.78F);
         String amount = request.amount();
         String shownAmount = trim(font, amount, 66);
         drawPhoneText(g, shownAmount, x + w - phoneTextWidth(shownAmount, 9.6F) - 14, y + 13, 0xFF20C985, 9.6F);
@@ -1640,21 +2353,21 @@ public final class SmartphoneOverlay {
 
     private static void drawBankSettings(GuiGraphics g, Font font, int x, int y, int w, int h,
                                          List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "Settings", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Settings", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
         drawFigmaHeaderButton(g, SETTINGS_LOGOUT_TEXTURE, x + w - circle, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "bank-sign-in", "", ""));
 
         int rowY = y + Math.round(73 * sy);
-        drawScaledString(g, font, "General", x, rowY, BANK_MUTED, 1.0F);
+        drawScaledString(g, font, "General", x, rowY, bankMuted(), 1.0F);
         rowY = y + Math.round(120 * sy);
         drawFigmaSettingsRow(g, font, x, rowY, w, "Language", "",
                 "APP", "bank-language", hitboxes);
@@ -1664,10 +2377,14 @@ public final class SmartphoneOverlay {
         rowY += Math.round(56 * sy);
         drawFigmaSettingsRow(g, font, x, rowY, w, "Contact Us", "",
                 "APP", "messenger", hitboxes);
+        rowY += Math.round(56 * sy);
+        boolean lightMode = SmartphoneClientState.bankLightMode();
+        drawFigmaSettingsToggleRow(g, font, x, rowY, w, "Light Mode", lightMode,
+                hitboxes, "BANK_THEME", lightMode ? "dark" : "light");
 
-        rowY = y + Math.round(297 * sy);
-        drawScaledString(g, font, "Security", x, rowY, BANK_MUTED, 1.0F);
-        rowY = y + Math.round(344 * sy);
+        rowY = y + Math.round(353 * sy);
+        drawScaledString(g, font, "Security", x, rowY, bankMuted(), 1.0F);
+        rowY = y + Math.round(400 * sy);
         drawFigmaSettingsRow(g, font, x, rowY, w, "Change Password", "",
                 "APP", "bank-change-password", hitboxes);
         rowY += Math.round(56 * sy);
@@ -1677,7 +2394,7 @@ public final class SmartphoneOverlay {
         rowY += Math.round(56 * sy);
         drawWrapped(g, font,
                 "Choose what data you share with UBS mobile banking.",
-                x, rowY + Math.round(2 * sy), w - Math.round(20 * sx), BANK_MUTED, 2);
+                x, rowY + Math.round(2 * sy), w - Math.round(20 * sx), bankMuted(), 2);
         rowY += Math.round(58 * sy);
         drawFigmaSettingsToggleRow(g, font, x, rowY, w, "Biometric", true);
 
@@ -1687,15 +2404,15 @@ public final class SmartphoneOverlay {
 
     private static void drawBankStaff(GuiGraphics g, Font font, int x, int y, int w, int h,
                                       List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-settings", "", ""));
-        drawScaledCentered(g, font, "Bank Staff", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Bank Staff", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         SmartphoneClientState.OwnedBank bank = SmartphoneClientState.ownedBank();
         if (bank == null) {
@@ -1706,16 +2423,16 @@ public final class SmartphoneOverlay {
 
         int summaryY = y + Math.round(72 * sy);
         int summaryH = Math.max(90, Math.round(104 * sy));
-        fillRounded(g, x, summaryY, w, summaryH, Math.max(16, Math.round(18 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, summaryY, w, summaryH, Math.max(16, Math.round(18 * sx)), BANK_LINE, BANK_PANEL_SOFT);
-        fillCircle(g, x + Math.round(34 * sx), summaryY + Math.round(34 * sy), Math.max(20, Math.round(23 * sx)), BANK_INPUT);
+        fillRounded(g, x, summaryY, w, summaryH, Math.max(16, Math.round(18 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, x, summaryY, w, summaryH, Math.max(16, Math.round(18 * sx)), bankLine(), bankPanelSoft());
+        fillCircle(g, x + Math.round(34 * sx), summaryY + Math.round(34 * sy), Math.max(20, Math.round(23 * sx)), bankInput());
         drawFigmaBottomIcon(g, "settings", x + Math.round(34 * sx), summaryY + Math.round(34 * sy), BANK_BLUE, 1.0F);
         drawScaledString(g, font, trim(font, bank.name(), w - Math.round(86 * sx)),
-                x + Math.round(68 * sx), summaryY + Math.round(18 * sy), BANK_TEXT, 1.08F);
+                x + Math.round(68 * sx), summaryY + Math.round(18 * sy), bankText(), 1.08F);
         drawScaledString(g, font, bank.status() + " | " + bank.employeeCount() + " staff",
-                x + Math.round(68 * sx), summaryY + Math.round(43 * sy), BANK_MUTED, 0.88F);
+                x + Math.round(68 * sx), summaryY + Math.round(43 * sy), bankMuted(), 0.88F);
         drawScaledString(g, font, trim(font, "Hire or fire staff for this bank.", w - Math.round(86 * sx)),
-                x + Math.round(68 * sx), summaryY + Math.round(64 * sy), BANK_MUTED, 0.82F);
+                x + Math.round(68 * sx), summaryY + Math.round(64 * sy), bankMuted(), 0.82F);
 
         int fieldY = y + Math.round(204 * sy);
         drawBankInputRow(g, font, x, fieldY, w, "Player", SmartphoneClientState.staffPlayer(),
@@ -1738,17 +2455,17 @@ public final class SmartphoneOverlay {
 
         List<SmartphoneClientState.BankStaffMember> staff = SmartphoneClientState.bankStaffMembers();
         int rosterY = buttonY + buttonH + Math.round(18 * sy);
-        drawScaledString(g, font, "Current Staff", x, rosterY, BANK_TEXT, 1.05F);
+        drawScaledString(g, font, "Current Staff", x, rosterY, bankText(), 1.05F);
         int rowY = rosterY + Math.round(25 * sy);
         int rowH = Math.max(42, Math.round(48 * sy));
         int maxRows = Math.min(staff.size(), 2);
         if (staff.isEmpty()) {
-            fillRounded(g, x, rowY, w, rowH, Math.max(12, Math.round(14 * sx)), BANK_PANEL_SOFT);
-            drawRoundedBorder(g, x, rowY, w, rowH, Math.max(12, Math.round(14 * sx)), BANK_LINE, BANK_PANEL_SOFT);
+            fillRounded(g, x, rowY, w, rowH, Math.max(12, Math.round(14 * sx)), bankPanelSoft());
+            drawRoundedBorder(g, x, rowY, w, rowH, Math.max(12, Math.round(14 * sx)), bankLine(), bankPanelSoft());
             drawScaledString(g, font, "No active staff yet", x + Math.round(14 * sx), rowY + Math.round(10 * sy),
-                    BANK_TEXT, 0.95F);
+                    bankText(), 0.95F);
             drawScaledString(g, font, "Hire someone above to fill this roster.", x + Math.round(14 * sx),
-                    rowY + Math.round(27 * sy), BANK_MUTED, 0.78F);
+                    rowY + Math.round(27 * sy), bankMuted(), 0.78F);
             rowY += rowH + Math.round(8 * sy);
         } else {
             for (int i = 0; i < maxRows; i++) {
@@ -1757,7 +2474,7 @@ public final class SmartphoneOverlay {
             }
             if (staff.size() > maxRows) {
                 drawScaledString(g, font, "+" + (staff.size() - maxRows) + " more staff member(s)",
-                        x + Math.round(14 * sx), rowY, BANK_MUTED, 0.78F);
+                        x + Math.round(14 * sx), rowY, bankMuted(), 0.78F);
                 rowY += Math.round(18 * sy);
             }
         }
@@ -1768,15 +2485,15 @@ public final class SmartphoneOverlay {
 
     private static void drawBankDissolve(GuiGraphics g, Font font, int x, int y, int w, int h,
                                          List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-settings", "", ""));
-        drawScaledCentered(g, font, "Dissolve Bank", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Dissolve Bank", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         SmartphoneClientState.OwnedBank bank = SmartphoneClientState.ownedBank();
         if (bank == null) {
@@ -1787,17 +2504,17 @@ public final class SmartphoneOverlay {
 
         int summaryY = y + Math.round(86 * sy);
         int summaryH = Math.max(142, Math.round(168 * sy));
-        fillRounded(g, x, summaryY, w, summaryH, Math.max(18, Math.round(20 * sx)), BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, summaryY, w, summaryH, Math.max(18, Math.round(20 * sx)), BANK_LINE, BANK_PANEL_SOFT);
-        fillCircle(g, x + Math.round(40 * sx), summaryY + Math.round(40 * sy), Math.max(24, Math.round(28 * sx)), BANK_INPUT);
+        fillRounded(g, x, summaryY, w, summaryH, Math.max(18, Math.round(20 * sx)), bankPanelSoft());
+        drawRoundedBorder(g, x, summaryY, w, summaryH, Math.max(18, Math.round(20 * sx)), bankLine(), bankPanelSoft());
+        fillCircle(g, x + Math.round(40 * sx), summaryY + Math.round(40 * sy), Math.max(24, Math.round(28 * sx)), bankInput());
         drawFigmaBottomIcon(g, "settings", x + Math.round(40 * sx), summaryY + Math.round(40 * sy), BANK_DANGER, 1.0F);
         drawScaledString(g, font, trim(font, bank.name(), w - Math.round(92 * sx)),
-                x + Math.round(82 * sx), summaryY + Math.round(21 * sy), BANK_TEXT, 1.12F);
+                x + Math.round(82 * sx), summaryY + Math.round(21 * sy), bankText(), 1.12F);
         drawScaledString(g, font, bank.status() + " | " + bank.employeeCount() + " staff",
-                x + Math.round(82 * sx), summaryY + Math.round(47 * sy), BANK_MUTED, 0.88F);
+                x + Math.round(82 * sx), summaryY + Math.round(47 * sy), bankMuted(), 0.88F);
         drawWrapped(g, font,
                 "This moves positive account balances into Central Bank checking accounts, clears employees, and removes the owned bank.",
-                x + Math.round(18 * sx), summaryY + Math.round(86 * sy), w - Math.round(36 * sx), BANK_MUTED, 4);
+                x + Math.round(18 * sx), summaryY + Math.round(86 * sy), w - Math.round(36 * sx), bankMuted(), 4);
 
         int fieldY = summaryY + summaryH + Math.round(42 * sy);
         drawBankInputRow(g, font, x, fieldY, w, "Confirmation",
@@ -1815,49 +2532,58 @@ public final class SmartphoneOverlay {
     private static void drawBankStaffRow(GuiGraphics g, Font font, int x, int y, int w, int h,
                                          SmartphoneClientState.BankStaffMember member,
                                          List<SmartphoneClientState.Hitbox> hitboxes) {
-        fillRounded(g, x, y, w, h, 12, BANK_PANEL_SOFT);
-        drawRoundedBorder(g, x, y, w, h, 12, BANK_LINE, BANK_PANEL_SOFT);
+        fillRounded(g, x, y, w, h, 12, bankPanelSoft());
+        drawRoundedBorder(g, x, y, w, h, 12, bankLine(), bankPanelSoft());
         int avatar = Math.max(28, Math.min(36, h - 10));
         int cx = x + 10 + avatar / 2;
         int cy = y + h / 2;
-        fillCircle(g, cx, cy, avatar / 2, BANK_INPUT);
+        fillCircle(g, cx, cy, avatar / 2, bankInput());
         fillCircle(g, cx, cy, Math.max(avatar / 2 - 4, 1), BANK_BLUE);
-        drawCentered(g, font, initials(member == null ? "" : member.name()), cx, cy - 4, BANK_TEXT);
+        drawCentered(g, font, initials(member == null ? "" : member.name()), cx, cy - 4, bankText());
         int textX = x + 18 + avatar;
         int actionW = Math.max(46, Math.round(w * 0.18F));
         String name = member == null ? "Staff" : member.name();
         String role = member == null ? "STAFF" : member.role();
         String salary = member == null ? "$0" : member.salary();
-        drawScaledString(g, font, trim(font, name, w - actionW * 2 - avatar - 32), textX, y + 7, BANK_TEXT, 0.92F);
+        drawScaledString(g, font, trim(font, name, w - actionW * 2 - avatar - 32), textX, y + 7, bankText(), 0.92F);
         drawScaledString(g, font, trim(font, role + " | " + salary, w - actionW * 2 - avatar - 32),
-                textX, y + 23, BANK_MUTED, 0.76F);
+                textX, y + 23, bankMuted(), 0.76F);
         int fireX = x + w - actionW - 8;
         mobileButton(g, font, fireX, y + (h - 22) / 2, actionW, 22, "Fire", 0xFFFF6A6A,
                 hitboxes, "BANK_FIRE_MEMBER", member == null ? "" : member.id().toString(), "", "");
         int useX = fireX - actionW - 7;
-        mobileButton(g, font, useX, y + (h - 22) / 2, actionW, 22, "Select", BANK_PANEL,
+        mobileButton(g, font, useX, y + (h - 22) / 2, actionW, 22, "Select", bankPanel(),
                 hitboxes, "BANK_STAFF_SELECT", member == null ? "" : member.id().toString(), "", "");
     }
 
     private static void drawFigmaSettingsRow(GuiGraphics g, Font font, int x, int y, int w,
                                              String title, String value, String action, String p1,
                                              List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawScaledString(g, font, title, x, y + 4, BANK_TEXT, 1.02F);
+        drawScaledString(g, font, title, x, y + 4, bankText(), 1.02F);
         if (value != null && !value.isBlank()) {
             int valueW = phoneTextWidth(value, font.lineHeight * 0.98F);
-            drawScaledString(g, font, value, x + w - valueW - 40, y + 4, BANK_MUTED, 0.98F);
+            drawScaledString(g, font, value, x + w - valueW - 40, y + 4, bankMuted(), 0.98F);
         }
-        drawFigmaArrowRight(g, x + w - 12, y + 12, Math.max(18, Math.round(24 * (w / 335.0F))), BANK_MUTED);
-        g.fill(x, y + 34, x + w, y + 35, BANK_LINE);
+        drawFigmaArrowRight(g, x + w - 12, y + 12, Math.max(18, Math.round(24 * (w / 335.0F))), bankMuted());
+        g.fill(x, y + 34, x + w, y + 35, bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y - 8, w, 48),
                 action, p1, "", ""));
     }
 
     private static void drawFigmaSettingsToggleRow(GuiGraphics g, Font font, int x, int y, int w,
                                                    String title, boolean enabled) {
-        drawScaledString(g, font, title, x, y + 4, BANK_TEXT, 1.02F);
+        drawScaledString(g, font, title, x, y + 4, bankText(), 1.02F);
         drawFigmaToggle(g, x + w - 24, y + 13, enabled);
-        g.fill(x, y + 34, x + w, y + 35, BANK_LINE);
+        g.fill(x, y + 34, x + w, y + 35, bankLine());
+    }
+
+    private static void drawFigmaSettingsToggleRow(GuiGraphics g, Font font, int x, int y, int w,
+                                                   String title, boolean enabled,
+                                                   List<SmartphoneClientState.Hitbox> hitboxes,
+                                                   String action, String p1) {
+        drawFigmaSettingsToggleRow(g, font, x, y, w, title, enabled);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y - 8, w, 48),
+                action, p1, "", ""));
     }
 
     private static void drawBankInputRow(GuiGraphics g, Font font, int x, int y, int w,
@@ -1865,19 +2591,19 @@ public final class SmartphoneOverlay {
                                          SmartphoneClientState.InputTarget target,
                                          List<SmartphoneClientState.Hitbox> hitboxes) {
         boolean active = SmartphoneClientState.inputTarget() == target;
-        drawScaledString(g, font, label, x, y, BANK_MUTED, 0.92F);
+        drawScaledString(g, font, label, x, y, bankMuted(), 0.92F);
         int rowY = y + 24;
         int rowH = 42;
-        fillRounded(g, x, rowY, w, rowH, 12, active ? BANK_INPUT_ACTIVE : BANK_INPUT);
-        drawRoundedBorder(g, x, rowY, w, rowH, 12, active ? BANK_BLUE : BANK_LINE,
-                active ? BANK_INPUT_ACTIVE : BANK_INPUT);
+        fillRounded(g, x, rowY, w, rowH, 12, active ? bankInputActive() : bankInput());
+        drawRoundedBorder(g, x, rowY, w, rowH, 12, active ? BANK_BLUE : bankLine(),
+                active ? bankInputActive() : bankInput());
         String actual = value == null ? "" : value;
         String shown = actual.isBlank() ? (active ? "" : placeholder) : actual;
         drawScaledString(g, font, trim(font, shown, w - 26), x + 13, rowY + 14,
-                actual.isBlank() ? BANK_MUTED : BANK_TEXT, 0.98F);
+                actual.isBlank() ? bankMuted() : bankText(), 0.98F);
         if (active) {
             int caretX = x + 13 + (actual.isBlank() ? 0 : Math.min(phoneTextWidth(trim(font, actual, w - 26), 8.82F), w - 26)) + 2;
-            g.fill(caretX, rowY + 13, caretX + 1, rowY + 28, activeCaretColor(BANK_TEXT));
+            g.fill(caretX, rowY + 13, caretX + 1, rowY + 28, activeCaretColor(bankText()));
         }
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, rowY, w, rowH),
                 "INPUT", target.name(), "", ""));
@@ -1893,15 +2619,15 @@ public final class SmartphoneOverlay {
     }
 
     private static void drawFigmaToggle(GuiGraphics g, int centerX, int centerY, boolean enabled) {
-        int bg = enabled ? BANK_BLUE : BANK_MUTED;
+        int bg = enabled ? BANK_BLUE : bankMuted();
         fillRounded(g, centerX - 18, centerY - 10, 36, 20, 10, bg);
         fillCircle(g, centerX + (enabled ? 8 : -8), centerY, 8, 0xFFFFFFFF);
     }
 
     private static void drawBankProfile(GuiGraphics g, Font font, int x, int y, int w, int h,
                                         List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount selected = SmartphoneClientState.selectedAccount();
         float sx = w / 335.0F;
         float sy = h / 758.0F;
@@ -1909,9 +2635,9 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-settings", "", ""));
-        drawScaledCentered(g, font, "Profile", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
-        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
-        drawFigmaProfileIcon(g, "edit", x + w - circle / 2, y + circle / 2, BANK_TEXT);
+        drawScaledCentered(g, font, "Profile", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
+        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
+        drawFigmaProfileIcon(g, "edit", x + w - circle / 2, y + circle / 2, bankText());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "bank-edit-profile", "", ""));
 
@@ -1919,11 +2645,11 @@ public final class SmartphoneOverlay {
         int profileY = y + Math.round(74 * sy);
         drawFigmaAvatar(g, font, x, profileY, avatar);
         drawScaledString(g, font, trim(font, SmartphoneClientState.ownerName(), Math.round(w * 0.58F)),
-                x + Math.round(92 * sx), profileY + Math.round(14 * sy), BANK_TEXT, 1.24F);
+                x + Math.round(92 * sx), profileY + Math.round(14 * sy), bankText(), 1.24F);
         String role = selected == null || selected.role() == null || selected.role().isBlank()
                 ? "Account owner" : selected.role();
         drawScaledString(g, font, trim(font, role, Math.round(w * 0.55F)),
-                x + Math.round(92 * sx), profileY + Math.round(43 * sy), BANK_MUTED, 0.95F);
+                x + Math.round(92 * sx), profileY + Math.round(43 * sy), bankMuted(), 0.95F);
 
         int rowY = y + Math.round(176 * sy);
         drawFigmaProfileRow(g, font, x, rowY, w, "user", "Personal Information", "APP", "bank-edit-profile", false, hitboxes);
@@ -1951,21 +2677,21 @@ public final class SmartphoneOverlay {
     private static void drawFigmaProfileRow(GuiGraphics g, Font font, int x, int y, int w,
                                             String icon, String label, String action, String p1, boolean badge,
                                             List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawFigmaProfileIcon(g, icon, x + 11, y + 11, BANK_MUTED);
-        drawScaledString(g, font, label, x + Math.round(w * 38.0F / 335.0F), y + 4, BANK_TEXT, 1.03F);
+        drawFigmaProfileIcon(g, icon, x + 11, y + 11, bankMuted());
+        drawScaledString(g, font, label, x + Math.round(w * 38.0F / 335.0F), y + 4, bankText(), 1.03F);
         if (badge) {
             fillCircle(g, x + w - 14, y + 11, 9, 0xFFED1B3A);
             drawCentered(g, font, "2", x + w - 14, y + 7, 0xFFFFFFFF);
         } else {
             drawFigmaArrowRight(g, x + w - 12, y + 12, Math.max(18, Math.round(24 * (w / 335.0F))));
         }
-        g.fill(x, y + 34, x + w, y + 35, BANK_LINE);
+        g.fill(x, y + 34, x + w, y + 35, bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y - 8, w, 48),
                 action, p1, "", ""));
     }
 
     private static void drawFigmaArrowRight(GuiGraphics g, int centerX, int centerY, int size) {
-        drawFigmaArrowRight(g, centerX, centerY, size, BANK_MUTED);
+        drawFigmaArrowRight(g, centerX, centerY, size, bankMuted());
     }
 
     private static void drawFigmaArrowRight(GuiGraphics g, int centerX, int centerY, int size, int color) {
@@ -2052,8 +2778,8 @@ public final class SmartphoneOverlay {
 
     private static void drawBankEditProfile(GuiGraphics g, Font font, int x, int y, int w, int h,
                                             List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount selected = SmartphoneClientState.selectedAccount();
         float sx = w / 335.0F;
         float sy = h / 758.0F;
@@ -2061,18 +2787,18 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-profile", "", ""));
-        drawScaledCentered(g, font, "Edit Profile", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Edit Profile", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         int avatar = Math.max(72, Math.round(90 * sx));
         int avatarX = x + w / 2 - avatar / 2;
         int avatarY = y + Math.round(74 * sy);
         drawFigmaAvatar(g, font, avatarX, avatarY, avatar);
         drawScaledCentered(g, font, trim(font, SmartphoneClientState.profileNameDraft(), Math.round(w * 0.64F)),
-                x + w / 2, y + Math.round(185 * sy), BANK_TEXT, 1.28F);
+                x + w / 2, y + Math.round(185 * sy), bankText(), 1.28F);
         String role = selected == null || selected.role() == null || selected.role().isBlank()
                 ? "Account owner" : selected.role();
         drawScaledCentered(g, font, trim(font, role, Math.round(w * 0.54F)),
-                x + w / 2, y + Math.round(214 * sy), BANK_MUTED, 0.95F);
+                x + w / 2, y + Math.round(214 * sy), bankMuted(), 0.95F);
 
         int fieldY = y + Math.round(258 * sy);
         drawFigmaProfileField(g, font, x, fieldY, w, "user", "Full Name",
@@ -2092,21 +2818,21 @@ public final class SmartphoneOverlay {
                                               String icon, String label, String value,
                                               SmartphoneClientState.InputTarget inputTarget,
                                               List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawScaledString(g, font, label, x, y, BANK_MUTED, 1.0F);
+        drawScaledString(g, font, label, x, y, bankMuted(), 1.0F);
         int rowY = y + 31;
-        drawFigmaProfileIcon(g, icon, x + 11, rowY + 11, BANK_MUTED);
+        drawFigmaProfileIcon(g, icon, x + 11, rowY + 11, bankMuted());
         String shown = value == null ? "" : value;
         boolean active = SmartphoneClientState.inputTarget() == inputTarget && inputTarget != SmartphoneClientState.InputTarget.NONE;
         String display = shown.isBlank() && inputTarget != SmartphoneClientState.InputTarget.NONE && !active ? "Type here" : shown;
         drawScaledString(g, font, trim(font, display, w - 58),
                 x + Math.round(w * 38.0F / 335.0F), rowY + 3,
-                shown.isBlank() ? BANK_MUTED : BANK_TEXT, 1.02F);
+                shown.isBlank() ? bankMuted() : bankText(), 1.02F);
         if (active) {
             int caretX = x + Math.round(w * 38.0F / 335.0F)
                     + (shown.isBlank() ? 0 : Math.min(phoneTextWidth(trim(font, shown, w - 58), 9.18F), w - 58)) + 2;
-            g.fill(caretX, rowY + 2, caretX + 1, rowY + 13, activeCaretColor(BANK_TEXT));
+            g.fill(caretX, rowY + 2, caretX + 1, rowY + 13, activeCaretColor(bankText()));
         }
-        g.fill(x, rowY + 32, x + w, rowY + 33, BANK_LINE);
+        g.fill(x, rowY + 32, x + w, rowY + 33, bankLine());
         if (inputTarget != SmartphoneClientState.InputTarget.NONE) {
             hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, rowY - 7, w, 46),
                     "INPUT", inputTarget.name(), "", ""));
@@ -2116,19 +2842,19 @@ public final class SmartphoneOverlay {
     }
 
     private static void drawFigmaDateValue(GuiGraphics g, Font font, int x, int y, int w, String value) {
-        drawScaledCentered(g, font, value, x + w / 2, y, BANK_TEXT, 1.0F);
-        g.fill(x, y + 25, x + w, y + 26, BANK_LINE);
+        drawScaledCentered(g, font, value, x + w / 2, y, bankText(), 1.0F);
+        g.fill(x, y + 25, x + w, y + 26, bankLine());
     }
 
     private static void drawBankSignIn(GuiGraphics g, Font font, int x, int y, int w, int h,
                                        List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, 0xFFFFFFFF, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, 0xFFFFFFFF, bankBg());
         SmartphoneClientState.PhoneAccount account = SmartphoneClientState.signInAccount();
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
-        fillCircle(g, x + circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
+        fillCircle(g, x + circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
         drawFigmaChevronLeft(g, x + circle / 2, y + circle / 2, Math.max(7, Math.round(8 * sx)), 0xFFFFFFFF);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
@@ -2137,29 +2863,29 @@ public final class SmartphoneOverlay {
         drawScaledString(g, font, "Sign In", x, titleY, 0xFFFFFFFF, 1.9F);
 
         int emailY = y + Math.round(167 * sy);
-        drawScaledString(g, font, "Email Address", x, emailY, BANK_MUTED, 0.92F);
+        drawScaledString(g, font, "Email Address", x, emailY, bankMuted(), 0.92F);
         int emailRowY = emailY + Math.round(31 * sy);
-        drawDarkMailGlyph(g, x + Math.round(11 * sx), emailRowY + Math.round(11 * sy), BANK_MUTED);
+        drawDarkMailGlyph(g, x + Math.round(11 * sx), emailRowY + Math.round(11 * sy), bankMuted());
         String accountLabel = account == null ? "No account selected" : account.appTitle();
         drawScaledString(g, font, trim(font, accountLabel, w - Math.round(58 * sx)),
                 x + Math.round(38 * sx), emailRowY + Math.round(3 * sy), 0xFFFFFFFF, 0.95F);
-        g.fill(x, emailRowY + Math.round(32 * sy), x + w, emailRowY + Math.round(33 * sy), BANK_LINE);
+        g.fill(x, emailRowY + Math.round(32 * sy), x + w, emailRowY + Math.round(33 * sy), bankLine());
 
         int passwordY = y + Math.round(251 * sy);
-        drawScaledString(g, font, "Password", x, passwordY, BANK_MUTED, 0.92F);
+        drawScaledString(g, font, "Password", x, passwordY, bankMuted(), 0.92F);
         int passRowY = passwordY + Math.round(31 * sy);
-        drawDarkLockGlyph(g, x + Math.round(11 * sx), passRowY + Math.round(11 * sy), BANK_MUTED, BANK_BG);
+        drawDarkLockGlyph(g, x + Math.round(11 * sx), passRowY + Math.round(11 * sy), bankMuted(), bankBg());
         String pinDots = passwordDots(SmartphoneClientState.bankPin());
         boolean pinInputActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.BANK_PIN;
         drawScaledString(g, font, pinDots.isBlank() ? (pinInputActive ? "" : "Account PIN") : pinDots,
-                x + Math.round(38 * sx), passRowY + Math.round(3 * sy), pinDots.isBlank() ? BANK_MUTED : 0xFFFFFFFF, 0.95F);
+                x + Math.round(38 * sx), passRowY + Math.round(3 * sy), pinDots.isBlank() ? bankMuted() : 0xFFFFFFFF, 0.95F);
         if (pinInputActive) {
             int caretX = x + Math.round(38 * sx) + (pinDots.isBlank() ? 0 : Math.min(phoneTextWidth(pinDots, 8.55F), w - Math.round(58 * sx))) + 2;
             g.fill(caretX, passRowY + Math.round(2 * sy), caretX + 1, passRowY + Math.round(14 * sy),
                     activeCaretColor(0xFFFFFFFF));
         }
-        drawEyeGlyph(g, x + w - Math.round(13 * sx), passRowY + Math.round(11 * sy), BANK_MUTED, BANK_BG);
-        g.fill(x, passRowY + Math.round(32 * sy), x + w, passRowY + Math.round(33 * sy), BANK_LINE);
+        drawEyeGlyph(g, x + w - Math.round(13 * sx), passRowY + Math.round(11 * sy), bankMuted(), bankBg());
+        g.fill(x, passRowY + Math.round(32 * sy), x + w, passRowY + Math.round(33 * sy), bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, passwordY - Math.round(8 * sy),
                 w, Math.round(58 * sy)), "INPUT", SmartphoneClientState.InputTarget.BANK_PIN.name(), "", ""));
 
@@ -2169,7 +2895,7 @@ public final class SmartphoneOverlay {
                 hitboxes, "BANK_SIGN_IN", "", "", "");
 
         int copyY = y + Math.round(438 * sy);
-        drawScaledCentered(g, font, "I'm a new user.", x + w / 2 - Math.round(28 * sx), copyY, BANK_MUTED, 0.86F);
+        drawScaledCentered(g, font, "I'm a new user.", x + w / 2 - Math.round(28 * sx), copyY, bankMuted(), 0.86F);
         drawScaledString(g, font, "Sign Up", x + w / 2 + Math.round(16 * sx), copyY, BANK_BLUE, 0.86F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w / 2 + Math.round(10 * sx), copyY - 6,
                 Math.round(70 * sx), 20), "APP", "bank-welcome", "", ""));
@@ -2177,23 +2903,23 @@ public final class SmartphoneOverlay {
 
     private static void drawBankLanguage(GuiGraphics g, Font font, int x, int y, int w, int h,
                                          List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-settings", "", ""));
-        drawScaledCentered(g, font, "Language", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Language", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         int searchY = y + Math.round(74 * sy);
         int searchH = Math.max(38, Math.round(44 * sy));
-        fillRounded(g, x, searchY, w, searchH, Math.max(9, Math.round(10 * sx)), BANK_INPUT);
+        fillRounded(g, x, searchY, w, searchH, Math.max(9, Math.round(10 * sx)), bankInput());
         int searchGlyph = Math.max(18, Math.round(20 * sx));
-        drawSearchGlyph(g, x + Math.round(12 * sx) + searchGlyph / 2, searchY + searchH / 2, BANK_MUTED);
+        drawSearchGlyph(g, x + Math.round(12 * sx) + searchGlyph / 2, searchY + searchH / 2, bankMuted());
         drawScaledString(g, font, "Search Language", x + Math.round(40 * sx),
-                searchY + (searchH - 9) / 2, BANK_MUTED, 1.0F);
+                searchY + (searchH - 9) / 2, bankMuted(), 1.0F);
 
         int rowY = y + Math.round(150 * sy);
         drawFigmaLanguageRow(g, font, x, rowY, w, "English", "us", hitboxes);
@@ -2212,12 +2938,12 @@ public final class SmartphoneOverlay {
         int flagR = Math.max(20, Math.round(w * 24.0F / 335.0F));
         drawFlagCircle(g, x + flagR, y + flagR, flagR, flag);
         drawScaledString(g, font, language, x + Math.round(w * 64.0F / 335.0F), y + Math.round(w * 15.0F / 335.0F),
-                BANK_TEXT, 1.15F);
+                bankText(), 1.15F);
         if (language.equalsIgnoreCase(SmartphoneClientState.bankLanguage())) {
             fillCircle(g, x + w - 10, y + flagR, 10, BANK_BLUE);
             drawFigmaCheckGlyph(g, x + w - 10, y + flagR, 0xFFFFFFFF);
         }
-        g.fill(x, y + flagR * 2 + 10, x + w, y + flagR * 2 + 11, BANK_LINE);
+        g.fill(x, y + flagR * 2 + 10, x + w, y + flagR * 2 + 11, bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y - 8, w, flagR * 2 + 20),
                 "BANK_LANGUAGE", language, "", ""));
     }
@@ -2339,8 +3065,8 @@ public final class SmartphoneOverlay {
 
     private static void drawBankChangePassword(GuiGraphics g, Font font, int x, int y, int w, int h,
                                                List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         SmartphoneClientState.PhoneAccount account = SmartphoneClientState.selectedAccount();
@@ -2350,7 +3076,7 @@ public final class SmartphoneOverlay {
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", setup ? "home" : "bank-settings", "", ""));
         drawScaledCentered(g, font, setup ? "Set Password" : "Change Password",
-                x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+                x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         int fieldY = y + Math.round((setup ? 126 : 73) * sy);
         if (!setup) {
@@ -2359,14 +3085,14 @@ public final class SmartphoneOverlay {
             fieldY += Math.round(84 * sy);
         } else {
             drawScaledCentered(g, font, trim(font, "Set a 4 digit password for " + account.appTitle() + ".", w - Math.round(24 * sx)),
-                    x + w / 2, y + Math.round(80 * sy), BANK_MUTED, 0.9F);
+                    x + w / 2, y + Math.round(80 * sy), bankMuted(), 0.9F);
         }
         drawFigmaPasswordField(g, font, x, fieldY, w, "New Password", SmartphoneClientState.newPin(),
                 SmartphoneClientState.InputTarget.NEW_PIN, hitboxes, true, sy);
         fieldY += Math.round(84 * sy);
         drawFigmaPasswordField(g, font, x, fieldY, w, "Confirm New Password", SmartphoneClientState.confirmPin(),
                 SmartphoneClientState.InputTarget.CONFIRM_PIN, hitboxes, false, sy);
-        drawScaledString(g, font, "Both passwords must match", x, fieldY + Math.round(72 * sy), BANK_MUTED, 0.88F);
+        drawScaledString(g, font, "Both passwords must match", x, fieldY + Math.round(72 * sy), bankMuted(), 0.88F);
 
         int buttonY = y + Math.round((setup ? 354 : 366) * sy);
         int buttonH = Math.max(46, Math.round(56 * sy));
@@ -2378,28 +3104,28 @@ public final class SmartphoneOverlay {
                                                String label, String value, SmartphoneClientState.InputTarget target,
                                                List<SmartphoneClientState.Hitbox> hitboxes, boolean eye, float sy) {
         float sx = w / 335.0F;
-        drawScaledString(g, font, label, x, y, BANK_MUTED, 1.0F);
+        drawScaledString(g, font, label, x, y, bankMuted(), 1.0F);
         int rowY = y + Math.round(31 * sy);
         int iconCenter = Math.round(11 * sx);
-        drawFigmaProfileIcon(g, "lock", x + iconCenter, rowY + iconCenter, BANK_MUTED);
+        drawFigmaProfileIcon(g, "lock", x + iconCenter, rowY + iconCenter, bankMuted());
         String dots = passwordDots(value);
         boolean active = SmartphoneClientState.inputTarget() == target;
         drawScaledString(g, font, dots.isBlank() ? (active ? "" : "4 digit password") : dots, x + Math.round(38 * sx),
-                rowY + Math.round(3 * sy), dots.isBlank() ? BANK_MUTED : BANK_TEXT, 1.1F);
+                rowY + Math.round(3 * sy), dots.isBlank() ? bankMuted() : bankText(), 1.1F);
         if (active) {
             int caretX = x + Math.round(38 * sx) + (dots.isBlank() ? 0 : Math.min(phoneTextWidth(dots, 9.9F), w - Math.round(58 * sx))) + 2;
             g.fill(caretX, rowY + Math.round(2 * sy), caretX + 1, rowY + Math.round(14 * sy),
-                    activeCaretColor(BANK_TEXT));
+                    activeCaretColor(bankText()));
         }
         if (eye) {
             int eyeX = x + w - Math.round(11 * sx);
             int eyeY = rowY + iconCenter;
-            fillCircle(g, eyeX, eyeY, Math.max(6, Math.round(8 * sx)), BANK_MUTED);
-            fillCircle(g, eyeX, eyeY, Math.max(3, Math.round(4 * sx)), BANK_BG);
-            fillCircle(g, eyeX, eyeY, Math.max(1, Math.round(2 * sx)), BANK_MUTED);
+            fillCircle(g, eyeX, eyeY, Math.max(6, Math.round(8 * sx)), bankMuted());
+            fillCircle(g, eyeX, eyeY, Math.max(3, Math.round(4 * sx)), bankBg());
+            fillCircle(g, eyeX, eyeY, Math.max(1, Math.round(2 * sx)), bankMuted());
         }
         int lineY = rowY + Math.round(32 * sy);
-        g.fill(x, lineY, x + w, lineY + 1, BANK_LINE);
+        g.fill(x, lineY, x + w, lineY + 1, bankLine());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, rowY - Math.round(7 * sy), w, Math.round(46 * sy)),
                 "INPUT", target.name(), "", ""));
     }
@@ -2414,15 +3140,15 @@ public final class SmartphoneOverlay {
 
     private static void drawBankTerms(GuiGraphics g, Font font, int x, int y, int w, int h,
                                       List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "bank-settings", "", ""));
-        drawScaledCentered(g, font, "Terms & Condition", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.25F);
+        drawScaledCentered(g, font, "Terms & Condition", x + w / 2, y + Math.round(11 * sy), bankText(), 1.25F);
 
         int textY = y + Math.round(72 * sy);
         String[] paragraphs = {
@@ -2443,7 +3169,7 @@ public final class SmartphoneOverlay {
         for (String paragraph : paragraphs) {
             List<String> lines = wrap(font, paragraph, Math.round(w / scale), 18);
             for (String line : lines) {
-                drawScaledString(g, font, line, x, cursor, BANK_TEXT, scale);
+                drawScaledString(g, font, line, x, cursor, bankText(), scale);
                 cursor += lineHeight;
             }
             cursor += paragraphGap;
@@ -2452,9 +3178,9 @@ public final class SmartphoneOverlay {
 
     private static void drawAllCards(GuiGraphics g, Font font, int x, int y, int w, int h,
                                      List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount selected = SmartphoneClientState.selectedAccount();
         List<SmartphoneClientState.PhoneAccount> accounts = SmartphoneClientState.accounts();
 
@@ -2464,7 +3190,7 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, backSize);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, backSize, backSize),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "All Cards", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "All Cards", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         SmartphoneClientState.PhoneAccount first = selected;
         if (first == null && !accounts.isEmpty()) {
@@ -2503,9 +3229,9 @@ public final class SmartphoneOverlay {
 
     private static void drawAddCard(GuiGraphics g, Font font, int x, int y, int w, int h,
                                     List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         List<SmartphoneClientState.PhoneAccount> accounts = SmartphoneClientState.accounts();
         SmartphoneClientState.PhoneAccount selected = SmartphoneClientState.selectedAccount();
         float sx = w / 335.0F;
@@ -2515,7 +3241,7 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, backSize);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, backSize, backSize),
                 "APP", "all-cards", "", ""));
-        drawScaledCentered(g, font, "Add New Card", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
+        drawScaledCentered(g, font, "Add New Card", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
 
         SmartphoneClientState.PhoneAccount preview = selected;
         if (preview == null && !accounts.isEmpty()) {
@@ -2534,8 +3260,8 @@ public final class SmartphoneOverlay {
         drawFigmaProfileField(g, font, x, fieldY, w, "user", "Cardholder Name",
                 SmartphoneClientState.ownerName(), SmartphoneClientState.InputTarget.NONE, hitboxes);
         fieldY += Math.round(84 * sy);
-        drawScaledString(g, font, "Expiry Date", x, fieldY, BANK_MUTED, 1.0F);
-        drawScaledString(g, font, "4-digit CVV", x + Math.round(215 * sx), fieldY, BANK_MUTED, 1.0F);
+        drawScaledString(g, font, "Expiry Date", x, fieldY, bankMuted(), 1.0F);
+        drawScaledString(g, font, "4-digit CVV", x + Math.round(215 * sx), fieldY, bankMuted(), 1.0F);
         int splitY = fieldY + Math.round(30 * sy);
         drawFigmaCardDetailValue(g, font, x, splitY, Math.round(120 * sx), virtualExpiry(preview));
         drawFigmaCardDetailValue(g, font, x + Math.round(215 * sx), splitY, Math.round(120 * sx), cvvFor(preview));
@@ -2553,8 +3279,8 @@ public final class SmartphoneOverlay {
     }
 
     private static void drawFigmaCardDetailValue(GuiGraphics g, Font font, int x, int y, int w, String value) {
-        drawScaledString(g, font, value, x, y, BANK_TEXT, 1.0F);
-        g.fill(x, y + 25, x + w, y + 26, BANK_LINE);
+        drawScaledString(g, font, value, x, y, bankText(), 1.0F);
+        g.fill(x, y + 25, x + w, y + 26, bankLine());
     }
 
     private static String totalBalanceLabel(List<SmartphoneClientState.PhoneAccount> accounts) {
@@ -2736,8 +3462,8 @@ public final class SmartphoneOverlay {
         float sy = h / 758.0F;
         long tick = System.currentTimeMillis();
         int phase = (int) ((tick / 260L) % 3L);
-        drawBankSurface(g, x, y, w, h, BANK_BG);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
 
         if (SmartphoneClientState.bankingBankPickLoadingActive()) {
             drawBankPickSplash(g, font, x, y, w, h, sx, sy, SmartphoneClientState.bankingLoadingProgress(), tick);
@@ -2756,12 +3482,12 @@ public final class SmartphoneOverlay {
         }
 
         int titleY = y + Math.round(527 * sy);
-        drawScaledCentered(g, font, "Banking for Everything is", centerX, titleY, BANK_TEXT, 1.65F);
-        drawScaledCentered(g, font, "Easy and Convenient", centerX, titleY + Math.round(33 * sy), BANK_TEXT, 1.65F);
+        drawScaledCentered(g, font, "Banking for Everything is", centerX, titleY, bankText(), 1.65F);
+        drawScaledCentered(g, font, "Easy and Convenient", centerX, titleY + Math.round(33 * sy), bankText(), 1.65F);
         drawScaledCentered(g, font, "Secure payments, transfers, and account access",
-                centerX, titleY + Math.round(79 * sy), BANK_MUTED, 0.88F);
+                centerX, titleY + Math.round(79 * sy), bankMuted(), 0.88F);
         drawScaledCentered(g, font, "without leaving your phone.",
-                centerX, titleY + Math.round(103 * sy), BANK_MUTED, 0.88F);
+                centerX, titleY + Math.round(103 * sy), bankMuted(), 0.88F);
 
         int buttonH = Math.max(46, Math.round(56 * sy));
         int buttonY = Math.min(y + Math.round(684 * sy), y + h - buttonH - Math.round(10 * sy));
@@ -2780,14 +3506,14 @@ public final class SmartphoneOverlay {
         int logoSize = Math.max(48, Math.round(68 * sx));
         float pulse = 0.88F + ((tick % 700L) / 700.0F) * 0.18F;
         drawBankPickLogo(g, centerX, centerY - Math.round(28 * sy), Math.round(logoSize * pulse));
-        drawScaledCentered(g, font, "BANKPICK", centerX, centerY + Math.round(31 * sy), BANK_TEXT, 1.48F);
-        drawScaledCentered(g, font, "UBS mobile banking", centerX, centerY + Math.round(58 * sy), BANK_MUTED, 0.88F);
+        drawScaledCentered(g, font, "BANKPICK", centerX, centerY + Math.round(31 * sy), bankText(), 1.48F);
+        drawScaledCentered(g, font, "UBS mobile banking", centerX, centerY + Math.round(58 * sy), bankMuted(), 0.88F);
 
         int barW = Math.max(96, Math.round(w * 0.46F));
         int barH = Math.max(4, Math.round(5 * sy));
         int barX = centerX - barW / 2;
         int barY = y + h - Math.round(84 * sy);
-        fillRounded(g, barX, barY, barW, barH, Math.max(2, barH / 2), BANK_PANEL_SOFT);
+        fillRounded(g, barX, barY, barW, barH, Math.max(2, barH / 2), bankPanelSoft());
         int filled = Mth.clamp(Math.round(barW * progress), 0, barW);
         if (filled > 0) {
             fillRounded(g, barX, barY, filled, barH, Math.max(2, barH / 2), BANK_BLUE);
@@ -2798,10 +3524,10 @@ public final class SmartphoneOverlay {
         int ringRadius = Math.max(10, size / 5);
         int ringThickness = Math.max(3, size / 18);
         int offset = Math.max(8, size / 7);
-        drawCircleRing(g, centerX - offset, centerY, ringRadius, ringThickness, 0xFF27D6FF, BANK_BG);
-        drawCircleRing(g, centerX + offset, centerY, ringRadius, ringThickness, BANK_BLUE, BANK_BG);
-        drawSoftLine(g, centerX - offset + ringRadius, centerY, centerX + offset - ringRadius, centerY, BANK_TEXT);
-        fillCircle(g, centerX, centerY, Math.max(4, size / 16), BANK_TEXT);
+        drawCircleRing(g, centerX - offset, centerY, ringRadius, ringThickness, 0xFF27D6FF, bankBg());
+        drawCircleRing(g, centerX + offset, centerY, ringRadius, ringThickness, BANK_BLUE, bankBg());
+        drawSoftLine(g, centerX - offset + ringRadius, centerY, centerX + offset - ringRadius, centerY, bankText());
+        fillCircle(g, centerX, centerY, Math.max(4, size / 16), bankText());
     }
 
     private static void drawBankLoadingIllustration(GuiGraphics g, Font font, int centerX, int centerY, int w,
@@ -2822,7 +3548,7 @@ public final class SmartphoneOverlay {
         drawCircleRing(g, cardX + cardW - Math.round(34 * sx), cardY + Math.round(35 * sy),
                 Math.max(14, Math.round(17 * sx)), Math.max(2, Math.round(3 * sx)), 0xFFFFC44A, 0xFF243268);
         drawScaledCentered(g, font, "$", cardX + cardW - Math.round(34 * sx),
-                cardY + Math.round(27 * sy), BANK_TEXT, 1.0F);
+                cardY + Math.round(27 * sy), bankText(), 1.0F);
 
         int bodyX = centerX - Math.round(50 * sx);
         int bodyY = centerY - Math.round(98 * sy);
@@ -2885,12 +3611,16 @@ public final class SmartphoneOverlay {
     private static List<SmartphoneClientState.PhoneTransaction> filterHistory(
             List<SmartphoneClientState.PhoneTransaction> txs,
             String query) {
+        List<SmartphoneClientState.PhoneTransaction> source = txs == null ? List.of() : txs;
         String needle = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (needle.isBlank()) {
-            return txs;
+            return source;
+        }
+        if (source == cachedHistoryFilterSource && needle.equals(cachedHistoryFilterQuery)) {
+            return cachedHistoryFilterRows;
         }
         List<SmartphoneClientState.PhoneTransaction> filtered = new ArrayList<>();
-        for (SmartphoneClientState.PhoneTransaction tx : txs) {
+        for (SmartphoneClientState.PhoneTransaction tx : source) {
             String haystack = ((tx.description() == null ? "" : tx.description()) + " "
                     + (tx.amount() == null ? "" : tx.amount()) + " "
                     + (tx.time() == null ? "" : tx.time())).toLowerCase(Locale.ROOT);
@@ -2898,7 +3628,10 @@ public final class SmartphoneOverlay {
                 filtered.add(tx);
             }
         }
-        return filtered;
+        cachedHistoryFilterSource = source;
+        cachedHistoryFilterQuery = needle;
+        cachedHistoryFilterRows = filtered;
+        return cachedHistoryFilterRows;
     }
 
     private static String normalizeStatsMonthKey(List<SmartphoneClientState.PhoneTransaction> txs) {
@@ -2924,33 +3657,45 @@ public final class SmartphoneOverlay {
     }
 
     private static List<String> statsMonthKeys(List<SmartphoneClientState.PhoneTransaction> txs) {
+        List<SmartphoneClientState.PhoneTransaction> source = txs == null ? List.of() : txs;
+        String selected = SmartphoneClientState.statsMonthKey();
+        String selectedKey = selected == null ? "" : selected;
+        if (source == cachedStatsMonthKeysSource && selectedKey.equals(cachedStatsMonthKeysSelected)) {
+            return cachedStatsMonthKeys;
+        }
         List<String> months = new ArrayList<>();
         for (String key : lastSixMonthKeys()) {
             if (!months.contains(key)) {
                 months.add(key);
             }
         }
-        if (txs != null) {
-            for (SmartphoneClientState.PhoneTransaction tx : txs) {
-                String key = transactionMonthKey(tx);
-                if (!months.contains(key)) {
-                    months.add(key);
-                }
+        for (SmartphoneClientState.PhoneTransaction tx : source) {
+            String key = transactionMonthKey(tx);
+            if (!months.contains(key)) {
+                months.add(key);
             }
         }
         if (months.isEmpty()) {
-            return lastSixMonthKeys();
+            cachedStatsMonthKeysSource = source;
+            cachedStatsMonthKeysSelected = selectedKey;
+            cachedStatsMonthKeys = lastSixMonthKeys();
+            return cachedStatsMonthKeys;
         }
         months.sort(String::compareTo);
         if (months.size() <= 6) {
-            return months;
+            cachedStatsMonthKeysSource = source;
+            cachedStatsMonthKeysSelected = selectedKey;
+            cachedStatsMonthKeys = months;
+            return cachedStatsMonthKeys;
         }
-        String selected = SmartphoneClientState.statsMonthKey();
         int anchor = selected != null && months.contains(selected)
                 ? months.indexOf(selected)
                 : months.size() - 1;
         int from = Mth.clamp(anchor - 5, 0, Math.max(0, months.size() - 6));
-        return new ArrayList<>(months.subList(from, Math.min(months.size(), from + 6)));
+        cachedStatsMonthKeysSource = source;
+        cachedStatsMonthKeysSelected = selectedKey;
+        cachedStatsMonthKeys = new ArrayList<>(months.subList(from, Math.min(months.size(), from + 6)));
+        return cachedStatsMonthKeys;
     }
 
     private static List<String> lastSixMonthKeys() {
@@ -2973,13 +3718,33 @@ public final class SmartphoneOverlay {
     private static List<SmartphoneClientState.PhoneTransaction> filterByMonth(
             List<SmartphoneClientState.PhoneTransaction> txs,
             String monthKey) {
-        if (txs == null || txs.isEmpty()) {
+        List<SmartphoneClientState.PhoneTransaction> source = txs == null ? List.of() : txs;
+        if (source.isEmpty()) {
             return List.of();
         }
-        String key = monthKey == null || monthKey.isBlank() ? normalizeStatsMonthKey(txs) : monthKey;
-        return txs.stream()
+        String key = monthKey == null || monthKey.isBlank() ? normalizeStatsMonthKey(source) : monthKey;
+        if (source == cachedMonthFilterSource && key.equals(cachedMonthFilterKey)) {
+            return cachedMonthFilterRows;
+        }
+        cachedMonthFilterSource = source;
+        cachedMonthFilterKey = key;
+        cachedMonthFilterRows = source.stream()
                 .filter(tx -> key.equals(transactionMonthKey(tx)))
                 .toList();
+        return cachedMonthFilterRows;
+    }
+
+    private static List<SmartphoneClientState.PhoneTransaction> sortedTransactions(
+            List<SmartphoneClientState.PhoneTransaction> txs) {
+        List<SmartphoneClientState.PhoneTransaction> source = txs == null ? List.of() : txs;
+        if (source == cachedSortedTransactionSource) {
+            return cachedSortedTransactions;
+        }
+        cachedSortedTransactionSource = source;
+        cachedSortedTransactions = source.stream()
+                .sorted(Comparator.comparingLong(SmartphoneClientState.PhoneTransaction::timestampMillis).reversed())
+                .toList();
+        return cachedSortedTransactions;
     }
 
     private static String transactionMonthKey(SmartphoneClientState.PhoneTransaction tx) {
@@ -3062,9 +3827,9 @@ public final class SmartphoneOverlay {
 
     private static void drawAccount(GuiGraphics g, Font font, int x, int y, int w, int h,
                                     List<SmartphoneClientState.Hitbox> hitboxes) {
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         SmartphoneClientState.PhoneAccount account = SmartphoneClientState.selectedAccount();
         if (account == null && !SmartphoneClientState.accounts().isEmpty()) {
             account = SmartphoneClientState.accounts().get(0);
@@ -3075,9 +3840,9 @@ public final class SmartphoneOverlay {
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "My Cards", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.35F);
-        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, BANK_PANEL_SOFT);
-        drawFigmaPlusGlyph(g, x + w - circle / 2, y + circle / 2, Math.max(8, Math.round(9 * sx)), BANK_TEXT);
+        drawScaledCentered(g, font, "My Cards", x + w / 2, y + Math.round(11 * sy), bankText(), 1.35F);
+        fillCircle(g, x + w - circle / 2, y + circle / 2, circle / 2, bankPanelSoft());
+        drawFigmaPlusGlyph(g, x + w - circle / 2, y + circle / 2, Math.max(8, Math.round(9 * sx)), bankText());
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - circle, y, circle, circle),
                 "APP", "add-card", "", ""));
 
@@ -3100,15 +3865,15 @@ public final class SmartphoneOverlay {
         double monthIncome = sumSignedTransactions(monthTxs, false);
         double monthActivity = monthSpent + monthIncome;
         int limitTitleY = y + Math.round(502 * sy);
-        drawScaledString(g, font, "Monthly spending limit", x, limitTitleY, BANK_TEXT, 1.28F);
+        drawScaledString(g, font, "Monthly spending limit", x, limitTitleY, bankText(), 1.28F);
         int limitY = y + Math.round(541 * sy);
         int limitH = Math.max(96, Math.round(113 * sy));
-        fillRounded(g, x, limitY, w, limitH, Math.max(15, Math.round(18 * sx)), BANK_PANEL_SOFT);
+        fillRounded(g, x, limitY, w, limitH, Math.max(15, Math.round(18 * sx)), bankPanelSoft());
         String amountText = monthActivity <= 0.0D
                 ? "Amount: " + (account == null ? "$0" : account.shortBalance())
                 : "Amount: " + moneyLabel(monthSpent);
         drawScaledString(g, font, trim(font, amountText, w - Math.round(48 * sx)),
-                x + Math.round(24 * sx), limitY + Math.round(23 * sy), BANK_TEXT, 0.98F);
+                x + Math.round(24 * sx), limitY + Math.round(23 * sy), bankText(), 0.98F);
         int barX = x + Math.round(24 * sx);
         int barY = limitY + Math.round(54 * sy);
         int barW = w - Math.round(48 * sx);
@@ -3119,11 +3884,11 @@ public final class SmartphoneOverlay {
             fillCircle(g, barX + progress, barY + Math.max(3, Math.round(3 * sy)), Math.max(7, Math.round(8 * sx)), BANK_BLUE);
             fillCircle(g, barX + progress, barY + Math.max(3, Math.round(3 * sy)), Math.max(4, Math.round(4 * sx)), 0xFFFFFFFF);
         }
-        drawScaledString(g, font, "$0", barX, limitY + Math.round(76 * sy), BANK_MUTED, 0.9F);
+        drawScaledString(g, font, "$0", barX, limitY + Math.round(76 * sy), bankMuted(), 0.9F);
         if (progress > 0) {
-            drawScaledCentered(g, font, moneyLabel(monthSpent), barX + progress, limitY + Math.round(76 * sy), BANK_TEXT, 0.9F);
+            drawScaledCentered(g, font, moneyLabel(monthSpent), barX + progress, limitY + Math.round(76 * sy), bankText(), 0.9F);
         }
-        drawScaledString(g, font, moneyLabel(monthActivity), x + w - Math.round(68 * sx), limitY + Math.round(76 * sy), BANK_MUTED, 0.9F);
+        drawScaledString(g, font, moneyLabel(monthActivity), x + w - Math.round(68 * sx), limitY + Math.round(76 * sy), bankMuted(), 0.9F);
 
         int navY = bankDisplayNavY(y, h, w);
         drawBankDisplayBottomNav(g, font, x, navY, w, "cards", hitboxes);
@@ -3135,16 +3900,16 @@ public final class SmartphoneOverlay {
                 .filter(SmartphoneClientState.PhoneAccount::tapSelected)
                 .findFirst()
                 .orElse(SmartphoneClientState.selectedAccount());
-        drawBankSurface(g, x, y, w, h, BANK_BG);
+        drawBankSurface(g, x, y, w, h, bankBg());
         drawBankBackdropAccents(g, x, y, w, h);
-        drawStatusBar(g, font, x, y - 40, w, BANK_TEXT, BANK_BG);
+        drawStatusBar(g, font, x, y - 40, w, bankText(), bankBg());
         float sx = w / 335.0F;
         float sy = h / 758.0F;
         int circle = Math.max(34, Math.round(42 * sx));
         drawFigmaHeaderButton(g, HEADER_BACK_TEXTURE, x, y, circle);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, circle, circle),
                 "APP", "banking", "", ""));
-        drawScaledCentered(g, font, "Tap to Pay", x + w / 2, y + Math.round(11 * sy), BANK_TEXT, 1.3F);
+        drawScaledCentered(g, font, "Tap to Pay", x + w / 2, y + Math.round(11 * sy), bankText(), 1.3F);
 
         int navY = bankDisplayNavY(y, h, w);
         int cardY = y + Math.round(74 * sy);
@@ -3152,11 +3917,11 @@ public final class SmartphoneOverlay {
         if (account == null) {
             drawFigmaCard(g, font, x, cardY, w, cardH, null, true);
             int emptyY = cardY + cardH + Math.round(32 * sy);
-            fillRounded(g, x, emptyY, w, Math.max(124, Math.round(146 * sy)), Math.max(14, Math.round(18 * sx)), BANK_PANEL_SOFT);
-            fillCircle(g, x + w / 2, emptyY + Math.round(36 * sy), Math.max(19, Math.round(22 * sx)), BANK_INPUT);
+            fillRounded(g, x, emptyY, w, Math.max(124, Math.round(146 * sy)), Math.max(14, Math.round(18 * sx)), bankPanelSoft());
+            fillCircle(g, x + w / 2, emptyY + Math.round(36 * sy), Math.max(19, Math.round(22 * sx)), bankInput());
             drawFigmaActionIcon(g, "tap", x + w / 2, emptyY + Math.round(36 * sy), BANK_BLUE);
-            drawScaledCentered(g, font, "No card selected", x + w / 2, emptyY + Math.round(72 * sy), BANK_TEXT, 1.04F);
-            drawScaledCentered(g, font, "Choose a card before paying.", x + w / 2, emptyY + Math.round(92 * sy), BANK_MUTED, 0.9F);
+            drawScaledCentered(g, font, "No card selected", x + w / 2, emptyY + Math.round(72 * sy), bankText(), 1.04F);
+            drawScaledCentered(g, font, "Choose a card before paying.", x + w / 2, emptyY + Math.round(92 * sy), bankMuted(), 0.9F);
             mobileButton(g, font, x + Math.round(20 * sx), emptyY + Math.round(110 * sy),
                     w - Math.round(40 * sx), Math.max(34, Math.round(40 * sy)), "Select Card", BANK_BLUE,
                     hitboxes, "APP", "all-cards", "", "");
@@ -3169,14 +3934,14 @@ public final class SmartphoneOverlay {
                 "ACCOUNT", account.id().toString(), "", ""));
 
         int statusY = cardY + cardH + Math.round(28 * sy);
-        fillRounded(g, x, statusY, w, Math.max(78, Math.round(92 * sy)), Math.max(14, Math.round(18 * sx)), BANK_PANEL_SOFT);
-        fillCircle(g, x + Math.round(31 * sx), statusY + Math.round(31 * sy), Math.max(17, Math.round(20 * sx)), BANK_INPUT);
+        fillRounded(g, x, statusY, w, Math.max(78, Math.round(92 * sy)), Math.max(14, Math.round(18 * sx)), bankPanelSoft());
+        fillCircle(g, x + Math.round(31 * sx), statusY + Math.round(31 * sy), Math.max(17, Math.round(20 * sx)), bankInput());
         drawFigmaActionIcon(g, "tap", x + Math.round(31 * sx), statusY + Math.round(31 * sy), BANK_BLUE);
         drawScaledString(g, font, account.frozen() ? "Card Frozen" : "Ready to pay",
-                x + Math.round(62 * sx), statusY + Math.round(17 * sy), BANK_TEXT, 1.0F);
+                x + Math.round(62 * sx), statusY + Math.round(17 * sy), bankText(), 1.0F);
         drawScaledString(g, font, account.tapSelected() ? "Default contactless card" : "Available for this session",
                 x + Math.round(62 * sx), statusY + Math.round(39 * sy),
-                account.frozen() ? BANK_DANGER : BANK_MUTED, 0.86F);
+                account.frozen() ? BANK_DANGER : bankMuted(), 0.86F);
 
         int detailsY = statusY + Math.round(120 * sy);
         drawFigmaSettingsRow(g, font, x, detailsY, w, "Selected Card",
@@ -3187,12 +3952,12 @@ public final class SmartphoneOverlay {
 
         int infoY = detailsY + Math.round(68 * sy);
         if (infoY + Math.round(80 * sy) < navY - Math.round(44 * sy)) {
-            fillRounded(g, x, infoY, w, Math.max(66, Math.round(78 * sy)), Math.max(14, Math.round(18 * sx)), BANK_PANEL_SOFT);
-            fillCircle(g, x + Math.round(27 * sx), infoY + Math.round(29 * sy), Math.max(14, Math.round(16 * sx)), BANK_INPUT);
+            fillRounded(g, x, infoY, w, Math.max(66, Math.round(78 * sy)), Math.max(14, Math.round(18 * sx)), bankPanelSoft());
+            fillCircle(g, x + Math.round(27 * sx), infoY + Math.round(29 * sy), Math.max(14, Math.round(16 * sx)), bankInput());
             drawFigmaActionIcon(g, "tap", x + Math.round(27 * sx), infoY + Math.round(29 * sy), BANK_BLUE);
-            drawScaledString(g, font, "Payment points", x + Math.round(52 * sx), infoY + Math.round(13 * sy), BANK_TEXT, 0.98F);
+            drawScaledString(g, font, "Payment points", x + Math.round(52 * sx), infoY + Math.round(13 * sy), bankText(), 0.98F);
             drawScaledString(g, font, trim(font, "Use this phone near supported terminals.", w - Math.round(66 * sx)),
-                    x + Math.round(52 * sx), infoY + Math.round(35 * sy), BANK_MUTED, 0.86F);
+                    x + Math.round(52 * sx), infoY + Math.round(35 * sy), bankMuted(), 0.86F);
         }
         mobileButton(g, font, x, navY - Math.round(52 * sy), w, Math.max(34, Math.round(40 * sy)), "Change Payment Card", BANK_BLUE,
                 hitboxes, "APP", "all-cards", "", "");
@@ -3201,48 +3966,640 @@ public final class SmartphoneOverlay {
 
     private static void drawCalculator(GuiGraphics g, Font font, int x, int y, int w, int h,
                                        List<SmartphoneClientState.Hitbox> hitboxes) {
-        g.drawString(font, "Calculator", x, y, 0xFFFFFFFF, false);
-        drawInput(g, font, x, y + 20, w, "Expression", SmartphoneClientState.calculatorInput(),
-                SmartphoneClientState.InputTarget.CALCULATOR, hitboxes);
-        card(g, x, y + 48, w, 36);
-        g.drawString(font, trim(font, SmartphoneClientState.calculatorResult(), w - 16), x + 8, y + 62, 0xFFFFFFFF, false);
-        button(g, font, x, y + 92, 58, 22, "=", SmartphoneClientState.accentColor(), hitboxes, "CALC_EVAL", "", "", "");
-        button(g, font, x + 66, y + 92, 58, 22, "Clear", 0xFFFF6A6A, hitboxes, "CALC_CLEAR", "", "", "");
+        drawPhoneAppSurface(g, x, y, w, h, 0xFF050506);
+        drawStatusBar(g, font, x, y - 31, w, 0xFFF7F7F7, 0xFF050506);
+
+        int sidePad = Mth.clamp(Math.round(w * 0.025F), 4, 8);
+        boolean tightCalculator = h < 260;
+        boolean microCalculator = h < 160;
+        int gap = Mth.clamp(Math.round(w * 0.026F), microCalculator ? 2 : 4, 7);
+        int minDisplay = microCalculator ? 16 : (tightCalculator ? 34 : 74);
+        int minKey = microCalculator ? 10 : (tightCalculator ? 20 : 28);
+        int verticalPad = Math.max(microCalculator ? 2 : (tightCalculator ? 4 : 10),
+                Math.round(h * (tightCalculator ? 0.018F : 0.035F)));
+        int keyByWidth = Math.max(1, (w - sidePad * 2 - gap * 3) / 4);
+        int keyByHeight = Math.max(1, (h - minDisplay - gap * 4 - verticalPad) / 5);
+        int key = Mth.clamp(Math.min(keyByWidth, keyByHeight), Math.min(minKey, Math.max(1, Math.min(keyByWidth, keyByHeight))), 54);
+        int gridH = key * 5 + gap * 4;
+        int gridW = key * 4 + gap * 3;
+        int startX = x + sidePad + Math.max(0, (w - sidePad * 2 - gridW) / 2);
+        int availableDisplayH = Math.max(1, h - gridH - verticalPad);
+        if (availableDisplayH < minDisplay && gap > 1) {
+            gap = 1;
+            keyByWidth = Math.max(1, (w - sidePad * 2 - gap * 3) / 4);
+            keyByHeight = Math.max(1, (h - minDisplay - gap * 4 - verticalPad) / 5);
+            key = Mth.clamp(Math.min(keyByWidth, keyByHeight), Math.min(minKey, Math.max(1, Math.min(keyByWidth, keyByHeight))), 54);
+            gridH = key * 5 + gap * 4;
+            gridW = key * 4 + gap * 3;
+            startX = x + sidePad + Math.max(0, (w - sidePad * 2 - gridW) / 2);
+            availableDisplayH = Math.max(1, h - gridH - verticalPad);
+        }
+        int displayMin = Math.min(minDisplay, availableDisplayH);
+        int displayH = Mth.clamp(Math.round(h * (tightCalculator ? 0.22F : 0.31F)), displayMin, availableDisplayH);
+        int displayBottom = y + displayH;
+        String expression = SmartphoneClientState.calculatorInput();
+        String shownExpression = expression == null || expression.isBlank() ? "0" : expression;
+        String display = SmartphoneClientState.calculatorResultCurrent()
+                ? SmartphoneClientState.calculatorResult()
+                : shownExpression;
+        String displayText = calculatorDisplayText(display);
+        int displayWidth = Math.max(28, gridW);
+        float displaySize = fitPhoneTextSize(displayText, displayWidth, tightCalculator ? 22.0F : 31.0F, 11.0F);
+        String fittedDisplay = trimPhoneTextFromStart(displayText, displayWidth, displaySize);
+        int displayTextW = phoneTextWidth(fittedDisplay, displaySize);
+        int displayY = Math.max(y + 12, displayBottom - Math.round(displaySize * 1.45F));
+        String expressionPreview = SmartphoneClientState.calculatorExpressionPreview();
+        if (!expressionPreview.isBlank() && availableDisplayH >= (tightCalculator ? 36 : 54)) {
+            float previewSize = fitPhoneTextSize(expressionPreview, displayWidth, tightCalculator ? 9.5F : 12.0F, 7.0F);
+            String fittedPreview = trimPhoneTextFromStart(expressionPreview, displayWidth, previewSize);
+            int previewW = phoneTextWidth(fittedPreview, previewSize);
+            int previewY = Math.max(y + 8, displayY - Math.round(previewSize * 1.55F));
+            drawPhoneText(g, fittedPreview, startX + gridW - previewW - 2, previewY, 0xFF8E8E93, previewSize);
+        }
+        drawPhoneText(g, fittedDisplay, startX + gridW - displayTextW - 2, displayY, 0xFFFFFFFF, displaySize);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, displayH),
+                "INPUT", SmartphoneClientState.InputTarget.CALCULATOR.name(), "", ""));
+
+        int preferredGap = microCalculator ? 1 : (tightCalculator ? 4 : 8);
+        int bottomAlignedY = y + h - gridH - verticalPad;
+        int startY = bottomAlignedY >= displayBottom + preferredGap
+                ? bottomAlignedY
+                : Math.max(y, y + h - gridH);
+        String clearLabel = SmartphoneClientState.calculatorAtResetState() ? "AC" : "C";
+        drawCalcKey(g, font, startX, startY, key, clearLabel, 0xFFA5A5A5, 0xFF050506, hitboxes, "CALC_CLEAR", "");
+        drawCalcKey(g, font, startX + key + gap, startY, key, "+/-", 0xFFA5A5A5, 0xFF050506, hitboxes, "CALC_TOGGLE_SIGN", "");
+        drawCalcKey(g, font, startX + (key + gap) * 2, startY, key, "%", 0xFFA5A5A5, 0xFF050506, hitboxes, "CALC_PERCENT", "");
+        drawCalcOperatorKey(g, font, startX + (key + gap) * 3, startY, key, "/", hitboxes);
+
+        String[][] rows = {
+                {"7", "8", "9", "*"},
+                {"4", "5", "6", "-"},
+                {"1", "2", "3", "+"}
+        };
+        for (int row = 0; row < rows.length; row++) {
+            for (int col = 0; col < rows[row].length; col++) {
+                String value = rows[row][col];
+                int keyX = startX + (key + gap) * col;
+                int keyY = startY + (key + gap) * (row + 1);
+                if (isCalcOperatorValue(value)) {
+                    drawCalcOperatorKey(g, font, keyX, keyY, key, value, hitboxes);
+                } else {
+                    drawCalcKey(g, font, keyX, keyY, key, value, 0xFF333336, 0xFFFFFFFF, hitboxes, "CALC_KEY", value);
+                }
+            }
+        }
+        int zeroY = startY + (key + gap) * 4;
+        int zeroW = key * 2 + gap;
+        drawCalcKey(g, font, startX, zeroY, zeroW, key, "0", 0xFF333336, 0xFFFFFFFF, hitboxes, "CALC_KEY", "0");
+        drawCalcKey(g, font, startX + zeroW + gap, zeroY, key, ".", 0xFF333336, 0xFFFFFFFF, hitboxes, "CALC_KEY", ".");
+        drawCalcKey(g, font, startX + zeroW + gap + key + gap, zeroY, key, "=", 0xFFFF9F0A, 0xFFFFFFFF, hitboxes, "CALC_EVAL", "");
+    }
+
+    private static void drawCalcOperatorKey(GuiGraphics g, Font font, int x, int y, int size, String value,
+                                            List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean active = SmartphoneClientState.calculatorAwaitingOperand()
+                && value.equals(SmartphoneClientState.calculatorPendingOperator());
+        int fill = active ? 0xFFFFFFFF : 0xFFFF9F0A;
+        int text = active ? 0xFFFF9F0A : 0xFFFFFFFF;
+        drawCalcKey(g, font, x, y, size, calcOperatorLabel(value), fill, text, hitboxes, "CALC_KEY", value);
+    }
+
+    private static boolean isCalcOperatorValue(String value) {
+        return "+".equals(value) || "-".equals(value) || "*".equals(value) || "/".equals(value);
+    }
+
+    private static String calcOperatorLabel(String value) {
+        return switch (value) {
+            case "/" -> "\u00F7";
+            case "*" -> "\u00D7";
+            default -> value;
+        };
+    }
+
+    private static String calculatorDisplayText(String value) {
+        String safe = value == null || value.isBlank() ? "0" : value;
+        return safe.replace("*", "\u00D7").replace("/", "\u00F7");
+    }
+
+    private static void drawCalcKey(GuiGraphics g, Font font, int x, int y, int size, String label,
+                                    int color, int textColor, List<SmartphoneClientState.Hitbox> hitboxes,
+                                    String action, String value) {
+        fillCircle(g, x + size / 2, y + size / 2, size / 2, color);
+        float scale = calcKeyTextScale(label, size);
+        drawScaledCentered(g, font, label, x + size / 2, y + Math.round(size * 0.35F), textColor, scale);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, size, size),
+                action, value, "", ""));
+    }
+
+    private static void drawCalcKey(GuiGraphics g, Font font, int x, int y, int w, int h, String label,
+                                    int color, int textColor, List<SmartphoneClientState.Hitbox> hitboxes,
+                                    String action, String value) {
+        fillRounded(g, x, y, w, h, h / 2, color);
+        float scale = calcKeyTextScale(label, h);
+        int textX = "0".equals(label) ? x + Math.round(h * 0.45F) : x + w / 2;
+        if ("0".equals(label)) {
+            drawScaledString(g, font, label, textX, y + Math.round(h * 0.35F), textColor, scale);
+        } else {
+            drawScaledCentered(g, font, label, textX, y + Math.round(h * 0.35F), textColor, scale);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                action, value, "", ""));
+    }
+
+    private static float calcKeyTextScale(String label, int keySize) {
+        float base = label != null && label.length() > 1 ? 0.88F : 1.45F;
+        return base * Mth.clamp(keySize / 42.0F, 0.58F, 1.0F);
     }
 
     private static void drawPaint(GuiGraphics g, Font font, int x, int y, int w, int h,
                                   List<SmartphoneClientState.Hitbox> hitboxes) {
-        g.drawString(font, "Paint", x, y, 0xFFFFFFFF, false);
-        int board = Math.min(w, h - 72);
-        card(g, x, y + 20, board, board);
+        drawPhoneAppSurface(g, x, y, w, h, 0xFFF7F8FB);
+        drawStatusBar(g, font, x, y - 31, w, 0xFF111318, 0xFFF7F8FB);
+        boolean compactPaint = h < 300;
+        boolean tightPaint = h < 230;
+        boolean microPaint = h < 150;
+        drawScaledString(g, font, "Paint", x, y, 0xFF111318, microPaint ? 0.92F : (tightPaint ? 1.22F : 1.54F));
+        if (!tightPaint) {
+            drawScaledString(g, font, "Pixel sketch pad", x, y + 26, 0xFF8E8E93, 0.78F);
+        }
+
+        int selected = SmartphoneClientState.paintIndex();
         String pixels = SmartphoneClientState.paintingDraft();
-        for (int i = 0; i < 81; i++) {
-            int px = x + 8 + (i % 9) * Math.max(1, (board - 16) / 9);
-            int py = y + 28 + (i / 9) * Math.max(1, (board - 16) / 9);
-            int c = i < pixels.length() ? 0xFF52D7FF + (pixels.charAt(i) % 5) * 0x000A0700 : 0x55384C66;
-            g.fill(px, py, px + Math.max(2, (board - 18) / 9), py + Math.max(2, (board - 18) / 9), c);
+        int filled = paintedPixelCount(pixels);
+        drawScaledString(g, font, "Slot " + (selected + 1), x + w - 58,
+                y + (tightPaint ? 3 : 6), SmartphoneClientState.accentColor(), microPaint ? 0.56F : (tightPaint ? 0.68F : 0.78F));
+
+        int buttonH = microPaint
+                ? Mth.clamp(Math.round(h * 0.18F), 12, 20)
+                : Mth.clamp(Math.round(h * (tightPaint ? 0.095F : 0.08F)),
+                tightPaint ? 22 : 32, tightPaint ? 30 : 42);
+        int slotsH = microPaint
+                ? Mth.clamp(Math.round(h * 0.22F), 14, 28)
+                : Mth.clamp(Math.round(h * (tightPaint ? 0.16F : 0.15F)),
+                tightPaint ? 30 : 44, tightPaint ? 42 : 62);
+        int bottomPad = microPaint ? 3 : 8;
+        int slotsGap = microPaint ? 3 : (tightPaint ? 8 : 14);
+        int paletteGap = microPaint ? 2 : (tightPaint ? 6 : 10);
+        int buttonY = y + h - buttonH - bottomPad;
+        int slotsY = buttonY - slotsH - slotsGap;
+        int paletteH = microPaint ? Mth.clamp(Math.round(h * 0.16F), 8, 18) : (tightPaint ? 20 : 26);
+        int paletteY = slotsY - paletteH - paletteGap;
+        int boardTop = y + (microPaint ? 14 : (tightPaint ? 28 : (compactPaint ? 48 : 56)));
+        int boardAreaH = Math.max(0, paletteY - boardTop - (microPaint ? 3 : (tightPaint ? 6 : 12)));
+        int board = Math.min(w, boardAreaH);
+        if (board >= 48) {
+            int boardX = x + (w - board) / 2;
+            fillRounded(g, boardX, boardTop, board, board, 24, 0xFFFFFFFF);
+            drawRoundedBorder(g, boardX, boardTop, board, board, 24, 0xFFE1E1E6, 0xFFFFFFFF);
+            int cellGap = Math.max(1, board / 80);
+            int cell = Math.max(2, (board - 28 - cellGap * 8) / 9);
+            int grid = cell * 9 + cellGap * 8;
+            int gridX = boardX + (board - grid) / 2;
+            int gridY = boardTop + (board - grid) / 2;
+            for (int i = 0; i < 81; i++) {
+                int px = gridX + (i % 9) * (cell + cellGap);
+                int py = gridY + (i / 9) * (cell + cellGap);
+                boolean painted = pixels != null && i < pixels.length() && pixels.charAt(i) != '.';
+                int c = painted ? paintPixelColor(pixels.charAt(i)) : 0xFFE9ECF2;
+                fillRounded(g, px, py, cell, cell, Math.max(2, cell / 4), c);
+                hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(px, py, cell, cell),
+                        "PAINT_CELL", String.valueOf(i), "", ""));
+            }
+            drawScaledCentered(g, font, filled + "/81 pixels", boardX + board / 2, boardTop + board - 18,
+                    0xFF8E8E93, 0.72F);
         }
-        int by = y + board + 28;
-        for (int i = 0; i < 6; i++) {
-            button(g, font, x + i * 30, by, 24, 18, String.valueOf(i + 1), 0xAAFFFFFF, hitboxes, "PAINT_SELECT", String.valueOf(i), "", "");
+
+        drawPaintPalette(g, font, x, paletteY, w, paletteH, hitboxes);
+
+        int slotCount = 6;
+        int minSlotW = 12;
+        int maxSlotGap = Math.max(1, (w - minSlotW * slotCount) / Math.max(1, slotCount - 1));
+        int gap = Math.min(Mth.clamp(w / 58, 3, 7), maxSlotGap);
+        int slotW = Math.max(1, (w - gap * (slotCount - 1)) / slotCount);
+        for (int i = 0; i < slotCount; i++) {
+            int sx = x + i * (slotW + gap);
+            boolean active = i == selected;
+            int slotRadius = Mth.clamp(Math.min(slotW, slotsH) / 3, 1, 14);
+            fillRounded(g, sx, slotsY, slotW, slotsH, slotRadius, active ? 0xFFEAF3FF : 0xFFFFFFFF);
+            drawRoundedBorder(g, sx, slotsY, slotW, slotsH, slotRadius,
+                    active ? SmartphoneClientState.accentColor() : 0xFFE1E1E6,
+                    active ? 0xFFEAF3FF : 0xFFFFFFFF);
+            String slotPixels = i < SmartphoneClientState.paintings().size()
+                    ? SmartphoneClientState.paintings().get(i)
+                    : "";
+            int preview = Math.max(1, Math.min(Math.max(1, slotW - 8), Math.max(1, slotsH - 18)));
+            int previewX = sx + (slotW - preview) / 2;
+            int previewY = slotsY + Math.max(4, Math.min(7, (slotsH - preview - 10) / 2));
+            drawPaintPreview(g, previewX, previewY, preview, slotPixels);
+            if (slotsH >= 22) {
+                drawScaledCentered(g, font, String.valueOf(i + 1), sx + slotW / 2, slotsY + slotsH - 14,
+                        active ? SmartphoneClientState.accentColor() : 0xFF8E8E93, microPaint ? 0.54F : 0.66F);
+            }
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(sx, slotsY, slotW, slotsH),
+                    "PAINT_SELECT", String.valueOf(i), "", ""));
         }
-        button(g, font, x, by + 24, 86, 20, "Add Pixel", SmartphoneClientState.accentColor(), hitboxes, "PAINT_SAVE", "", "", "");
+        fillRounded(g, x, buttonY, w, buttonH, Mth.clamp(buttonH / 2, 4, 17), SmartphoneClientState.accentColor());
+        drawScaledCentered(g, font, filled > 0 ? "Clear Canvas" : "Canvas Empty",
+                x + w / 2, buttonY + Math.max(3, Math.round(buttonH * 0.33F)),
+                0xFFFFFFFF, microPaint ? 0.58F : 0.92F);
+        if (filled > 0) {
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, buttonY, w, buttonH),
+                    "PAINT_CLEAR", "", "", ""));
+        }
+    }
+
+    private static void drawPaintPalette(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                         List<SmartphoneClientState.Hitbox> hitboxes) {
+        char[] tools = {'1', '2', '3', '4', '5', '6', '.'};
+        int minSwatch = 8;
+        int maxGap = Math.max(1, (w - minSwatch * tools.length) / Math.max(1, tools.length - 1));
+        int gap = Math.min(Mth.clamp(w / 62, 3, 7), maxGap);
+        int swatch = Math.max(1, Math.min(h, (w - gap * (tools.length - 1)) / tools.length));
+        int totalW = swatch * tools.length + gap * (tools.length - 1);
+        int startX = x + (w - totalW) / 2;
+        int y0 = y + (h - swatch) / 2;
+        char selected = SmartphoneClientState.paintColor();
+        for (int i = 0; i < tools.length; i++) {
+            char tool = tools[i];
+            int sx = startX + i * (swatch + gap);
+            boolean active = selected == tool;
+            int fill = tool == '.' ? 0xFFFFFFFF : paintPixelColor(tool);
+            fillCircle(g, sx + swatch / 2, y0 + swatch / 2, swatch / 2, active ? SmartphoneClientState.accentColor() : 0xFFE1E1E6);
+            fillCircle(g, sx + swatch / 2, y0 + swatch / 2, Math.max(2, swatch / 2 - 3), fill);
+            if (tool == '.') {
+                drawScaledCentered(g, font, "x", sx + swatch / 2, y0 + Math.max(4, swatch / 2 - 5),
+                        0xFF8E8E93, 0.62F);
+            }
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(sx, y0, swatch, swatch),
+                    "PAINT_COLOR", String.valueOf(tool), "", ""));
+        }
+    }
+
+    private static void drawPaintPreview(GuiGraphics g, int x, int y, int size, String pixels) {
+        int gap = Math.max(1, size / 28);
+        int cell = Math.max(1, (size - gap * 2) / 3);
+        for (int i = 0; i < 9; i++) {
+            int px = x + (i % 3) * (cell + gap);
+            int py = y + (i / 3) * (cell + gap);
+            int color = pixels != null && i < pixels.length() && pixels.charAt(i) != '.'
+                    ? paintPixelColor(pixels.charAt(i))
+                    : 0xFFE9ECF2;
+            fillRounded(g, px, py, cell, cell, Math.max(1, cell / 4), color);
+        }
+    }
+
+    private static int paintPixelColor(char value) {
+        return switch (Character.toLowerCase(value)) {
+            case '1', '6', 'b' -> 0xFF52D7FF;
+            case '2', '7', 'c' -> 0xFF23D18B;
+            case '3', '8', 'd' -> 0xFFFF6A9C;
+            case '4', '9', 'e' -> 0xFFFFCA5C;
+            case '5', 'a', 'f' -> 0xFF9B7CFF;
+            default -> 0xFF2B3444;
+        };
+    }
+
+    private static int paintedPixelCount(String pixels) {
+        if (pixels == null || pixels.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (int i = 0; i < Math.min(81, pixels.length()); i++) {
+            if (pixels.charAt(i) != '.') {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void drawContacts(GuiGraphics g, Font font, int x, int y, int w, int h,
                                      List<SmartphoneClientState.Hitbox> hitboxes) {
         drawPhoneAppSurface(g, x, y, w, h, 0xFFF6F7FA);
         drawStatusBar(g, font, x, y - 31, w, 0xFF111318, 0xFFF6F7FA);
-        drawScaledString(g, font, "Contacts", x, y, 0xFF111318, 1.42F);
-        drawScaledString(g, font, "Server players", x, y + 22, 0xFF8E8E93, 0.82F);
-
-        int cy = y + 52;
-        for (SmartphoneClientState.PhoneContact contact : SmartphoneClientState.contacts()) {
-            if (cy > y + h - 48) {
-                break;
+        boolean messengerMode = SmartphoneClientState.contactsMessengerMode()
+                || SmartphoneClientState.activeApp() == SmartphoneClientState.App.MESSENGER;
+        if (!messengerMode && SmartphoneClientState.contactDetailOpen()) {
+            SmartphoneClientState.PhoneContact selected = SmartphoneClientState.selectedContact();
+            if (selected != null) {
+                drawContactDetail(g, font, x, y, w, h, selected, hitboxes);
+                return;
             }
-            drawContactListRow(g, font, x, cy, w, contact, hitboxes);
-            cy += 48;
+        }
+        List<SmartphoneClientState.PhoneContact> visibleContacts = SmartphoneClientState.visibleContacts();
+        drawScaledString(g, font, messengerMode ? "Messenger" : "Contacts", x, y, 0xFF111318, 1.42F);
+        String countLabel = SmartphoneClientState.contactSearch().isBlank()
+                ? SmartphoneClientState.contacts().size() + " contacts"
+                : visibleContacts.size() + " results";
+        drawScaledString(g, font, countLabel, x, y + 23, 0xFF8E8E93, 0.74F);
+
+        int searchY = y + 45;
+        int searchH = 36;
+        boolean searchActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.CONTACT_SEARCH;
+        boolean searchHasText = !SmartphoneClientState.contactSearch().isBlank();
+        boolean showCancel = searchActive || searchHasText;
+        int cancelW = showCancel ? Math.min(50, Math.max(42, w / 6)) : 0;
+        int searchW = showCancel ? Math.max(90, w - cancelW - 8) : w;
+        fillRounded(g, x, searchY, searchW, searchH, 18, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, searchY, searchW, searchH, 18,
+                searchActive ? 0xFF0078FF : 0xFFE1E1E6, 0xFFFFFFFF);
+        int iconX = x + 18;
+        int iconY = searchY + searchH / 2;
+        fillCircle(g, iconX, iconY - 1, 5, 0xFF8E8E93);
+        fillCircle(g, iconX, iconY - 1, 3, 0xFFFFFFFF);
+        g.fill(iconX + 4, iconY + 3, iconX + 10, iconY + 5, 0xFF8E8E93);
+        drawFieldText(g, font, x + 34, searchY + 13, searchW - 72,
+                SmartphoneClientState.contactSearch(), searchActive, "Search player",
+                0xFF111318, 0xFF8E8E93, 0xFF111318);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, searchY, searchW, searchH),
+                "INPUT", SmartphoneClientState.InputTarget.CONTACT_SEARCH.name(), "", ""));
+        if (searchHasText) {
+            drawFigmaCloseGlyph(g, x + searchW - 20, iconY, 0xFF8E8E93, 0.62F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW - 38, searchY, 38, searchH),
+                    "CONTACT_SEARCH_CLEAR", "", "", ""));
+        }
+        if (showCancel) {
+            drawScaledCentered(g, font, "Cancel", x + searchW + 4 + cancelW / 2, searchY + 12,
+                    0xFF0078FF, 0.76F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW + 2, searchY, cancelW + 6, searchH),
+                    "CONTACT_SEARCH_CANCEL", "", "", ""));
+        }
+
+        boolean compactList = h < 330;
+        int rowH = compactList ? Mth.clamp(Math.round(h * 0.13F), 34, 42) : 50;
+        int listY = searchY + searchH + 18;
+        int listH = Math.max(0, y + h - listY - 8);
+        if (listH > 0 && listH < rowH) {
+            rowH = listH;
+        }
+        int visibleRows = listH >= 24 && rowH > 0 ? Math.max(1, listH / rowH) : 0;
+        SmartphoneClientState.syncContactListScroll(visibleContacts.size(), Math.max(1, visibleRows));
+        int offset = SmartphoneClientState.contactListScrollOffset();
+        boolean showSectionIndex = visibleRows > 0 && !showCancel && visibleContacts.size() > visibleRows;
+        int listW = showSectionIndex ? w - 16 : w;
+        if (!visibleContacts.isEmpty() && listH > 0) {
+            int shownRows = Math.min(visibleRows, visibleContacts.size() - offset);
+            fillRounded(g, x, listY, listW, Math.min(listH, Math.max(rowH, shownRows * rowH)), 18, 0xFFFFFFFF);
+        }
+        int cy = listY;
+        for (int i = offset; i < visibleContacts.size() && i < offset + visibleRows; i++) {
+            SmartphoneClientState.PhoneContact contact = visibleContacts.get(i);
+            boolean sectionStart = i == 0
+                    || contactSection(contact).charAt(0) != contactSection(visibleContacts.get(i - 1)).charAt(0);
+            drawContactListRow(g, font, x, cy, listW, rowH, contact, sectionStart, hitboxes);
+            cy += rowH;
+        }
+        if (visibleContacts.isEmpty() && listH >= 40) {
+            if (SmartphoneClientState.contactSearch().isBlank()) {
+                drawContactEmptyState(g, font, x, listY, w, listH, "No Players", "Server directory is empty.");
+            } else {
+                drawContactEmptyState(g, font, x, listY, w, listH, "No Results", "No matching players.");
+            }
+        }
+        if (showSectionIndex) {
+            drawContactSectionIndex(g, font, x + w - 11, listY, listH,
+                    contactSectionLabels(visibleContacts), hitboxes);
+        } else if (visibleRows > 0) {
+            drawMessageDraftScrollbar(g, x, listY, w, listH, offset, visibleRows, visibleContacts.size());
+        }
+    }
+
+    private static void drawContactEmptyState(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                              String title, String subtitle) {
+        int centerX = x + w / 2;
+        int centerY = y + Math.max(24, h / 2);
+        if (h >= 72) {
+            int iconY = centerY - 24;
+            fillCircle(g, centerX - 8, iconY - 5, 7, 0xFFBFC4CC);
+            fillCircle(g, centerX + 8, iconY - 5, 7, 0xFFC9CDD4);
+            fillRounded(g, centerX - 23, iconY + 5, 20, 14, 7, 0xFFBFC4CC);
+            fillRounded(g, centerX + 3, iconY + 5, 20, 14, 7, 0xFFC9CDD4);
+            fillCircle(g, centerX, iconY - 2, 8, 0xFF8E8E93);
+            fillRounded(g, centerX - 14, iconY + 10, 28, 16, 8, 0xFF8E8E93);
+        }
+        int titleY = h >= 72 ? centerY + 4 : centerY - 8;
+        drawScaledCentered(g, font, title, centerX, titleY, 0xFF111318, 0.98F);
+        if (h >= 58) {
+            drawScaledCentered(g, font, subtitle, centerX, titleY + 17, 0xFF8E8E93, 0.68F);
+        }
+    }
+
+    private static void drawContactDetail(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                          SmartphoneClientState.PhoneContact contact,
+                                          List<SmartphoneClientState.Hitbox> hitboxes) {
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFF0078FF);
+        drawScaledString(g, font, "Contacts", x + 16, y + 10, 0xFF0078FF, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(76, w / 3), backSize),
+                "CONTACTS_BACK", "", "", ""));
+
+        drawScaledCentered(g, font, "Contact", x + w / 2, y + 7, 0xFF111318, 1.02F);
+        boolean compactContact = h < 330;
+        boolean tightContact = h < 260;
+        int bottom = y + h - 6;
+        int avatar = compactContact
+                ? Mth.clamp(Math.min(Math.round(w * 0.20F), Math.round(h * 0.15F)),
+                tightContact ? 30 : 36, tightContact ? 42 : 58)
+                : Mth.clamp(Math.min(Math.round(w * 0.25F), Math.round(h * 0.18F)), 52, 82);
+        int avatarX = x + w / 2 - avatar / 2;
+        int avatarY = y + (compactContact ? (tightContact ? 32 : 38) : Mth.clamp(Math.round(h * 0.10F), 42, 56));
+        drawContactAvatar(g, font, contact, avatarX, avatarY, avatar);
+        int nameY = avatarY + avatar + (tightContact ? 8 : 16);
+        drawScaledCentered(g, font, trim(font, contact.name(), w - 22), x + w / 2, nameY,
+                0xFF111318, tightContact ? 0.84F : (compactContact ? 1.02F : 1.24F));
+
+        int actionsY = nameY + (tightContact ? 12 : (compactContact ? 20 : Math.max(24, Math.round(h * 0.062F))));
+        int availableForActionAndCard = Math.max(0, bottom - actionsY);
+        int reservedCardH = tightContact && availableForActionAndCard < 56 ? 0 : (tightContact ? 24 : 32);
+        int actionGridH = drawContactActionGrid(g, font, x, actionsY, w,
+                Math.max(0, availableForActionAndCard - reservedCardH), contact, compactContact, tightContact, hitboxes);
+
+        int cardY = actionsY + actionGridH + (tightContact ? 6 : (compactContact ? 10 : 18));
+        int availableBelowActions = bottom - cardY;
+        if (availableBelowActions >= (tightContact ? 24 : 32)) {
+            List<ContactInfoData> rows = List.of(
+                    new ContactInfoData("Server status", contact.online() ? "Online" : "Offline",
+                            contact.online() ? 0xFF20C985 : 0xFF8E8E93),
+                    new ContactInfoData("Preferences", contactPreferenceSummary(contact), contactPreferenceDetailColor(contact)),
+                    new ContactInfoData("Player ID", shortUuid(contact.id()), 0xFF8E8E93),
+                    new ContactInfoData("Unread", String.valueOf(Math.max(0, contact.unread())), 0xFF111318)
+            );
+            int minRowH = tightContact ? 24 : 32;
+            int maxRowH = tightContact ? 34 : 46;
+            int preferredRows = Math.min(rows.size(), Math.max(1, availableBelowActions / minRowH));
+            int rowH = Mth.clamp(availableBelowActions / preferredRows, minRowH, maxRowH);
+            int visibleRows = Math.max(1, Math.min(rows.size(), availableBelowActions / Math.max(1, rowH)));
+            SmartphoneClientState.syncContactDetailScroll(rows.size(), visibleRows);
+            int offset = SmartphoneClientState.contactDetailScrollOffset();
+            int drawnRows = Math.min(rows.size() - offset, visibleRows);
+            fillRounded(g, x, cardY, w, rowH * drawnRows, 16, 0xFFFFFFFF);
+            for (int i = 0; i < drawnRows; i++) {
+                int rowIndex = offset + i;
+                ContactInfoData row = rows.get(rowIndex);
+                drawContactInfoRow(g, font, x, cardY + rowH * i, w, rowH, row.title(), row.value(), row.color(),
+                        rowIndex < rows.size() - 1);
+            }
+            if (rows.size() > visibleRows) {
+                drawMessageDraftScrollbar(g, x, cardY, w, availableBelowActions, offset, visibleRows, rows.size());
+            }
+        }
+    }
+
+    private static void drawContactAction(GuiGraphics g, Font font, int x, int y, int w, int h, String label, int color,
+                                          List<SmartphoneClientState.Hitbox> hitboxes, String action, String p1) {
+        fillRounded(g, x, y, w, h, Mth.clamp(h / 2, 6, 15), 0xFFFFFFFF);
+        int glyphY = y + Math.round(h * 0.34F);
+        if (h >= 32) {
+            fillCircle(g, x + w / 2, glyphY, Mth.clamp(Math.round(h * 0.24F), 7, 10), color);
+            drawContactActionGlyph(g, x + w / 2, glyphY, color, action);
+        }
+        String safeLabel = trim(font, label, Math.max(8, w - 6));
+        float labelScale = h < 32 ? 0.62F : (safeLabel.length() > 8 ? 0.58F : 0.68F);
+        int labelY = h < 32 ? y + Math.max(8, h / 2 - 4) : y + Math.round(h * 0.66F);
+        drawScaledCentered(g, font, safeLabel, x + w / 2, labelY, color, labelScale);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                action, p1, "", ""));
+    }
+
+    private static void drawContactAvatar(GuiGraphics g, Font font, SmartphoneClientState.PhoneContact contact,
+                                          int x, int y, int size) {
+        int bg = contact != null && contact.online() ? 0xFF0078FF : 0xFFBFC4CC;
+        fillCircle(g, x + size / 2, y + size / 2, size / 2, bg);
+        ResourceLocation skin = contact == null ? null : resolveSkin(contact.id());
+        int inset = Math.max(2, Math.round(size * 0.08F));
+        if (skin != null && size - inset * 2 >= 8) {
+            PlayerFaceRenderer.draw(g, skin, x + inset, y + inset, Math.max(1, size - inset * 2));
+            maskOutsideCircle(g, x, y, size, x + size / 2, y + size / 2, size / 2, 0xFFF6F7FA);
+            if (contact != null && !contact.online()) {
+                g.fill(x, y, x + size, y + size, 0x33000000);
+                maskOutsideCircle(g, x, y, size, x + size / 2, y + size / 2, size / 2, 0xFFF6F7FA);
+            }
+            return;
+        }
+        String initials = contact == null ? "?" : initials(contact.name());
+        drawScaledCentered(g, font, initials, x + size / 2, y + Math.round(size * 0.34F),
+                0xFFFFFFFF, Mth.clamp(size / 52.0F, 0.82F, 1.38F));
+    }
+
+    private static int drawContactActionGrid(GuiGraphics g, Font font, int x, int y, int w, int availableH,
+                                             SmartphoneClientState.PhoneContact contact,
+                                             boolean compactContact, boolean tightContact,
+                                             List<SmartphoneClientState.Hitbox> hitboxes) {
+        if (availableH < 18) {
+            return 0;
+        }
+        ContactActionData[] actions = {
+                new ContactActionData("Message", "CONTACT_MESSAGE", 0xFF0078FF, contact.id().toString()),
+                new ContactActionData(contact.favorite() ? "Unfavorite" : "Favorite",
+                        contact.favorite() ? "UNFAVORITE" : "FAVORITE", 0xFFFFB800, contact.id().toString()),
+                new ContactActionData(contact.muted() ? "Unmute" : "Mute",
+                        contact.muted() ? "UNMUTE" : "MUTE", 0xFF8E8E93, contact.id().toString()),
+                new ContactActionData(contact.blocked() ? "Unblock" : "Block",
+                        contact.blocked() ? "UNBLOCK" : "BLOCK", 0xFFFF3B30, contact.id().toString()),
+                new ContactActionData("Report", "REPORT", 0xFFFF3B30, contact.id().toString())
+        };
+        int gap = tightContact ? 4 : (compactContact ? 6 : 8);
+        int minActionH = tightContact ? 24 : 34;
+        int preferredActionH = compactContact
+                ? Mth.clamp(Math.round(availableH * 0.48F), minActionH, tightContact ? 34 : 42)
+                : Mth.clamp(Math.round(availableH * 0.42F), 38, 50);
+        int cols = w >= 285 ? actions.length : (w >= 210 ? 3 : 2);
+        int rows = Math.max(1, (actions.length + cols - 1) / cols);
+        if (availableH < minActionH * rows + gap * (rows - 1)) {
+            cols = Math.min(actions.length, Math.max(1, w / 44));
+            rows = Math.max(1, (actions.length + cols - 1) / cols);
+        }
+        int maxFittingActionH = Math.max(0, (availableH - gap * (rows - 1)) / rows);
+        int actionH = Math.min(preferredActionH, Math.max(18, maxFittingActionH));
+        actionH = Math.min(actionH, maxFittingActionH);
+        if (actionH < 18) {
+            return 0;
+        }
+        int actionW = Math.max(1, (w - gap * (cols - 1)) / cols);
+        int shown = Math.min(actions.length, rows * cols);
+        for (int i = 0; i < shown; i++) {
+            int col = i % cols;
+            int row = i / cols;
+            ContactActionData data = actions[i];
+            drawContactAction(g, font, x + col * (actionW + gap), y + row * (actionH + gap),
+                    actionW, actionH, data.label(), data.color(), hitboxes, data.action(), data.p1());
+        }
+        return rows * actionH + gap * (rows - 1);
+    }
+
+    private record ContactActionData(String label, String action, int color, String p1) {
+    }
+
+    private record ContactInfoData(String title, String value, int color) {
+    }
+
+    private static void drawContactActionGlyph(GuiGraphics g, int cx, int cy, int color, String action) {
+        int white = 0xFFFFFFFF;
+        String safeAction = action == null ? "" : action;
+        if ("CONTACT_MESSAGE".equals(safeAction)) {
+            fillRounded(g, cx - 6, cy - 4, 12, 8, 4, white);
+            g.fill(cx - 2, cy + 3, cx + 3, cy + 6, white);
+            return;
+        }
+        if ("FAVORITE".equals(safeAction) || "UNFAVORITE".equals(safeAction)) {
+            drawSoftLine(g, cx, cy - 6, cx + 2, cy - 1, white);
+            drawSoftLine(g, cx + 2, cy - 1, cx + 7, cy - 1, white);
+            drawSoftLine(g, cx + 7, cy - 1, cx + 3, cy + 2, white);
+            drawSoftLine(g, cx + 3, cy + 2, cx + 5, cy + 7, white);
+            drawSoftLine(g, cx + 5, cy + 7, cx, cy + 4, white);
+            drawSoftLine(g, cx, cy + 4, cx - 5, cy + 7, white);
+            drawSoftLine(g, cx - 5, cy + 7, cx - 3, cy + 2, white);
+            drawSoftLine(g, cx - 3, cy + 2, cx - 7, cy - 1, white);
+            drawSoftLine(g, cx - 7, cy - 1, cx - 2, cy - 1, white);
+            drawSoftLine(g, cx - 2, cy - 1, cx, cy - 6, white);
+            return;
+        }
+        if ("BLOCK".equals(safeAction) || "UNBLOCK".equals(safeAction)) {
+            drawCircleRing(g, cx, cy, 7, 2, white, color);
+            drawSoftLine(g, cx - 5, cy + 5, cx + 5, cy - 5, white);
+            return;
+        }
+        if ("REPORT".equals(safeAction)) {
+            fillRounded(g, cx - 6, cy - 7, 12, 14, 3, white);
+            g.fill(cx - 1, cy - 4, cx + 2, cy + 2, color);
+            g.fill(cx - 1, cy + 4, cx + 2, cy + 6, color);
+            return;
+        }
+        int muted = 0xCCFFFFFF;
+        g.fill(cx - 7, cy - 4, cx - 3, cy + 4, white);
+        drawSoftLine(g, cx - 3, cy - 4, cx + 3, cy - 8, white);
+        drawSoftLine(g, cx - 3, cy + 4, cx + 3, cy + 8, white);
+        drawSoftLine(g, cx + 5, cy - 5, cx + 8, cy - 2, muted);
+        drawSoftLine(g, cx + 8, cy - 2, cx + 8, cy + 2, muted);
+        drawSoftLine(g, cx + 5, cy + 5, cx + 8, cy + 2, muted);
+    }
+
+    private static void drawContactInfoRow(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                           String label, String value, int valueColor, boolean divider) {
+        boolean compact = h < 34;
+        float labelScale = compact ? 0.72F : 0.86F;
+        float valueScale = compact ? 0.70F : 0.82F;
+        int inset = Math.min(14, Math.max(4, w / 12));
+        int textY = compact ? y + Math.max(5, h / 2 - 5) : y + 14;
+        int availableW = Math.max(12, w - inset * 2);
+        int labelW = compact ? Math.max(12, availableW / 2) : Math.max(24, Math.min(96, availableW / 2));
+        int valueAreaW = Math.max(12, availableW - labelW - 6);
+        if (!compact && w < 150 && h >= 42) {
+            drawScaledString(g, font, trim(font, label, availableW), x + inset, y + 8,
+                    0xFF111318, 0.78F);
+            drawScaledString(g, font, trim(font, value, availableW), x + inset, y + 25,
+                    valueColor, 0.72F);
+        } else {
+            drawScaledString(g, font, trim(font, label, labelW), x + inset, textY,
+                    0xFF111318, labelScale);
+            String fittedValue = trim(font, value, valueAreaW);
+            int valueW = phoneTextWidth(fittedValue, valueScale * 9.75F);
+            int valueX = x + w - inset - Math.min(valueW, valueAreaW);
+            valueX = Math.max(x + inset + labelW + 4, Math.min(valueX, x + w - inset - 1));
+            drawScaledString(g, font, fittedValue, valueX, compact ? textY : y + 15,
+                    valueColor, valueScale);
+        }
+        if (divider) {
+            g.fill(x + inset, y + h - 1, x + w, y + h, 0xFFE5E5EA);
         }
     }
 
@@ -3252,10 +4609,7 @@ public final class SmartphoneOverlay {
         drawPhoneAppSurface(g, x, y, w, h, 0xFFFCFCFE);
         drawStatusBar(g, font, x, y - 31, w, 0xFF111318, 0xFFFCFCFE);
         if (contact == null) {
-            drawScaledCentered(g, font, "Messenger", x + w / 2, y + 8, 0xFF111318, 1.15F);
-            drawScaledCentered(g, font, "Pick a contact first.", x + w / 2, y + h / 2, 0xFF8E8E93, 0.9F);
-            mobileButton(g, font, x + Math.round(w * 0.18F), y + h / 2 + 24, Math.round(w * 0.64F), 36,
-                    "Open Contacts", 0xFF0078FF, hitboxes, "APP", "contacts", "", "");
+            drawContacts(g, font, x, y, w, h, hitboxes);
             return;
         }
 
@@ -3269,27 +4623,40 @@ public final class SmartphoneOverlay {
         int threadTop = controlsY + 32;
         int threadBottom = composerY - 10;
         List<SmartphoneClientState.PhoneMessage> messages = SmartphoneClientState.messagesForSelectedContact();
-        if (messages.isEmpty()) {
+        boolean typing = SmartphoneClientState.selectedContactTyping();
+        if (messages.isEmpty() && !typing) {
             SmartphoneClientState.syncMessageThreadScroll(0, Math.max(1, threadBottom - threadTop));
             drawScaledCentered(g, font, "No messages yet", x + w / 2, threadTop + 48, 0xFF8E8E93, 0.92F);
             drawScaledCentered(g, font, "Start the conversation below.", x + w / 2, threadTop + 67, 0xFFB0B0B6, 0.78F);
         } else {
             List<ChatMessageLayout> layouts = buildChatMessageLayouts(font, messages, w);
-            int contentH = 0;
+            int typingRowH = typing ? 46 : 0;
+            int contentH = typingRowH;
             for (ChatMessageLayout layout : layouts) {
                 contentH += layout.rowH();
             }
             int viewportH = Math.max(1, threadBottom - threadTop);
             SmartphoneClientState.syncMessageThreadScroll(contentH, viewportH);
             int cy = threadBottom + SmartphoneClientState.messageThreadScrollOffset();
+            if (typing) {
+                cy -= typingRowH;
+                if (cy + typingRowH >= threadTop && cy <= threadBottom) {
+                    drawTypingBubble(g, x, cy, w);
+                }
+            }
             for (ChatMessageLayout layout : layouts) {
                 cy -= layout.rowH();
                 if (cy + layout.rowH() < threadTop) {
                     break;
                 }
                 if (cy >= threadTop && cy + layout.rowH() <= threadBottom) {
-                    drawMessageBubble(g, font, x, cy, w, layout.maxBubbleW(), layout.bubbleH(),
-                            layout.lines(), layout.message().time(), layout.outgoing());
+                    if (layout.message().moneyAction()) {
+                        drawPayRequestBubble(g, font, x, cy, w, layout.maxBubbleW(), layout.bubbleH(),
+                                layout.message(), layout.outgoing(), hitboxes);
+                    } else {
+                        drawMessageBubble(g, font, x, cy, w, layout.maxBubbleW(), layout.bubbleH(),
+                                layout.lines(), layout.message().time(), layout.outgoing());
+                    }
                 }
             }
             drawMessageThreadScrollbar(g, x, threadTop, w, viewportH,
@@ -3301,38 +4668,201 @@ public final class SmartphoneOverlay {
     private static List<ChatMessageLayout> buildChatMessageLayouts(Font font,
                                                                    List<SmartphoneClientState.PhoneMessage> messages,
                                                                    int w) {
+        if (messages == cachedChatLayoutMessages && w == cachedChatLayoutWidth) {
+            return cachedChatLayouts;
+        }
         List<ChatMessageLayout> layouts = new ArrayList<>();
         for (int i = messages.size() - 1; i >= 0; i--) {
             SmartphoneClientState.PhoneMessage message = messages.get(i);
             boolean outgoing = SmartphoneClientState.isOutgoingMessage(message);
-            int maxBubbleW = Math.max(94, Math.round(w * 0.74F));
-            List<String> lines = wrapPhoneText(font, message.body(), maxBubbleW - 22, 10.5F, CHAT_MESSAGE_MAX_LINES);
-            int bubbleH = Math.max(27, 13 + lines.size() * 13);
+            int maxBubbleW = message.moneyAction()
+                    ? Math.max(168, Math.round(w * 0.86F))
+                    : Math.max(94, Math.round(w * 0.74F));
+            List<String> lines = message.moneyAction()
+                    ? List.of()
+                    : wrapPhoneText(font, message.body(), maxBubbleW - 22, 10.5F, CHAT_MESSAGE_MAX_LINES);
+            int bubbleH = message.moneyAction()
+                    ? payRequestBubbleHeight(message, outgoing)
+                    : Math.max(27, 13 + lines.size() * 13);
             int rowH = bubbleH + 18;
             layouts.add(new ChatMessageLayout(message, outgoing, maxBubbleW, bubbleH, rowH, lines));
         }
+        cachedChatLayoutMessages = messages;
+        cachedChatLayoutWidth = w;
+        cachedChatLayouts = layouts;
         return layouts;
     }
 
-    private static void drawContactListRow(GuiGraphics g, Font font, int x, int y, int w,
-                                           SmartphoneClientState.PhoneContact contact,
+    private static void drawTypingBubble(GuiGraphics g, int x, int y, int w) {
+        int bubbleW = 56;
+        int bubbleH = 31;
+        int bubbleX = x + 4;
+        int bubbleY = y + 8;
+        int color = 0xFFE9E9EB;
+        fillRounded(g, bubbleX, bubbleY, bubbleW, bubbleH, 15, color);
+        int tailY = bubbleY + bubbleH - 9;
+        g.fill(bubbleX - 1, tailY, bubbleX + 8, tailY + 8, color);
+        fillCircle(g, bubbleX - 1, tailY + 7, 4, color);
+
+        long now = System.currentTimeMillis();
+        float base = (now % 1260L) / 1260.0F;
+        for (int i = 0; i < 3; i++) {
+            float phase = (base - i * 0.18F + 1.0F) % 1.0F;
+            float pulse = (Mth.sin(phase * (float) (Math.PI * 2.0D)) + 1.0F) * 0.5F;
+            int alpha = Mth.clamp(Math.round(118.0F + pulse * 110.0F), 118, 228);
+            int radius = 3 + Math.round(pulse);
+            int dotX = bubbleX + 19 + i * 9;
+            int dotY = bubbleY + 16 - Math.round(pulse * 2.0F);
+            fillCircle(g, dotX, dotY, radius, withAlpha(0xFF8E8E93, alpha));
+        }
+    }
+
+    private static void drawContactListRow(GuiGraphics g, Font font, int x, int y, int w, int rowH,
+                                           SmartphoneClientState.PhoneContact contact, boolean sectionStart,
                                            List<SmartphoneClientState.Hitbox> hitboxes) {
-        int avatar = 34;
-        fillCircle(g, x + avatar / 2, y + avatar / 2, avatar / 2, contact.online() ? 0xFF0078FF : 0xFFBFC4CC);
-        drawScaledCentered(g, font, initials(contact.name()), x + avatar / 2, y + 10, 0xFFFFFFFF, 0.86F);
-        drawScaledString(g, font, trim(font, (contact.favorite() ? "* " : "") + contact.name(), w - 86),
-                x + 44, y + 3, 0xFF111318, 0.96F);
-        drawScaledString(g, font, contact.online() ? "Online" : "Offline", x + 44, y + 20,
-                contact.online() ? 0xFF20C985 : 0xFF8E8E93, 0.74F);
+        boolean compact = rowH < 44;
+        int avatar = compact ? 18 : 26;
+        int avatarX = x + 14;
+        int avatarY = y + (rowH - avatar) / 2 + (sectionStart && !compact ? 6 : 0);
+        drawContactListAvatar(g, font, contact, avatarX, avatarY, avatar);
+        int textX = avatarX + avatar + 10;
+        int trailingSpace = contact.unread() > 0 ? (compact ? 26 : 32) : 18;
+        int nameY = compact ? y + Math.max(12, rowH / 2 - 4) : (sectionStart ? y + 22 : y + 18);
+        if (sectionStart) {
+            drawScaledString(g, font, contactSection(contact), textX, y + (compact ? 3 : 5),
+                    0xFF8E8E93, compact ? 0.54F : 0.62F);
+        }
+        drawScaledString(g, font, trim(font, contact.name(), w - (textX - x) - trailingSpace),
+                textX, nameY, 0xFF111318, compact ? 0.84F : (sectionStart ? 0.92F : 0.98F));
+        if (!compact) {
+            String state = contactListSubtitle(contact);
+            drawScaledString(g, font, trim(font, state, w - (textX - x) - trailingSpace),
+                    textX, y + rowH - 15, contactListSubtitleColor(contact), 0.62F);
+        }
         if (contact.unread() > 0) {
             String unread = String.valueOf(Math.min(99, contact.unread()));
-            int badge = 18;
-            fillCircle(g, x + w - badge / 2, y + 17, badge / 2, 0xFF0078FF);
-            drawScaledCentered(g, font, unread, x + w - badge / 2, y + 12, 0xFFFFFFFF, 0.66F);
+            int badge = compact ? 14 : 18;
+            fillCircle(g, x + w - badge / 2, y + rowH / 2, badge / 2, 0xFF0078FF);
+            drawScaledCentered(g, font, unread, x + w - badge / 2, y + rowH / 2 - (compact ? 4 : 5),
+                    0xFFFFFFFF, compact ? 0.56F : 0.66F);
         }
-        g.fill(x + 44, y + 43, x + w, y + 44, 0xFFE6E6EA);
-        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y - 4, w, 44),
+        g.fill(x + 14, y + rowH - 1, x + w, y + rowH, 0xFFE6E6EA);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, rowH),
                 "CONTACT", contact.id().toString(), "", ""));
+    }
+
+    private static void drawContactListAvatar(GuiGraphics g, Font font, SmartphoneClientState.PhoneContact contact,
+                                              int x, int y, int size) {
+        int center = size / 2;
+        int fill = contact != null && contact.online() ? 0xFF0078FF : 0xFFD1D5DB;
+        fillCircle(g, x + center, y + center, center, fill);
+        ResourceLocation skin = contact == null ? null : resolveSkin(contact.id());
+        int inset = Math.max(1, Math.round(size * 0.10F));
+        if (skin != null && size - inset * 2 >= 8) {
+            PlayerFaceRenderer.draw(g, skin, x + inset, y + inset, Math.max(1, size - inset * 2));
+            maskOutsideCircle(g, x, y, size, x + center, y + center, center, 0xFFFFFFFF);
+        } else {
+            drawScaledCentered(g, font, contact == null ? "?" : initials(contact.name()),
+                    x + center, y + Math.round(size * 0.32F), 0xFFFFFFFF,
+                    Mth.clamp(size / 34.0F, 0.52F, 0.82F));
+        }
+        int dot = Math.max(3, Math.round(size * 0.18F));
+        fillCircle(g, x + size - dot, y + size - dot, dot, 0xFFFFFFFF);
+        fillCircle(g, x + size - dot, y + size - dot, Math.max(1, dot - 1),
+                contact != null && contact.online() ? 0xFF20C985 : 0xFF9CA3AF);
+    }
+
+    private static String contactSection(SmartphoneClientState.PhoneContact contact) {
+        String name = contact == null || contact.name() == null ? "" : contact.name().trim();
+        if (name.isBlank()) {
+            return "#";
+        }
+        char first = Character.toUpperCase(name.charAt(0));
+        return Character.isLetterOrDigit(first) ? String.valueOf(first) : "#";
+    }
+
+    private static String contactListSubtitle(SmartphoneClientState.PhoneContact contact) {
+        StringBuilder builder = new StringBuilder(contact != null && contact.online() ? "Online" : "Offline");
+        appendContactFlag(builder, contact != null && contact.favorite(), "Favorite");
+        appendContactFlag(builder, contact != null && contact.muted(), "Muted");
+        appendContactFlag(builder, contact != null && contact.blocked(), "Blocked");
+        return builder.toString();
+    }
+
+    private static String contactPreferenceSummary(SmartphoneClientState.PhoneContact contact) {
+        StringBuilder builder = new StringBuilder();
+        appendContactFlag(builder, contact != null && contact.favorite(), "Favorite");
+        appendContactFlag(builder, contact != null && contact.muted(), "Muted");
+        appendContactFlag(builder, contact != null && contact.blocked(), "Blocked");
+        return builder.isEmpty() ? "None" : builder.toString();
+    }
+
+    private static void appendContactFlag(StringBuilder builder, boolean enabled, String label) {
+        if (!enabled) {
+            return;
+        }
+        if (!builder.isEmpty()) {
+            builder.append(" · ");
+        }
+        builder.append(label);
+    }
+
+    private static int contactPreferenceDetailColor(SmartphoneClientState.PhoneContact contact) {
+        if (contact != null && contact.blocked()) {
+            return 0xFFFF3B30;
+        }
+        if (contact != null && contact.favorite()) {
+            return 0xFFFFB800;
+        }
+        return 0xFF8E8E93;
+    }
+
+    private static int contactListSubtitleColor(SmartphoneClientState.PhoneContact contact) {
+        if (contact != null && contact.blocked()) {
+            return 0xFFFF3B30;
+        }
+        return contact != null && contact.online() ? 0xFF20C985 : 0xFF8E8E93;
+    }
+
+    private static List<String> contactSectionLabels(List<SmartphoneClientState.PhoneContact> contacts) {
+        Set<String> labels = new LinkedHashSet<>();
+        for (SmartphoneClientState.PhoneContact contact : contacts) {
+            labels.add(contactSection(contact));
+        }
+        return new ArrayList<>(labels);
+    }
+
+    private static void drawContactSectionIndex(GuiGraphics g, Font font, int x, int y, int h,
+                                                List<String> sections,
+                                                List<SmartphoneClientState.Hitbox> hitboxes) {
+        if (sections == null || sections.isEmpty() || h <= 0) {
+            return;
+        }
+        int maxLabels = Math.max(1, (Math.max(0, h - 7) / 6) + 1);
+        List<String> visibleSections = sections;
+        if (sections.size() > maxLabels) {
+            visibleSections = new ArrayList<>();
+            int last = sections.size() - 1;
+            for (int i = 0; i < maxLabels; i++) {
+                int sectionIndex = maxLabels <= 1 ? 0 : Math.round(i * (last / (float) (maxLabels - 1)));
+                String section = sections.get(Mth.clamp(sectionIndex, 0, last));
+                if (visibleSections.isEmpty() || !visibleSections.get(visibleSections.size() - 1).equals(section)) {
+                    visibleSections.add(section);
+                }
+            }
+        }
+        int count = visibleSections.size();
+        int step = count <= 1 ? 0 : Math.max(6, Math.min(12, Math.max(1, (h - 7) / Math.max(1, count - 1))));
+        float scale = step <= 6 ? 0.50F : 0.56F;
+        int totalH = count <= 1 ? 7 : (count - 1) * step + 7;
+        int startY = y + Math.max(0, (h - totalH) / 2);
+        for (int i = 0; i < count; i++) {
+            String label = visibleSections.get(i);
+            int labelY = startY + i * step;
+            drawScaledCentered(g, font, label, x + 4, labelY, 0xFF0078FF, scale);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x - 6, labelY - 2, 20, Math.max(6, step)),
+                    "CONTACT_JUMP", label, "", ""));
+        }
     }
 
     private static void drawMessengerHeader(GuiGraphics g, Font font, int x, int y, int w,
@@ -3342,7 +4872,7 @@ public final class SmartphoneOverlay {
         fillCircle(g, x + backSize / 2, y + 17, backSize / 2, 0xFFF0F2F6);
         drawScaledCentered(g, font, "<", x + backSize / 2, y + 10, 0xFF0078FF, 1.05F);
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y + 3, backSize, backSize),
-                "APP", "contacts", "", ""));
+                "APP", "messenger", "", ""));
 
         int avatar = 42;
         int avatarX = x + w / 2 - avatar / 2;
@@ -3416,13 +4946,110 @@ public final class SmartphoneOverlay {
         }
     }
 
+    private static int payRequestBubbleHeight(SmartphoneClientState.PhoneMessage message, boolean outgoing) {
+        return payRequestPending(message) && !outgoing ? 118 : 92;
+    }
+
+    private static void drawPayRequestBubble(GuiGraphics g, Font font, int x, int y, int w, int maxBubbleW, int bubbleH,
+                                             SmartphoneClientState.PhoneMessage message,
+                                             boolean outgoing,
+                                             List<SmartphoneClientState.Hitbox> hitboxes) {
+        int bubbleW = Mth.clamp(maxBubbleW, 168, w - 8);
+        int bubbleX = outgoing ? x + w - bubbleW - 4 : x + 4;
+        int bubbleY = y + 10;
+        boolean gift = message.gift();
+        int color = outgoing ? 0xFFF4F6FA : 0xFFF1F1F5;
+        int border = 0xFFDADAE2;
+        drawRoundedBorder(g, bubbleX, bubbleY, bubbleW, bubbleH, 18, border, color);
+
+        int iconColor = gift ? 0xFFFFB800 : 0xFF20C985;
+        fillCircle(g, bubbleX + 22, bubbleY + 24, 15, iconColor);
+        drawScaledCentered(g, font, gift ? "*" : "$", bubbleX + 22, bubbleY + 17, 0xFFFFFFFF, 0.86F);
+        drawScaledString(g, font, gift ? "Gift" : "Pay Request", bubbleX + 45, bubbleY + 11,
+                0xFF111318, 0.92F);
+        drawScaledString(g, font, payRequestStatusLabel(message), bubbleX + 45, bubbleY + 28,
+                payRequestStatusColor(message), 0.72F);
+
+        String amount = payRequestAmountLabel(message.payRequestAmount());
+        drawScaledString(g, font, trim(font, amount, bubbleW - 28), bubbleX + 14, bubbleY + 51,
+                0xFF111318, 1.42F);
+        String detail = gift
+                ? (outgoing ? "Gifted to " + selectedContactName() : "Gift from " + message.senderName())
+                : (outgoing ? "Requested from " + selectedContactName() : "Requested by " + message.senderName());
+        drawScaledString(g, font, trim(font, detail, bubbleW - 28), bubbleX + 14, bubbleY + 75,
+                0xFF7B7B86, 0.72F);
+
+        if (payRequestPending(message) && !outgoing) {
+            int buttonY = bubbleY + bubbleH - 29;
+            int gap = 6;
+            int buttonW = (bubbleW - 28 - gap) / 2;
+            fillRounded(g, bubbleX + 14, buttonY, buttonW, 22, 11, 0xFF0078FF);
+            drawScaledCentered(g, font, gift ? "Accept" : "Pay", bubbleX + 14 + buttonW / 2, buttonY + 7,
+                    0xFFFFFFFF, 0.72F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(
+                    bubbleX + 14, buttonY, buttonW, 22),
+                    gift ? "MESSAGE_GIFT_ACCEPT" : "MESSAGE_PAY_REQUEST_ACCEPT",
+                    message.payRequestId().toString(), "", ""));
+            fillRounded(g, bubbleX + 14 + buttonW + gap, buttonY, buttonW, 22, 11, 0xFFE9E9EF);
+            drawScaledCentered(g, font, "Decline", bubbleX + 14 + buttonW + gap + buttonW / 2, buttonY + 7,
+                    0xFFFF3B30, 0.72F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(
+                    bubbleX + 14 + buttonW + gap, buttonY, buttonW, 22),
+                    gift ? "MESSAGE_GIFT_DECLINE" : "MESSAGE_PAY_REQUEST_DECLINE",
+                    message.payRequestId().toString(), "", ""));
+        }
+
+        String timeLabel = message.time() == null || message.time().isBlank() ? "" : message.time();
+        if (!timeLabel.isBlank()) {
+            int timeW = phoneTextWidth(timeLabel, 6.8F);
+            int timeX = outgoing ? bubbleX + bubbleW - timeW - 3 : bubbleX + 3;
+            drawScaledString(g, font, timeLabel, timeX, bubbleY + bubbleH + 3, 0xFFB0B0B6, 0.62F);
+        }
+    }
+
+    private static boolean payRequestPending(SmartphoneClientState.PhoneMessage message) {
+        return message != null && "PENDING".equalsIgnoreCase(message.payRequestStatus());
+    }
+
+    private static String payRequestStatusLabel(SmartphoneClientState.PhoneMessage message) {
+        String status = message == null || message.payRequestStatus() == null ? "" : message.payRequestStatus();
+        boolean gift = message != null && message.gift();
+        return switch (status.toUpperCase(Locale.ROOT)) {
+            case "ACCEPTED" -> gift ? "Accepted" : "Paid";
+            case "DECLINED" -> "Declined";
+            case "EXPIRED" -> "Expired";
+            default -> "Pending";
+        };
+    }
+
+    private static int payRequestStatusColor(SmartphoneClientState.PhoneMessage message) {
+        String status = message == null || message.payRequestStatus() == null ? "" : message.payRequestStatus();
+        return switch (status.toUpperCase(Locale.ROOT)) {
+            case "ACCEPTED" -> 0xFF20C985;
+            case "DECLINED", "EXPIRED" -> 0xFFFF3B30;
+            default -> 0xFFFF9F0A;
+        };
+    }
+
+    private static String payRequestAmountLabel(String amount) {
+        String safe = amount == null || amount.isBlank() ? "$0" : amount.trim();
+        return safe.startsWith("$") ? safe : "$" + safe;
+    }
+
+    private static String selectedContactName() {
+        SmartphoneClientState.PhoneContact contact = SmartphoneClientState.selectedContact();
+        return contact == null ? "contact" : contact.name();
+    }
+
     private static void drawMessageComposer(GuiGraphics g, Font font, int x, int y, int w, int h,
                                             List<SmartphoneClientState.Hitbox> hitboxes) {
         g.fill(x - 10, y - 7, x + w + 10, y + h + 8, 0xFFF6F7FA);
         g.fill(x - 10, y - 8, x + w + 10, y - 7, 0xFFE1E1E6);
 
         int sendSize = 34;
-        int fieldW = w - sendSize - 8;
+        int attachSize = 34;
+        int gap = 6;
+        int fieldW = w - sendSize - attachSize - gap * 2;
         List<String> draftLines = wrapPhoneText(font, SmartphoneClientState.messageDraft(), fieldW - 24, 10.5F, CHAT_COMPOSER_WRAP_MAX_LINES);
         int visibleLines = SmartphoneClientState.messageDraft().isBlank()
                 ? 1
@@ -3434,6 +5061,9 @@ public final class SmartphoneOverlay {
         int fieldH = Math.max(34, 20 + visibleLines * 13);
         int fieldY = y + 6;
         boolean active = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.MESSAGE;
+        int attachX = x + fieldW + gap;
+        int sendX = attachX + attachSize + gap;
+        int buttonY = fieldY + fieldH - sendSize;
         fillRounded(g, x, fieldY, fieldW, fieldH, fieldH / 2, 0xFFFFFFFF);
         drawRoundedBorder(g, x, fieldY, fieldW, fieldH, fieldH / 2, active ? 0xFF0078FF : 0xFFDADAE0, 0xFFFFFFFF);
         drawMultilineFieldText(g, font, x + 14, fieldY + 12, fieldW - 24, visibleDraftLines,
@@ -3444,23 +5074,144 @@ public final class SmartphoneOverlay {
         hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, fieldY, fieldW, fieldH),
                 "INPUT", SmartphoneClientState.InputTarget.MESSAGE.name(), "", ""));
 
-        int sendX = x + fieldW + 8;
-        int sendY = fieldY + fieldH - sendSize;
-        fillCircle(g, sendX + sendSize / 2, sendY + sendSize / 2, sendSize / 2, 0xFF0078FF);
-        drawScaledCentered(g, font, ">", sendX + sendSize / 2 + 1, sendY + 10, 0xFFFFFFFF, 1.0F);
-        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(sendX, sendY, sendSize, sendSize),
+        boolean trayOpen = SmartphoneClientState.messengerTrayOpen();
+        fillCircle(g, attachX + attachSize / 2, buttonY + attachSize / 2, attachSize / 2,
+                trayOpen ? 0xFFE9E9EF : 0xFFFFFFFF);
+        drawRoundedBorder(g, attachX, buttonY, attachSize, attachSize, attachSize / 2,
+                trayOpen ? 0xFFE9E9EF : 0xFFDADAE0, trayOpen ? 0xFFE9E9EF : 0xFFFFFFFF);
+        if (trayOpen) {
+            drawFigmaCloseGlyph(g, attachX + attachSize / 2, buttonY + attachSize / 2, 0xFF0078FF, 0.68F);
+        } else {
+            drawFigmaPlusGlyph(g, attachX + attachSize / 2, buttonY + attachSize / 2, 8, 0xFF0078FF);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(attachX, buttonY, attachSize, attachSize),
+                "MESSAGE_ATTACH_TOGGLE", "", "", ""));
+
+        fillCircle(g, sendX + sendSize / 2, buttonY + sendSize / 2, sendSize / 2, 0xFF0078FF);
+        drawScaledCentered(g, font, ">", sendX + sendSize / 2 + 1, buttonY + 10, 0xFFFFFFFF, 1.0F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(sendX, buttonY, sendSize, sendSize),
                 "SEND_MESSAGE", "", "", ""));
+
+        if (trayOpen) {
+            int trayY = fieldY + fieldH + 10;
+            int trayH = Math.max(88, y + h - trayY - 4);
+            if (SmartphoneClientState.messengerPayRequestPanel() || SmartphoneClientState.messengerGiftPanel()) {
+                drawMessengerPayRequestPanel(g, font, x, trayY, w, trayH, hitboxes);
+            } else {
+                drawMessengerAttachTray(g, font, x, trayY, w, trayH, hitboxes);
+            }
+        }
     }
 
     private static int messageComposerHeight(Font font, int w) {
         int sendSize = 34;
-        int fieldW = w - sendSize - 8;
+        int attachSize = 34;
+        int gap = 6;
+        int fieldW = w - sendSize - attachSize - gap * 2;
         List<String> draftLines = wrapPhoneText(font, SmartphoneClientState.messageDraft(), fieldW - 24, 10.5F, CHAT_COMPOSER_WRAP_MAX_LINES);
         int visibleLines = SmartphoneClientState.messageDraft().isBlank()
                 ? 1
                 : Math.min(CHAT_COMPOSER_MAX_LINES, Math.max(1, draftLines.size()));
         int fieldH = Math.max(34, 20 + visibleLines * 13);
-        return fieldH + 14;
+        int tray = SmartphoneClientState.messengerTrayOpen() ? 132 : 0;
+        return fieldH + 14 + tray;
+    }
+
+    private static void drawMessengerAttachTray(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                                List<SmartphoneClientState.Hitbox> hitboxes) {
+        fillRounded(g, x, y, w, h, 20, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, y, w, h, 20, 0xFFE1E1E6, 0xFFFFFFFF);
+        drawScaledString(g, font, "Apps", x + 16, y + 16, 0xFF111318, 1.02F);
+        int tile = Math.min(62, Math.max(52, h - 54));
+        int tileX = x + 16;
+        int tileY = y + 42;
+        drawMessengerAppTile(g, font, tileX, tileY, tile, 0xFFEAF8F1, 0xFF20C985,
+                "$", "Pay", "Request");
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(tileX, tileY, tile, tile),
+                "MESSAGE_PAY_REQUEST_TILE", "", "", ""));
+
+        int giftX = tileX + tile + 14;
+        drawMessengerAppTile(g, font, giftX, tileY, tile, 0xFFFFF4D8, 0xFFFFB800,
+                "*", "Gift", "Money");
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(giftX, tileY, tile, tile),
+                "MESSAGE_GIFT_TILE", "", "", ""));
+    }
+
+    private static void drawMessengerAppTile(GuiGraphics g, Font font, int x, int y, int size,
+                                             int bg, int accent, String icon, String top, String bottom) {
+        fillRounded(g, x, y, size, size, Math.max(14, size / 4), bg);
+        fillCircle(g, x + size / 2, y + Math.round(size * 0.34F), Math.max(12, size / 4), accent);
+        drawScaledCentered(g, font, icon, x + size / 2, y + Math.round(size * 0.25F), 0xFFFFFFFF, 0.86F);
+        drawScaledCentered(g, font, top, x + size / 2, y + Math.round(size * 0.60F), 0xFF111318, 0.70F);
+        drawScaledCentered(g, font, bottom, x + size / 2, y + Math.round(size * 0.75F), 0xFF111318, 0.70F);
+    }
+
+    private static void drawMessengerPayRequestPanel(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                                     List<SmartphoneClientState.Hitbox> hitboxes) {
+        fillRounded(g, x, y, w, h, 20, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, y, w, h, 20, 0xFFE1E1E6, 0xFFFFFFFF);
+        boolean gift = SmartphoneClientState.messengerGiftPanel();
+        drawScaledString(g, font, gift ? "Gift Money" : "Pay Request", x + 14, y + 12, 0xFF111318, 0.98F);
+        drawScaledString(g, font, (gift ? "Gift to " : "Request from ") + selectedContactName(),
+                x + 14, y + 29, 0xFF8E8E93, 0.72F);
+
+        int rowY = y + 48;
+        int accountW = Math.max(116, Math.round(w * 0.56F));
+        fillRounded(g, x + 12, rowY, accountW, 28, 14, 0xFFF2F2F7);
+        drawScaledString(g, font, trim(font, SmartphoneClientState.messengerRequestAccountLabel(), accountW - 60),
+                x + 24, rowY + 9, 0xFF111318, 0.72F);
+        drawScaledString(g, font, "Choose", x + accountW - 34, rowY + 9, 0xFF0078FF, 0.64F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + 12, rowY, accountW, 28),
+                "MESSAGE_REQUEST_ACCOUNT_PICKER", "", "", ""));
+
+        int amountX = x + accountW + 20;
+        int amountW = Math.max(72, w - accountW - 32);
+        boolean amountActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.MESSENGER_REQUEST_AMOUNT;
+        fillRounded(g, amountX, rowY, amountW, 28, 14, 0xFFF2F2F7);
+        drawRoundedBorder(g, amountX, rowY, amountW, 28, 14,
+                amountActive ? 0xFF0078FF : 0xFFF2F2F7, 0xFFF2F2F7);
+        drawFieldText(g, font, amountX + 10, rowY + 9, amountW - 20,
+                SmartphoneClientState.messengerRequestAmount(), amountActive, "$0",
+                0xFF111318, 0xFF8E8E93, 0xFF111318);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(amountX, rowY, amountW, 28),
+                "INPUT", SmartphoneClientState.InputTarget.MESSENGER_REQUEST_AMOUNT.name(), "", ""));
+
+        int buttonY = y + h - 38;
+        mobileButton(g, font, x + 12, buttonY, w - 24, 30, gift ? "Gift" : "Request", 0xFF0078FF,
+                hitboxes, "MESSAGE_REQUEST_SEND", "", "", "");
+
+        if (SmartphoneClientState.messengerAccountPickerOpen()) {
+            drawMessengerAccountPicker(g, font, x + 10, y + 38, w - 20, Math.max(84, h - 48), hitboxes);
+        }
+    }
+
+    private static void drawMessengerAccountPicker(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                                   List<SmartphoneClientState.Hitbox> hitboxes) {
+        fillRounded(g, x, y, w, h, 18, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, y, w, h, 18, 0xFFDADAE0, 0xFFFFFFFF);
+        drawScaledString(g, font, "Choose account", x + 12, y + 10, 0xFF111318, 0.84F);
+        int rowY = y + 32;
+        int rowH = 30;
+        int visibleRows = Math.max(1, (h - 38) / rowH);
+        List<SmartphoneClientState.PhoneAccount> accounts = SmartphoneClientState.accounts();
+        SmartphoneClientState.syncMessengerAccountPickerScroll(accounts.size(), visibleRows);
+        int start = Mth.clamp(SmartphoneClientState.messengerAccountPickerOffset(), 0,
+                Math.max(0, accounts.size() - visibleRows));
+        int shown = 0;
+        for (int i = start; i < accounts.size() && shown < visibleRows; i++, shown++) {
+            SmartphoneClientState.PhoneAccount account = accounts.get(i);
+            int py = rowY + shown * rowH;
+            fillRounded(g, x + 8, py, w - 16, 25, 12, account.primary() ? 0xFFEAF3FF : 0xFFF2F2F7);
+            drawScaledString(g, font, trim(font, account.bankName() + " " + account.accountType(), w - 84),
+                    x + 18, py + 6, 0xFF111318, 0.68F);
+            drawScaledString(g, font, account.shortBalance(), x + w - 70, py + 6, 0xFF0078FF, 0.66F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + 8, py, w - 16, 25),
+                    "MESSAGE_REQUEST_ACCOUNT_SELECT", account.id().toString(), "", ""));
+        }
+        if (accounts.isEmpty()) {
+            drawScaledCentered(g, font, "No accounts available", x + w / 2, y + h / 2 - 4,
+                    0xFF8E8E93, 0.76F);
+        }
     }
 
     private static void drawMessageDraftScrollbar(GuiGraphics g, int x, int y, int w, int h,
@@ -3496,44 +5247,58 @@ public final class SmartphoneOverlay {
 
     private static List<String> wrapPhoneText(Font font, String text, int width, float size, int maxLines) {
         List<String> lines = new ArrayList<>();
-        String safe = text == null ? "" : text.trim();
+        String safe = text == null ? "" : text.replace("\r\n", "\n").replace('\r', '\n');
         if (safe.isBlank()) {
             return List.of("");
         }
-        String[] words = safe.split("\\s+");
-        String line = "";
-        for (String word : words) {
-            String remaining = word;
-            while (!remaining.isBlank()) {
-                String candidate = line.isBlank() ? remaining : line + " " + remaining;
-                if (phoneTextWidth(candidate, size) <= width) {
-                    line = candidate;
-                    remaining = "";
-                } else {
-                    if (!line.isBlank()) {
-                        lines.add(line);
-                        line = "";
-                        if (lines.size() >= maxLines) {
-                            return lines;
-                        }
-                        continue;
-                    }
-                    int split = fitTextPrefix(remaining, width, size);
-                    if (split <= 0 || split >= remaining.length()) {
-                        line = remaining;
+        String[] paragraphs = safe.split("\n", -1);
+        for (String paragraph : paragraphs) {
+            String normalized = paragraph.trim();
+            if (normalized.isBlank()) {
+                lines.add("");
+                if (lines.size() >= maxLines) {
+                    return lines;
+                }
+                continue;
+            }
+            String[] words = normalized.split("\\s+");
+            String line = "";
+            for (String word : words) {
+                String remaining = word;
+                while (!remaining.isBlank()) {
+                    String candidate = line.isBlank() ? remaining : line + " " + remaining;
+                    if (phoneTextWidth(candidate, size) <= width) {
+                        line = candidate;
                         remaining = "";
                     } else {
-                        lines.add(remaining.substring(0, split));
-                        remaining = remaining.substring(split);
-                        if (lines.size() >= maxLines) {
-                            return lines;
+                        if (!line.isBlank()) {
+                            lines.add(line);
+                            line = "";
+                            if (lines.size() >= maxLines) {
+                                return lines;
+                            }
+                            continue;
+                        }
+                        int split = fitTextPrefix(remaining, width, size);
+                        if (split <= 0 || split >= remaining.length()) {
+                            line = remaining;
+                            remaining = "";
+                        } else {
+                            lines.add(remaining.substring(0, split));
+                            remaining = remaining.substring(split);
+                            if (lines.size() >= maxLines) {
+                                return lines;
+                            }
                         }
                     }
                 }
             }
-        }
-        if (!line.isBlank() && lines.size() < maxLines) {
-            lines.add(line);
+            if (!line.isBlank() && lines.size() < maxLines) {
+                lines.add(line);
+            }
+            if (lines.size() >= maxLines) {
+                return lines;
+            }
         }
         if (lines.isEmpty()) {
             lines.add("");
@@ -3553,36 +5318,946 @@ public final class SmartphoneOverlay {
         return Math.max(1, best);
     }
 
+    private static List<String> wrapNoteText(String text, int width, float size, int maxLines) {
+        List<String> lines = new ArrayList<>();
+        String safe = text == null ? "" : text.replace("\r\n", "\n").replace('\r', '\n');
+        if (safe.isEmpty()) {
+            return List.of("");
+        }
+        String[] rawLines = safe.split("\n", -1);
+        for (String rawLine : rawLines) {
+            if (rawLine.isEmpty()) {
+                lines.add("");
+                if (lines.size() >= maxLines) {
+                    return lines;
+                }
+                continue;
+            }
+            String remaining = rawLine;
+            while (!remaining.isEmpty()) {
+                int split = Math.max(1, Math.min(fitTextPrefix(remaining, width, size), remaining.length()));
+                if (split < remaining.length()) {
+                    int whitespaceSplit = lastWhitespaceBefore(remaining, split);
+                    if (whitespaceSplit > 0) {
+                        split = whitespaceSplit + 1;
+                    }
+                }
+                lines.add(remaining.substring(0, split));
+                remaining = remaining.substring(split);
+                if (lines.size() >= maxLines) {
+                    return lines;
+                }
+            }
+        }
+        if (lines.isEmpty()) {
+            lines.add("");
+        }
+        return lines;
+    }
+
+    private static int lastWhitespaceBefore(String value, int endExclusive) {
+        int limit = Math.min(value == null ? 0 : value.length(), Math.max(0, endExclusive));
+        for (int i = limit - 1; i >= 0; i--) {
+            if (Character.isWhitespace(value.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private static void drawNotes(GuiGraphics g, Font font, int x, int y, int w, int h,
                                   List<SmartphoneClientState.Hitbox> hitboxes) {
-        g.drawString(font, "Notes", x, y, 0xFFFFFFFF, false);
-        int by = y + 20;
-        for (int i = 0; i < 12; i++) {
-            button(g, font, x + (i % 6) * 28, by + (i / 6) * 22, 22, 18, String.valueOf(i + 1), 0xAAFFFFFF, hitboxes, "NOTE_SELECT", String.valueOf(i), "", "");
+        drawPhoneAppSurface(g, x, y, w, h, 0xFFF7F4EA);
+        drawStatusBar(g, font, x, y - 31, w, 0xFF161616, 0xFFF7F4EA);
+        List<String> notes = SmartphoneClientState.notes();
+        int savedCount = (int) notes.stream().filter(note -> note != null && !note.isBlank()).count();
+        if (!SmartphoneClientState.noteEditorOpen()) {
+            drawNotesList(g, font, x, y, w, h, savedCount, hitboxes);
+            return;
         }
-        drawInput(g, font, x, y + 72, w, "Note", SmartphoneClientState.noteDraft(), SmartphoneClientState.InputTarget.NOTE, hitboxes);
-        card(g, x, y + 100, w, Math.max(80, h - 150));
-        drawWrapped(g, font, SmartphoneClientState.noteDraft(), x + 8, y + 108, w - 16, 0xFFFFFFFF, 8);
-        button(g, font, x, y + h - 36, 52, 20, "Save", SmartphoneClientState.accentColor(), hitboxes, "SAVE_NOTE", "", "", "");
-        button(g, font, x + 60, y + h - 36, 58, 20, "Delete", 0xFFFF6A6A, hitboxes, "DELETE_NOTE", "", "", "");
+        drawNotesEditor(g, font, x, y, w, h, notes, savedCount, hitboxes);
+    }
+
+    private static void drawNotesList(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                      int savedCount, List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean compactNotes = h < 310;
+        drawScaledString(g, font, "Notes", x, y, 0xFF1C1C1E, compactNotes ? 1.34F : 1.62F);
+        List<SmartphoneClientState.PhoneNote> visibleNotes = SmartphoneClientState.visibleNotes();
+        String countLabel = SmartphoneClientState.noteSearch().isBlank()
+                ? savedCount + " saved"
+                : visibleNotes.size() + " of " + savedCount;
+        drawScaledString(g, font, countLabel, x, y + (compactNotes ? 21 : 26),
+                0xFF8E8E93, compactNotes ? 0.68F : 0.78F);
+        boolean canCreate = savedCount < SmartphoneClientState.maxPhoneNotes();
+
+        int searchY = y + (compactNotes ? 38 : 50);
+        int searchH = compactNotes ? 30 : 34;
+        boolean searchActive = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.NOTE_SEARCH;
+        boolean searchHasText = !SmartphoneClientState.noteSearch().isBlank();
+        boolean showCancel = searchActive || searchHasText;
+        int cancelW = showCancel ? Math.min(50, Math.max(42, w / 6)) : 0;
+        int searchW = showCancel ? Math.max(90, w - cancelW - 8) : w;
+        fillRounded(g, x, searchY, searchW, searchH, 17, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, searchY, searchW, searchH, 17,
+                searchActive ? 0xFFFFB13D : 0xFFE5E1D6, 0xFFFFFFFF);
+        int iconX = x + 17;
+        int iconY = searchY + searchH / 2;
+        fillCircle(g, iconX, iconY - 1, 5, 0xFFB0A99A);
+        fillCircle(g, iconX, iconY - 1, 3, 0xFFFFFFFF);
+        g.fill(iconX + 4, iconY + 3, iconX + 10, iconY + 5, 0xFFB0A99A);
+        drawFieldText(g, font, x + 34, searchY + 12, searchW - 72,
+                SmartphoneClientState.noteSearch(), searchActive, "Search notes",
+                0xFF1C1C1E, 0xFFB0A99A, 0xFF1C1C1E);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, searchY, searchW, searchH),
+                "INPUT", SmartphoneClientState.InputTarget.NOTE_SEARCH.name(), "", ""));
+        if (searchHasText) {
+            drawFigmaCloseGlyph(g, x + searchW - 20, iconY, 0xFFB0A99A, 0.62F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW - 38, searchY, 38, searchH),
+                    "NOTE_SEARCH_CLEAR", "", "", ""));
+        }
+        if (showCancel) {
+            drawScaledCentered(g, font, "Cancel", x + searchW + 4 + cancelW / 2, searchY + 12,
+                    0xFFFFA800, 0.76F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW + 2, searchY, cancelW + 6, searchH),
+                    "NOTE_SEARCH_CANCEL", "", "", ""));
+        }
+
+        int listY = searchY + searchH + (compactNotes ? 8 : 12);
+        int toolbarH = Mth.clamp(Math.round(h * (compactNotes ? 0.085F : 0.10F)),
+                compactNotes ? 28 : 34, compactNotes ? 36 : 44);
+        int toolbarY = y + h - toolbarH;
+        int viewportH = Math.max(0, toolbarY - listY - 8);
+        int rowH = compactNotes ? Mth.clamp(Math.round(h * 0.15F), 34, 46) : Mth.clamp(viewportH, 28, 58);
+        if (viewportH > 0 && viewportH < rowH) {
+            rowH = viewportH;
+        }
+        int visibleRows = viewportH >= 24 && rowH > 0 ? Math.max(1, viewportH / rowH) : 0;
+        SmartphoneClientState.syncNoteListScroll(visibleNotes.size(), Math.max(1, visibleRows));
+        int offset = SmartphoneClientState.noteListScrollOffset();
+        int drawn = 0;
+        if (viewportH > 0) {
+            fillRounded(g, x, listY, w, Math.min(viewportH, Math.max(rowH, visibleNotes.size() * rowH)), 18, 0xFFFFFFFF);
+        }
+        for (int i = offset; i < visibleNotes.size() && drawn < visibleRows; i++) {
+            SmartphoneClientState.PhoneNote note = visibleNotes.get(i);
+            int rowY = listY + drawn * rowH;
+            drawNoteListRow(g, font, x, rowY, w, rowH, note.index(), note.body(),
+                    drawn < visibleRows - 1 && i < visibleNotes.size() - 1, hitboxes);
+            drawn++;
+        }
+        if (savedCount == 0 && viewportH >= 28) {
+            drawNoteEmptyState(g, font, x, listY, w, viewportH, "No Notes", "Notebook is empty.");
+        } else if (visibleNotes.isEmpty() && viewportH >= 28) {
+            drawNoteEmptyState(g, font, x, listY, w, viewportH, "No Results", "No matching notes.");
+        }
+        if (visibleRows > 0) {
+            drawMessageDraftScrollbar(g, x, listY, w, viewportH, offset, visibleRows, visibleNotes.size());
+        }
+        drawNotesToolbar(g, font, x, toolbarY, w, toolbarH, savedCount, canCreate, hitboxes);
+    }
+
+    private static void drawNotesToolbar(GuiGraphics g, Font font, int x, int y, int w, int h, int savedCount,
+                                         boolean canCreate, List<SmartphoneClientState.Hitbox> hitboxes) {
+        g.fill(x, y, x + w, y + 1, 0xFFE5E1D6);
+        int composeSize = Mth.clamp(Math.min(h - 8, w / 5), 16, 34);
+        int composeX = x + w - composeSize - 4;
+        int composeY = y + (h - composeSize) / 2;
+        String countText = savedCount + "/" + SmartphoneClientState.maxPhoneNotes();
+        int countMaxW = Math.max(0, composeX - x - 8);
+        if (countMaxW >= 28) {
+            drawScaledCentered(g, font, trim(font, countText, countMaxW),
+                    x + countMaxW / 2, y + Math.max(7, h / 2 - 4), 0xFF8E8E93,
+                    h < 30 ? 0.58F : 0.70F);
+        }
+        drawNoteComposeGlyph(g, composeX + composeSize / 2, composeY + composeSize / 2, composeSize,
+                canCreate ? 0xFFFFA800 : 0xFFB0A99A);
+        if (canCreate) {
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(composeX, composeY, composeSize, composeSize),
+                    "NOTE_NEW", "", "", ""));
+        }
+    }
+
+    private static void drawNoteEmptyState(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                           String title, String subtitle) {
+        int centerX = x + w / 2;
+        int centerY = y + Math.max(22, h / 2);
+        if (h >= 70) {
+            int iconY = centerY - 24;
+            fillRounded(g, centerX - 13, iconY - 14, 26, 28, 4, 0xFFFFF3C7);
+            g.fill(centerX - 13, iconY - 9, centerX + 13, iconY - 7, 0xFFFFC84D);
+            g.fill(centerX - 8, iconY - 1, centerX + 8, iconY, 0xFFD8B24C);
+            g.fill(centerX - 8, iconY + 6, centerX + 5, iconY + 7, 0xFFD8B24C);
+        }
+        int titleY = h >= 70 ? centerY + 2 : centerY - 8;
+        drawScaledCentered(g, font, title, centerX, titleY, 0xFF1C1C1E, 0.98F);
+        if (h >= 58) {
+            drawScaledCentered(g, font, subtitle, centerX, titleY + 17, 0xFF8E8E93, 0.68F);
+        }
+    }
+
+    private static void drawNoteListRow(GuiGraphics g, Font font, int x, int y, int w, int h, int index,
+                                        String note, boolean divider,
+                                        List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean compact = h < 44;
+        String query = SmartphoneClientState.noteSearch();
+        String matchedSnippet = query == null || query.isBlank() ? "" : noteSearchSnippet(note, query);
+        String title = firstNoteLine(note);
+        if (compact && !matchedSnippet.isBlank() && !title.toLowerCase(Locale.ROOT).contains(query.trim().toLowerCase(Locale.ROOT))) {
+            title = matchedSnippet;
+        }
+        drawScaledString(g, font, trim(font, title, w - 38), x + 14,
+                y + (compact ? Math.max(6, h / 2 - 5) : 10), 0xFF1C1C1E, compact ? 0.84F : 0.96F);
+        String snippet = noteSnippet(note);
+        if (!matchedSnippet.isBlank()) {
+            snippet = matchedSnippet;
+        }
+        if (!compact && !snippet.isBlank()) {
+            drawScaledString(g, font, trim(font, snippet, w - 38), x + 14, y + 30, 0xFF8E8E93, 0.74F);
+        }
+        if (h >= 28) {
+            drawFigmaChevronRight(g, x + w - 18, y + h / 2, 5, 0xFFC7C7CC);
+        }
+        if (divider) {
+            g.fill(x + 14, y + h - 1, x + w, y + h, 0xFFE5E1D6);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                "NOTE_SELECT", String.valueOf(index), "", ""));
+    }
+
+    private static void drawNotesEditor(GuiGraphics g, Font font, int x, int y, int w, int h, List<String> notes,
+                                        int savedCount, List<SmartphoneClientState.Hitbox> hitboxes) {
+        int selected = SmartphoneClientState.noteIndex();
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFFFFA800);
+        drawScaledString(g, font, "Notes", x + 16, y + 10, 0xFFFFA800, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(62, w / 3), backSize),
+                "NOTE_LIST", "", "", ""));
+        drawScaledCentered(g, font, "Note", x + w / 2, y + 8, 0xFF1C1C1E, 1.02F);
+        int doneW = 48;
+        drawScaledString(g, font, "Done", x + w - doneW + 6, y + 10, 0xFFFFA800, 0.84F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + w - doneW, y, doneW, backSize),
+                "SAVE_NOTE", "", "", ""));
+
+        boolean compactEditor = h < 260;
+        int editorY = y + (compactEditor ? 38 : 46);
+        int toolbarH = SmartphoneClientState.selectedNoteHasContent()
+                ? Mth.clamp(Math.round(h * (compactEditor ? 0.085F : 0.10F)),
+                compactEditor ? 28 : 34, compactEditor ? 36 : 44)
+                : 0;
+        int toolbarY = y + h - toolbarH;
+        int editorBottom = toolbarH > 0 ? toolbarY - 4 : y + h - 4;
+        int editorH = Math.max(0, editorBottom - editorY);
+        if (toolbarH > 0 && editorH < 28) {
+            toolbarH = 0;
+            toolbarY = y + h;
+            editorBottom = y + h - 4;
+            editorH = Math.max(0, editorBottom - editorY);
+        }
+        String draft = SmartphoneClientState.noteDraft();
+        boolean active = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.NOTE;
+        int fieldY = editorY + 4;
+        int fieldH = Math.max(0, editorY + editorH - fieldY - 4);
+        if (editorH > 0 && fieldH > 0) {
+            int visibleLines = Math.max(1, fieldH / 13);
+            int textInset = 4;
+            int textW = Math.max(24, w - textInset * 2);
+            List<String> allLines = wrapNoteText(draft, textW, 9.0F, 1024);
+            SmartphoneClientState.syncNoteDraftScroll(allLines.size(), visibleLines);
+            int noteStart = Mth.clamp(SmartphoneClientState.noteDraftScrollOffset(), 0,
+                    Math.max(0, allLines.size() - visibleLines));
+            List<String> visibleNoteLines = allLines.subList(noteStart, Math.min(allLines.size(), noteStart + visibleLines));
+            drawMultilineFieldText(g, font, x + textInset, fieldY, textW, visibleNoteLines, draft, active,
+                    "Write a note...", 0xFF1C1C1E, 0xFFB0A99A, 0xFF1C1C1E, true);
+            drawMessageDraftScrollbar(g, x, fieldY - 4, w, fieldH + 6, noteStart, visibleLines, allLines.size());
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, editorY, w, editorH),
+                    "INPUT", SmartphoneClientState.InputTarget.NOTE.name(), "", ""));
+        }
+        if (toolbarH > 0) {
+            drawNotesEditorToolbar(g, font, x, toolbarY, w, toolbarH, hitboxes);
+        }
+    }
+
+    private static void drawNotesEditorToolbar(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                               List<SmartphoneClientState.Hitbox> hitboxes) {
+        g.fill(x, y, x + w, y + 1, 0xFFE5E1D6);
+        int deleteSize = Mth.clamp(Math.min(h - 8, w / 5), 16, 34);
+        int deleteX = x + w - deleteSize - 4;
+        int deleteY = y + (h - deleteSize) / 2;
+        fillCircle(g, deleteX + deleteSize / 2, deleteY + deleteSize / 2, deleteSize / 2, 0xFFFFE2E0);
+        drawNoteDeleteGlyph(g, deleteX + deleteSize / 2, deleteY + deleteSize / 2, deleteSize, 0xFFFF3B30);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(deleteX, deleteY, deleteSize, deleteSize),
+                "DELETE_NOTE", "", "", ""));
+    }
+
+    private static String noteSnippet(String value) {
+        String safe = value == null ? "" : value.trim().replace('\n', ' ');
+        String title = firstNoteLine(value);
+        if (safe.startsWith(title)) {
+            safe = safe.substring(Math.min(safe.length(), title.length())).trim();
+        }
+        return safe;
+    }
+
+    private static String noteSearchSnippet(String value, String query) {
+        String safe = value == null ? "" : value.trim().replace('\n', ' ');
+        String needle = query == null ? "" : query.trim();
+        if (safe.isBlank() || needle.isBlank()) {
+            return "";
+        }
+        String lower = safe.toLowerCase(Locale.ROOT);
+        String lowerNeedle = needle.toLowerCase(Locale.ROOT);
+        int match = lower.indexOf(lowerNeedle);
+        if (match < 0) {
+            return "";
+        }
+        int start = Math.max(0, match - 18);
+        int end = Math.min(safe.length(), match + lowerNeedle.length() + 28);
+        while (start > 0 && start < safe.length() && safe.charAt(start) != ' ') {
+            start--;
+        }
+        while (end < safe.length() && end > 0 && safe.charAt(end - 1) != ' ') {
+            end++;
+        }
+        String snippet = safe.substring(Mth.clamp(start, 0, safe.length()), Mth.clamp(end, 0, safe.length())).trim();
+        if (snippet.isBlank()) {
+            return "";
+        }
+        if (start > 0) {
+            snippet = "..." + snippet;
+        }
+        if (end < safe.length()) {
+            snippet = snippet + "...";
+        }
+        return snippet;
+    }
+
+    private static void drawNoteDeleteGlyph(GuiGraphics g, int cx, int cy, int size, int color) {
+        float scale = Mth.clamp(size / 28.0F, 0.50F, 1.0F);
+        int lidW = Math.max(5, Math.round(11 * scale));
+        int halfLid = lidW / 2;
+        int topY = cy - Math.round(4 * scale);
+        g.fill(cx - halfLid, topY, cx + halfLid + 1, topY + Math.max(1, Math.round(2 * scale)), color);
+        g.fill(cx - Math.round(2 * scale), cy - Math.round(7 * scale),
+                cx + Math.round(3 * scale), cy - Math.round(5 * scale), color);
+        drawSoftLine(g, cx - Math.round(4 * scale), cy - Math.round(1 * scale),
+                cx - Math.round(3 * scale), cy + Math.round(8 * scale), color);
+        drawSoftLine(g, cx + Math.round(4 * scale), cy - Math.round(1 * scale),
+                cx + Math.round(3 * scale), cy + Math.round(8 * scale), color);
+        g.fill(cx - Math.round(3 * scale), cy + Math.round(8 * scale),
+                cx + Math.round(4 * scale), cy + Math.round(10 * scale), color);
+        g.fill(cx - Math.max(1, Math.round(1 * scale)), cy + Math.round(1 * scale),
+                cx, cy + Math.round(7 * scale), color);
+        g.fill(cx + Math.round(2 * scale), cy + Math.round(1 * scale),
+                cx + Math.round(3 * scale), cy + Math.round(7 * scale), color);
+    }
+
+    private static void drawNoteComposeGlyph(GuiGraphics g, int cx, int cy, int size, int color) {
+        float scale = Mth.clamp(size / 28.0F, 0.50F, 1.0F);
+        int cardW = Math.max(8, Math.round(16 * scale));
+        int cardH = Math.max(8, Math.round(16 * scale));
+        drawRoundedBorder(g, cx - cardW / 2, cy - Math.round(7 * scale), cardW, cardH,
+                Math.max(2, Math.round(3 * scale)), color, 0xFFF7F4EA);
+        drawSoftLine(g, cx - Math.round(2 * scale), cy + Math.round(4 * scale),
+                cx + Math.round(8 * scale), cy - Math.round(6 * scale), color);
+        drawSoftLine(g, cx + Math.round(6 * scale), cy - Math.round(8 * scale),
+                cx + Math.round(10 * scale), cy - Math.round(4 * scale), color);
+        drawSoftLine(g, cx - Math.round(3 * scale), cy + Math.round(5 * scale),
+                cx - Math.round(5 * scale), cy + Math.round(8 * scale), color);
+        g.fill(cx - Math.round(6 * scale), cy + Math.round(8 * scale),
+                cx - Math.round(3 * scale), cy + Math.round(10 * scale), color);
     }
 
     private static void drawSettings(GuiGraphics g, Font font, int x, int y, int w, int h,
                                      List<SmartphoneClientState.Hitbox> hitboxes) {
-        g.drawString(font, "Settings", x, y, 0xFFFFFFFF, false);
-        g.drawString(font, "Accent", x, y + 22, 0xCCFFFFFF, false);
-        button(g, font, x, y + 38, 52, 20, "Cyan", 0xFF52D7FF, hitboxes, "THEME", "cyan", "aurora", "");
-        button(g, font, x + 58, y + 38, 56, 20, "Green", 0xFF23D18B, hitboxes, "THEME", "green", "forest", "");
-        button(g, font, x + 120, y + 38, 52, 20, "Rose", 0xFFFF6A9C, hitboxes, "THEME", "rose", "dusk", "");
-        button(g, font, x, y + 66, 52, 20, "Gold", 0xFFFFCA5C, hitboxes, "THEME", "gold", "mono", "");
-        g.drawString(font, "Phone is owner-locked unless the server config enables open access.", x, y + 100, 0xCCFFFFFF, false);
+        drawPhoneAppSurface(g, x, y, w, h, 0xFFF2F2F7);
+        drawStatusBar(g, font, x, y - 31, w, 0xFF111318, 0xFFF2F2F7);
+        if (SmartphoneClientState.settingsAppearanceOpen()) {
+            drawSettingsAppearance(g, font, x, y, w, h, hitboxes);
+            return;
+        }
+        if (SmartphoneClientState.settingsInstalledAppsOpen()) {
+            drawSettingsInstalledApps(g, font, x, y, w, h, hitboxes);
+            return;
+        }
+        if (SmartphoneClientState.settingsPasscodeOpen()) {
+            drawSettingsPasscode(g, font, x, y, w, h, hitboxes);
+            return;
+        }
+        drawSettingsMain(g, font, x, y, w, h, hitboxes);
     }
 
-    private static void drawBridge(GuiGraphics g, Font font, int x, int y, int w, int h) {
-        g.drawString(font, "External App", x, y, 0xFFFFFFFF, false);
-        card(g, x, y + 24, w, 84);
-        drawWrapped(g, font, "This app is visible because its mod is loaded. Opening the native UI is reserved for that mod's own keybind/API.",
-                x + 8, y + 34, w - 16, 0xFFFFFFFF, 5);
+    private static void drawSettingsMain(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                         List<SmartphoneClientState.Hitbox> hitboxes) {
+        int bottom = y + h - 8;
+        boolean compactSettings = h < 320;
+        boolean tightSettings = h < 240;
+        drawScaledString(g, font, "Settings", x, y, 0xFF111318, tightSettings ? 1.34F : 1.56F);
+
+        int searchY = y + (tightSettings ? 30 : 34);
+        int searchH = tightSettings ? 30 : 34;
+        drawSettingsSearch(g, font, x, searchY, w, searchH, hitboxes);
+
+        boolean searching = !SmartphoneClientState.settingsSearch().isBlank();
+        List<SettingsRowData> rows = visibleSettingsRows();
+        int groupY;
+        if (searching) {
+            groupY = searchY + searchH + Mth.clamp(Math.round(h * 0.055F), tightSettings ? 16 : 20, 28);
+            drawScaledString(g, font, "Results", x + 2, groupY - 18, 0xFF8E8E93, 0.74F);
+        } else {
+            int profileY = searchY + searchH + (compactSettings ? 8 : Mth.clamp(Math.round(h * 0.035F), 12, 18));
+            int profileH = compactSettings ? Mth.clamp(Math.round(h * 0.13F), 38, 46)
+                    : Mth.clamp(Math.round(h * 0.13F), 52, 66);
+            int candidateGroupY = profileY + profileH
+                    + (compactSettings ? (tightSettings ? 16 : 20) : Mth.clamp(Math.round(h * 0.075F), 28, 38));
+            long actionableRows = rows.stream().filter(row -> row.action() != null && !row.action().isBlank()).count();
+            int requiredRows = Math.max(1, Math.min(rows.size(),
+                    compactSettings ? Math.max(1, Math.min(2, (int) actionableRows)) : rows.size()));
+            boolean showProfile = !tightSettings && (!compactSettings || bottom - candidateGroupY >= 28 * requiredRows);
+            if (showProfile) {
+                fillRounded(g, x, profileY, w, profileH, 17, 0xFFFFFFFF);
+                int avatar = compactSettings ? 17 : 23;
+                fillCircle(g, x + 34, profileY + profileH / 2, avatar, SmartphoneClientState.accentColor());
+                drawScaledCentered(g, font, initials(SmartphoneClientState.ownerName()), x + 34,
+                        profileY + profileH / 2 - (compactSettings ? 6 : 8), 0xFFFFFFFF, compactSettings ? 0.74F : 0.92F);
+                drawScaledString(g, font, trim(font, SmartphoneClientState.ownerName(), w - 88), x + 68,
+                        profileY + (compactSettings ? 9 : 15), 0xFF111318, compactSettings ? 0.88F : 1.0F);
+                if (!compactSettings) {
+                    drawScaledString(g, font, "Phone owner", x + 68, profileY + 34, 0xFF8E8E93, 0.78F);
+                }
+                groupY = candidateGroupY;
+            } else {
+                groupY = searchY + searchH + (tightSettings ? 18 : 24);
+            }
+            drawScaledString(g, font, "Phone", x + 2, groupY - 18, 0xFF8E8E93, 0.74F);
+        }
+        int infoH = 64;
+        int availableGroupH = Math.max(0, bottom - groupY);
+        int desiredRows = Math.max(1, rows.size());
+        int rowWithInfo = (bottom - groupY - infoH - 24) / desiredRows;
+        boolean showInfo = rowWithInfo >= 40;
+        int minRowH = tightSettings ? 18 : 24;
+        int rowH = Math.min(52, Math.max(minRowH,
+                showInfo ? rowWithInfo : availableGroupH / desiredRows));
+        if (availableGroupH < rowH * desiredRows && availableGroupH >= 16 * desiredRows) {
+            rowH = Math.max(16, availableGroupH / desiredRows);
+        } else if (availableGroupH < rowH && availableGroupH >= 16) {
+            rowH = availableGroupH;
+        }
+        int visibleRows = availableGroupH >= rowH && rowH > 0
+                ? Math.max(1, Math.min(rows.size(), availableGroupH / rowH))
+                : 0;
+        SmartphoneClientState.syncSettingsMainScroll(rows.size(), Math.max(1, visibleRows));
+        int offset = SmartphoneClientState.settingsMainScrollOffset();
+        if (availableGroupH >= rowH && !rows.isEmpty()) {
+            int groupRows = Math.min(rows.size() - offset, visibleRows);
+            fillRounded(g, x, groupY, w, rowH * groupRows, 16, 0xFFFFFFFF);
+            for (int i = 0; i < groupRows; i++) {
+                int rowIndex = offset + i;
+                SettingsRowData row = rows.get(rowIndex);
+                drawSettingsRow(g, font, x, groupY + rowH * i, w, rowH, row.title(), row.subtitle(),
+                        row.iconColor(), i < groupRows - 1, row.action(), "", "", hitboxes);
+            }
+            if (rows.size() > visibleRows) {
+                drawMessageDraftScrollbar(g, x, groupY, w, availableGroupH, offset, visibleRows, rows.size());
+            }
+        } else if (availableGroupH >= 38 && rows.isEmpty()) {
+            drawSettingsEmptyState(g, font, x, groupY, w, availableGroupH, "No Results", "No matching settings.");
+        }
+
+        if (showInfo && !searching && offset == 0 && availableGroupH >= rowH * rows.size() + infoH + 18) {
+            int infoY = groupY + rowH * rows.size() + 18;
+            fillRounded(g, x, infoY, w, infoH, 16, 0xFFFFFFFF);
+            drawScaledString(g, font, SmartphoneClientState.phoneAccessLabel(), x + 14, infoY + 12,
+                    0xFF111318, 0.96F);
+            drawScaledString(g, font, trim(font, SmartphoneClientState.phoneAccessDescription(), w - 28),
+                    x + 14, infoY + 32, 0xFF8E8E93, 0.72F);
+        }
+    }
+
+    private record SettingsRowData(String title, String subtitle, int iconColor, String action) {
+    }
+
+    private static List<SettingsRowData> visibleSettingsRows() {
+        List<SettingsRowData> rows = List.of(
+                new SettingsRowData("Appearance", settingThemeLabel(), SmartphoneClientState.accentColor(),
+                        "SETTINGS_APPEARANCE"),
+                new SettingsRowData("Installed apps", SmartphoneClientState.apps().size() + " apps", 0xFF0078FF,
+                        "SETTINGS_APPS"),
+                new SettingsRowData("Change Passcode",
+                        SmartphoneClientState.phonePasscodeSet() ? "4 digit passcode" : "Not set",
+                        0xFFFF9F0A,
+                        "SETTINGS_PASSCODE")
+        );
+        String query = SmartphoneClientState.settingsSearch().trim().toLowerCase(Locale.ROOT);
+        if (query.isBlank()) {
+            return rows;
+        }
+        return rows.stream()
+                .filter(row -> row.title().toLowerCase(Locale.ROOT).contains(query)
+                        || row.subtitle().toLowerCase(Locale.ROOT).contains(query))
+                .toList();
+    }
+
+    private static void drawSettingsSearch(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                           List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean active = SmartphoneClientState.inputTarget() == SmartphoneClientState.InputTarget.SETTINGS_SEARCH;
+        boolean searchHasText = !SmartphoneClientState.settingsSearch().isBlank();
+        boolean showCancel = active || searchHasText;
+        int cancelW = showCancel ? Math.min(50, Math.max(42, w / 6)) : 0;
+        int searchW = showCancel ? Math.max(90, w - cancelW - 8) : w;
+        fillRounded(g, x, y, searchW, h, h / 2, 0xFFFFFFFF);
+        drawRoundedBorder(g, x, y, searchW, h, h / 2, active ? 0xFF0078FF : 0xFFE1E1E6, 0xFFFFFFFF);
+        int iconX = x + 17;
+        int iconY = y + h / 2;
+        fillCircle(g, iconX, iconY - 1, 5, 0xFF8E8E93);
+        fillCircle(g, iconX, iconY - 1, 3, 0xFFFFFFFF);
+        g.fill(iconX + 4, iconY + 3, iconX + 10, iconY + 5, 0xFF8E8E93);
+        drawFieldText(g, font, x + 34, y + 12, searchW - 72,
+                SmartphoneClientState.settingsSearch(), active, "Search",
+                0xFF111318, 0xFF8E8E93, 0xFF111318);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, searchW, h),
+                "INPUT", SmartphoneClientState.InputTarget.SETTINGS_SEARCH.name(), "", ""));
+        if (searchHasText) {
+            drawFigmaCloseGlyph(g, x + searchW - 20, iconY, 0xFF8E8E93, 0.62F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW - 38, y, 38, h),
+                    "SETTINGS_SEARCH_CLEAR", "", "", ""));
+        }
+        if (showCancel) {
+            drawScaledCentered(g, font, "Cancel", x + searchW + 4 + cancelW / 2, y + 12,
+                    0xFF0078FF, 0.76F);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x + searchW + 2, y, cancelW + 6, h),
+                    "SETTINGS_SEARCH_CANCEL", "", "", ""));
+        }
+    }
+
+    private static void drawSettingsPasscode(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                             List<SmartphoneClientState.Hitbox> hitboxes) {
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFF0078FF);
+        drawScaledString(g, font, "Settings", x + 16, y + 10, 0xFF0078FF, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(82, w / 3), backSize),
+                "SETTINGS_MAIN", "", "", ""));
+        drawScaledCentered(g, font, "Change Passcode", x + w / 2, y + 8, 0xFF111318, 1.02F);
+
+        boolean compact = h < 310;
+        int infoY = y + (compact ? 40 : 52);
+        int infoH = compact ? 46 : 58;
+        fillRounded(g, x, infoY, w, infoH, 16, 0xFFFFFFFF);
+        int lockSize = compact ? 22 : 28;
+        fillRounded(g, x + 14, infoY + (infoH - lockSize) / 2, lockSize, lockSize, 7, 0xFFFF9F0A);
+        drawSettingsRowIcon(g, "Change Passcode", x + 14, infoY + (infoH - lockSize) / 2, lockSize, 0xFFFFFFFF);
+        drawScaledString(g, font, "Phone Passcode", x + 52, infoY + (compact ? 9 : 13), 0xFF111318,
+                compact ? 0.86F : 0.98F);
+        if (!compact) {
+            drawScaledString(g, font, trim(font, "Change the passcode used on the lock screen.", w - 66),
+                    x + 52, infoY + 33, 0xFF8E8E93, 0.72F);
+        }
+
+        int formY = infoY + infoH + (compact ? 18 : 26);
+        int available = Math.max(0, y + h - formY - 8);
+        int buttonH = Mth.clamp(Math.round(h * 0.085F), 30, 42);
+        int buttonY = y + h - buttonH - 2;
+        int rowH = Mth.clamp((buttonY - formY - 14) / 3, compact ? 34 : 42, compact ? 42 : 52);
+        int groupH = Math.max(rowH, rowH * 3);
+        if (available >= rowH * 3 + buttonH + 12) {
+            fillRounded(g, x, formY, w, groupH, 16, 0xFFFFFFFF);
+            drawSettingsPasscodeField(g, font, x, formY, w, rowH, "Current Passcode",
+                    SmartphoneClientState.settingsPasscodeCurrent(),
+                    SmartphoneClientState.InputTarget.PHONE_PASSCODE_CURRENT, true, hitboxes);
+            drawSettingsPasscodeField(g, font, x, formY + rowH, w, rowH, "New Passcode",
+                    SmartphoneClientState.settingsPasscodeNew(),
+                    SmartphoneClientState.InputTarget.PHONE_PASSCODE_NEW, true, hitboxes);
+            drawSettingsPasscodeField(g, font, x, formY + rowH * 2, w, rowH, "Verify Passcode",
+                    SmartphoneClientState.settingsPasscodeConfirm(),
+                    SmartphoneClientState.InputTarget.PHONE_PASSCODE_CONFIRM, false, hitboxes);
+            mobileButton(g, font, x, buttonY, w, buttonH, "Change Passcode", 0xFF0078FF,
+                    hitboxes, "SAVE_PHONE_PASSCODE", "", "", "");
+        } else {
+            drawSettingsEmptyState(g, font, x, formY, w, available, "Screen Too Small", "Use keyboard input to continue.");
+            int miniButtonY = Math.max(formY + available - buttonH, formY);
+            mobileButton(g, font, x, miniButtonY, w, buttonH, "Save", 0xFF0078FF,
+                    hitboxes, "SAVE_PHONE_PASSCODE", "", "", "");
+        }
+    }
+
+    private static void drawSettingsPasscodeField(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                                  String label, String value,
+                                                  SmartphoneClientState.InputTarget target, boolean divider,
+                                                  List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean active = SmartphoneClientState.inputTarget() == target;
+        int labelW = Math.max(72, Math.round(w * 0.48F));
+        drawScaledString(g, font, trim(font, label, labelW), x + 14, y + Math.max(7, h / 2 - 5),
+                0xFF111318, h < 40 ? 0.76F : 0.86F);
+        String dots = passwordDots(value);
+        String display = dots.isBlank() ? (active ? "" : "4 digits") : dots;
+        int valueX = x + labelW + 12;
+        int valueW = Math.max(24, w - labelW - 40);
+        drawFieldText(g, font, valueX, y + Math.max(7, h / 2 - 5), valueW,
+                display, active, "4 digits", 0xFF111318, 0xFF8E8E93, 0xFF0078FF);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                "INPUT", target.name(), "", ""));
+        if (divider) {
+            g.fill(x + 14, y + h - 1, x + w, y + h, 0xFFE5E5EA);
+        }
+    }
+
+    private static void drawSettingsInstalledApps(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                                  List<SmartphoneClientState.Hitbox> hitboxes) {
+        SmartphoneClientState.PhoneApp selectedApp = SmartphoneClientState.settingsSelectedApp();
+        if (selectedApp != null) {
+            drawSettingsAppDetail(g, font, x, y, w, h, selectedApp, hitboxes);
+            return;
+        }
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFF0078FF);
+        drawScaledString(g, font, "Settings", x + 16, y + 10, 0xFF0078FF, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(82, w / 3), backSize),
+                "SETTINGS_MAIN", "", "", ""));
+        drawScaledCentered(g, font, "Installed Apps", x + w / 2, y + 8, 0xFF111318, 1.02F);
+
+        List<SmartphoneClientState.PhoneApp> apps = SmartphoneClientState.apps();
+        boolean compactApps = h < 300;
+        boolean tightApps = h < 240;
+        int headerY = y + (tightApps ? 34 : 44);
+        drawScaledString(g, font, apps.size() + " available", x + 2, headerY, 0xFF8E8E93, 0.74F);
+        int listY = headerY + (tightApps ? 14 : 20);
+        int listH = Math.max(0, y + h - listY - 8);
+        int minRowH = tightApps ? 28 : (compactApps ? 34 : 42);
+        int rowH = Mth.clamp(Math.round(h * (tightApps ? 0.14F : 0.12F)), minRowH, tightApps ? 38 : 58);
+        if (listH < rowH && listH >= 24) {
+            rowH = listH;
+        }
+        int visibleRows = listH >= 24 ? Math.max(1, listH / Math.max(1, rowH)) : 0;
+        SmartphoneClientState.syncSettingsInstalledAppsScroll(apps.size(), Math.max(1, visibleRows));
+        int offset = SmartphoneClientState.settingsInstalledAppsScrollOffset();
+        int groupH = Math.min(listH, Math.max(rowH, Math.min(apps.size(), Math.max(1, visibleRows)) * rowH));
+        if (listH > 0) {
+            fillRounded(g, x, listY, w, groupH, 16, 0xFFFFFFFF);
+        }
+        int drawn = 0;
+        for (int i = offset; i < apps.size() && drawn < visibleRows; i++) {
+            SmartphoneClientState.PhoneApp app = apps.get(i);
+            int rowY = listY + drawn * rowH;
+            drawInstalledAppRow(g, font, x, rowY, w, rowH, app,
+                    drawn < visibleRows - 1 && i < apps.size() - 1, hitboxes);
+            drawn++;
+        }
+        if (apps.isEmpty() && listH >= 42) {
+            drawSettingsEmptyState(g, font, x, listY, w, listH, "No Apps", "App library is empty.");
+        }
+        if (visibleRows > 0) {
+            drawMessageDraftScrollbar(g, x, listY, w, listH, offset, visibleRows, apps.size());
+        }
+    }
+
+    private static void drawInstalledAppRow(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                            SmartphoneClientState.PhoneApp app, boolean divider,
+                                            List<SmartphoneClientState.Hitbox> hitboxes) {
+        int icon = Mth.clamp(Math.round(h * 0.62F), h < 34 ? 18 : 28, 38);
+        int iconX = x + 14;
+        int iconY = y + (h - icon) / 2;
+        drawHomeAppIcon(g, app.id(), iconX, iconY, icon, appColor(app.id()));
+        int titleY = y + Math.max(6, h / 2 - 6);
+        drawScaledString(g, font, trim(font, app.label(), w - 94), x + 62, titleY,
+                0xFF111318, h < 34 ? 0.82F : 0.94F);
+        drawFigmaChevronRight(g, x + w - 20, y + h / 2, 5, 0xFFC7C7CC);
+        if (divider) {
+            g.fill(x + 62, y + h - 1, x + w, y + h, 0xFFE5E5EA);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                "SETTINGS_APP_DETAIL", app.id(), "", ""));
+    }
+
+    private static void drawSettingsAppDetail(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                              SmartphoneClientState.PhoneApp app,
+                                              List<SmartphoneClientState.Hitbox> hitboxes) {
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFF0078FF);
+        drawScaledString(g, font, "Apps", x + 16, y + 10, 0xFF0078FF, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(62, w / 3), backSize),
+                "SETTINGS_APPS", "", "", ""));
+        drawScaledCentered(g, font, trim(font, app.label(), Math.round(w * 0.58F)),
+                x + w / 2, y + 8, 0xFF111318, 1.02F);
+
+        boolean compactDetail = h < 330;
+        boolean tightDetail = h < 250;
+        int bottom = y + h - 8;
+        int openH = compactDetail ? Mth.clamp(Math.round(h * (tightDetail ? 0.12F : 0.10F)),
+                tightDetail ? 28 : 32, tightDetail ? 34 : 38)
+                : Mth.clamp(Math.round(h * 0.075F), 36, 46);
+        int openY = bottom - openH;
+        int icon = compactDetail
+                ? Mth.clamp(Math.round(w * 0.16F), tightDetail ? 28 : 38, tightDetail ? 38 : 52)
+                : Mth.clamp(Math.round(w * 0.22F), 56, 76);
+        int iconX = x + w / 2 - icon / 2;
+        int iconY = y + (compactDetail ? (tightDetail ? 34 : 38) : Mth.clamp(Math.round(h * 0.10F), 50, 66));
+        boolean showIcon = iconY + icon + (tightDetail ? 8 : 16) < openY - (tightDetail ? 30 : 44);
+        if (showIcon) {
+            drawHomeAppIcon(g, app.id(), iconX, iconY, icon, appColor(app.id()));
+            drawScaledCentered(g, font, trim(font, app.label(), w - 36),
+                    x + w / 2, iconY + icon + (compactDetail ? 8 : 16), 0xFF111318,
+                    tightDetail ? 0.82F : (compactDetail ? 0.92F : 1.18F));
+        }
+
+        int cardY = showIcon
+                ? iconY + icon + (compactDetail ? (tightDetail ? 20 : 26) : 44)
+                : y + (tightDetail ? 42 : 54);
+        int groupY = cardY;
+        int detailGap = compactDetail ? 8 : 16;
+        int availableDetailH = Math.max(0, openY - detailGap - groupY);
+        int groupRows = Math.max(1, Math.min(2, availableDetailH / (tightDetail ? 24 : 38)));
+        int rowH = Mth.clamp(availableDetailH / Math.max(1, groupRows), tightDetail ? 22 : 34, tightDetail ? 34 : 46);
+        if (availableDetailH >= (tightDetail ? 22 : 34) && groupY + rowH <= openY - detailGap) {
+            fillRounded(g, x, groupY, w, rowH * groupRows, 16, 0xFFFFFFFF);
+            String appName = trim(font, app.label(), Math.max(48, w - 128));
+            if (groupRows == 1) {
+                drawContactInfoRow(g, font, x, groupY, w, rowH, "App",
+                        trim(font, app.label() + " | " + app.id(), Math.max(48, w - 108)), 0xFF111318, false);
+            } else {
+                drawContactInfoRow(g, font, x, groupY, w, rowH, "Name",
+                        appName, 0xFF111318, true);
+            }
+            if (groupRows > 1) {
+                drawContactInfoRow(g, font, x, groupY + rowH, w, rowH, "Identifier",
+                        trim(font, app.id(), Math.max(48, w - 128)), 0xFF8E8E93, false);
+            }
+        }
+
+        mobileButton(g, font, x, openY, w, openH, "Open App", 0xFF0078FF,
+                hitboxes, "SETTINGS_APP_OPEN", app.id(), "", "");
+    }
+
+    private static void drawSettingsAppearance(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                               List<SmartphoneClientState.Hitbox> hitboxes) {
+        int backSize = 30;
+        drawFigmaChevronLeft(g, x + 7, y + 16, 6, 0xFF0078FF);
+        drawScaledString(g, font, "Settings", x + 16, y + 10, 0xFF0078FF, 0.86F);
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, Math.min(82, w / 3), backSize),
+                "SETTINGS_MAIN", "", "", ""));
+        drawScaledCentered(g, font, "Appearance", x + w / 2, y + 8, 0xFF111318, 1.02F);
+
+        int bottom = y + h - 8;
+        boolean compactAppearance = h < 330;
+        boolean tightAppearance = h < 280;
+        int minThemeRowH = tightAppearance ? 22 : (compactAppearance ? 26 : 34);
+        int minThemeGroupH = minThemeRowH * 4;
+        int previewY = y + (compactAppearance ? (tightAppearance ? 34 : 38) : Mth.clamp(Math.round(h * 0.10F), 42, 48));
+        int availableAfterHeader = Math.max(0, bottom - previewY);
+        int desiredPreviewH = compactAppearance
+                ? Mth.clamp(Math.round(h * 0.11F), tightAppearance ? 18 : 28, tightAppearance ? 28 : 40)
+                : Mth.clamp(Math.round(h * 0.18F), 70, 104);
+        int groupGap = compactAppearance ? (tightAppearance ? 12 : 18) : Mth.clamp(Math.round(h * 0.07F), 22, 36);
+        boolean showPreview = availableAfterHeader >= minThemeGroupH + groupGap + Math.max(16, desiredPreviewH);
+        int previewH = showPreview ? Math.min(desiredPreviewH, Math.max(16, availableAfterHeader - minThemeGroupH - groupGap)) : 0;
+        if (showPreview) {
+            fillRoundedVertical(g, x, previewY, w, previewH, 20,
+                    SmartphoneClientState.wallpaperTop(), SmartphoneClientState.wallpaperBottom());
+            int previewDot = compactAppearance ? 11 : 18;
+            fillCircle(g, x + Math.round(w * 0.18F), previewY + previewH / 2, previewDot, SmartphoneClientState.accentColor());
+            drawScaledString(g, font, settingThemeLabel(), x + Math.round(w * 0.32F),
+                    previewY + (compactAppearance ? Math.max(6, previewH / 2 - 4) : Math.round(previewH * 0.34F)),
+                    0xFFFFFFFF, compactAppearance ? 0.82F : 1.0F);
+            if (!compactAppearance) {
+                drawScaledString(g, font, "Current phone colors", x + Math.round(w * 0.32F),
+                        previewY + Math.round(previewH * 0.55F), 0xCCFFFFFF, 0.74F);
+            }
+        }
+
+        int groupY = showPreview ? previewY + previewH + groupGap : y + (tightAppearance ? 52 : 58);
+        drawScaledString(g, font, "Themes", x + 2, groupY - 18, 0xFF8E8E93, 0.74F);
+        int availableThemeH = Math.max(0, bottom - groupY);
+        ThemeOption[] themes = {
+                new ThemeOption("Aurora", "Cyan accent", "cyan", "aurora", 0xFF52D7FF),
+                new ThemeOption("Forest", "Green accent", "green", "forest", 0xFF23D18B),
+                new ThemeOption("Dusk", "Rose accent", "rose", "dusk", 0xFFFF6A9C),
+                new ThemeOption("Midnight", "Gold accent", "gold", "mono", 0xFFFFCA5C)
+        };
+        int rowH = Mth.clamp(availableThemeH / Math.max(1, themes.length), minThemeRowH, 52);
+        int visibleRows = availableThemeH >= minThemeRowH ? Math.max(1, Math.min(themes.length, availableThemeH / rowH)) : 0;
+        SmartphoneClientState.syncSettingsAppearanceScroll(themes.length, Math.max(1, visibleRows));
+        int offset = SmartphoneClientState.settingsAppearanceScrollOffset();
+        if (visibleRows > 0) {
+            int drawnRows = Math.min(themes.length - offset, visibleRows);
+            fillRounded(g, x, groupY, w, rowH * drawnRows, 16, 0xFFFFFFFF);
+            for (int i = 0; i < drawnRows; i++) {
+                int rowIndex = offset + i;
+                ThemeOption theme = themes[rowIndex];
+                drawThemeRow(g, font, x, groupY + rowH * i, w, rowH, theme.title(), theme.subtitle(),
+                        theme.accent(), theme.wallpaper(), theme.color(), rowIndex < themes.length - 1, hitboxes);
+            }
+            if (themes.length > visibleRows) {
+                drawMessageDraftScrollbar(g, x, groupY, w, availableThemeH, offset, visibleRows, themes.length);
+            }
+        }
+    }
+
+    private record ThemeOption(String title, String subtitle, String accent, String wallpaper, int color) {
+    }
+
+    private static void drawSettingsRow(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                        String title, String subtitle, int iconColor, boolean divider,
+                                        String action, String p1, String p2,
+        List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean compact = h < 40;
+        int iconMax = Math.max(8, Math.min(30, h - 4));
+        int iconMin = Math.min(iconMax, h < 34 ? 12 : 22);
+        int iconSize = Mth.clamp(Math.round(h * 0.58F), iconMin, iconMax);
+        int iconX = x + 12;
+        int iconY = y + (h - iconSize) / 2;
+        fillRounded(g, iconX, iconY, iconSize, iconSize, Mth.clamp(iconSize / 4, 5, 8), iconColor);
+        drawSettingsRowIcon(g, title, iconX, iconY, iconSize, 0xFFFFFFFF);
+        if (compact && h >= 34) {
+            int arrowSpace = action != null && !action.isBlank() ? 42 : 14;
+            int textLeft = x + 52;
+            int textRight = x + w - arrowSpace;
+            int textW = Math.max(12, textRight - textLeft);
+            boolean showSubtitleInline = textW >= 104 && subtitle != null && !subtitle.isBlank();
+            if (showSubtitleInline) {
+                int subtitleMaxW = Math.max(28, Math.min(textW / 2, textW - 46));
+                String safeSubtitle = trim(font, subtitle, subtitleMaxW);
+                int subtitleW = Math.min(subtitleMaxW, phoneTextWidth(safeSubtitle, 6.6F));
+                int subtitleX = Mth.clamp(textRight - subtitleW, textLeft + 46, Math.max(textLeft, textRight - 1));
+                int titleW = Math.max(24, subtitleX - textLeft - 6);
+                drawScaledString(g, font, trim(font, title, titleW), textLeft, y + Math.max(5, h / 2 - 5),
+                        0xFF111318, 0.82F);
+                drawScaledString(g, font, safeSubtitle, subtitleX, y + Math.max(6, h / 2 - 4),
+                        0xFF8E8E93, 0.66F);
+            } else {
+                drawScaledString(g, font, trim(font, title, textW), textLeft, y + Math.max(5, h / 2 - 5),
+                        0xFF111318, 0.82F);
+            }
+        } else {
+            int textW = Math.max(12, w - 94);
+            drawScaledString(g, font, trim(font, title, textW), x + 52, y + 12,
+                    0xFF111318, 0.94F);
+            drawScaledString(g, font, trim(font, subtitle, textW), x + 52, y + 30, 0xFF8E8E93, 0.72F);
+        }
+        if (action != null && !action.isBlank()) {
+            drawFigmaChevronRight(g, x + w - 22, y + h / 2, 5, 0xFFC7C7CC);
+            hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                    action, p1, p2, ""));
+        }
+        if (divider) {
+            g.fill(x + 52, y + h - 1, x + w, y + h, 0xFFE5E5EA);
+        }
+    }
+
+    private static void drawSettingsEmptyState(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                               String title, String subtitle) {
+        int centerX = x + w / 2;
+        int centerY = y + Math.max(22, h / 2);
+        if (h >= 70) {
+            int iconY = centerY - 24;
+            fillRounded(g, centerX - 18, iconY - 18, 36, 36, 10, 0xFFE5E5EA);
+            fillCircle(g, centerX, iconY, 8, 0xFF8E8E93);
+            g.fill(centerX - 2, iconY - 15, centerX + 2, iconY - 10, 0xFF8E8E93);
+            g.fill(centerX - 2, iconY + 10, centerX + 2, iconY + 15, 0xFF8E8E93);
+            g.fill(centerX - 15, iconY - 2, centerX - 10, iconY + 2, 0xFF8E8E93);
+            g.fill(centerX + 10, iconY - 2, centerX + 15, iconY + 2, 0xFF8E8E93);
+        }
+        int titleY = h >= 70 ? centerY + 2 : centerY - 8;
+        drawScaledCentered(g, font, title, centerX, titleY, 0xFF111318, 0.98F);
+        if (h >= 58) {
+            drawScaledCentered(g, font, subtitle, centerX, titleY + 17, 0xFF8E8E93, 0.68F);
+        }
+    }
+
+    private static void drawSettingsRowIcon(GuiGraphics g, String title, int x, int y, int size, int color) {
+        String key = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        int cx = x + size / 2;
+        int cy = y + size / 2;
+        int unit = Math.max(2, size / 7);
+        if (key.contains("appearance")) {
+            fillCircle(g, cx, cy, Math.max(4, size / 5), color);
+            g.fill(cx - 1, y + 4, cx + 1, y + 8, color);
+            g.fill(cx - 1, y + size - 8, cx + 1, y + size - 4, color);
+            g.fill(x + 4, cy - 1, x + 8, cy + 1, color);
+            g.fill(x + size - 8, cy - 1, x + size - 4, cy + 1, color);
+            return;
+        }
+        if (key.contains("installed")) {
+            int cell = Math.max(4, size / 4);
+            int gap = Math.max(2, size / 9);
+            int startX = cx - cell - gap / 2;
+            int startY = cy - cell - gap / 2;
+            for (int row = 0; row < 2; row++) {
+                for (int col = 0; col < 2; col++) {
+                    fillRounded(g, startX + col * (cell + gap), startY + row * (cell + gap),
+                            cell, cell, Math.max(2, cell / 4), color);
+                }
+            }
+            return;
+        }
+        int bodyW = Math.max(10, size / 2);
+        int bodyH = Math.max(8, size / 3);
+        fillRounded(g, cx - bodyW / 2, cy - bodyH / 2 + unit, bodyW, bodyH, Math.max(2, unit), color);
+        drawCircleRing(g, cx, cy - unit, Math.max(5, size / 5), Math.max(2, unit / 2), color, color);
+        g.fill(cx - Math.max(2, unit / 2), cy + unit, cx + Math.max(2, unit / 2), cy + unit * 2 + 1, 0xAA000000);
+    }
+
+    private static String settingThemeLabel() {
+        return switch (SmartphoneClientState.wallpaperName().toLowerCase(Locale.ROOT)) {
+            case "forest" -> "Forest";
+            case "dusk" -> "Dusk";
+            case "mono" -> "Midnight";
+            default -> "Aurora";
+        };
+    }
+
+    private static String firstNoteLine(String value) {
+        String safe = value == null ? "" : value.trim();
+        if (safe.isBlank()) {
+            return "New note";
+        }
+        int newline = safe.indexOf('\n');
+        return newline >= 0 ? safe.substring(0, newline).trim() : safe;
+    }
+
+    private static void drawThemeRow(GuiGraphics g, Font font, int x, int y, int w, int h,
+                                     String title, String subtitle, String accent, String wallpaper, int color,
+                                     boolean divider, List<SmartphoneClientState.Hitbox> hitboxes) {
+        boolean selected = accent.equalsIgnoreCase(SmartphoneClientState.accentName())
+                && wallpaper.equalsIgnoreCase(SmartphoneClientState.wallpaperName());
+        boolean compact = h < 40;
+        int iconSize = Mth.clamp(Math.round(h * 0.58F), h < 34 ? 18 : 22, 30);
+        int iconX = x + 12;
+        int iconY = y + (h - iconSize) / 2;
+        fillRounded(g, iconX, iconY, iconSize, iconSize, Mth.clamp(iconSize / 4, 5, 8), color);
+        fillCircle(g, iconX + iconSize / 2, iconY + iconSize / 2, Math.max(4, iconSize / 5), 0xEEFFFFFF);
+        if (compact && h >= 34) {
+            int textLeft = x + 52;
+            int textRight = x + w - 50;
+            int textW = Math.max(12, textRight - textLeft);
+            boolean showSubtitleInline = textW >= 104 && subtitle != null && !subtitle.isBlank();
+            if (showSubtitleInline) {
+                int subtitleMaxW = Math.max(28, Math.min(textW / 2, textW - 46));
+                String safeSubtitle = trim(font, subtitle, subtitleMaxW);
+                int subtitleW = Math.min(subtitleMaxW, phoneTextWidth(safeSubtitle, 6.6F));
+                int subtitleX = Mth.clamp(textRight - subtitleW, textLeft + 46, Math.max(textLeft, textRight - 1));
+                int titleW = Math.max(24, subtitleX - textLeft - 6);
+                drawScaledString(g, font, trim(font, title, titleW), textLeft, y + Math.max(5, h / 2 - 5),
+                        0xFF111318, 0.82F);
+                drawScaledString(g, font, safeSubtitle, subtitleX, y + Math.max(6, h / 2 - 4),
+                        0xFF8E8E93, 0.66F);
+            } else {
+                drawScaledString(g, font, trim(font, title, textW), textLeft, y + Math.max(5, h / 2 - 5),
+                        0xFF111318, 0.82F);
+            }
+        } else {
+            int textW = Math.max(12, w - 94);
+            drawScaledString(g, font, trim(font, title, textW), x + 52, y + 12,
+                    0xFF111318, 0.94F);
+            drawScaledString(g, font, trim(font, subtitle, textW), x + 52, y + 30, 0xFF8E8E93, 0.72F);
+        }
+        if (selected) {
+            fillCircle(g, x + w - 27, y + h / 2, Mth.clamp(Math.round(h * 0.22F), 7, 11), 0xFF0078FF);
+            drawFigmaCheckGlyph(g, x + w - 27, y + h / 2, 0xFFFFFFFF);
+        }
+        if (divider) {
+            g.fill(x + 52, y + h - 1, x + w, y + h, 0xFFE5E5EA);
+        }
+        hitboxes.add(new SmartphoneClientState.Hitbox(new SmartphoneClientState.Rect(x, y, w, h),
+                "THEME", accent, wallpaper, ""));
     }
 
     private static void drawInput(GuiGraphics g, Font font, int x, int y, int w, String label, String value,
@@ -3700,6 +6375,20 @@ public final class SmartphoneOverlay {
         g.fill(centerX - 7, centerY + 10, centerX + 7, centerY + 11, 0xFF0A0A0A);
     }
 
+    private static void drawClassicTopHardware(GuiGraphics g, int x, int y, int w) {
+        int centerX = x + w / 2;
+        int speakerW = Math.max(32, Math.round(w * 0.14F));
+        int speakerX = centerX - speakerW / 2;
+        int speakerY = y + 14;
+        fillRounded(g, speakerX - 2, speakerY - 2, speakerW + 4, 6, 3, PHONE_BLACK);
+        fillRounded(g, speakerX, speakerY, speakerW, 2, 1, 0xFF15171A);
+        g.fill(speakerX + 4, speakerY, speakerX + speakerW - 4, speakerY + 1, 0xFF2A2D33);
+        int cameraX = centerX + speakerW / 2 + 14;
+        fillCircle(g, cameraX, speakerY + 1, 5, PHONE_BLACK);
+        fillCircle(g, cameraX, speakerY + 1, 3, 0xFF0A1020);
+        fillCircle(g, cameraX - 1, speakerY, 1, 0xFF263E66);
+    }
+
     private static void drawStatusBar(GuiGraphics g, Font font, int x, int y, int w) {
         drawStatusBar(g, font, x, y, w, 0xFFEAF8FF, 0xFF060B1C);
     }
@@ -3707,7 +6396,7 @@ public final class SmartphoneOverlay {
     private static void drawStatusBar(GuiGraphics g, Font font, int x, int y, int w, int color, int batteryInner) {
         int statusInset = Math.max(3, Math.round(w * 5.0F / 335.0F));
         int statusX = x + statusInset;
-        drawPhoneText(g, "9:41", statusX, y - 1, color, 9.4F);
+        drawPhoneText(g, localClockText(), statusX, y - 1, color, 9.4F);
         int right = x + w + statusInset;
         int signalX = right - 54;
         for (int i = 0; i < 4; i++) {
@@ -3722,6 +6411,32 @@ public final class SmartphoneOverlay {
         g.fill(batteryX, y + 3, batteryX + 12, y + 9, color);
         g.fill(batteryX + 12, y + 5, batteryX + 14, y + 7, color);
         g.fill(batteryX + 2, y + 5, batteryX + 10, y + 7, batteryInner);
+    }
+
+    private static String localClockText() {
+        return formatClockTime(SmartphoneClientState.localClockMillis(), ZoneId.systemDefault());
+    }
+
+    private static String serverClockText() {
+        return formatClockTime(SmartphoneClientState.serverClockMillis(),
+                parseClockZone(SmartphoneClientState.serverClockZone()));
+    }
+
+    private static String formatClockTime(long millis, ZoneId zone) {
+        ZoneId resolved = zone == null ? ZoneId.systemDefault() : zone;
+        return DateTimeFormatter.ofPattern("H:mm", Locale.ROOT)
+                .withZone(resolved)
+                .format(Instant.ofEpochMilli(millis));
+    }
+
+    private static ZoneId parseClockZone(String raw) {
+        if (raw != null && !raw.isBlank()) {
+            try {
+                return ZoneId.of(raw);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return ZoneId.systemDefault();
     }
 
     private static void drawRoundedBorder(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
@@ -3831,26 +6546,42 @@ public final class SmartphoneOverlay {
         int r = Math.max(1, Math.min(radius, Math.min(w, h) / 2));
         int r2 = r * r;
         for (int py = 0; py < r; py++) {
-            for (int px = 0; px < r; px++) {
-                int dx = r - px;
-                int dy = r - py;
+            int dy = r - py;
+            int outside = 0;
+            while (outside < r) {
+                int dx = r - outside;
                 if (dx * dx + dy * dy <= r2) {
-                    continue;
+                    break;
                 }
-                g.fill(x + px, y + py, x + px + 1, y + py + 1, color);
-                g.fill(x + w - px - 1, y + py, x + w - px, y + py + 1, color);
-                g.fill(x + px, y + h - py - 1, x + px + 1, y + h - py, color);
-                g.fill(x + w - px - 1, y + h - py - 1, x + w - px, y + h - py, color);
+                outside++;
+            }
+            if (outside > 0) {
+                g.fill(x, y + py, x + outside, y + py + 1, color);
+                g.fill(x + w - outside, y + py, x + w, y + py + 1, color);
+                g.fill(x, y + h - py - 1, x + outside, y + h - py, color);
+                g.fill(x + w - outside, y + h - py - 1, x + w, y + h - py, color);
             }
         }
     }
 
     private static void fillVertical(GuiGraphics g, int x, int y, int w, int h, int top, int bottom) {
-        int steps = Math.max(1, h);
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        if (top == bottom) {
+            g.fill(x, y, x + w, y + h, top);
+            return;
+        }
+        int steps = Math.max(1, Math.min(h, MAX_GRADIENT_FILL_BANDS));
         for (int i = 0; i < steps; i++) {
-            float t = i / (float) steps;
+            int y0 = y + (i * h) / steps;
+            int y1 = y + ((i + 1) * h) / steps;
+            if (y1 <= y0) {
+                continue;
+            }
+            float t = steps <= 1 ? 0.0F : i / (float) (steps - 1);
             int c = lerpColor(top, bottom, t);
-            g.fill(x, y + i, x + w, y + i + 1, c);
+            g.fill(x, y0, x + w, y1, c);
         }
     }
 
@@ -3918,6 +6649,39 @@ public final class SmartphoneOverlay {
         Font font = Minecraft.getInstance().font;
         float scale = Mth.clamp(size / Math.max(1.0F, font.lineHeight), 0.50F, 2.35F);
         return Math.round(font.width(text) * scale);
+    }
+
+    private static float fitPhoneTextSize(String raw, int width, float preferred, float minimum) {
+        String text = raw == null ? "" : raw;
+        float size = preferred;
+        while (size > minimum && phoneTextWidth(text, size) > width) {
+            size -= 0.5F;
+        }
+        return Math.max(minimum, size);
+    }
+
+    private static String trimPhoneText(String raw, int width, float size) {
+        String value = raw == null ? "" : raw;
+        if (phoneTextWidth(value, size) <= width) {
+            return value;
+        }
+        String ellipsis = "...";
+        while (!value.isEmpty() && phoneTextWidth(value + ellipsis, size) > width) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value + ellipsis;
+    }
+
+    private static String trimPhoneTextFromStart(String raw, int width, float size) {
+        String value = raw == null ? "" : raw;
+        if (phoneTextWidth(value, size) <= width) {
+            return value;
+        }
+        String ellipsis = "...";
+        while (!value.isEmpty() && phoneTextWidth(ellipsis + value, size) > width) {
+            value = value.substring(1);
+        }
+        return ellipsis + value;
     }
 
     private static void drawWrapped(GuiGraphics g, Font font, String text, int x, int y, int w, int color, int maxLines) {
@@ -3991,36 +6755,15 @@ public final class SmartphoneOverlay {
         return switch (appId) {
             case "banking" -> 0xFF0F9F6E;
             case "tap" -> 0xFF2D7DFF;
+            case "market" -> 0xFFB88722;
             case "calculator" -> 0xFF303846;
             case "paint" -> 0xFFE86BA5;
             case "contacts" -> 0xFF2FBF71;
             case "messenger" -> 0xFF20A7FF;
             case "notes" -> 0xFFF5C64F;
             case "settings" -> 0xFF8A95A8;
-            case "journeymap" -> 0xFF5AB56B;
-            case "auction" -> 0xFFB681FF;
-            case "realestate" -> 0xFFDC8D40;
             default -> SmartphoneClientState.accentColor();
         };
     }
 
-    private static String iconGlyph(String appId) {
-        if (appId != null && appId.startsWith("account:")) {
-            return "$";
-        }
-        return switch (appId) {
-            case "banking" -> "$";
-            case "tap" -> "N";
-            case "calculator" -> "=";
-            case "paint" -> "P";
-            case "contacts" -> "@";
-            case "messenger" -> "M";
-            case "notes" -> "T";
-            case "settings" -> "*";
-            case "journeymap" -> "^";
-            case "auction" -> "A";
-            case "realestate" -> "R";
-            default -> "?";
-        };
-    }
 }

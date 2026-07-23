@@ -1,0 +1,1444 @@
+﻿{
+    "variants":  {
+                     "count=1,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_1"
+                                                                       },
+                     "count=1,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_1",
+                                                                          "y":  90
+                                                                      },
+                     "count=1,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_1",
+                                                                           "y":  180
+                                                                       },
+                     "count=1,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_1",
+                                                                          "y":  270
+                                                                      },
+                     "count=2,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_2"
+                                                                       },
+                     "count=2,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_2",
+                                                                          "y":  90
+                                                                      },
+                     "count=2,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_2",
+                                                                           "y":  180
+                                                                       },
+                     "count=2,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_2",
+                                                                          "y":  270
+                                                                      },
+                     "count=3,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_3"
+                                                                       },
+                     "count=3,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_3",
+                                                                          "y":  90
+                                                                      },
+                     "count=3,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_3",
+                                                                           "y":  180
+                                                                       },
+                     "count=3,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_3",
+                                                                          "y":  270
+                                                                      },
+                     "count=4,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_4"
+                                                                       },
+                     "count=4,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_4",
+                                                                          "y":  90
+                                                                      },
+                     "count=4,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_4",
+                                                                           "y":  180
+                                                                       },
+                     "count=4,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_4",
+                                                                          "y":  270
+                                                                      },
+                     "count=5,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_5"
+                                                                       },
+                     "count=5,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_5",
+                                                                          "y":  90
+                                                                      },
+                     "count=5,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_5",
+                                                                           "y":  180
+                                                                       },
+                     "count=5,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_5",
+                                                                          "y":  270
+                                                                      },
+                     "count=6,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_6"
+                                                                       },
+                     "count=6,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_6",
+                                                                          "y":  90
+                                                                      },
+                     "count=6,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_6",
+                                                                           "y":  180
+                                                                       },
+                     "count=6,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_6",
+                                                                          "y":  270
+                                                                      },
+                     "count=7,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_7"
+                                                                       },
+                     "count=7,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_7",
+                                                                          "y":  90
+                                                                      },
+                     "count=7,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_7",
+                                                                           "y":  180
+                                                                       },
+                     "count=7,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_7",
+                                                                          "y":  270
+                                                                      },
+                     "count=8,facing=north,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_8"
+                                                                       },
+                     "count=8,facing=east,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_8",
+                                                                          "y":  90
+                                                                      },
+                     "count=8,facing=south,kind=hundred_dollar_bill":  {
+                                                                           "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_8",
+                                                                           "y":  180
+                                                                       },
+                     "count=8,facing=west,kind=hundred_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/hundred_dollar_bill_8",
+                                                                          "y":  270
+                                                                      },
+                     "count=1,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_1"
+                                                                     },
+                     "count=1,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_1",
+                                                                        "y":  90
+                                                                    },
+                     "count=1,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_1",
+                                                                         "y":  180
+                                                                     },
+                     "count=1,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_1",
+                                                                        "y":  270
+                                                                    },
+                     "count=2,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_2"
+                                                                     },
+                     "count=2,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_2",
+                                                                        "y":  90
+                                                                    },
+                     "count=2,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_2",
+                                                                         "y":  180
+                                                                     },
+                     "count=2,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_2",
+                                                                        "y":  270
+                                                                    },
+                     "count=3,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_3"
+                                                                     },
+                     "count=3,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_3",
+                                                                        "y":  90
+                                                                    },
+                     "count=3,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_3",
+                                                                         "y":  180
+                                                                     },
+                     "count=3,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_3",
+                                                                        "y":  270
+                                                                    },
+                     "count=4,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_4"
+                                                                     },
+                     "count=4,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_4",
+                                                                        "y":  90
+                                                                    },
+                     "count=4,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_4",
+                                                                         "y":  180
+                                                                     },
+                     "count=4,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_4",
+                                                                        "y":  270
+                                                                    },
+                     "count=5,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_5"
+                                                                     },
+                     "count=5,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_5",
+                                                                        "y":  90
+                                                                    },
+                     "count=5,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_5",
+                                                                         "y":  180
+                                                                     },
+                     "count=5,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_5",
+                                                                        "y":  270
+                                                                    },
+                     "count=6,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_6"
+                                                                     },
+                     "count=6,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_6",
+                                                                        "y":  90
+                                                                    },
+                     "count=6,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_6",
+                                                                         "y":  180
+                                                                     },
+                     "count=6,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_6",
+                                                                        "y":  270
+                                                                    },
+                     "count=7,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_7"
+                                                                     },
+                     "count=7,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_7",
+                                                                        "y":  90
+                                                                    },
+                     "count=7,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_7",
+                                                                         "y":  180
+                                                                     },
+                     "count=7,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_7",
+                                                                        "y":  270
+                                                                    },
+                     "count=8,facing=north,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_8"
+                                                                     },
+                     "count=8,facing=east,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_8",
+                                                                        "y":  90
+                                                                    },
+                     "count=8,facing=south,kind=fifty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_8",
+                                                                         "y":  180
+                                                                     },
+                     "count=8,facing=west,kind=fifty_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/fifty_dollar_bill_8",
+                                                                        "y":  270
+                                                                    },
+                     "count=1,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_1"
+                                                                      },
+                     "count=1,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_1",
+                                                                         "y":  90
+                                                                     },
+                     "count=1,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_1",
+                                                                          "y":  180
+                                                                      },
+                     "count=1,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_1",
+                                                                         "y":  270
+                                                                     },
+                     "count=2,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_2"
+                                                                      },
+                     "count=2,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_2",
+                                                                         "y":  90
+                                                                     },
+                     "count=2,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_2",
+                                                                          "y":  180
+                                                                      },
+                     "count=2,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_2",
+                                                                         "y":  270
+                                                                     },
+                     "count=3,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_3"
+                                                                      },
+                     "count=3,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_3",
+                                                                         "y":  90
+                                                                     },
+                     "count=3,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_3",
+                                                                          "y":  180
+                                                                      },
+                     "count=3,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_3",
+                                                                         "y":  270
+                                                                     },
+                     "count=4,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_4"
+                                                                      },
+                     "count=4,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_4",
+                                                                         "y":  90
+                                                                     },
+                     "count=4,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_4",
+                                                                          "y":  180
+                                                                      },
+                     "count=4,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_4",
+                                                                         "y":  270
+                                                                     },
+                     "count=5,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_5"
+                                                                      },
+                     "count=5,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_5",
+                                                                         "y":  90
+                                                                     },
+                     "count=5,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_5",
+                                                                          "y":  180
+                                                                      },
+                     "count=5,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_5",
+                                                                         "y":  270
+                                                                     },
+                     "count=6,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_6"
+                                                                      },
+                     "count=6,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_6",
+                                                                         "y":  90
+                                                                     },
+                     "count=6,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_6",
+                                                                          "y":  180
+                                                                      },
+                     "count=6,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_6",
+                                                                         "y":  270
+                                                                     },
+                     "count=7,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_7"
+                                                                      },
+                     "count=7,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_7",
+                                                                         "y":  90
+                                                                     },
+                     "count=7,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_7",
+                                                                          "y":  180
+                                                                      },
+                     "count=7,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_7",
+                                                                         "y":  270
+                                                                     },
+                     "count=8,facing=north,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_8"
+                                                                      },
+                     "count=8,facing=east,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_8",
+                                                                         "y":  90
+                                                                     },
+                     "count=8,facing=south,kind=twenty_dollar_bill":  {
+                                                                          "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_8",
+                                                                          "y":  180
+                                                                      },
+                     "count=8,facing=west,kind=twenty_dollar_bill":  {
+                                                                         "model":  "ultimatebankingsystem:block/cash_stack/twenty_dollar_bill_8",
+                                                                         "y":  270
+                                                                     },
+                     "count=1,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_1"
+                                                                   },
+                     "count=1,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_1",
+                                                                      "y":  90
+                                                                  },
+                     "count=1,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_1",
+                                                                       "y":  180
+                                                                   },
+                     "count=1,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_1",
+                                                                      "y":  270
+                                                                  },
+                     "count=2,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_2"
+                                                                   },
+                     "count=2,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_2",
+                                                                      "y":  90
+                                                                  },
+                     "count=2,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_2",
+                                                                       "y":  180
+                                                                   },
+                     "count=2,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_2",
+                                                                      "y":  270
+                                                                  },
+                     "count=3,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_3"
+                                                                   },
+                     "count=3,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_3",
+                                                                      "y":  90
+                                                                  },
+                     "count=3,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_3",
+                                                                       "y":  180
+                                                                   },
+                     "count=3,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_3",
+                                                                      "y":  270
+                                                                  },
+                     "count=4,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_4"
+                                                                   },
+                     "count=4,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_4",
+                                                                      "y":  90
+                                                                  },
+                     "count=4,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_4",
+                                                                       "y":  180
+                                                                   },
+                     "count=4,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_4",
+                                                                      "y":  270
+                                                                  },
+                     "count=5,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_5"
+                                                                   },
+                     "count=5,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_5",
+                                                                      "y":  90
+                                                                  },
+                     "count=5,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_5",
+                                                                       "y":  180
+                                                                   },
+                     "count=5,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_5",
+                                                                      "y":  270
+                                                                  },
+                     "count=6,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_6"
+                                                                   },
+                     "count=6,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_6",
+                                                                      "y":  90
+                                                                  },
+                     "count=6,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_6",
+                                                                       "y":  180
+                                                                   },
+                     "count=6,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_6",
+                                                                      "y":  270
+                                                                  },
+                     "count=7,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_7"
+                                                                   },
+                     "count=7,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_7",
+                                                                      "y":  90
+                                                                  },
+                     "count=7,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_7",
+                                                                       "y":  180
+                                                                   },
+                     "count=7,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_7",
+                                                                      "y":  270
+                                                                  },
+                     "count=8,facing=north,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_8"
+                                                                   },
+                     "count=8,facing=east,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_8",
+                                                                      "y":  90
+                                                                  },
+                     "count=8,facing=south,kind=ten_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_8",
+                                                                       "y":  180
+                                                                   },
+                     "count=8,facing=west,kind=ten_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/ten_dollar_bill_8",
+                                                                      "y":  270
+                                                                  },
+                     "count=1,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_1"
+                                                                    },
+                     "count=1,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_1",
+                                                                       "y":  90
+                                                                   },
+                     "count=1,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_1",
+                                                                        "y":  180
+                                                                    },
+                     "count=1,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_1",
+                                                                       "y":  270
+                                                                   },
+                     "count=2,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_2"
+                                                                    },
+                     "count=2,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_2",
+                                                                       "y":  90
+                                                                   },
+                     "count=2,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_2",
+                                                                        "y":  180
+                                                                    },
+                     "count=2,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_2",
+                                                                       "y":  270
+                                                                   },
+                     "count=3,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_3"
+                                                                    },
+                     "count=3,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_3",
+                                                                       "y":  90
+                                                                   },
+                     "count=3,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_3",
+                                                                        "y":  180
+                                                                    },
+                     "count=3,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_3",
+                                                                       "y":  270
+                                                                   },
+                     "count=4,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_4"
+                                                                    },
+                     "count=4,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_4",
+                                                                       "y":  90
+                                                                   },
+                     "count=4,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_4",
+                                                                        "y":  180
+                                                                    },
+                     "count=4,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_4",
+                                                                       "y":  270
+                                                                   },
+                     "count=5,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_5"
+                                                                    },
+                     "count=5,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_5",
+                                                                       "y":  90
+                                                                   },
+                     "count=5,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_5",
+                                                                        "y":  180
+                                                                    },
+                     "count=5,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_5",
+                                                                       "y":  270
+                                                                   },
+                     "count=6,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_6"
+                                                                    },
+                     "count=6,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_6",
+                                                                       "y":  90
+                                                                   },
+                     "count=6,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_6",
+                                                                        "y":  180
+                                                                    },
+                     "count=6,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_6",
+                                                                       "y":  270
+                                                                   },
+                     "count=7,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_7"
+                                                                    },
+                     "count=7,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_7",
+                                                                       "y":  90
+                                                                   },
+                     "count=7,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_7",
+                                                                        "y":  180
+                                                                    },
+                     "count=7,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_7",
+                                                                       "y":  270
+                                                                   },
+                     "count=8,facing=north,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_8"
+                                                                    },
+                     "count=8,facing=east,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_8",
+                                                                       "y":  90
+                                                                   },
+                     "count=8,facing=south,kind=five_dollar_bill":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_8",
+                                                                        "y":  180
+                                                                    },
+                     "count=8,facing=west,kind=five_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/five_dollar_bill_8",
+                                                                       "y":  270
+                                                                   },
+                     "count=1,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_1"
+                                                                   },
+                     "count=1,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_1",
+                                                                      "y":  90
+                                                                  },
+                     "count=1,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_1",
+                                                                       "y":  180
+                                                                   },
+                     "count=1,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_1",
+                                                                      "y":  270
+                                                                  },
+                     "count=2,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_2"
+                                                                   },
+                     "count=2,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_2",
+                                                                      "y":  90
+                                                                  },
+                     "count=2,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_2",
+                                                                       "y":  180
+                                                                   },
+                     "count=2,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_2",
+                                                                      "y":  270
+                                                                  },
+                     "count=3,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_3"
+                                                                   },
+                     "count=3,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_3",
+                                                                      "y":  90
+                                                                  },
+                     "count=3,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_3",
+                                                                       "y":  180
+                                                                   },
+                     "count=3,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_3",
+                                                                      "y":  270
+                                                                  },
+                     "count=4,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_4"
+                                                                   },
+                     "count=4,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_4",
+                                                                      "y":  90
+                                                                  },
+                     "count=4,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_4",
+                                                                       "y":  180
+                                                                   },
+                     "count=4,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_4",
+                                                                      "y":  270
+                                                                  },
+                     "count=5,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_5"
+                                                                   },
+                     "count=5,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_5",
+                                                                      "y":  90
+                                                                  },
+                     "count=5,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_5",
+                                                                       "y":  180
+                                                                   },
+                     "count=5,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_5",
+                                                                      "y":  270
+                                                                  },
+                     "count=6,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_6"
+                                                                   },
+                     "count=6,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_6",
+                                                                      "y":  90
+                                                                  },
+                     "count=6,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_6",
+                                                                       "y":  180
+                                                                   },
+                     "count=6,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_6",
+                                                                      "y":  270
+                                                                  },
+                     "count=7,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_7"
+                                                                   },
+                     "count=7,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_7",
+                                                                      "y":  90
+                                                                  },
+                     "count=7,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_7",
+                                                                       "y":  180
+                                                                   },
+                     "count=7,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_7",
+                                                                      "y":  270
+                                                                  },
+                     "count=8,facing=north,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_8"
+                                                                   },
+                     "count=8,facing=east,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_8",
+                                                                      "y":  90
+                                                                  },
+                     "count=8,facing=south,kind=two_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_8",
+                                                                       "y":  180
+                                                                   },
+                     "count=8,facing=west,kind=two_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/two_dollar_bill_8",
+                                                                      "y":  270
+                                                                  },
+                     "count=1,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_1"
+                                                                   },
+                     "count=1,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_1",
+                                                                      "y":  90
+                                                                  },
+                     "count=1,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_1",
+                                                                       "y":  180
+                                                                   },
+                     "count=1,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_1",
+                                                                      "y":  270
+                                                                  },
+                     "count=2,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_2"
+                                                                   },
+                     "count=2,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_2",
+                                                                      "y":  90
+                                                                  },
+                     "count=2,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_2",
+                                                                       "y":  180
+                                                                   },
+                     "count=2,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_2",
+                                                                      "y":  270
+                                                                  },
+                     "count=3,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_3"
+                                                                   },
+                     "count=3,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_3",
+                                                                      "y":  90
+                                                                  },
+                     "count=3,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_3",
+                                                                       "y":  180
+                                                                   },
+                     "count=3,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_3",
+                                                                      "y":  270
+                                                                  },
+                     "count=4,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_4"
+                                                                   },
+                     "count=4,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_4",
+                                                                      "y":  90
+                                                                  },
+                     "count=4,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_4",
+                                                                       "y":  180
+                                                                   },
+                     "count=4,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_4",
+                                                                      "y":  270
+                                                                  },
+                     "count=5,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_5"
+                                                                   },
+                     "count=5,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_5",
+                                                                      "y":  90
+                                                                  },
+                     "count=5,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_5",
+                                                                       "y":  180
+                                                                   },
+                     "count=5,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_5",
+                                                                      "y":  270
+                                                                  },
+                     "count=6,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_6"
+                                                                   },
+                     "count=6,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_6",
+                                                                      "y":  90
+                                                                  },
+                     "count=6,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_6",
+                                                                       "y":  180
+                                                                   },
+                     "count=6,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_6",
+                                                                      "y":  270
+                                                                  },
+                     "count=7,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_7"
+                                                                   },
+                     "count=7,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_7",
+                                                                      "y":  90
+                                                                  },
+                     "count=7,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_7",
+                                                                       "y":  180
+                                                                   },
+                     "count=7,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_7",
+                                                                      "y":  270
+                                                                  },
+                     "count=8,facing=north,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_8"
+                                                                   },
+                     "count=8,facing=east,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_8",
+                                                                      "y":  90
+                                                                  },
+                     "count=8,facing=south,kind=one_dollar_bill":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_8",
+                                                                       "y":  180
+                                                                   },
+                     "count=8,facing=west,kind=one_dollar_bill":  {
+                                                                      "model":  "ultimatebankingsystem:block/cash_stack/one_dollar_bill_8",
+                                                                      "y":  270
+                                                                  },
+                     "count=1,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_1"
+                                                                    },
+                     "count=1,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_1",
+                                                                       "y":  90
+                                                                   },
+                     "count=1,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_1",
+                                                                        "y":  180
+                                                                    },
+                     "count=1,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_1",
+                                                                       "y":  270
+                                                                   },
+                     "count=2,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_2"
+                                                                    },
+                     "count=2,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_2",
+                                                                       "y":  90
+                                                                   },
+                     "count=2,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_2",
+                                                                        "y":  180
+                                                                    },
+                     "count=2,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_2",
+                                                                       "y":  270
+                                                                   },
+                     "count=3,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_3"
+                                                                    },
+                     "count=3,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_3",
+                                                                       "y":  90
+                                                                   },
+                     "count=3,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_3",
+                                                                        "y":  180
+                                                                    },
+                     "count=3,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_3",
+                                                                       "y":  270
+                                                                   },
+                     "count=4,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_4"
+                                                                    },
+                     "count=4,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_4",
+                                                                       "y":  90
+                                                                   },
+                     "count=4,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_4",
+                                                                        "y":  180
+                                                                    },
+                     "count=4,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_4",
+                                                                       "y":  270
+                                                                   },
+                     "count=5,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_5"
+                                                                    },
+                     "count=5,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_5",
+                                                                       "y":  90
+                                                                   },
+                     "count=5,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_5",
+                                                                        "y":  180
+                                                                    },
+                     "count=5,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_5",
+                                                                       "y":  270
+                                                                   },
+                     "count=6,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_6"
+                                                                    },
+                     "count=6,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_6",
+                                                                       "y":  90
+                                                                   },
+                     "count=6,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_6",
+                                                                        "y":  180
+                                                                    },
+                     "count=6,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_6",
+                                                                       "y":  270
+                                                                   },
+                     "count=7,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_7"
+                                                                    },
+                     "count=7,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_7",
+                                                                       "y":  90
+                                                                   },
+                     "count=7,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_7",
+                                                                        "y":  180
+                                                                    },
+                     "count=7,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_7",
+                                                                       "y":  270
+                                                                   },
+                     "count=8,facing=north,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_8"
+                                                                    },
+                     "count=8,facing=east,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_8",
+                                                                       "y":  90
+                                                                   },
+                     "count=8,facing=south,kind=half_dollar_coin":  {
+                                                                        "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_8",
+                                                                        "y":  180
+                                                                    },
+                     "count=8,facing=west,kind=half_dollar_coin":  {
+                                                                       "model":  "ultimatebankingsystem:block/cash_stack/half_dollar_coin_8",
+                                                                       "y":  270
+                                                                   },
+                     "count=1,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_1"
+                                                                },
+                     "count=1,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_1",
+                                                                   "y":  90
+                                                               },
+                     "count=1,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_1",
+                                                                    "y":  180
+                                                                },
+                     "count=1,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_1",
+                                                                   "y":  270
+                                                               },
+                     "count=2,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_2"
+                                                                },
+                     "count=2,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_2",
+                                                                   "y":  90
+                                                               },
+                     "count=2,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_2",
+                                                                    "y":  180
+                                                                },
+                     "count=2,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_2",
+                                                                   "y":  270
+                                                               },
+                     "count=3,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_3"
+                                                                },
+                     "count=3,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_3",
+                                                                   "y":  90
+                                                               },
+                     "count=3,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_3",
+                                                                    "y":  180
+                                                                },
+                     "count=3,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_3",
+                                                                   "y":  270
+                                                               },
+                     "count=4,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_4"
+                                                                },
+                     "count=4,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_4",
+                                                                   "y":  90
+                                                               },
+                     "count=4,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_4",
+                                                                    "y":  180
+                                                                },
+                     "count=4,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_4",
+                                                                   "y":  270
+                                                               },
+                     "count=5,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_5"
+                                                                },
+                     "count=5,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_5",
+                                                                   "y":  90
+                                                               },
+                     "count=5,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_5",
+                                                                    "y":  180
+                                                                },
+                     "count=5,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_5",
+                                                                   "y":  270
+                                                               },
+                     "count=6,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_6"
+                                                                },
+                     "count=6,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_6",
+                                                                   "y":  90
+                                                               },
+                     "count=6,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_6",
+                                                                    "y":  180
+                                                                },
+                     "count=6,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_6",
+                                                                   "y":  270
+                                                               },
+                     "count=7,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_7"
+                                                                },
+                     "count=7,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_7",
+                                                                   "y":  90
+                                                               },
+                     "count=7,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_7",
+                                                                    "y":  180
+                                                                },
+                     "count=7,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_7",
+                                                                   "y":  270
+                                                               },
+                     "count=8,facing=north,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_8"
+                                                                },
+                     "count=8,facing=east,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_8",
+                                                                   "y":  90
+                                                               },
+                     "count=8,facing=south,kind=quarter_coin":  {
+                                                                    "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_8",
+                                                                    "y":  180
+                                                                },
+                     "count=8,facing=west,kind=quarter_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/quarter_coin_8",
+                                                                   "y":  270
+                                                               },
+                     "count=1,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_1"
+                                                             },
+                     "count=1,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_1",
+                                                                "y":  90
+                                                            },
+                     "count=1,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_1",
+                                                                 "y":  180
+                                                             },
+                     "count=1,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_1",
+                                                                "y":  270
+                                                            },
+                     "count=2,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_2"
+                                                             },
+                     "count=2,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_2",
+                                                                "y":  90
+                                                            },
+                     "count=2,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_2",
+                                                                 "y":  180
+                                                             },
+                     "count=2,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_2",
+                                                                "y":  270
+                                                            },
+                     "count=3,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_3"
+                                                             },
+                     "count=3,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_3",
+                                                                "y":  90
+                                                            },
+                     "count=3,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_3",
+                                                                 "y":  180
+                                                             },
+                     "count=3,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_3",
+                                                                "y":  270
+                                                            },
+                     "count=4,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_4"
+                                                             },
+                     "count=4,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_4",
+                                                                "y":  90
+                                                            },
+                     "count=4,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_4",
+                                                                 "y":  180
+                                                             },
+                     "count=4,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_4",
+                                                                "y":  270
+                                                            },
+                     "count=5,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_5"
+                                                             },
+                     "count=5,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_5",
+                                                                "y":  90
+                                                            },
+                     "count=5,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_5",
+                                                                 "y":  180
+                                                             },
+                     "count=5,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_5",
+                                                                "y":  270
+                                                            },
+                     "count=6,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_6"
+                                                             },
+                     "count=6,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_6",
+                                                                "y":  90
+                                                            },
+                     "count=6,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_6",
+                                                                 "y":  180
+                                                             },
+                     "count=6,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_6",
+                                                                "y":  270
+                                                            },
+                     "count=7,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_7"
+                                                             },
+                     "count=7,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_7",
+                                                                "y":  90
+                                                            },
+                     "count=7,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_7",
+                                                                 "y":  180
+                                                             },
+                     "count=7,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_7",
+                                                                "y":  270
+                                                            },
+                     "count=8,facing=north,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_8"
+                                                             },
+                     "count=8,facing=east,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_8",
+                                                                "y":  90
+                                                            },
+                     "count=8,facing=south,kind=dime_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_8",
+                                                                 "y":  180
+                                                             },
+                     "count=8,facing=west,kind=dime_coin":  {
+                                                                "model":  "ultimatebankingsystem:block/cash_stack/dime_coin_8",
+                                                                "y":  270
+                                                            },
+                     "count=1,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_1"
+                                                               },
+                     "count=1,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_1",
+                                                                  "y":  90
+                                                              },
+                     "count=1,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_1",
+                                                                   "y":  180
+                                                               },
+                     "count=1,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_1",
+                                                                  "y":  270
+                                                              },
+                     "count=2,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_2"
+                                                               },
+                     "count=2,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_2",
+                                                                  "y":  90
+                                                              },
+                     "count=2,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_2",
+                                                                   "y":  180
+                                                               },
+                     "count=2,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_2",
+                                                                  "y":  270
+                                                              },
+                     "count=3,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_3"
+                                                               },
+                     "count=3,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_3",
+                                                                  "y":  90
+                                                              },
+                     "count=3,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_3",
+                                                                   "y":  180
+                                                               },
+                     "count=3,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_3",
+                                                                  "y":  270
+                                                              },
+                     "count=4,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_4"
+                                                               },
+                     "count=4,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_4",
+                                                                  "y":  90
+                                                              },
+                     "count=4,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_4",
+                                                                   "y":  180
+                                                               },
+                     "count=4,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_4",
+                                                                  "y":  270
+                                                              },
+                     "count=5,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_5"
+                                                               },
+                     "count=5,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_5",
+                                                                  "y":  90
+                                                              },
+                     "count=5,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_5",
+                                                                   "y":  180
+                                                               },
+                     "count=5,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_5",
+                                                                  "y":  270
+                                                              },
+                     "count=6,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_6"
+                                                               },
+                     "count=6,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_6",
+                                                                  "y":  90
+                                                              },
+                     "count=6,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_6",
+                                                                   "y":  180
+                                                               },
+                     "count=6,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_6",
+                                                                  "y":  270
+                                                              },
+                     "count=7,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_7"
+                                                               },
+                     "count=7,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_7",
+                                                                  "y":  90
+                                                              },
+                     "count=7,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_7",
+                                                                   "y":  180
+                                                               },
+                     "count=7,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_7",
+                                                                  "y":  270
+                                                              },
+                     "count=8,facing=north,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_8"
+                                                               },
+                     "count=8,facing=east,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_8",
+                                                                  "y":  90
+                                                              },
+                     "count=8,facing=south,kind=nickel_coin":  {
+                                                                   "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_8",
+                                                                   "y":  180
+                                                               },
+                     "count=8,facing=west,kind=nickel_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/nickel_coin_8",
+                                                                  "y":  270
+                                                              },
+                     "count=1,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_1"
+                                                              },
+                     "count=1,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_1",
+                                                                 "y":  90
+                                                             },
+                     "count=1,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_1",
+                                                                  "y":  180
+                                                              },
+                     "count=1,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_1",
+                                                                 "y":  270
+                                                             },
+                     "count=2,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_2"
+                                                              },
+                     "count=2,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_2",
+                                                                 "y":  90
+                                                             },
+                     "count=2,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_2",
+                                                                  "y":  180
+                                                              },
+                     "count=2,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_2",
+                                                                 "y":  270
+                                                             },
+                     "count=3,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_3"
+                                                              },
+                     "count=3,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_3",
+                                                                 "y":  90
+                                                             },
+                     "count=3,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_3",
+                                                                  "y":  180
+                                                              },
+                     "count=3,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_3",
+                                                                 "y":  270
+                                                             },
+                     "count=4,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_4"
+                                                              },
+                     "count=4,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_4",
+                                                                 "y":  90
+                                                             },
+                     "count=4,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_4",
+                                                                  "y":  180
+                                                              },
+                     "count=4,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_4",
+                                                                 "y":  270
+                                                             },
+                     "count=5,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_5"
+                                                              },
+                     "count=5,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_5",
+                                                                 "y":  90
+                                                             },
+                     "count=5,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_5",
+                                                                  "y":  180
+                                                              },
+                     "count=5,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_5",
+                                                                 "y":  270
+                                                             },
+                     "count=6,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_6"
+                                                              },
+                     "count=6,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_6",
+                                                                 "y":  90
+                                                             },
+                     "count=6,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_6",
+                                                                  "y":  180
+                                                              },
+                     "count=6,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_6",
+                                                                 "y":  270
+                                                             },
+                     "count=7,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_7"
+                                                              },
+                     "count=7,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_7",
+                                                                 "y":  90
+                                                             },
+                     "count=7,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_7",
+                                                                  "y":  180
+                                                              },
+                     "count=7,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_7",
+                                                                 "y":  270
+                                                             },
+                     "count=8,facing=north,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_8"
+                                                              },
+                     "count=8,facing=east,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_8",
+                                                                 "y":  90
+                                                             },
+                     "count=8,facing=south,kind=penny_coin":  {
+                                                                  "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_8",
+                                                                  "y":  180
+                                                              },
+                     "count=8,facing=west,kind=penny_coin":  {
+                                                                 "model":  "ultimatebankingsystem:block/cash_stack/penny_coin_8",
+                                                                 "y":  270
+                                                             }
+                 }
+}

@@ -1,0 +1,14 @@
+{
+  "briefcase_open": {
+    "subtitle": "subtitles.ultimatebankingsystem.briefcase_open",
+    "sounds": [
+      "ultimatebankingsystem:briefcase_open"
+    ]
+  },
+  "briefcase_close": {
+    "subtitle": "subtitles.ultimatebankingsystem.briefcase_close",
+    "sounds": [
+      "ultimatebankingsystem:briefcase_close"
+    ]
+  }
+}

@@ -8,7 +8,7 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload;
-import net.austizz.ultimatebankingsystem.network.ServerActionAlert;
+import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -215,7 +215,7 @@ public final class LoanService {
                             String message = "§eLoan payment due soon: §6" + MoneyText.abbreviateWithDollar(loan.getPeriodicPayment())
                                     + " §ein " + (nextDue - currentGameTime) + " ticks.";
                             borrower.sendSystemMessage(Component.literal(message));
-                            ServerActionAlert.sendLegacy(
+                            ServerNotification.sendLegacy(
                                     borrower,
                                     "Loans",
                                     message,
@@ -261,7 +261,7 @@ public final class LoanService {
                             if (borrower != null) {
                                 String message = "§aLoan fully repaid. Great work.";
                                 borrower.sendSystemMessage(Component.literal(message));
-                                ServerActionAlert.sendLegacy(
+                                ServerNotification.sendLegacy(
                                         borrower,
                                         "Loans",
                                         message,
@@ -286,7 +286,7 @@ public final class LoanService {
                         String message = "§cLoan defaulted: you missed a payment of "
                                 + MoneyText.abbreviateWithDollar(due) + ".";
                         borrower.sendSystemMessage(Component.literal(message));
-                        ServerActionAlert.sendLegacy(
+                        ServerNotification.sendLegacy(
                                 borrower,
                                 "Loans",
                                 message,
@@ -300,7 +300,7 @@ public final class LoanService {
                             String adminMessage = "§c[UBS] Loan default: " + account.getPlayerUUID()
                                     + " on account " + account.getAccountUUID();
                             online.sendSystemMessage(Component.literal(adminMessage));
-                            ServerActionAlert.sendLegacy(
+                            ServerNotification.sendLegacy(
                                     online,
                                     "Loans",
                                     adminMessage,

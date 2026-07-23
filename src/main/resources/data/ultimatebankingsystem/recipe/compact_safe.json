@@ -1,0 +1,23 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "pattern": [
+  "III",
+  "IAI",
+  "ICI"
+ ],
+ "key": {
+  "I": {
+   "item": "minecraft:iron_block"
+  },
+  "A": {
+   "item": "ultimatebankingsystem:access_verifier"
+  },
+  "C": {
+   "item": "minecraft:chest"
+  }
+ },
+ "result": {
+  "id": "ultimatebankingsystem:compact_safe",
+  "count": 1
+ }
+}
