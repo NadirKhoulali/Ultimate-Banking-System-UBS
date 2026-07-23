@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ultimate Banking System hero headers</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --navy-950: #050f1b;
+      --navy-900: #071829;
+      --navy-800: #0d2740;
+      --cyan: #48c8ff;
+      --mint: #50e3b2;
+      --gold: #ffc94a;
+      --coral: #ff5d73;
+      --white: #f3f9ff;
+      --muted: #adc0d2;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 1920px;
+      height: 640px;
+      margin: 0;
+      overflow: hidden;
+      background: var(--navy-950);
+      font-family: "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .hero {
+      position: relative;
+      display: none;
+      width: 1920px;
+      height: 640px;
+      overflow: hidden;
+      isolation: isolate;
+      background: var(--navy-950);
+    }
+
+    .hero.active {
+      display: block;
+    }
+
+    .hero-shot {
+      position: absolute;
+      inset: 0;
+      z-index: -5;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      user-select: none;
+    }
+
+    .overview .hero-shot {
+      object-position: 60% 49%;
+      filter: saturate(1.08) contrast(1.12) brightness(.78);
+      transform: scale(1.03);
+    }
+
+    .mobile .hero-shot {
+      object-position: 54% 54%;
+      filter: saturate(.92) contrast(1.08) brightness(.72);
+      transform: scale(1.04);
+    }
+
+    .heist .hero-shot {
+      object-position: 54% 53%;
+      filter: saturate(1.04) contrast(1.13) brightness(.68);
+      transform: scale(1.03);
+    }
+
+    .wash {
+      position: absolute;
+      inset: 0;
+      z-index: -4;
+      background: rgba(3, 13, 23, .24);
+    }
+
+    .info-field {
+      position: absolute;
+      inset: 0 auto 0 0;
+      z-index: -3;
+      width: 1230px;
+      background: rgba(5, 20, 34, .94);
+      clip-path: polygon(0 0, 88% 0, 100% 100%, 0 100%);
+    }
+
+    .info-field::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 98px;
+      width: 5px;
+      height: 100%;
+      background: var(--cyan);
+      transform: skewX(-12deg);
+      opacity: .86;
+    }
+
+    .heist .info-field {
+      background: rgba(12, 19, 29, .94);
+    }
+
+    .heist .info-field::after {
+      background: var(--coral);
+    }
+
+    .frame-line {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 6px;
+      background: var(--cyan);
+      z-index: 8;
+    }
+
+    .frame-line.top {
+      top: 0;
+    }
+
+    .frame-line.bottom {
+      bottom: 0;
+      background: var(--mint);
+    }
+
+    .heist .frame-line.top {
+      background: var(--coral);
+    }
+
+    .heist .frame-line.bottom {
+      background: var(--gold);
+    }
+
+    .brand {
+      position: absolute;
+      top: 46px;
+      left: 72px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--white);
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 54px;
+      height: 54px;
+      place-items: center;
+      border: 2px solid var(--cyan);
+      border-left-width: 8px;
+      background: #0b2238;
+      color: var(--white);
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .brand-copy strong,
+    .brand-copy span {
+      display: block;
+    }
+
+    .brand-copy strong {
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .brand-copy span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 15px;
+      text-transform: uppercase;
+    }
+
+    .release {
+      position: absolute;
+      top: 51px;
+      left: 845px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border: 1px solid rgba(173, 192, 210, .45);
+      border-left: 5px solid var(--gold);
+      background: rgba(7, 24, 41, .86);
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .release strong {
+      color: var(--gold);
+    }
+
+    .heist .release {
+      border-left-color: var(--coral);
+    }
+
+    .heist .release strong {
+      color: var(--coral);
+    }
+
+    .content {
+      position: absolute;
+      top: 146px;
+      left: 72px;
+      width: 945px;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 0 0 16px;
+      color: var(--cyan);
+      font-size: 18px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 54px;
+      height: 5px;
+      background: currentColor;
+    }
+
+    .heist .eyebrow {
+      color: var(--coral);
+    }
+
+    h1 {
+      max-width: 920px;
+      margin: 0;
+      color: var(--white);
+      font-size: 70px;
+      font-weight: 850;
+      line-height: 1.02;
+      text-wrap: balance;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, .32);
+    }
+
+    h1 .accent {
+      color: var(--cyan);
+    }
+
+    .overview h1 .accent {
+      color: var(--gold);
+    }
+
+    .heist h1 .accent {
+      color: var(--gold);
+    }
+
+    .summary {
+      max-width: 805px;
+      margin: 22px 0 0;
+      color: #d3e1ed;
+      font-size: 25px;
+      line-height: 1.35;
+    }
+
+    .feature-row {
+      position: absolute;
+      bottom: 48px;
+      left: 72px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .feature {
+      min-width: 156px;
+      padding: 13px 17px;
+      border: 1px solid rgba(148, 174, 196, .35);
+      border-top: 4px solid var(--cyan);
+      background: rgba(7, 24, 41, .9);
+      color: var(--white);
+      font-size: 16px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .feature.gold {
+      border-top-color: var(--gold);
+    }
+
+    .feature.mint {
+      border-top-color: var(--mint);
+    }
+
+    .feature.coral {
+      border-top-color: var(--coral);
+    }
+
+    .scene-label {
+      position: absolute;
+      right: 42px;
+      bottom: 32px;
+      width: 330px;
+      padding: 15px 18px;
+      border-right: 6px solid var(--cyan);
+      background: rgba(4, 16, 28, .84);
+      color: var(--white);
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    .scene-label strong,
+    .scene-label span {
+      display: block;
+    }
+
+    .scene-label strong {
+      font-size: 17px;
+    }
+
+    .scene-label span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .heist .scene-label {
+      border-right-color: var(--coral);
+    }
+
+    .mobile .phone-focus {
+      position: absolute;
+      top: 30px;
+      right: 45px;
+      width: 435px;
+      height: 580px;
+      border: 2px solid rgba(72, 200, 255, .58);
+      pointer-events: none;
+    }
+
+    .mobile .phone-focus::before,
+    .mobile .phone-focus::after {
+      content: "";
+      position: absolute;
+      width: 52px;
+      height: 52px;
+      border-color: var(--mint);
+      border-style: solid;
+    }
+
+    .mobile .phone-focus::before {
+      top: -2px;
+      left: -2px;
+      border-width: 5px 0 0 5px;
+    }
+
+    .mobile .phone-focus::after {
+      right: -2px;
+      bottom: -2px;
+      border-width: 0 5px 5px 0;
+    }
+
+    .shop {
+      background: #071829;
+    }
+
+    .shop .info-field {
+      width: 1080px;
+    }
+
+    .shop .release {
+      left: 748px;
+    }
+
+    .shop h1 {
+      font-size: 64px;
+    }
+
+    .shop h1 .accent,
+    .claims h1 .accent {
+      color: var(--mint);
+    }
+
+    .shop .frame-line.bottom,
+    .claims .frame-line.bottom {
+      background: var(--gold);
+    }
+
+    .retail-ui {
+      position: absolute;
+      top: 54px;
+      right: 42px;
+      width: 830px;
+      height: 532px;
+      overflow: hidden;
+      border: 2px solid #39749d;
+      background: #061523;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, .42);
+    }
+
+    .retail-topbar,
+    .retail-appbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+
+    .retail-topbar {
+      height: 48px;
+      border-bottom: 1px solid #326080;
+      background: #0c253d;
+      color: var(--white);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .retail-topbar span:last-child {
+      color: var(--mint);
+      font-size: 13px;
+    }
+
+    .retail-appbar {
+      height: 40px;
+      border-bottom: 1px solid #326080;
+      background: #173a5d;
+      color: #dcecff;
+      font-size: 14px;
+    }
+
+    .retail-appbar strong {
+      color: var(--gold);
+    }
+
+    .retail-body {
+      display: grid;
+      grid-template-columns: 142px 1fr;
+      height: 442px;
+    }
+
+    .retail-nav {
+      padding: 14px 10px;
+      border-right: 1px solid #2d5a7a;
+      background: #091d31;
+    }
+
+    .retail-nav-item {
+      margin-bottom: 8px;
+      padding: 10px 9px;
+      border: 1px solid #2d5a7a;
+      border-left: 4px solid #6c93ae;
+      background: #0b2238;
+      color: #a9bccd;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .retail-nav-item.active {
+      border-left-color: var(--cyan);
+      color: var(--white);
+      background: #123454;
+    }
+
+    .retail-main {
+      padding: 13px;
+    }
+
+    .retail-tools {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.35fr;
+      gap: 8px;
+      margin-bottom: 11px;
+    }
+
+    .retail-tool {
+      padding: 8px 10px;
+      border: 1px solid #347196;
+      border-left: 4px solid var(--cyan);
+      background: #0b2136;
+      color: #d6e6f3;
+      font-size: 11px;
+    }
+
+    .retail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .product-card {
+      position: relative;
+      height: 172px;
+      padding: 12px;
+      border: 1px solid #2d5c7b;
+      border-top: 4px solid var(--cyan);
+      background: #0a1d30;
+      color: var(--white);
+    }
+
+    .product-card img {
+      float: left;
+      width: 38px;
+      height: 38px;
+      margin: 2px 10px 8px 0;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    .product-card strong,
+    .product-card span,
+    .product-card small {
+      display: block;
+    }
+
+    .product-card strong {
+      min-height: 31px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .product-card span {
+      margin-top: 5px;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .product-card small {
+      clear: both;
+      padding-top: 8px;
+      color: #9db2c5;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .product-button {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      left: 10px;
+      padding: 7px;
+      border: 1px solid #3d789e;
+      border-left: 5px solid var(--mint);
+      background: #123554;
+      color: #eef8ff;
+      font-size: 10px;
+      font-weight: 800;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .bankops .hero-shot {
+      object-position: 50% 54%;
+      filter: saturate(.86) contrast(1.12) brightness(.7);
+      transform: scale(1.04);
+    }
+
+    .bankops h1 .accent {
+      color: var(--cyan);
+    }
+
+    .cash .hero-shot {
+      object-position: 57% 52%;
+      filter: saturate(1.12) contrast(1.08) brightness(.72);
+      transform: scale(1.03);
+    }
+
+    .cash h1 {
+      font-size: 62px;
+    }
+
+    .cash h1 .accent {
+      color: var(--gold);
+    }
+
+    .cash .frame-line.top {
+      background: var(--gold);
+    }
+
+    .claims .hero-shot {
+      object-position: 58% 55%;
+      filter: saturate(.88) contrast(1.1) brightness(.7);
+      transform: scale(1.03);
+    }
+
+    .claims h1 {
+      font-size: 62px;
+    }
+  </style>
+</head>
+<body>
+  <section class="hero overview" data-variant="overview">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-14_20.06.08.png" alt="UBS bank vault with gold reserves and safety deposit boxes">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy">
+        <strong>Ultimate Banking System</strong>
+        <span>by PixelForge Mods</span>
+      </div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">The complete server economy</p>
+      <h1>BUILD. BANK. TRADE. <span class="accent">SECURE.</span></h1>
+      <p class="summary">A connected multiplayer economy with real banking, managed retail, physical vault security, and playable heists.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature">Banking</div>
+      <div class="feature mint">Retail</div>
+      <div class="feature gold">Vaults</div>
+      <div class="feature coral">Heists</div>
+    </div>
+    <div class="scene-label">
+      <strong>Persistent multiplayer systems</strong>
+      <span>Accounts · shops · security · crime</span>
+    </div>
+  </section>
+
+  <section class="hero mobile" data-variant="mobile">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-02_13.46.07.png" alt="UBS smartphone banking app in Minecraft">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy">
+        <strong>Ultimate Banking System</strong>
+        <span>Mobile banking suite</span>
+      </div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">Your economy, always connected</p>
+      <h1>BANKING IN <span class="accent">YOUR POCKET.</span></h1>
+      <p class="summary">Manage accounts, cards, transfers, payment requests, contacts, and secure conversations from one in-game smartphone.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature">Multi-bank</div>
+      <div class="feature mint">Live payments</div>
+      <div class="feature gold">Smart cards</div>
+      <div class="feature coral">Messenger</div>
+    </div>
+    <div class="phone-focus"></div>
+  </section>
+
+  <section class="hero heist" data-variant="heist">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-17_14.39.32.png" alt="UBS multiplayer bank heist with thermal drill and gold reserves">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy">
+        <strong>Ultimate Banking System</strong>
+        <span>Security and heists</span>
+      </div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">Secure the vault or break it open</p>
+      <h1>PLAN THE JOB. <span class="accent">TAKE THE SCORE.</span></h1>
+      <p class="summary">Build protected bank premises, deploy RFID access and alarms, or assemble a crew for a timed tactical heist.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature coral">Crews</div>
+      <div class="feature gold">Thermal drills</div>
+      <div class="feature">RFID security</div>
+      <div class="feature mint">Extraction</div>
+    </div>
+    <div class="scene-label">
+      <strong>One economy. Two sides.</strong>
+      <span>Own the bank or challenge its defenses</span>
+    </div>
+  </section>
+
+  <section class="hero shop" data-variant="shop">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy">
+        <strong>Ultimate Banking System</strong>
+        <span>Retail and commerce</span>
+      </div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">Retail from shelf to shipment</p>
+      <h1>RUN THE STORE. <span class="accent">CONTROL THE FLOW.</span></h1>
+      <p class="summary">Build catalogs, manage inventory, serve customers, route pallet deliveries, and track every order from one desktop.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature">Catalogs</div>
+      <div class="feature mint">Checkout</div>
+      <div class="feature gold">Logistics</div>
+      <div class="feature coral">Tracking</div>
+    </div>
+    <div class="retail-ui" aria-label="Retail Webshop catalog preview">
+      <div class="retail-topbar"><span>UBS Commerce Desktop</span><span>SHOPS 3/3 · ONLINE</span></div>
+      <div class="retail-appbar"><span>Utilities / Retail Webshop</span><strong>Cart 3</strong></div>
+      <div class="retail-body">
+        <nav class="retail-nav">
+          <div class="retail-nav-item">Home</div>
+          <div class="retail-nav-item active">Catalog</div>
+          <div class="retail-nav-item">Cart</div>
+          <div class="retail-nav-item">Checkout</div>
+          <div class="retail-nav-item">Tracking</div>
+        </nav>
+        <div class="retail-main">
+          <div class="retail-tools">
+            <div class="retail-tool">Category: All</div>
+            <div class="retail-tool">Sort: Name</div>
+            <div class="retail-tool">Search products</div>
+          </div>
+          <div class="retail-grid">
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/payment_terminal.png" alt="">
+              <strong>Payment Terminal</strong><span>$950</span><small>Card terminal for cashier flows.</small><div class="product-button">View details</div>
+            </article>
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/tall_wall_shelf.png" alt="">
+              <strong>Shop Shelf</strong><span>$169</span><small>Wall-mounted retail display.</small><div class="product-button">View details</div>
+            </article>
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/glass_counter_display.png" alt="">
+              <strong>Glass Counter Display</strong><span>$250</span><small>Secure counter merchandising.</small><div class="product-button">View details</div>
+            </article>
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/pallet.png" alt="">
+              <strong>Delivery Pallet</strong><span>$90</span><small>Stockroom and delivery routing.</small><div class="product-button">View details</div>
+            </article>
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/shopping_basket_holder.png" alt="">
+              <strong>Basket Holder</strong><span>$180</span><small>Customer basket pickup point.</small><div class="product-button">View details</div>
+            </article>
+            <article class="product-card">
+              <img src="../../../src/main/resources/assets/ultimatebankingsystem/textures/block/cardboard_box.png" alt="">
+              <strong>Cardboard Box</strong><span>$4</span><small>Transfer stock between locations.</small><div class="product-button">View details</div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="hero bankops" data-variant="bankops">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-14_20.06.27.png" alt="UBS bank teller hall">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy"><strong>Ultimate Banking System</strong><span>Bank management</span></div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">A bank players can actually operate</p>
+      <h1>OWN THE BANK. <span class="accent">RUN THE OPERATION.</span></h1>
+      <p class="summary">Manage accounts, employees, premises, lending, policies, reserves, and protected customer services.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature">Accounts</div>
+      <div class="feature mint">Staff</div>
+      <div class="feature gold">Policies</div>
+      <div class="feature coral">Safe operations</div>
+    </div>
+    <div class="scene-label"><strong>Player-owned institutions</strong><span>Operate locally · govern centrally</span></div>
+  </section>
+
+  <section class="hero cash" data-variant="cash">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-08_21.52.26.png" alt="Physical cash and gold reserves on UBS metal pallets">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy"><strong>Ultimate Banking System</strong><span>Physical economy</span></div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">Physical value in the world</p>
+      <h1>CASH YOU CAN HOLD. <span class="accent">RESERVES YOU CAN SEE.</span></h1>
+      <p class="summary">Carry bills and coins, fill wallets and safes, stack precious metals, and move high-value reserves on physical pallets.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature gold">Cash</div>
+      <div class="feature mint">Wallets</div>
+      <div class="feature">Precious metals</div>
+      <div class="feature coral">Pallet storage</div>
+    </div>
+    <div class="scene-label"><strong>A tangible server economy</strong><span>Store it · move it · secure it</span></div>
+  </section>
+
+  <section class="hero claims" data-variant="claims">
+    <img class="hero-shot" src="../../../run/screenshots/2026-07-22_12.22.17.png" alt="UBS graphical safe-area claiming interface">
+    <div class="wash"></div>
+    <div class="info-field"></div>
+    <div class="frame-line top"></div>
+    <div class="frame-line bottom"></div>
+    <div class="brand">
+      <div class="brand-mark">UBS</div>
+      <div class="brand-copy"><strong>Ultimate Banking System</strong><span>Premises and protection</span></div>
+    </div>
+    <div class="release"><strong>v2.0.0</strong><span>NeoForge 1.21.1</span></div>
+    <div class="content">
+      <p class="eyebrow">Purpose-built graphical claim tools</p>
+      <h1>DEFINE THE SPACE. <span class="accent">ENFORCE THE RULES.</span></h1>
+      <p class="summary">Claim banks, shops, vaults, and viewing rooms with visible boundaries and server-enforced protection.</p>
+    </div>
+    <div class="feature-row">
+      <div class="feature">Premises</div>
+      <div class="feature mint">Safe areas</div>
+      <div class="feature gold">Shop plots</div>
+      <div class="feature coral">Protection</div>
+    </div>
+    <div class="scene-label"><strong>Clear tools. Strict boundaries.</strong><span>Visual selection · collision checks · permissions</span></div>
+  </section>
+
+  <script>
+    const parameters = new URLSearchParams(window.location.search);
+    const requestedVariant = parameters.get("variant") || "overview";
+    const selected = document.querySelector(`[data-variant="${requestedVariant}"]`) || document.querySelector('[data-variant="overview"]');
+    selected.classList.add("active");
+    const outputScale = Number.parseFloat(parameters.get("scale") || "1");
+    if (Number.isFinite(outputScale) && outputScale > 0 && outputScale !== 1) {
+      selected.style.transformOrigin = "top left";
+      selected.style.transform = `scale(${outputScale})`;
+    }
+  </script>
+</body>
+</html>
