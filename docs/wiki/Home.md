@@ -1,6 +1,6 @@
 # Ultimate Banking System Wiki
 
-This wiki documents UBS `2.0.0` for Minecraft `1.21.1` on NeoForge.
+This wiki documents UBS `2.1.0` for Minecraft `1.21.1` on NeoForge.
 
 ## Player Guides
 
@@ -21,15 +21,16 @@ This wiki documents UBS `2.0.0` for Minecraft `1.21.1` on NeoForge.
 - [Admin Commands](Admin-Commands.md)
 - [Configuration](Configuration.md)
 - [Migration Guide](Migration-Guide.md)
+- [Create: Numismatics Migration](Numismatics-Migration.md)
 
 ## Developer Guides
 
 - [Developer API](Developer-API.md)
 - [Developer Integration Tutorial](Developer-Integration-Tutorial.md)
 
-## UBS 2.0
+## UBS 2.1
 
-The 2.0 release expands UBS from banking and shopping into a connected physical-economy platform:
+The 2.1 release keeps the connected physical-economy platform from 2.0 and adds an authoritative integration layer:
 
 - responsive smartphone banking and realtime communication
 - bank premises, vault operations, alarms, deposit rows, and private viewing rooms
@@ -38,6 +39,9 @@ The 2.0 release expands UBS from banking and shopping into a connected physical-
 - multiplayer bank heists with physical tools, loot, alarms, extraction, and recovery
 - unified tactical claim tools
 - a Java API covering finance, notifications, market pricing, banks, shops, and heists
+- institutional account principals with explicit player grants
+- durable idempotent operation receipts and monotonic economy revisions
+- reconciliation snapshots and matched monetary escrow for trusted official-server integrations
 
 For server safety and distribution-policy compliance, UBS does not ship an embedded browser-based administration server. Administration is performed in game; trusted mods integrate through the Java API.
 
@@ -48,4 +52,3 @@ For server safety and distribution-policy compliance, UBS does not ship an embed
 3. Use an ATM or smartphone to set the account PIN and manage banking.
 4. Use the Business Manager PC to create and operate a bank or shop.
 5. Review [Configuration](Configuration.md) before enabling or balancing production features.
-

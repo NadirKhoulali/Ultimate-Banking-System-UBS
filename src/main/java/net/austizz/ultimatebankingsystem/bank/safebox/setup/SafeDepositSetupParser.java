@@ -141,10 +141,10 @@ final class SafeDepositSetupParser {
         String outboundRouteRef = SafeDepositSetupMaps.string(hook.get("outboundRouteRef"));
         String returnRouteRef = SafeDepositSetupMaps.string(hook.get("returnRouteRef"));
         Boolean bankBound = SafeDepositSetupMaps.booleanObject(hook.get("bankBound"));
-        if (tellerId.isBlank() || bankBound == null
+        if (tellerId.isBlank()
                 || (outboundRouteRef.isBlank() && returnRouteRef.isBlank())) {
             return null;
         }
-        return new SafeTellerRouteHook(tellerId, bankBound, outboundRouteRef, returnRouteRef);
+        return new SafeTellerRouteHook(tellerId, bankBound == null ? true : bankBound, outboundRouteRef, returnRouteRef);
     }
 }

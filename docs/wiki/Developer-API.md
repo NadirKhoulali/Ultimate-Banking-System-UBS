@@ -1,6 +1,6 @@
 # Developer API
 
-UBS exposes a server-side Java API for NeoForge `1.21.1`. API version `2.0.0` adds management surfaces for banks, shops, heists, and general server discovery while retaining the existing finance, cash, notification, and market-price methods.
+UBS exposes server-side Java interfaces for NeoForge `1.21.1`. Version `2.1.0` adds the authoritative economy module used by the Ages of War web gateway: institutional accounts, explicit grants, reconciliation snapshots, durable idempotent operations, revisions, and monetary escrow. The `2.0.0` finance, cash, notification, market-price, bank, shop, heist, and discovery interfaces remain available.
 
 ## Entry Points
 
@@ -12,9 +12,10 @@ var server = UltimateBankingApiProvider.server();
 var banks = UltimateBankingApiProvider.banks();
 var shops = UltimateBankingApiProvider.shops();
 var heists = UltimateBankingApiProvider.heists();
+var economy = UltimateBankingApiProvider.economy();
 ```
 
-`finance.getApiVersion()` returns `2.0.0`.
+`finance.getApiVersion()` and `economy.getApiVersion()` return `2.1.0`.
 
 ## Contract and Threading
 
@@ -24,8 +25,9 @@ var heists = UltimateBankingApiProvider.heists();
 - Mutations reuse UBS authorization and validation. An addon does not bypass ownership, role, cooldown, capacity, setup, or heist rules.
 - Operations that require an acting player may require that player to be online.
 - `getTargets()` performs live heist/world eligibility scans and therefore returns no targets when called off the server thread.
-- Monetary values use `BigDecimal`, dollars, or cents as stated by the method/record. Do not infer units from formatting.
+- Monetary values use `BigDecimal`, dollars, or cents as stated by the method/record. Economy mutation amounts must be positive dollar values with no more than two decimal places. Snapshot amounts are normalized to two decimal places with half-even rounding for legacy data.
 - The API is an in-process Java surface. UBS does not ship an HTTP/WebSocket admin server.
+- `OFFICIAL_SYSTEM` is a trusted in-process authority intended for the appointed official-server adapter. Do not expose it directly to browser input, commands, or an untrusted addon.
 
 ## Result Types
 
@@ -35,6 +37,77 @@ var heists = UltimateBankingApiProvider.heists();
 - `ApiCashResult`: physical cash inventory operation result.
 - `ApiItemResult`: issued paper instrument and reference ID.
 - `ApiNotificationResult` and `ApiAlertResult`: UI-delivery outcomes.
+- `ApiEconomyOperationResult`: durable authoritative receipt with status/code, stable operation ID, duplicate flag, economy revision, transaction IDs, affected accounts, and optional escrow state.
+
+## Authoritative Economy Module (2.1.0)
+
+`UltimateBankingApiProvider.economy()` is the integration seam for remote projections and commands. Its interface deliberately has four methods:
+
+```java
+String getApiVersion();
+ApiEconomySnapshot snapshot(ApiEconomySnapshotRequest request);
+Optional<ApiEconomyOperationResult> findOperation(String idempotencyKey);
+ApiEconomyOperationResult execute(ApiEconomyOperationRequest request);
+```
+
+All calls belong on the logical server thread. The module owns validation, authorization, atomic balance movement, limits, deterministic transaction IDs, operation receipts, and persistence. Network code should translate a verified command into one request, execute it once, and serialize the returned result; it must not reproduce banking rules.
+
+### Reconciliation snapshots
+
+- `ApiEconomySnapshotRequest.forPlayer(playerId)` returns accounts visible to that player, their effective role/capabilities, retained statements for the preceding year, and escrow summaries.
+- `ApiEconomySnapshotRequest.reconciliation()` returns every account, access grant, retained transaction, and escrow for a trusted official adapter.
+- `revision` is monotonic for economy mutations. A projection that observes a gap must request reconciliation rather than inventing the missing state.
+- `PLAYER` principals represent human-owned accounts. `INSTITUTION` principals represent durable non-player owners such as `nation:<id>` and `escrow:<id>`.
+- An accessible institutional account is not part of a player's owned wealth. Use `principalType`, `principalId`, and `playerId`; do not infer ownership from the grants map.
+- Account grants use `VIEW`, `DEPOSIT`, `WITHDRAW`, and `MANAGE`. `OWNER` is reserved for the principal of a personal account.
+
+Retained transaction statements are bounded by `AccountTransactionLogLimit` (default `10,000`, configurable up to `50,000`) and the requested limit. The snapshot's time filter cannot recover entries already pruned by server retention.
+
+### Idempotent operations
+
+Every `execute` request requires a stable 8–160 character idempotency key containing only safe ASCII characters. Replaying the same key and exact payload returns the original receipt with `duplicate=true` and performs no second mutation. Reusing a key with different content fails with `IDEMPOTENCY_CONFLICT`. Completed receipts survive server restarts; keep command keys stable across network retries.
+
+Supported operation types:
+
+- `TRANSFER`, `TRANSFER_TO_PRIMARY`, `SET_PRIMARY_ACCOUNT`
+- `PROVISION_INSTITUTION_ACCOUNT`, `SET_ACCESS_ROLE`, `SET_ACCOUNT_FROZEN`
+- `ADMIN_DEPOSIT`, `ADMIN_WITHDRAW`
+- `CREATE_ESCROW`, `FUND_ESCROW`, `RELEASE_ESCROW`, `REFUND_ESCROW`
+
+`PLAYER` transfers enforce the acting player's current account grant. Personal transfers are limited to `$10,000.00` each and `$25,000.00` over a rolling 24 hours. Institutional nation payouts derive officer/leader limits from the current `WITHDRAW` or `MANAGE` grant. Primary-account selection only accepts a player-owned personal account.
+
+Provisioning and account freezing, administrative adjustments, and escrow lifecycle operations require `OFFICIAL_SYSTEM`. Administrative adjustments require an exact account, positive amount, and non-empty audit reason. Approval separation belongs in the official workflow before that trusted request reaches UBS.
+
+### Institutional account example
+
+```java
+var request = new ApiEconomyOperationRequest(
+        "nation:provision:" + nationId,
+        ApiEconomyOperationType.PROVISION_INSTITUTION_ACCOUNT,
+        ApiEconomyActorType.OFFICIAL_SYSTEM,
+        null,
+        null,
+        null,
+        bankId,
+        founderPlayerId,
+        "nation:" + nationId,
+        "",
+        ApiAccountRole.MANAGE.name(),
+        BigDecimal.ZERO,
+        "Provision nation treasury",
+        Map.of("label", nationName + " Treasury"),
+        List.of()
+);
+
+ApiEconomyOperationResult receipt = economy.execute(request);
+if (!receipt.success()) {
+    // Keep the website command failed/pending; never update a projected balance locally.
+}
+```
+
+### Matched escrow
+
+Create an escrow in a real bank, then fund it with exactly two `ApiEconomyTransferLeg` entries of equal value. Each side may contribute at most `$25,000.00`. Funding prevalidates the complete movement before changing any balance. A release must consume the complete holding balance; a refund returns the recorded contributions. Terminal escrow operations are idempotent through their command keys.
 
 ## Finance API
 
@@ -74,7 +147,7 @@ Call validation immediately before an operation only as UX assistance; the opera
 - `getTransactionSnapshot`, `getAccountTransactions`, `getPlayerTransactions`
 - `setPrimaryAccount`
 
-Account transaction lists are bounded by the requested limit and by the server's retained history (`AccountTransactionLogLimit`, default `20`).
+Account transaction lists are bounded by the requested limit and by the server's retained history (`AccountTransactionLogLimit`, default `10,000`).
 
 ### Ownership and aggregate helpers
 
@@ -155,7 +228,7 @@ The result exposes availability, item ID, sample count, and median/average/minim
 
 `ApiServerSnapshot` contains API version, online-player count, bank/account/shop counts, active-heist count, and feature flags.
 
-Feature flags: `BANKING`, `SHOPS`, `HEISTS`, `SMARTPHONE`, `SAFETY_DEPOSIT_BOXES`, `RFID_ACCESS`, `PHYSICAL_CURRENCY`, `WALLET`, `OWNER_PC`.
+Feature flags: `BANKING`, `SHOPS`, `HEISTS`, `SMARTPHONE`, `SAFETY_DEPOSIT_BOXES`, `RFID_ACCESS`, `PHYSICAL_CURRENCY`, `WALLET`, `OWNER_PC`, `INSTITUTIONAL_ECONOMY`, `IDEMPOTENT_OPERATIONS`, `MONETARY_ESCROW`.
 
 `ApiPlayerPortfolioSnapshot` contains account count, primary account, total balance, owned/accessed bank IDs, owned/accessed shop IDs, and current heist session ID.
 
@@ -284,4 +357,3 @@ Registry implementations isolate provider exceptions so one addon does not break
 - Declare UBS as a required or optional NeoForge dependency; never shade UBS into your jar.
 - Keep optional integration classes isolated until `ModList.get().isLoaded("ultimatebankingsystem")` is true.
 - Do not retain internal UBS objects or mutate NBT directly. Use IDs, snapshots, and API methods.
-

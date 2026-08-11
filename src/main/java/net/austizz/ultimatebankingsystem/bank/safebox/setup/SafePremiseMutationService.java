@@ -246,18 +246,23 @@ public final class SafePremiseMutationService {
             SafeBlockBounds bounds = premise == null ? null : bounds(premise);
             if (id == null || bankId == null || bounds == null || byId.containsKey(id)
                     || !validStoredPremise(premise, bounds)) {
-                return null;
+                continue;
             }
 
             Object rawSafeAreas = premise.get("safeAreas");
             if (!(rawSafeAreas instanceof List<?> safeAreas)) {
-                return null;
+                continue;
             }
             Set<String> premiseVaultIds = new LinkedHashSet<>();
+            boolean allSafeAreasValid = true;
             for (Object rawSafeArea : safeAreas) {
                 if (!validSafeArea(rawSafeArea, id, bounds, safeAreaIds, vaultIds, premiseVaultIds)) {
-                    return null;
+                    allSafeAreasValid = false;
+                    break;
                 }
+            }
+            if (!allSafeAreasValid) {
+                continue;
             }
 
             PremiseNode node = new PremiseNode(
@@ -350,7 +355,7 @@ public final class SafePremiseMutationService {
             String tellerId = hook == null ? null : identifier(hook.get("tellerId"));
             String outbound = hook == null ? null : optionalString(hook, "outboundRouteRef");
             String returning = hook == null ? null : optionalString(hook, "returnRouteRef");
-            if (tellerId == null || !(hook.get("bankBound") instanceof Boolean)
+            if (tellerId == null
                     || outbound == null || returning == null
                     || (outbound.isBlank() && returning.isBlank()) || !tellerIds.add(tellerId)) {
                 return false;

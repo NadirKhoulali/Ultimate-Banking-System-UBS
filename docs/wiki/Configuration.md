@@ -5,7 +5,7 @@ UBS uses common config values to tune security, banking behavior, and macro-econ
 ## Core Limits
 
 - `TransactionsPerMinute`
-- `AccountTransactionLogLimit` (default `20`, range `1..1000`)
+- `AccountTransactionLogLimit` (default `10000`, range `1..50000`)
 - `DefaultATMWithdrawalLimit`
 - `DailyWithdrawalLimit`
 - `GlobalMaxSingleTransaction` (also caps handheld terminal max save value; default `50000`)

@@ -37,6 +37,7 @@ import net.austizz.ultimatebankingsystem.shop.ShopService;
 import net.austizz.ultimatebankingsystem.network.HudStatePayload;
 import net.austizz.ultimatebankingsystem.network.BankSetupObjectivesPayload;
 import net.austizz.ultimatebankingsystem.network.ModPayloads;
+import net.austizz.ultimatebankingsystem.network.NumismaticsMigrationPayloads;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -97,6 +98,7 @@ public class UltimateBankingSystem {
         INSTANCE = this;
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(ModPayloads::register);
+        modEventBus.addListener(NumismaticsMigrationPayloads::register);
         modEventBus.addListener(this::registerCapabilities);
         NeoForge.EVENT_BUS.register(this);
         ModItems.register(modEventBus);

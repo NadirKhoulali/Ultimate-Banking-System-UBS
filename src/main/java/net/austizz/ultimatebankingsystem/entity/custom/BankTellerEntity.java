@@ -313,6 +313,14 @@ public class BankTellerEntity extends PathfinderMob {
             BankTellerInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             BankTellerPaymentInteractionManager.cancelForTeller(this.getUUID(), "Teller removed.");
             ShopCashierInteractionManager.cancelForCashier(this.getUUID(), "Cashier removed.");
+            if (isCashier()) {
+                ShopService.unlinkCashierTerminal(
+                        player.getServer(),
+                        getOwnerUUID(),
+                        getShopId(),
+                        getUUID()
+                );
+            }
             clearCustomerUse();
             this.discard();
             player.sendSystemMessage(UbsTranslations.literal("§a" + (isCashier() ? "Cashier" : "Bank Teller")

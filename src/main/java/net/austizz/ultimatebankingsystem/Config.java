@@ -11,7 +11,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final int DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT = 20;
+    public static final int DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT = 10_000;
 
     public static final ModConfigSpec.IntValue TRANSACTIONS_PER_MINUTE = BUILDER
             .comment("The Amount of transactions possible per player per minute")
@@ -19,8 +19,8 @@ public class Config {
 
     public static final ModConfigSpec.IntValue ACCOUNT_TRANSACTION_LOG_LIMIT = BUILDER
             .comment("Maximum number of newest transaction log entries saved per account. "
-                    + "Keeping this bounded reduces banking world-data save time and file size.")
-            .defineInRange("AccountTransactionLogLimit", DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT, 1, 1000);
+                    + "The 10,000 default supports long website statements; lower it only if you accept shorter history.")
+            .defineInRange("AccountTransactionLogLimit", DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT, 1, 50_000);
 
     public static final ModConfigSpec.IntValue PAYMENT_TERMINAL_FEEDBACK_TICKS = BUILDER
             .comment("Legacy terminal feedback setting. Terminal payment lock/feedback is currently fixed to 2 seconds.")

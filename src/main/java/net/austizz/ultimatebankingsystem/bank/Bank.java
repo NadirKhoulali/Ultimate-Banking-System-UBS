@@ -190,8 +190,8 @@ public class Bank {
         for (AccountHolder account : this.BankAccounts.values()) {
             if (account == null) continue;
 
-            if (account.getPlayerUUID() != null
-                    && account.getPlayerUUID().equals(AccountHolder.getPlayerUUID())
+            if (account.getPrincipalType() == AccountHolder.getPrincipalType()
+                    && account.getPrincipalId().equals(AccountHolder.getPrincipalId())
                     && account.getAccountType() != null
                     && account.getAccountType().equals(AccountHolder.getAccountType())) {
                 return false;

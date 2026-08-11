@@ -22,6 +22,7 @@ class AccountTransactionRetentionTest {
     private static final String ACCOUNT_CLASS = "net.austizz.ultimatebankingsystem.account.AccountHolder";
     private static final String TRANSACTION_CLASS =
             "net.austizz.ultimatebankingsystem.account.transaction.UserTransaction";
+    private static final int TEST_LIMIT = 20;
 
     @Test
     void keepsNewestEntriesWithoutReducingDailyOutgoingVolume() throws Exception {
@@ -30,7 +31,7 @@ class AccountTransactionRetentionTest {
         LocalDateTime start = LocalDate.now().atStartOfDay().plusHours(1);
         List<UUID> transactionIds = new ArrayList<>();
 
-        for (int index = 0; index < 25; index++) {
+        for (int index = 0; index < TEST_LIMIT + 5; index++) {
             UUID transactionId = UUID.randomUUID();
             transactionIds.add(transactionId);
             addTransaction(account, newTransaction(
@@ -42,7 +43,7 @@ class AccountTransactionRetentionTest {
         }
 
         Map<?, ?> transactions = transactions(account);
-        assertEquals(defaultLimit(), transactions.size());
+        assertEquals(TEST_LIMIT, transactions.size());
         for (int index = 0; index < 5; index++) {
             assertFalse(transactions.containsKey(transactionIds.get(index)));
         }
@@ -65,7 +66,7 @@ class AccountTransactionRetentionTest {
         @SuppressWarnings("unchecked")
         List<Object> transactionTags = (List<Object>) transactionList;
         LocalDateTime start = LocalDate.now().atStartOfDay().plusHours(1);
-        for (int index = 0; index < 25; index++) {
+        for (int index = 0; index < TEST_LIMIT + 5; index++) {
             Object transaction = newTransaction(
                     accountId,
                     new BigDecimal("2.00"),
@@ -83,19 +84,19 @@ class AccountTransactionRetentionTest {
 
         Object migrated = loadAccount(legacyTag);
 
-        assertEquals(defaultLimit(), transactions(migrated).size());
+        assertEquals(TEST_LIMIT, transactions(migrated).size());
         assertEquals(new BigDecimal("50.00"), dailyOutgoing(migrated));
         Object migratedTag = save(migrated);
         Object migratedTransactions = compoundTagType.getMethod("getList", String.class, int.class)
                 .invoke(migratedTag, "transactions", 10);
-        assertEquals(defaultLimit(), ((List<?>) migratedTransactions).size());
+        assertEquals(TEST_LIMIT, ((List<?>) migratedTransactions).size());
         assertTrue((boolean) compoundTagType.getMethod("contains", String.class)
                 .invoke(migratedTag, "dailyOutgoingTransactionAmount"));
     }
 
     private static Object newAccount(UUID accountId) throws Exception {
         seedConfigValue("CREDIT_SCORE_DEFAULT", 500);
-        seedConfigValue("ACCOUNT_TRANSACTION_LOG_LIMIT", defaultLimit());
+        seedConfigValue("ACCOUNT_TRANSACTION_LOG_LIMIT", TEST_LIMIT);
         Class<?> accountType = load(ACCOUNT_CLASS);
         Class<?> accountTypes = load("net.austizz.ultimatebankingsystem.accountTypes.AccountTypes");
         @SuppressWarnings({"rawtypes", "unchecked"})
@@ -148,11 +149,6 @@ class AccountTransactionRetentionTest {
         Class<?> registriesType = load("net.minecraft.core.HolderLookup$Provider");
         Method load = load(ACCOUNT_CLASS).getMethod("load", compoundTagType, registriesType);
         return load.invoke(null, tag, null);
-    }
-
-    private static int defaultLimit() throws Exception {
-        return load("net.austizz.ultimatebankingsystem.Config")
-                .getField("DEFAULT_ACCOUNT_TRANSACTION_LOG_LIMIT").getInt(null);
     }
 
     private static void seedConfigValue(String fieldName, Object value) throws Exception {

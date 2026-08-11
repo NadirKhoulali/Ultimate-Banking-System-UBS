@@ -8,6 +8,9 @@ UBS can import account data from common server economy/banking plugins.
 - EssentialsX userdata (`.yml/.yaml`)
 - CMI userdata (`.yml/.yaml`)
 - iConomy text/CSV exports
+- Create: Numismatics SavedData and active-world physical currency
+
+Create: Numismatics uses a guarded, resumable world migration rather than the lightweight balance import commands below. See [Create: Numismatics Migration](Numismatics-Migration.md).
 
 ## Commands
 

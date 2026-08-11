@@ -3313,11 +3313,13 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Bank teller service is unavailable.");
         }
 
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        int maxTellers = BankLevelService.bankTellerCapacity(centralBank, bank);
         int activeCount = BankTellerEntity.countActiveTellersForBank(server, bank.getBankId());
-        if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
+        if (activeCount >= maxTellers) {
             return new ActionResult(false,
                     bank.getBankName() + " already has the max "
-                            + BankTellerEntity.MAX_TELLERS_PER_BANK + " active tellers.");
+                            + maxTellers + " active tellers.");
         }
 
         ItemStack egg = new ItemStack(ModItems.BANK_TELLER_SPAWN_EGG.get());
@@ -3328,7 +3330,7 @@ public final class BankOwnerPcService {
 
         return new ActionResult(true,
                 "Issued teller egg for " + bank.getBankName()
-                        + ". Active tellers: " + activeCount + "/" + BankTellerEntity.MAX_TELLERS_PER_BANK + ".");
+                        + ". Active tellers: " + activeCount + "/" + maxTellers + ".");
     }
 
     private static ActionResult handleTellerCount(MinecraftServer server,
@@ -3341,10 +3343,12 @@ public final class BankOwnerPcService {
             return new ActionResult(false, "Bank teller service is unavailable.");
         }
 
+        CentralBank centralBank = BankManager.getCentralBank(server);
+        int maxTellers = BankLevelService.bankTellerCapacity(centralBank, bank);
         int activeCount = BankTellerEntity.countActiveTellersForBank(server, bank.getBankId());
         return new ActionResult(true,
                 "Active tellers for " + bank.getBankName() + ": "
-                        + activeCount + "/" + BankTellerEntity.MAX_TELLERS_PER_BANK + ".");
+                        + activeCount + "/" + maxTellers + ".");
     }
 
     private static ActionResult handleBorrow(MinecraftServer server,

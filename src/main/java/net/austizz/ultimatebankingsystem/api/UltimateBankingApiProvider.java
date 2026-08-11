@@ -4,6 +4,8 @@ import net.austizz.ultimatebankingsystem.api.bank.UltimateBankManagementApi;
 import net.austizz.ultimatebankingsystem.api.bank.UltimateBankManagementApiImpl;
 import net.austizz.ultimatebankingsystem.api.general.UltimateServerApi;
 import net.austizz.ultimatebankingsystem.api.general.UltimateServerApiImpl;
+import net.austizz.ultimatebankingsystem.api.economy.UltimateEconomyApi;
+import net.austizz.ultimatebankingsystem.api.economy.UltimateEconomyApiImpl;
 import net.austizz.ultimatebankingsystem.api.heist.UltimateHeistApi;
 import net.austizz.ultimatebankingsystem.api.heist.UltimateHeistApiImpl;
 import net.austizz.ultimatebankingsystem.api.shop.UltimateShopManagementApi;
@@ -17,6 +19,7 @@ public final class UltimateBankingApiProvider {
     private static final UltimateBankManagementApi BANKS = new UltimateBankManagementApiImpl();
     private static final UltimateShopManagementApi SHOPS = new UltimateShopManagementApiImpl();
     private static final UltimateHeistApi HEISTS = new UltimateHeistApiImpl();
+    private static final UltimateEconomyApi ECONOMY = new UltimateEconomyApiImpl();
 
     private UltimateBankingApiProvider() {}
 
@@ -42,5 +45,10 @@ public final class UltimateBankingApiProvider {
     @ApiStatus.AvailableSince("2.0.0")
     public static UltimateHeistApi heists() {
         return HEISTS;
+    }
+
+    @ApiStatus.AvailableSince("2.1.0")
+    public static UltimateEconomyApi economy() {
+        return ECONOMY;
     }
 }

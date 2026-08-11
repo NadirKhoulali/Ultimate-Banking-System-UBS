@@ -1,13 +1,13 @@
 # Developer Integration Tutorial
 
-This guide targets UBS `2.0.0`, Minecraft `1.21.1`, NeoForge, and Java `21`.
+This guide targets UBS `2.1.0`, Minecraft `1.21.1`, NeoForge, and Java `21`.
 
 ## 1. Identity
 
 - Mod ID: `ultimatebankingsystem`
 - Group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
-- API version: `2.0.0`
+- API version: `2.1.0`
 
 ## 2. Add UBS to Development
 
@@ -19,16 +19,16 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-2.0.0"
-    localRuntime name: "ultimatebankingsystem-2.0.0"
+    compileOnly name: "ultimatebankingsystem-2.1.0"
+    localRuntime name: "ultimatebankingsystem-2.1.0"
 }
 ```
 
 For local Maven publication, run `gradlew.bat publishToMavenLocal` in UBS and add `mavenLocal()` plus:
 
 ```gradle
-compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.0.0"
-localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.0.0"
+compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.0"
+localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.0"
 ```
 
 Do not shade or jarJar UBS.
@@ -41,7 +41,7 @@ Required integration:
 [[dependencies.yourmod]]
 modId="ultimatebankingsystem"
 type="required"
-versionRange="[2.0.0,)"
+versionRange="[2.1.0,)"
 ordering="AFTER"
 side="BOTH"
 ```
@@ -62,6 +62,7 @@ UltimateServerApi server = UltimateBankingApiProvider.server();
 UltimateBankManagementApi banks = UltimateBankingApiProvider.banks();
 UltimateShopManagementApi shops = UltimateBankingApiProvider.shops();
 UltimateHeistApi heists = UltimateBankingApiProvider.heists();
+UltimateEconomyApi economy = UltimateBankingApiProvider.economy();
 ```
 
 At server startup, `isAvailable()` can be false until the world and Central Bank data are ready.
@@ -218,5 +219,34 @@ Do not call mutations or live target scans directly from HTTP threads, database 
 - Re-fetch snapshots after a successful mutation.
 - Never edit UBS saved NBT to simulate an API operation.
 
-Full method and record reference: [Developer API](Developer-API.md).
+## 16. Build a Remote Economy Adapter
 
+Use `UltimateBankingApiProvider.economy()` when your mod must synchronize an external read model or execute commands that can be retried across process/network failures. Keep transport and authentication outside UBS; after your adapter verifies a command, schedule exactly one call to the economy module on the server thread.
+
+```java
+ApiEconomyOperationRequest request = new ApiEconomyOperationRequest(
+        commandId,
+        ApiEconomyOperationType.TRANSFER_TO_PRIMARY,
+        ApiEconomyActorType.PLAYER,
+        linkedPlayerId,
+        sourceAccountId,
+        null,
+        null,
+        recipientPlayerId,
+        "",
+        "",
+        "",
+        new BigDecimal("125.00"),
+        "Website transfer " + commandId,
+        Map.of(),
+        List.of()
+);
+
+ApiEconomyOperationResult receipt = economy.execute(request);
+```
+
+Persist and reuse `commandId`. A network timeout is not permission to generate a new key: call `findOperation(commandId)` or retry the exact request. An exact replay returns the original receipt with `duplicate=true`; a changed payload under the same key returns `IDEMPOTENCY_CONFLICT`.
+
+Use `snapshot(ApiEconomySnapshotRequest.reconciliation())` only from a trusted official adapter because it contains all accounts and grants. Player-scoped reads use `forPlayer(playerId)`. Never make a browser or remote caller an `OFFICIAL_SYSTEM` actor directly; that authority is for narrowly scoped, authenticated in-process workflows such as provisioning, freezing, approved adjustments, and escrow settlement.
+
+Full method and record reference: [Developer API](Developer-API.md).

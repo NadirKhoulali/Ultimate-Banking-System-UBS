@@ -2,6 +2,7 @@ package net.austizz.ultimatebankingsystem.item;
 
 import net.austizz.ultimatebankingsystem.i18n.UbsTranslations;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
+import net.austizz.ultimatebankingsystem.bank.BankLevelService;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.entity.ModEntities;
 import net.austizz.ultimatebankingsystem.entity.custom.BankTellerEntity;
@@ -63,10 +64,11 @@ public class BankTellerSpawnEggItem extends Item {
                 return InteractionResult.FAIL;
             }
             int activeCount = BankTellerEntity.countActiveTellersForBank(serverLevel.getServer(), boundBankId);
-            if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
+            int maxTellers = BankLevelService.bankTellerCapacity(centralBank, boundBank);
+            if (activeCount >= maxTellers) {
                 player.sendSystemMessage(UbsTranslations.literal(
                         "§c" + boundBank.getBankName() + " already has the max "
-                                + BankTellerEntity.MAX_TELLERS_PER_BANK + " active bank tellers."
+                                + maxTellers + " active bank tellers."
                 ));
                 return InteractionResult.FAIL;
             }
@@ -88,10 +90,11 @@ public class BankTellerSpawnEggItem extends Item {
         }
         if (boundBank != null) {
             int activeCount = BankTellerEntity.countActiveTellersForBank(serverLevel.getServer(), boundBankId);
+            int maxTellers = BankLevelService.bankTellerCapacity(centralBank, boundBank);
             player.sendSystemMessage(UbsTranslations.literal(
                     "§aPlaced teller for §e" + boundBank.getBankName()
                             + "§a. Active tellers: §f" + activeCount
-                            + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
+                            + "§7/§f" + maxTellers
             ).withStyle(ChatFormatting.GREEN));
         } else {
             player.sendSystemMessage(UbsTranslations.literal("§aBank Teller placed.").withStyle(ChatFormatting.GREEN));

@@ -35,12 +35,14 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemRandomChanceCon
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import net.neoforged.neoforge.event.LootTableLoadEvent;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,58 +54,57 @@ public final class WorldCashEconomyService {
     private static final ResourceLocation PILLAGER_OUTPOST_LOOT = ResourceLocation.fromNamespaceAndPath("minecraft", "chests/pillager_outpost");
     private static final ResourceLocation WOODLAND_MANSION_LOOT = ResourceLocation.fromNamespaceAndPath("minecraft", "chests/woodland_mansion");
     private static final String VILLAGE_LOOT_PREFIX = "minecraft:chests/village/";
-    private static final ConcurrentHashMap<UUID, DeathCashDrop> DEATH_CASH_DROPS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, DeathCashDropGroup> DEATH_CASH_DROP_GROUPS = new ConcurrentHashMap<>();
 
-    private record DeathCashDrop(String dimensionId, long expiresAtTick, int totalDropCents) {
+    private record DeathCashDropGroup(String dimensionId, long expiresAtTick, List<UUID> entityIds) {
+        private DeathCashDropGroup {
+            entityIds = List.copyOf(entityIds);
+        }
     }
 
     private WorldCashEconomyService() {
     }
 
     public static void onServerStarting() {
-        DEATH_CASH_DROPS.clear();
+        DEATH_CASH_DROP_GROUPS.clear();
     }
 
     public static void onServerStopping() {
-        DEATH_CASH_DROPS.clear();
+        DEATH_CASH_DROP_GROUPS.clear();
     }
 
     public static void tick(MinecraftServer server) {
-        if (server == null || DEATH_CASH_DROPS.isEmpty()) {
+        if (server == null || DEATH_CASH_DROP_GROUPS.isEmpty()) {
             return;
         }
         int refreshInterval = Math.max(1, Config.DEATH_CASH_DROP_LABEL_REFRESH_TICKS.get());
         boolean refreshLabels = (server.getTickCount() % refreshInterval) == 0;
 
-        for (Map.Entry<UUID, DeathCashDrop> entry : DEATH_CASH_DROPS.entrySet()) {
-            UUID dropId = entry.getKey();
-            DeathCashDrop drop = entry.getValue();
-            if (dropId == null || drop == null) {
-                DEATH_CASH_DROPS.remove(dropId);
+        for (Map.Entry<UUID, DeathCashDropGroup> entry : DEATH_CASH_DROP_GROUPS.entrySet()) {
+            UUID groupId = entry.getKey();
+            DeathCashDropGroup group = entry.getValue();
+            if (groupId == null || group == null) {
+                DEATH_CASH_DROP_GROUPS.remove(groupId);
                 continue;
             }
-            ServerLevel level = server.getLevel(serverLevelKey(drop.dimensionId()));
+            ServerLevel level = server.getLevel(serverLevelKey(group.dimensionId()));
             if (level == null) {
-                DEATH_CASH_DROPS.remove(dropId);
+                DEATH_CASH_DROP_GROUPS.remove(groupId);
                 continue;
             }
-            Entity entity = level.getEntity(dropId);
-            if (!(entity instanceof ItemEntity itemEntity) || !itemEntity.isAlive()) {
-                DEATH_CASH_DROPS.remove(dropId);
-                continue;
-            }
-
             long now = level.getGameTime();
-            if (now >= drop.expiresAtTick()) {
-                itemEntity.setCustomName(null);
-                itemEntity.setCustomNameVisible(false);
-                itemEntity.discard();
-                DEATH_CASH_DROPS.remove(dropId);
+            List<ItemEntity> liveDrops = resolveLiveCashDrops(level, group.entityIds());
+            if (now >= group.expiresAtTick()) {
+                liveDrops.forEach(WorldCashEconomyService::discardManagedCashDrop);
+                DEATH_CASH_DROP_GROUPS.remove(groupId);
                 continue;
             }
-
+            if (liveDrops.isEmpty()) {
+                DEATH_CASH_DROP_GROUPS.remove(groupId);
+                continue;
+            }
             if (refreshLabels) {
-                refreshDeathCashLabel(itemEntity, drop.totalDropCents(), now, drop.expiresAtTick());
+                refreshDeathCashGroupLabel(liveDrops, now, group.expiresAtTick());
             }
         }
     }
@@ -145,7 +146,7 @@ public final class WorldCashEconomyService {
     }
 
     @SubscribeEvent
-    public static void onLivingDrops(LivingDropsEvent event) {
+    public static void onMobDrops(LivingDropsEvent event) {
         if (event == null || !Config.MOB_CASH_DROPS_ENABLED.get()) {
             return;
         }
@@ -195,9 +196,9 @@ public final class WorldCashEconomyService {
         }
     }
 
-    @SubscribeEvent
-    public static void onPlayerDeath(LivingDeathEvent event) {
-        if (event == null || event.isCanceled() || !Config.DEATH_CASH_DROP_ENABLED.get()) {
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void onPlayerDrops(LivingDropsEvent event) {
+        if (event == null || !Config.DEATH_CASH_DROP_ENABLED.get()) {
             return;
         }
         if (!(event.getEntity() instanceof ServerPlayer player)) {
@@ -207,13 +208,27 @@ public final class WorldCashEconomyService {
             return;
         }
 
-        boolean keepInventory = player.level().getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_KEEPINVENTORY);
-        if (keepInventory && !Config.DEATH_CASH_DROP_APPLY_WITH_KEEP_INVENTORY.get()) {
+        if (!(player.level() instanceof ServerLevel level)) {
             return;
         }
 
+        List<ItemEntity> existingCashDrops = collectCashDrops(event.getDrops());
+        boolean keepInventory = level.getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_KEEPINVENTORY);
         int carriedCashCents = countCarriedCashCents(player);
-        if (carriedCashCents <= 0) {
+        DeathCashDropPolicy.Decision decision = DeathCashDropPolicy.decide(
+                event.isCanceled(),
+                !existingCashDrops.isEmpty(),
+                keepInventory,
+                Config.DEATH_CASH_DROP_APPLY_WITH_KEEP_INVENTORY.get(),
+                carriedCashCents > 0
+        );
+
+        if (decision == DeathCashDropPolicy.Decision.SKIP) {
+            return;
+        }
+        if (decision == DeathCashDropPolicy.Decision.MANAGE_EXISTING_DROPS) {
+            long totalDropCents = registerDeathCashDropGroup(level, existingCashDrops);
+            notifyDeathCashDrop(player, totalDropCents);
             return;
         }
 
@@ -238,20 +253,12 @@ public final class WorldCashEconomyService {
             return;
         }
 
-        // Remove selected tender before vanilla death processing so only the configured share is lost.
+        // This branch is only reached for vanilla keepInventory after every death-drop handler ran.
         DollarBills.removeCash(player, extractionPlan);
-        spawnDeathCashDrops(player.serverLevel(), player, extractionPlan, actualDropCents);
-
-        // Explicitly notify the player that physical cash was dropped and will despawn on timer.
-        int despawnTicks = Math.max(20, Config.DEATH_CASH_DROP_DESPAWN_TICKS.get());
-        ServerNotification.send(
-                player,
-                "Death Cash Drop",
-                "Dropped $" + DollarBills.formatCents(actualDropCents)
-                        + " on death. Despawns in " + formatTickCountdown(despawnTicks) + ".",
-                DeliveryAlertPayload.AlertTone.WARNING,
-                4200
-        );
+        List<ItemEntity> forcedDrops = createDeathCashDrops(level, player, extractionPlan);
+        event.getDrops().addAll(forcedDrops);
+        registerDeathCashDropGroup(level, forcedDrops);
+        notifyDeathCashDrop(player, actualDropCents);
     }
 
     private static boolean isTargetedStructureLoot(ResourceLocation lootTableId) {
@@ -400,16 +407,13 @@ public final class WorldCashEconomyService {
         return total;
     }
 
-    private static void spawnDeathCashDrops(ServerLevel level,
-                                            ServerPlayer player,
-                                            int[] extractionPlan,
-                                            int totalDropCents) {
-        if (level == null || player == null || extractionPlan == null || totalDropCents <= 0) {
-            return;
+    private static List<ItemEntity> createDeathCashDrops(ServerLevel level,
+                                                         ServerPlayer player,
+                                                         int[] extractionPlan) {
+        List<ItemEntity> drops = new ArrayList<>();
+        if (level == null || player == null || extractionPlan == null) {
+            return drops;
         }
-        long now = level.getGameTime();
-        long expiresAt = now + Math.max(20, Config.DEATH_CASH_DROP_DESPAWN_TICKS.get());
-
         for (ItemStack stack : buildCashStacksFromPlan(extractionPlan)) {
             if (stack.isEmpty()) {
                 continue;
@@ -427,13 +431,9 @@ public final class WorldCashEconomyService {
                     (level.random.nextDouble() - 0.5D) * 0.06D
             );
             drop.setPickUpDelay(0);
-            refreshDeathCashLabel(drop, totalDropCents, now, expiresAt);
-            level.addFreshEntity(drop);
-            DEATH_CASH_DROPS.put(
-                    drop.getUUID(),
-                    new DeathCashDrop(level.dimension().location().toString(), expiresAt, totalDropCents)
-            );
+            drops.add(drop);
         }
+        return drops;
     }
 
     private static List<ItemStack> buildCashStacksForCents(int cents) {
@@ -472,17 +472,144 @@ public final class WorldCashEconomyService {
         return stacks;
     }
 
-    private static void refreshDeathCashLabel(ItemEntity itemEntity, int cents, long nowTick, long expiresAtTick) {
-        if (itemEntity == null) {
+    private static List<ItemEntity> collectCashDrops(Collection<ItemEntity> drops) {
+        if (drops == null || drops.isEmpty()) {
+            return List.of();
+        }
+        List<ItemEntity> cashDrops = new ArrayList<>();
+        for (ItemEntity drop : drops) {
+            if (cashDropValueCents(drop) > 0L) {
+                cashDrops.add(drop);
+            }
+        }
+        return cashDrops;
+    }
+
+    private static long registerDeathCashDropGroup(ServerLevel level, List<ItemEntity> cashDrops) {
+        if (level == null || cashDrops == null || cashDrops.isEmpty()) {
+            return 0L;
+        }
+        long expiresAt = level.getGameTime() + Math.max(20, Config.DEATH_CASH_DROP_DESPAWN_TICKS.get());
+        List<UUID> entityIds = cashDrops.stream()
+                .filter(drop -> drop != null && cashDropValueCents(drop) > 0L)
+                .map(Entity::getUUID)
+                .distinct()
+                .toList();
+        if (entityIds.isEmpty()) {
+            return 0L;
+        }
+        UUID groupId = UUID.randomUUID();
+        DEATH_CASH_DROP_GROUPS.put(groupId, new DeathCashDropGroup(
+                level.dimension().location().toString(),
+                expiresAt,
+                entityIds
+        ));
+        refreshDeathCashGroupLabel(cashDrops, level.getGameTime(), expiresAt);
+        return totalCashDropCents(cashDrops);
+    }
+
+    private static List<ItemEntity> resolveLiveCashDrops(ServerLevel level, List<UUID> entityIds) {
+        if (level == null || entityIds == null || entityIds.isEmpty()) {
+            return List.of();
+        }
+        List<ItemEntity> drops = new ArrayList<>();
+        for (UUID entityId : entityIds) {
+            Entity entity = level.getEntity(entityId);
+            if (entity instanceof ItemEntity itemEntity && itemEntity.isAlive() && cashDropValueCents(itemEntity) > 0L) {
+                drops.add(itemEntity);
+            }
+        }
+        return drops;
+    }
+
+    private static void refreshDeathCashGroupLabel(List<ItemEntity> cashDrops, long nowTick, long expiresAtTick) {
+        if (cashDrops == null || cashDrops.isEmpty()) {
             return;
         }
+        List<ItemEntity> liveDrops = cashDrops.stream()
+                .filter(drop -> drop != null && drop.isAlive() && cashDropValueCents(drop) > 0L)
+                .toList();
+        if (liveDrops.isEmpty()) {
+            return;
+        }
+        ItemEntity labelDrop = liveDrops.getFirst();
+        long cents = totalCashDropCents(liveDrops);
+        int itemCount = liveDrops.stream().mapToInt(drop -> Math.max(0, drop.getItem().getCount())).sum();
         long remaining = Math.max(0L, expiresAtTick - nowTick);
-        String amount = "$" + DollarBills.formatCents(Math.max(0, cents));
-        itemEntity.setCustomName(Component.literal("Cash Drop: " + amount + " | ")
+        String amount = "$" + formatCashCents(cents);
+        labelDrop.setCustomName(Component.literal("Cash Drop: " + amount + " | " + itemCount + " item" + (itemCount == 1 ? "" : "s") + " | ")
                 .withStyle(ChatFormatting.GOLD)
                 .append(Component.literal("despawns in " + formatTickCountdown(remaining))
                         .withStyle(ChatFormatting.YELLOW)));
-        itemEntity.setCustomNameVisible(true);
+        labelDrop.setCustomNameVisible(true);
+        for (int i = 1; i < liveDrops.size(); i++) {
+            clearDeathCashLabel(liveDrops.get(i));
+        }
+    }
+
+    private static long totalCashDropCents(List<ItemEntity> cashDrops) {
+        if (cashDrops == null) {
+            return 0L;
+        }
+        long total = 0L;
+        for (ItemEntity drop : cashDrops) {
+            long value = cashDropValueCents(drop);
+            if (value <= 0L || Long.MAX_VALUE - total < value) {
+                return value > 0L ? Long.MAX_VALUE : total;
+            }
+            total += value;
+        }
+        return total;
+    }
+
+    private static long cashDropValueCents(ItemEntity drop) {
+        if (drop == null || drop.getItem().isEmpty()) {
+            return 0L;
+        }
+        long unitValue = DollarBills.physicalTenderCents(drop.getItem().getItem());
+        if (unitValue <= 0L) {
+            return 0L;
+        }
+        int count = Math.max(0, drop.getItem().getCount());
+        return unitValue > Long.MAX_VALUE / Math.max(1, count) ? Long.MAX_VALUE : unitValue * count;
+    }
+
+    private static void discardManagedCashDrop(ItemEntity itemEntity) {
+        clearDeathCashLabel(itemEntity);
+        if (itemEntity != null && itemEntity.isAlive()) {
+            itemEntity.discard();
+        }
+    }
+
+    private static void clearDeathCashLabel(ItemEntity itemEntity) {
+        if (itemEntity == null) {
+            return;
+        }
+        itemEntity.setCustomName(null);
+        itemEntity.setCustomNameVisible(false);
+    }
+
+    private static void notifyDeathCashDrop(ServerPlayer player, long dropCents) {
+        if (player == null || dropCents <= 0L) {
+            return;
+        }
+        int despawnTicks = Math.max(20, Config.DEATH_CASH_DROP_DESPAWN_TICKS.get());
+        ServerNotification.send(
+                player,
+                "Death Cash Drop",
+                "Dropped $" + formatCashCents(dropCents)
+                        + " on death. Despawns in " + formatTickCountdown(despawnTicks) + ".",
+                DeliveryAlertPayload.AlertTone.WARNING,
+                4200
+        );
+    }
+
+    private static String formatCashCents(long cents) {
+        long safeCents = Math.max(0L, cents);
+        if (safeCents % 100L == 0L) {
+            return Long.toString(safeCents / 100L);
+        }
+        return BigDecimal.valueOf(safeCents, 2).toPlainString();
     }
 
     private static String formatTickCountdown(long ticksRemaining) {

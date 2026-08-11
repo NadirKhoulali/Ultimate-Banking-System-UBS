@@ -2,7 +2,7 @@
 
 Ultimate Banking System is a NeoForge `1.21.1` economy, banking, retail, security, and heist mod built around physical world interactions and multiplayer server management.
 
-Current release: `2.0.0`
+Current release: `2.1.0`
 
 ## Highlights
 
@@ -15,7 +15,7 @@ Current release: `2.0.0`
 - RFID readers, programmable access cards, signal targets, per-player door authorization, and heist spoofing
 - Multiplayer bank heists with crews, planning, masks, saws, lockpicks, thermal drills, computer hacks, duffel loot, alarms, extraction zones, cooldowns, and recovery safeguards
 - Unified claim mode with tactical outlines, collision validation, private claim visibility, and responsive controls
-- Public Java API `2.0.0` for finance, notifications, market prices, server discovery, bank management, shop management, and heist state/actions
+- Public Java API `2.1.0` for finance, institutional accounts, durable idempotent operations, monetary escrow, notifications, market prices, server discovery, bank management, shop management, and heist state/actions
 
 The release jar does not contain an embedded HTTP server or browser-based administration panel. Server management remains in game and through the Java API.
 
@@ -75,12 +75,12 @@ UltimateServerApi server = UltimateBankingApiProvider.server();
 UltimateBankManagementApi banks = UltimateBankingApiProvider.banks();
 UltimateShopManagementApi shops = UltimateBankingApiProvider.shops();
 UltimateHeistApi heists = UltimateBankingApiProvider.heists();
+UltimateEconomyApi economy = UltimateBankingApiProvider.economy();
 ```
 
-API snapshots are immutable. Mutations validate existing UBS permissions and must run on the logical server thread. See the [API reference](docs/wiki/Developer-API.md) for complete method and data-model coverage.
+API snapshots are immutable. Mutations validate existing UBS permissions and must run on the logical server thread. The 2.1 economy module adds institutional principals, grants, revisions, durable idempotency, reconciliation, and monetary escrow behind one four-method interface. See the [API reference](docs/wiki/Developer-API.md) for complete method and data-model coverage.
 
 ## Project
 
 - Organization: [PixelForgeMods](https://github.com/PixelForgeMods)
 - Repository: [Ultimate-Banking-System-UBS](https://github.com/PixelForgeMods/Ultimate-Banking-System-UBS)
-

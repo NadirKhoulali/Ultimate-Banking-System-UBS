@@ -492,6 +492,9 @@ public class UltimateBankingSystemClient {
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.RfidScannerScreen) {
             return false;
         }
+        if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.NumismaticsMigrationScreen) {
+            return false;
+        }
         if (screen instanceof net.austizz.ultimatebankingsystem.gui.screens.CardboardBoxScreen) {
             return false;
         }

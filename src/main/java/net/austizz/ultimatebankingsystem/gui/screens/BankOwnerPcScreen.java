@@ -265,6 +265,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                                         long depositTargetDollars,
                                         int accountTarget,
                                         int safeRowCapacity,
+                                        int viewingRoomCapacity,
+                                        int bankTellerCapacity,
                                         String state,
                                         List<String> unlocks) {
     }
@@ -25585,14 +25587,21 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             if (level <= 0) {
                 continue;
             }
-            String state = parts[4] == null || parts[4].isBlank() ? "LOCKED" : parts[4].trim().toUpperCase(Locale.ROOT);
+            boolean hasExtendedInfo = parts.length >= 8;
+            int viewingRoomCapacity = hasExtendedInfo ? Math.max(0, parseIntMetricToken(parts[4])) : 0;
+            int bankTellerCapacity = hasExtendedInfo ? Math.max(0, parseIntMetricToken(parts[5])) : 0;
+            String state = parts[hasExtendedInfo ? 6 : 4] == null || parts[hasExtendedInfo ? 6 : 4].isBlank()
+                    ? "LOCKED"
+                    : parts[hasExtendedInfo ? 6 : 4].trim().toUpperCase(Locale.ROOT);
             nodes.add(new BankLevelRoadmapNode(
                     level,
                     Math.max(0L, parseLongMetricToken(parts[1])),
                     Math.max(0, parseIntMetricToken(parts[2])),
                     Math.max(0, parseIntMetricToken(parts[3])),
+                    viewingRoomCapacity,
+                    bankTellerCapacity,
                     state,
-                    parts.length >= 6 ? parseRoadmapBusinessUnlocks(parts[5]) : List.of()
+                    parts.length >= (hasExtendedInfo ? 8 : 6) ? parseRoadmapBusinessUnlocks(parts[hasExtendedInfo ? 7 : 5]) : List.of()
             ));
         }
         if (nodes.isEmpty()) {
@@ -25648,9 +25657,19 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             default -> "Locked milestone";
         };
         String target = "$" + compactCurrency(String.valueOf(Math.max(0L, node.depositTargetDollars())));
-        String unlocks = "Unlocks safe row capacity "
+        String capacityText = "Unlocks: Safe row "
                 + Math.max(0, node.safeRowCapacity())
-                + " row units (" + (Math.max(0, node.safeRowCapacity()) * 4) + " deposit boxes).";
+                + " (" + (Math.max(0, node.safeRowCapacity()) * 4) + " boxes)";
+
+        if (node.viewingRoomCapacity() > 0) {
+            capacityText += ", Viewing rooms " + node.viewingRoomCapacity();
+        }
+        if (node.bankTellerCapacity() > 0) {
+            capacityText += ", Tellers " + node.bankTellerCapacity();
+        }
+        capacityText += ".";
+
+        String unlocks = capacityText;
         if (node.unlocks() != null && !node.unlocks().isEmpty()) {
             unlocks += " " + String.join(", ", node.unlocks()) + ".";
         }

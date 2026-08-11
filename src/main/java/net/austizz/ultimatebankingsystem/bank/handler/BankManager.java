@@ -68,6 +68,9 @@ public class BankManager {
         if (suspendDirtyDepth > 0) {
             return;
         }
+        if (centralBank != null) {
+            centralBank.advanceEconomyRevision();
+        }
         if (dataRef != null) {
             dataRef.setDirty();
         } else if (serverInstance != null) {

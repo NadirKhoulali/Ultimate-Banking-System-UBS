@@ -2,6 +2,34 @@
 
 All notable changes to Ultimate Banking System are documented here.
 
+## [2.1.0] - 2026-07-24
+
+### Added
+
+- Added a resumable Create: Numismatics migration wizard with native file import, current-world discovery, exact configurable Spur conversion, account/shared-account/card conversion, full-world physical asset scanning, verified backups, maintenance locking, recovery storage, reconciliation reports, and pre-load rollback.
+- Added `PLAYER` and `INSTITUTION` account principals so nation treasuries and escrow accounts have durable non-human ownership without synthetic owner grants.
+- Added explicit account roles and capabilities for institutional access: `VIEW`, `DEPOSIT`, `WITHDRAW`, and `MANAGE`.
+- Added the four-method authoritative economy interface at `UltimateBankingApiProvider.economy()` for trusted official-server adapters.
+- Added player-scoped and full reconciliation snapshots with monotonic economy revisions, account principals, grants, retained statements, and escrow state.
+- Added persistent idempotency receipts. Exact retries return the original operation and conflicting payloads fail without mutation, including after a server restart.
+- Added atomic matched monetary escrow creation, funding, complete-pot release, and contributor refund operations.
+- Added official-system operations for institution provisioning, grant synchronization, account freezing, and audited administrative adjustments.
+- Added integration feature flags for institutional economy, idempotent operations, and monetary escrow.
+
+### Changed
+
+- Increased the default per-account transaction retention from `20` to `10,000`, with a configurable maximum of `50,000`, for one-year web statement projections.
+- Personal primary-account selection now explicitly excludes institutional accounts.
+- Personal and institution wealth attribution now follows the account principal rather than access grants.
+- Nation payout limits are derived from the acting player's current UBS account grant instead of caller-provided policy metadata.
+- Economy snapshots normalize legacy sub-cent values to two decimal places instead of reporting them as zero.
+
+### Security and Reliability
+
+- Player-scoped snapshots expose only the caller's own grant and escrows involving an accessible contributor account; full grants remain restricted to trusted reconciliation.
+- Monetary mutations remain server-thread-only and fail closed on missing accounts, frozen or unavailable banks, insufficient funds, policy limits, invalid certificates, malformed amounts, and idempotency conflicts.
+- The economy interface remains in-process. UBS does not open an HTTP, WebSocket, or administration port.
+
 ## [2.0.0] - 2026-07-23
 
 ### Added
@@ -67,4 +95,3 @@ All notable changes to Ultimate Banking System are documented here.
 ## [1.1.0] - 2026-04-14
 
 - Added the Bank Owner PC, desktop utilities, typed account/bank/transaction snapshots, cash and paper-instrument APIs, and teller NPCs.
-

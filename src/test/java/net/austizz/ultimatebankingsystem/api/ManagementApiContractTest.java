@@ -26,6 +26,23 @@ class ManagementApiContractTest {
         assertNotNull(provider.getMethod("banks"));
         assertNotNull(provider.getMethod("shops"));
         assertNotNull(provider.getMethod("heists"));
+        assertNotNull(provider.getMethod("economy"));
+    }
+
+    @Test
+    void economyModuleKeepsTransportCallersOnOneDeepInterface() throws Exception {
+        Class<?> api = load("api.economy.UltimateEconomyApi");
+        assertMethods(api, "getApiVersion", "snapshot", "findOperation", "execute");
+        assertEquals(4, Arrays.stream(api.getMethods())
+                .filter(method -> method.getDeclaringClass().equals(api))
+                .count());
+
+        Class<?> request = load("api.economy.ApiEconomyOperationRequest");
+        Class<?> result = load("api.economy.ApiEconomyOperationResult");
+        Class<?> snapshot = load("api.economy.ApiEconomySnapshot");
+        assertTrue(request.isRecord());
+        assertTrue(result.isRecord());
+        assertTrue(snapshot.isRecord());
     }
 
     @Test

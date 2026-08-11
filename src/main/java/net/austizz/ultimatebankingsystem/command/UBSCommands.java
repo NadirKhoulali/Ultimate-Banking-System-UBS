@@ -16,6 +16,7 @@ import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.accountTypes.AccountTypes;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
+import net.austizz.ultimatebankingsystem.bank.BankLevelService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.bank.owner.staffing.BankStaffingService;
@@ -2222,11 +2223,12 @@ public class UBSCommands {
             return 1;
         }
 
+        int maxTellers = BankLevelService.bankTellerCapacity(centralBank, bank);
         int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
-        if (activeCount >= BankTellerEntity.MAX_TELLERS_PER_BANK) {
+        if (activeCount >= maxTellers) {
             source.sendSystemMessage(moneyLiteral(
                     "§c" + bank.getBankName() + " already has the max "
-                            + BankTellerEntity.MAX_TELLERS_PER_BANK + " active tellers."
+                            + maxTellers + " active tellers."
             ));
             return 1;
         }
@@ -2241,7 +2243,7 @@ public class UBSCommands {
         source.sendSystemMessage(moneyLiteral(
                 "§aIssued teller egg for §e" + bank.getBankName()
                         + "§a. Active tellers: §f" + activeCount
-                        + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
+                        + "§7/§f" + maxTellers
         ));
         return 1;
     }
@@ -2265,10 +2267,11 @@ public class UBSCommands {
             return 1;
         }
 
+        int maxTellers = BankLevelService.bankTellerCapacity(centralBank, bank);
         int activeCount = BankTellerEntity.countActiveTellersForBank(source.getServer(), bank.getBankId());
         source.sendSystemMessage(moneyLiteral(
                 "§7Active tellers for §e" + bank.getBankName() + "§7: §b"
-                        + activeCount + "§7/§f" + BankTellerEntity.MAX_TELLERS_PER_BANK
+                        + activeCount + "§7/§f" + maxTellers
         ));
         return 1;
     }

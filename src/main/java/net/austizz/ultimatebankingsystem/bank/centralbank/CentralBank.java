@@ -45,6 +45,9 @@ public class CentralBank extends Bank{
     private ConcurrentHashMap<UUID, CompoundTag> issuedCreditCards;
     private ConcurrentHashMap<UUID, Boolean> pickpocketOptOut;
     private ConcurrentHashMap<UUID, CompoundTag> pickpocketHistory;
+    private ConcurrentHashMap<String, CompoundTag> economyOperations;
+    private ConcurrentHashMap<String, CompoundTag> economyEscrows;
+    private long economyRevision;
     private int nextBankTellerVariant;
 
     public CentralBank() {
@@ -67,6 +70,9 @@ public class CentralBank extends Bank{
         this.issuedCreditCards = new ConcurrentHashMap<>();
         this.pickpocketOptOut = new ConcurrentHashMap<>();
         this.pickpocketHistory = new ConcurrentHashMap<>();
+        this.economyOperations = new ConcurrentHashMap<>();
+        this.economyEscrows = new ConcurrentHashMap<>();
+        this.economyRevision = 0L;
         this.nextBankTellerVariant = TELLER_VARIANT_MALE;
     }
     public ConcurrentHashMap<UUID, Bank> getBanks() {
@@ -103,6 +109,33 @@ public class CentralBank extends Bank{
                 .orElse(null);
     }
 
+    public ConcurrentHashMap<String, CompoundTag> getEconomyOperations() {
+        if (economyOperations == null) {
+            economyOperations = new ConcurrentHashMap<>();
+        }
+        return economyOperations;
+    }
+
+    public ConcurrentHashMap<String, CompoundTag> getEconomyEscrows() {
+        if (economyEscrows == null) {
+            economyEscrows = new ConcurrentHashMap<>();
+        }
+        return economyEscrows;
+    }
+
+    public synchronized long getEconomyRevision() {
+        return Math.max(0L, economyRevision);
+    }
+
+    public synchronized long advanceEconomyRevision() {
+        if (economyRevision == Long.MAX_VALUE) {
+            economyRevision = 1L;
+        } else {
+            economyRevision = Math.max(0L, economyRevision) + 1L;
+        }
+        return economyRevision;
+    }
+
     private List<Bank> allBanksIncludingCentral() {
         List<Bank> result = new ArrayList<>();
         LinkedHashSet<UUID> seen = new LinkedHashSet<>();
@@ -133,7 +166,7 @@ public class CentralBank extends Bank{
                 continue;
             }
             for (AccountHolder account : bank.getBankAccounts().values()){
-                if (account != null && playerId.equals(account.getPlayerUUID())) {
+                if (account != null && account.isOwnedByPlayer(playerId)) {
                     result.put(account.getAccountUUID(), account);
                 }
             }
@@ -208,7 +241,7 @@ public class CentralBank extends Bank{
                 continue;
             }
             for (AccountHolder account : bank.getBankAccounts().values()) {
-                if (account == null || account.getPlayerUUID() == null) {
+                if (account == null || account.getPlayerUUID() == null || account.isInstitutional()) {
                     continue;
                 }
                 accountsByOwner.computeIfAbsent(account.getPlayerUUID(), ignored -> new ArrayList<>()).add(account);
@@ -755,6 +788,9 @@ public class CentralBank extends Bank{
         tag.put("issued_credit_cards", saveTagMap(getIssuedCreditCards()));
         tag.put("pickpocket_history", saveTagMap(getPickpocketHistory()));
         tag.put("pickpocket_opt_out", saveUuidBooleanMap(getPickpocketOptOut()));
+        tag.put("economy_operations", saveStringTagMap(getEconomyOperations()));
+        tag.put("economy_escrows", saveStringTagMap(getEconomyEscrows()));
+        tag.putLong("economy_revision", getEconomyRevision());
         tag.putInt("next_bank_teller_variant", this.nextBankTellerVariant);
 
         return tag;
@@ -833,6 +869,11 @@ public class CentralBank extends Bank{
         centralBank.issuedCreditCards = loadTagMap(tag.getList("issued_credit_cards", 10));
         centralBank.pickpocketHistory = loadTagMap(tag.getList("pickpocket_history", 10));
         centralBank.pickpocketOptOut = loadUuidBooleanMap(tag.getList("pickpocket_opt_out", 10));
+        centralBank.economyOperations = loadStringTagMap(tag.getList("economy_operations", 10));
+        centralBank.economyEscrows = loadStringTagMap(tag.getList("economy_escrows", 10));
+        centralBank.economyRevision = tag.contains("economy_revision")
+                ? Math.max(0L, tag.getLong("economy_revision"))
+                : 0L;
         centralBank.nextBankTellerVariant = tag.contains("next_bank_teller_variant")
                 ? tag.getInt("next_bank_teller_variant")
                 : TELLER_VARIANT_MALE;
@@ -864,6 +905,36 @@ public class CentralBank extends Bank{
                 continue;
             }
             map.put(entry.getUUID("id"), entry.getCompound("data"));
+        }
+        return map;
+    }
+
+    private static ListTag saveStringTagMap(ConcurrentHashMap<String, CompoundTag> map) {
+        ListTag list = new ListTag();
+        if (map == null) {
+            return list;
+        }
+        map.forEach((id, value) -> {
+            if (id == null || id.isBlank() || value == null) {
+                return;
+            }
+            CompoundTag entry = new CompoundTag();
+            entry.putString("id", id);
+            entry.put("data", value.copy());
+            list.add(entry);
+        });
+        return list;
+    }
+
+    private static ConcurrentHashMap<String, CompoundTag> loadStringTagMap(ListTag list) {
+        ConcurrentHashMap<String, CompoundTag> map = new ConcurrentHashMap<>();
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            String id = entry.getString("id");
+            if (id.isBlank() || !entry.contains("data", 10)) {
+                continue;
+            }
+            map.put(id, entry.getCompound("data"));
         }
         return map;
     }

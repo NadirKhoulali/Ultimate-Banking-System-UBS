@@ -62,6 +62,7 @@ public final class BankLevelService {
                 progress,
                 safeRowCapacityForLevel(level),
                 viewingRoomCapacityForLevel(level),
+                bankTellerCapacityForLevel(level),
                 buildRoadmap(level)
         );
     }
@@ -84,6 +85,14 @@ public final class BankLevelService {
     }
 
     public static int viewingRoomCapacityForLevel(int level) {
+        return 1 + (clampLevel(level) / 5);
+    }
+
+    public static int bankTellerCapacity(CentralBank centralBank, Bank bank) {
+        return bankTellerCapacityForLevel(effectiveLevel(centralBank, bank));
+    }
+
+    public static int bankTellerCapacityForLevel(int level) {
         return 1 + (clampLevel(level) / 5);
     }
 
@@ -110,6 +119,7 @@ public final class BankLevelService {
         lines.add("@bank_roadmap.max_level=" + MAX_LEVEL);
         lines.add("@bank_roadmap.safe_row_capacity=" + snapshot.safeRowCapacity());
         lines.add("@bank_roadmap.viewing_room_capacity=" + snapshot.viewingRoomCapacity());
+        lines.add("@bank_roadmap.bank_teller_capacity=" + snapshot.bankTellerCapacity());
         for (String node : snapshot.roadmapNodes()) {
             lines.add("@bank_roadmap.node=" + node);
         }
@@ -122,6 +132,7 @@ public final class BankLevelService {
                 + " | account-only target " + snapshot.nextAccountTarget());
         lines.add("- Safe row capacity: " + snapshot.safeRowCapacity() + " row units.");
         lines.add("- Viewing-room capacity: " + snapshot.viewingRoomCapacity() + ".");
+        lines.add("- Bank-teller capacity: " + snapshot.bankTellerCapacity() + ".");
         return String.join("\n", lines);
     }
 
@@ -200,6 +211,8 @@ public final class BankLevelService {
                     + "|" + depositTargetForScore(score)
                     + "|" + accountTargetForScore(score)
                     + "|" + safeRowCapacityForLevel(level)
+                    + "|" + viewingRoomCapacityForLevel(level)
+                    + "|" + bankTellerCapacityForLevel(level)
                     + "|" + state
                     + "|" + encodeUnlocks(unlocksForLevel(level)));
         }
@@ -319,6 +332,7 @@ public final class BankLevelService {
                                     double progressRatio,
                                     int safeRowCapacity,
                                     int viewingRoomCapacity,
+                                    int bankTellerCapacity,
                                     List<String> roadmapNodes) {
         private static BankLevelSnapshot empty() {
             return new BankLevelSnapshot(
@@ -335,6 +349,7 @@ public final class BankLevelService {
                     0.0D,
                     safeRowCapacityForLevel(1),
                     viewingRoomCapacityForLevel(1),
+                    bankTellerCapacityForLevel(1),
                     buildRoadmap(1)
             );
         }

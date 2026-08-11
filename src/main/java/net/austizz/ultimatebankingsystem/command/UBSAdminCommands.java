@@ -618,6 +618,7 @@ public class UBSAdminCommands {
                         )
                 )
                 .then(Commands.literal("import")
+                        .then(NumismaticsMigrationCommands.buildNumismaticsLiteral())
                         .then(Commands.literal("csv")
                                 .then(Commands.argument("path", StringArgumentType.greedyString())
                                         .executes(context -> adminImportCsv(

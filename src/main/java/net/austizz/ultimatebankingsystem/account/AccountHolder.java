@@ -28,6 +28,7 @@ import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -46,6 +47,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AccountHolder {
     private final UUID accountUUID;
     private final UUID playerUUID;
+    private AccountPrincipalType principalType;
+    private String principalId;
     private LocalDateTime DateOfCreation;
     private AccountTypes AccountType;
     private String pinCode;
@@ -85,14 +88,28 @@ public class AccountHolder {
             .thenComparing(TransactionEntry::key, Comparator.nullsFirst(Comparator.naturalOrder()));
 
 
-    public AccountHolder(UUID playerUUID, BigDecimal balance,  AccountTypes accountType, String pinCode, UUID BankId, UUID AccountUUID) {
-        this.accountUUID = AccountUUID == null ? UUID.randomUUID() : AccountUUID;
-        this.playerUUID = playerUUID;
+    public AccountHolder(UUID playerUUID, BigDecimal balance, AccountTypes accountType, String pinCode, UUID BankId, UUID AccountUUID) {
+        this(playerUUID, balance, accountType, pinCode, BankId, AccountUUID,
+                AccountPrincipalType.PLAYER, playerUUID == null ? "" : playerUUID.toString());
+    }
+
+    private AccountHolder(UUID compatibilityOwnerId,
+                          BigDecimal balance,
+                          AccountTypes accountType,
+                          String pinCode,
+                          UUID bankId,
+                          UUID accountId,
+                          AccountPrincipalType principalType,
+                          String principalId) {
+        this.accountUUID = accountId == null ? UUID.randomUUID() : accountId;
+        this.playerUUID = compatibilityOwnerId;
+        this.principalType = principalType == null ? AccountPrincipalType.PLAYER : principalType;
+        this.principalId = normalizePrincipalId(principalId, compatibilityOwnerId);
         this.DateOfCreation = LocalDateTime.now();
         this.AccountType = accountType;
         this.pinCode = normalizePin(pinCode);
         this.balance = balance == null ? new  BigDecimal("0") : balance;
-        this.BankId = BankId;
+        this.BankId = bankId;
         this.isPrimaryAccount = false;
         this.transactions = new ConcurrentHashMap<>();
         this.temporaryWithdrawalLimit = null;
@@ -108,10 +125,14 @@ public class AccountHolder {
         this.creditScore = Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
         this.defaulted = false;
         this.activeLoans = new ConcurrentHashMap<>();
-        this.accountAccessType = "PERSONAL";
+        this.accountAccessType = this.principalType == AccountPrincipalType.INSTITUTION
+                ? "INSTITUTION"
+                : "PERSONAL";
         this.businessLabel = "";
         this.accessRoles = new ConcurrentHashMap<>();
-        this.accessRoles.put(playerUUID, "OWNER");
+        if (this.principalType == AccountPrincipalType.PLAYER && compatibilityOwnerId != null) {
+            this.accessRoles.put(compatibilityOwnerId, "OWNER");
+        }
         this.safeBoxSlots = new ConcurrentHashMap<>();
         this.certificateTier = "";
         this.certificateMaturityGameTime = -1L;
@@ -120,12 +141,49 @@ public class AccountHolder {
         this.certificateRate = 0.0;
         this.lastVariableRate = -1.0;
     }
+
+    public static AccountHolder createInstitutional(String institutionId,
+                                                    BigDecimal balance,
+                                                    AccountTypes accountType,
+                                                    UUID bankId,
+                                                    UUID accountId) {
+        String normalizedId = normalizeInstitutionId(institutionId);
+        if (normalizedId.isEmpty()) {
+            throw new IllegalArgumentException("Institution id is required");
+        }
+        UUID compatibilityOwnerId = UUID.nameUUIDFromBytes(
+                ("ultimatebankingsystem:institution:" + normalizedId).getBytes(StandardCharsets.UTF_8));
+        return new AccountHolder(
+                compatibilityOwnerId,
+                balance,
+                accountType,
+                "",
+                bankId,
+                accountId,
+                AccountPrincipalType.INSTITUTION,
+                normalizedId
+        );
+    }
     // Request all Types of Identification
     public UUID getAccountUUID() {
         return accountUUID;
     }
     public UUID getPlayerUUID() {
         return playerUUID;
+    }
+    public AccountPrincipalType getPrincipalType() {
+        return principalType == null ? AccountPrincipalType.PLAYER : principalType;
+    }
+    public String getPrincipalId() {
+        return normalizePrincipalId(principalId, playerUUID);
+    }
+    public boolean isInstitutional() {
+        return getPrincipalType() == AccountPrincipalType.INSTITUTION;
+    }
+    public boolean isOwnedByPlayer(UUID playerId) {
+        return playerId != null
+                && getPrincipalType() == AccountPrincipalType.PLAYER
+                && playerId.equals(this.playerUUID);
     }
     public UUID getBankId() {
         return BankId;
@@ -195,8 +253,24 @@ public class AccountHolder {
         return removeBalanceInternal(balance, true);
     }
 
+    public boolean canDebitForSystem(BigDecimal amount) {
+        return amount != null
+                && amount.compareTo(BigDecimal.ZERO) > 0
+                && !this.frozen
+                && !isLockedCertificateAtCurrentGameTime()
+                && this.balance != null
+                && this.balance.compareTo(amount) >= 0;
+    }
+
+    public boolean canCreditForSystem(BigDecimal amount) {
+        return amount != null
+                && amount.compareTo(BigDecimal.ZERO) > 0
+                && !this.frozen;
+    }
+
     private void sendBalanceDeltaAlert(BigDecimal amount, boolean incoming) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || this.playerUUID == null) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0
+                || this.playerUUID == null || isInstitutional()) {
             return;
         }
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
@@ -292,7 +366,7 @@ public class AccountHolder {
         return isPrimaryAccount;
     }
     public void setPrimaryAccount(boolean isPrimaryAccount) {
-        this.isPrimaryAccount = isPrimaryAccount;
+        this.isPrimaryAccount = isPrimaryAccount && !isInstitutional();
         BankManager.markDirty();
     }
 
@@ -325,7 +399,9 @@ public class AccountHolder {
     public ConcurrentHashMap<UUID, String> getAccessRoles() {
         if (accessRoles == null) {
             accessRoles = new ConcurrentHashMap<>();
-            accessRoles.put(this.playerUUID, "OWNER");
+            if (!isInstitutional() && this.playerUUID != null) {
+                accessRoles.put(this.playerUUID, "OWNER");
+            }
         }
         return accessRoles;
     }
@@ -345,7 +421,7 @@ public class AccountHolder {
         if (playerId == null) {
             return;
         }
-        if (playerId.equals(this.playerUUID)) {
+        if (!isInstitutional() && playerId.equals(this.playerUUID)) {
             return;
         }
         getAccessRoles().remove(playerId);
@@ -356,7 +432,8 @@ public class AccountHolder {
         if (playerId == null) {
             return "";
         }
-        if (this.playerUUID.equals(playerId) && !getAccessRoles().containsKey(playerId)) {
+        if (!isInstitutional() && this.playerUUID != null
+                && this.playerUUID.equals(playerId) && !getAccessRoles().containsKey(playerId)) {
             return "OWNER";
         }
         return getAccessRoles().getOrDefault(playerId, "");
@@ -851,6 +928,8 @@ public class AccountHolder {
 
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putUUID("playerUUID", this.playerUUID);
+        tag.putString("principalType", getPrincipalType().name());
+        tag.putString("principalId", getPrincipalId());
         tag.putString("balance", this.balance.toString()); // BigDecimal als String opslaan
         tag.putUUID("BankId", this.BankId);
         tag.putBoolean("isPrimaryAccount", isPrimaryAccount);
@@ -954,9 +1033,12 @@ public class AccountHolder {
         UUID accountUUID = tag.getUUID("accountUUID");
         UUID BankId = tag.getUUID("BankId");
         UUID playerUUID = tag.getUUID("playerUUID");
-        AccountHolder account = new AccountHolder(playerUUID, balance, accountType, pinCode, BankId, accountUUID);
+        AccountPrincipalType principalType = AccountPrincipalType.parse(tag.getString("principalType"));
+        String principalId = tag.contains("principalId") ? tag.getString("principalId") : playerUUID.toString();
+        AccountHolder account = new AccountHolder(
+                playerUUID, balance, accountType, pinCode, BankId, accountUUID, principalType, principalId);
         account.DateOfCreation = LocalDateTime.parse(tag.getString("dateOfCreation"));
-        account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount");
+        account.isPrimaryAccount = tag.getBoolean("isPrimaryAccount") && !account.isInstitutional();
         account.frozen = tag.getBoolean("frozen");
         account.frozenReason = tag.contains("frozenReason") ? tag.getString("frozenReason") : "";
         account.creditScore = tag.contains("creditScore") ? Math.max(0, tag.getInt("creditScore")) : Math.max(0, Config.CREDIT_SCORE_DEFAULT.get());
@@ -1060,7 +1142,9 @@ public class AccountHolder {
                 account.accessRoles.put(roleTag.getUUID("playerId"), role.toUpperCase());
             }
         }
-        account.accessRoles.putIfAbsent(account.playerUUID, "OWNER");
+        if (!account.isInstitutional() && account.playerUUID != null) {
+            account.accessRoles.putIfAbsent(account.playerUUID, "OWNER");
+        }
 
         account.safeBoxSlots = new ConcurrentHashMap<>();
         if (tag.contains("safeBoxSlots", Tag.TAG_LIST)) {
@@ -1079,6 +1163,22 @@ public class AccountHolder {
         }
 
         return account;
+    }
+
+    private static String normalizePrincipalId(String value, UUID fallbackPlayerId) {
+        if (value == null || value.isBlank()) {
+            return fallbackPlayerId == null ? "" : fallbackPlayerId.toString();
+        }
+        String normalized = value.trim();
+        return normalized.length() <= 160 ? normalized : normalized.substring(0, 160);
+    }
+
+    private static String normalizeInstitutionId(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.matches("[a-z0-9._:-]{1,160}") ? normalized : "";
     }
 
     private static final long OUTGOING_TX_WINDOW_MS = 60_000L;
