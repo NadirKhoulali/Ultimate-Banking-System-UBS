@@ -59,6 +59,19 @@ public class BankOwnerPcBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
+        if (level.isClientSide()) {
+            PacketDistributor.sendToServer(new OpenBankOwnerPcPayload(
+                    level.dimension().location().toString(),
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ()
+            ));
+        }
+        return InteractionResult.SUCCESS;
+    }
+
+    @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         return SHAPE;
     }

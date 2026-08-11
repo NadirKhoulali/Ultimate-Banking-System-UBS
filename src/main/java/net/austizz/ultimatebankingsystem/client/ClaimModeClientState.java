@@ -206,9 +206,18 @@ public final class ClaimModeClientState {
                 modal = Modal.EXIT;
                 revision++;
             }
-            case "discard" -> send(ClaimAction.DISCARD_AND_EXIT);
-            case "finish" -> send(ClaimAction.FINISH_AND_EXIT);
-            case "save" -> send(ClaimAction.SAVE_AND_EXIT);
+            case "discard" -> {
+                send(ClaimAction.DISCARD_AND_EXIT);
+                clear();
+            }
+            case "finish" -> {
+                send(ClaimAction.FINISH_AND_EXIT);
+                clear();
+            }
+            case "save" -> {
+                send(ClaimAction.SAVE_AND_EXIT);
+                clear();
+            }
             case "add" -> send(ClaimAction.SET_ADD_MODE);
             case "remove" -> send(ClaimAction.SET_REMOVE_MODE);
             case "apply" -> primaryAction();
@@ -233,6 +242,7 @@ public final class ClaimModeClientState {
         }
         if (kind.staged()) {
             send(ClaimAction.SAVE_AND_EXIT);
+            clear();
             return;
         }
         if (kind.supportsMode() && !snapshot.addMode()) {

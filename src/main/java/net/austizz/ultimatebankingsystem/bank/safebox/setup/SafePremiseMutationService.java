@@ -230,6 +230,9 @@ public final class SafePremiseMutationService {
             return null;
         }
         Object rawPremises = metadata.get(PREMISES_KEY);
+        if (rawPremises == null) {
+            return new PremiseIndex(List.of(), Map.of(), Map.of());
+        }
         if (!(rawPremises instanceof List<?> premises)) {
             return null;
         }
@@ -246,12 +249,12 @@ public final class SafePremiseMutationService {
             SafeBlockBounds bounds = premise == null ? null : bounds(premise);
             if (id == null || bankId == null || bounds == null || byId.containsKey(id)
                     || !validStoredPremise(premise, bounds)) {
-                continue;
+                return null;
             }
 
             Object rawSafeAreas = premise.get("safeAreas");
             if (!(rawSafeAreas instanceof List<?> safeAreas)) {
-                continue;
+                return null;
             }
             Set<String> premiseVaultIds = new LinkedHashSet<>();
             boolean allSafeAreasValid = true;
@@ -262,7 +265,7 @@ public final class SafePremiseMutationService {
                 }
             }
             if (!allSafeAreasValid) {
-                continue;
+                return null;
             }
 
             PremiseNode node = new PremiseNode(
@@ -423,7 +426,13 @@ public final class SafePremiseMutationService {
 
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> copiedPremises(Map<String, Object> metadata) {
-        return (List<Map<String, Object>>) metadata.get(PREMISES_KEY);
+        Object raw = metadata.get(PREMISES_KEY);
+        if (raw instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        List<Map<String, Object>> newList = new ArrayList<>();
+        metadata.put(PREMISES_KEY, newList);
+        return newList;
     }
 
     private static Map<String, Object> copiedPremise(Map<String, Object> metadata, int index) {
