@@ -145,8 +145,15 @@ public final class OwnerPcPremisePayloadBuilder {
         for (int index = 0; index < original.size(); index++) {
             CompoundTag originalPremise = original.getCompound(index);
             String id = originalPremise.getString("id");
+            if (id.isBlank()) {
+                // Entries whose id cannot be read are opaque to premise mutations: the
+                // domain layer never edits or deletes them, so commits preserve them
+                // verbatim instead of silently dropping stored data.
+                updated.add(originalPremise.copy());
+                continue;
+            }
             Map<String, Object> updatedPremise = afterById.get(id);
-            if (id.isBlank() || updatedPremise == null) {
+            if (updatedPremise == null) {
                 continue;
             }
             CompoundTag premise = originalPremise.copy();

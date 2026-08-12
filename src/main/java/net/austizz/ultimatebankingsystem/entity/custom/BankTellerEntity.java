@@ -44,7 +44,6 @@ public class BankTellerEntity extends PathfinderMob {
 
     public static final int VARIANT_MALE = 0;
     public static final int VARIANT_FEMALE = 1;
-    public static final int MAX_TELLERS_PER_BANK = 5;
     public static final String EGG_BOUND_BANK_ID_TAG = "ubs_teller_bank_id";
     private static final double ESCORT_MOVEMENT_SPEED = 0.35D;
     private static final double CUSTOMER_USE_DISTANCE_SQ = 8.0D * 8.0D;

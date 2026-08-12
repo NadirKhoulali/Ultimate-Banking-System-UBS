@@ -1636,6 +1636,7 @@ public final class BankOwnerPcService {
                 safeSetup.objective(),
                 OwnerPcPremisePayloadBuilder.build(server, metadata, bankId),
                 bankLevel.viewingRoomCapacity(),
+                bankLevel.bankTellerCapacity(),
                 buildViewingRoomPayloads(server, centralBank, bankId),
                 safeAccessLogs,
                 safeAlarm,

@@ -22,12 +22,24 @@ public final class SafePremiseMutationService {
                                                    SafeBlockBounds bounds,
                                                    SafeExitSnapshot exit) {
         PremiseIndex index = premiseIndex(metadata);
-        if (index == null || bankId == null || !validBounds(bounds) || !validExit(bounds, exit)) {
+        if (index == null) {
+            return SafePremiseMutationResult.rejected(
+                    "the bank's stored premise data could not be read for a safe overlap check");
+        }
+        if (bankId == null || !validBounds(bounds) || !validExit(bounds, exit)) {
             return SafePremiseMutationResult.rejected();
         }
         for (PremiseNode premise : index.premises()) {
             if (bounds.overlaps(premise.bounds())) {
-                return SafePremiseMutationResult.rejected();
+                return SafePremiseMutationResult.rejected(
+                        "the selection overlaps " + describePremise(premise, bankId));
+            }
+        }
+        for (OpaquePremise blocked : index.opaque()) {
+            if (bounds.overlaps(blocked.bounds())) {
+                return SafePremiseMutationResult.rejected(
+                        "the selection overlaps a stored premise entry with unreadable saved data at "
+                                + describeBounds(blocked.bounds()));
             }
         }
 
@@ -35,6 +47,7 @@ public final class SafePremiseMutationService {
         do {
             premiseId = UUID.randomUUID().toString();
         } while (index.byId().containsKey(premiseId)
+                || index.opaqueIds().contains(premiseId)
                 || SafeDepositSetupIds.isMigrationOwnedPremise(premiseId, bankId, bounds));
 
         Map<String, Object> updated = deepCopyMap(metadata);
@@ -231,7 +244,7 @@ public final class SafePremiseMutationService {
         }
         Object rawPremises = metadata.get(PREMISES_KEY);
         if (rawPremises == null) {
-            return new PremiseIndex(List.of(), Map.of(), Map.of());
+            return new PremiseIndex(List.of(), Map.of(), Map.of(), List.of(), Set.of());
         }
         if (!(rawPremises instanceof List<?> premises)) {
             return null;
@@ -240,32 +253,56 @@ public final class SafePremiseMutationService {
         List<PremiseNode> nodes = new ArrayList<>();
         Map<String, PremiseNode> byId = new LinkedHashMap<>();
         Map<VaultKey, PremiseNode> byVault = new LinkedHashMap<>();
+        List<OpaquePremise> opaque = new ArrayList<>();
+        Set<String> opaqueIds = new LinkedHashSet<>();
         Set<String> safeAreaIds = new LinkedHashSet<>();
         Set<String> vaultIds = new LinkedHashSet<>();
         for (int premiseIndex = 0; premiseIndex < premises.size(); premiseIndex++) {
             Map<String, Object> premise = strictMap(premises.get(premiseIndex));
-            String id = premise == null ? null : identifier(premise.get("id"));
-            UUID bankId = premise == null ? null : uuid(premise.get("bankId"));
             SafeBlockBounds bounds = premise == null ? null : bounds(premise);
-            if (id == null || bankId == null || bounds == null || byId.containsKey(id)
-                    || !validStoredPremise(premise, bounds)) {
+            if (bounds == null) {
+                // Without readable bounds this entry cannot take part in any spatial
+                // safety check, so the whole index stays fail-closed.
                 return null;
             }
+            String id = identifier(premise.get("id"));
+            UUID bankId = uuid(premise.get("bankId"));
+            boolean duplicateId = id != null && (byId.containsKey(id) || opaqueIds.contains(id));
 
-            Object rawSafeAreas = premise.get("safeAreas");
-            if (!(rawSafeAreas instanceof List<?> safeAreas)) {
-                return null;
-            }
             Set<String> premiseVaultIds = new LinkedHashSet<>();
-            boolean allSafeAreasValid = true;
-            for (Object rawSafeArea : safeAreas) {
-                if (!validSafeArea(rawSafeArea, id, bounds, safeAreaIds, vaultIds, premiseVaultIds)) {
-                    allSafeAreasValid = false;
-                    break;
+            boolean strictValid = id != null && bankId != null && !duplicateId
+                    && validStoredPremise(premise, bounds);
+            if (strictValid) {
+                Object rawSafeAreas = premise.get("safeAreas");
+                if (rawSafeAreas instanceof List<?> safeAreas) {
+                    for (Object rawSafeArea : safeAreas) {
+                        if (!validSafeArea(rawSafeArea, id, bounds, safeAreaIds, vaultIds, premiseVaultIds)) {
+                            strictValid = false;
+                            break;
+                        }
+                    }
+                } else {
+                    strictValid = false;
                 }
             }
-            if (!allSafeAreasValid) {
-                return null;
+
+            if (!strictValid) {
+                // Entries that fail strict validation stay out of the mutable index but
+                // keep blocking overlapping claims, so one malformed premise can no
+                // longer break every premise action for the bank.
+                if (duplicateId) {
+                    PremiseNode previous = byId.remove(id);
+                    if (previous != null) {
+                        nodes.remove(previous);
+                        byVault.values().removeIf(node -> node == previous);
+                        opaque.add(new OpaquePremise(previous.bounds()));
+                    }
+                }
+                if (id != null) {
+                    opaqueIds.add(id);
+                }
+                opaque.add(new OpaquePremise(bounds));
+                continue;
             }
 
             PremiseNode node = new PremiseNode(
@@ -273,7 +310,7 @@ public final class SafePremiseMutationService {
                     id,
                     bankId,
                     bounds,
-                    safeAreas.size(),
+                    ((List<?>) premise.get("safeAreas")).size(),
                     Set.copyOf(premiseVaultIds)
             );
             nodes.add(node);
@@ -282,7 +319,34 @@ public final class SafePremiseMutationService {
                 byVault.put(new VaultKey(bankId, vaultId), node);
             }
         }
-        return new PremiseIndex(List.copyOf(nodes), Map.copyOf(byId), Map.copyOf(byVault));
+        return new PremiseIndex(List.copyOf(nodes), Map.copyOf(byId), Map.copyOf(byVault),
+                List.copyOf(opaque), Set.copyOf(opaqueIds));
+    }
+
+    private static String describePremise(PremiseNode premise, UUID requestingBankId) {
+        StringBuilder text = new StringBuilder("premise ");
+        text.append(shortPremiseId(premise.id()));
+        text.append(" at ").append(describeBounds(premise.bounds()));
+        if (SafeDepositSetupIds.isMigrationOwnedPremise(premise.id(), premise.bankId(), premise.bounds())) {
+            text.append(", auto-created from a legacy safe area");
+        }
+        if (requestingBankId != null && !requestingBankId.equals(premise.bankId())) {
+            text.append(", owned by another bank");
+        }
+        return text.toString();
+    }
+
+    private static String shortPremiseId(String id) {
+        if (id == null || id.isBlank()) {
+            return "(unknown id)";
+        }
+        return id.length() <= 8 ? id : id.substring(0, 8);
+    }
+
+    private static String describeBounds(SafeBlockBounds bounds) {
+        return bounds.dimension()
+                + " (" + bounds.minX() + ", " + bounds.minY() + ", " + bounds.minZ()
+                + ") to (" + bounds.maxX() + ", " + bounds.maxY() + ", " + bounds.maxZ() + ")";
     }
 
     private static boolean validStoredPremise(Map<String, Object> premise, SafeBlockBounds bounds) {
@@ -551,7 +615,12 @@ public final class SafePremiseMutationService {
 
     private record PremiseIndex(List<PremiseNode> premises,
                                 Map<String, PremiseNode> byId,
-                                Map<VaultKey, PremiseNode> byVault) {
+                                Map<VaultKey, PremiseNode> byVault,
+                                List<OpaquePremise> opaque,
+                                Set<String> opaqueIds) {
+    }
+
+    private record OpaquePremise(SafeBlockBounds bounds) {
     }
 
     private record VaultKey(UUID bankId, String vaultId) {

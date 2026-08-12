@@ -1759,11 +1759,17 @@ public final class ShopService {
         if (shop == null) {
             return false;
         }
+        // The persisted flag is authoritative: the status tick refreshes it whenever the
+        // shop chunks are observable. Re-deriving completeness here would force-load the
+        // claim chunks on every sales/API call and mis-read shops whose chunks are unloaded.
+        if (shop.contains(TAG_SETUP_COMPLETE)) {
+            return shop.getBoolean(TAG_SETUP_COMPLETE);
+        }
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) {
             return evaluateShopSetupObjective(shop, server).complete();
         }
-        return shop.contains(TAG_SETUP_COMPLETE) && shop.getBoolean(TAG_SETUP_COMPLETE);
+        return false;
     }
 
     private static ShopSetupObjectivePayload.RequirementProgress setupProgress(String itemName, int current, int needed) {
@@ -2786,8 +2792,13 @@ public final class ShopService {
             if (shop == null || !shop.contains(TAG_ID)) {
                 continue;
             }
+            // Decide observability BEFORE any evaluation or pruning: the setup scans read
+            // block state and would synchronously load every claim chunk, so a shop whose
+            // chunks are unloaded must keep its persisted state untouched instead of being
+            // re-derived from a world that is only partially observable.
+            boolean shopChunksUnloaded = anyShopChunksUnloaded(server, shop);
             boolean changed = false;
-            if (statusTick) {
+            if (statusTick && !shopChunksUnloaded) {
                 boolean prunedLegacy = pruneLegacyCoordinateOrderPallets(shop) > 0;
                 boolean prunedMissing = pruneAssignedPalletsMissingInWorld(server, shop) > 0;
                 boolean prunedBindings = pruneOrderPalletBindingsOutsideAssigned(shop) > 0;
@@ -2795,21 +2806,20 @@ public final class ShopService {
             }
             UUID shopId = shop.getUUID(TAG_ID);
             UUID ownerId = resolveShopOwnerIdFromTag(shop);
-            ShopSetupObjectiveState setupState = evaluateShopSetupObjective(shop, server);
-            boolean setupComplete = setupState.complete();
             boolean setupPreviouslyComplete = shop.getBoolean(TAG_SETUP_COMPLETE);
+            ShopSetupObjectiveState setupState = shopChunksUnloaded
+                    ? null
+                    : evaluateShopSetupObjective(shop, server);
+            boolean setupComplete = setupState == null ? setupPreviouslyComplete : setupState.complete();
 
-            // If setup was complete but now appears incomplete, check if any chunks are unloaded.
-            // If so, maintain the "complete" status to prevent the shop from closing due to unloading.
-            if (setupPreviouslyComplete && !setupComplete) {
-                if (anyShopChunksUnloaded(server, shop)) {
-                    setupComplete = true;
-                }
-            }
-
-            if (setupPreviouslyComplete != setupComplete) {
+            boolean setupChanged = setupPreviouslyComplete != setupComplete;
+            if (setupState != null && (setupChanged || !shop.contains(TAG_SETUP_COMPLETE))) {
+                // Persist the observed value even when it equals the default, so legacy
+                // shop tags gain the flag and isShopSetupComplete stops re-evaluating.
                 shop.putBoolean(TAG_SETUP_COMPLETE, setupComplete);
                 changed = true;
+            }
+            if (setupChanged) {
                 if (ownerId != null) {
                     ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
                     if (owner != null) {
@@ -2836,7 +2846,7 @@ public final class ShopService {
 
             if (statusTick && ownerId != null) {
                 ownersSeen.add(ownerId);
-                if (!setupComplete) {
+                if (!setupComplete && setupState != null) {
                     int candidateStep = Math.max(1, setupState.step());
                     int currentStep = setupObjectiveStepByOwner.getOrDefault(ownerId, -1);
                     if (candidateStep >= currentStep) {
@@ -2994,7 +3004,7 @@ public final class ShopService {
                 }
             }
 
-            if (lightingTick) {
+            if (lightingTick && !shopChunksUnloaded) {
                 changed |= refreshShopLighting(server, shop, isOpen);
             }
 
@@ -4123,7 +4133,7 @@ public final class ShopService {
         if (!stockroom) {
             clampStockroomClaimsToPlot(shopTag);
             removedCashiers = pruneCashiersOutsideClaims(shopTag, plotRemovalCashierCandidates);
-            removedTerminalLinks = pruneTerminalLinksOutsideClaims(shopTag, collectLiveCashierIdsForShop(server, shopTag));
+            removedTerminalLinks = pruneTerminalLinksOutsideClaims(shopTag);
         }
         saveShopTag(centralBank, shopTag);
         StringBuilder message = new StringBuilder((stockroom ? "Stockroom" : "Plot") + " region removed.");
@@ -5064,7 +5074,9 @@ public final class ShopService {
             String dim = region.getString(TAG_DIM);
             ServerLevel level = server.getLevel(serverLevelKey(dim));
             if (level == null) {
-                continue;
+                // The claim's dimension is not present on this server, so the region is
+                // unobservable; treat it as unloaded to keep persisted state untouched.
+                return true;
             }
             int minX = regionMinX(region) >> 4;
             int maxX = regionMaxX(region) >> 4;
@@ -6101,12 +6113,15 @@ public final class ShopService {
             return new ShopActionResult(false, "No shop found. Create one first.");
         }
         List<CashierSummary> cashiers = collectCashiers(server, centralBank, ownerId, shopId);
-        if (cashiers.isEmpty()) {
-            return new ShopActionResult(false, "No cashier employees found.");
-        }
         CashierSummary selected = selectCashier(cashiers, employeeSelection);
         if (selected == null) {
-            return new ShopActionResult(false, "Employee not found. Use index, employee ID, or cashier entity ID.");
+            ShopActionResult ghostResult = removeGhostCashierLink(server, centralBank, shop, employeeSelection);
+            if (ghostResult != null) {
+                return ghostResult;
+            }
+            return new ShopActionResult(false, cashiers.isEmpty()
+                    ? "No cashier employees found in loaded chunks."
+                    : "Employee not found. Use index, employee ID, or cashier entity ID.");
         }
 
         boolean removed = false;
@@ -6117,13 +6132,53 @@ public final class ShopService {
                 removed = true;
             }
         }
+        if (!removed) {
+            // Never delete the persisted terminal link while the cashier entity is not
+            // observably present: an unloaded cashier would otherwise lose its setup link.
+            return new ShopActionResult(false,
+                    "That cashier is not in a loaded area right now. Load the shop chunks and try again.");
+        }
         removeLinkedTerminalTag(shop, selected.cashierId());
         saveShopTag(centralBank, shop);
         return new ShopActionResult(
                 true,
-                (removed ? "Fired employee " : "Unlinked missing employee ")
-                        + selected.label() + " (" + selected.employeeId() + ")."
+                "Fired employee " + selected.label() + " (" + selected.employeeId() + ")."
         );
+    }
+
+    private static ShopActionResult removeGhostCashierLink(MinecraftServer server,
+                                                           CentralBank centralBank,
+                                                           CompoundTag shop,
+                                                           String selection) {
+        UUID cashierId;
+        try {
+            cashierId = UUID.fromString(selection == null ? "" : selection.trim());
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+        CompoundTag linked = resolveLinkedTerminalTag(shop, cashierId);
+        if (linked == null) {
+            return null;
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            if (level.getEntity(cashierId) != null) {
+                return new ShopActionResult(false,
+                        "That cashier still exists in a loaded area outside the shop. Remove it there instead.");
+            }
+        }
+        ServerLevel linkLevel = server.getLevel(serverLevelKey(linked.getString(TAG_DIM)));
+        BlockPos linkPos = new BlockPos(linked.getInt(TAG_X), linked.getInt(TAG_Y), linked.getInt(TAG_Z));
+        if (linkLevel == null || !linkLevel.areEntitiesLoaded(
+                net.minecraft.world.level.ChunkPos.asLong(linkPos))) {
+            // The linked area is not observable, so the cashier may simply be unloaded;
+            // never delete the persisted link on unobservable state.
+            return new ShopActionResult(false,
+                    "That cashier is not in a loaded area right now. Load the shop chunks and try again.");
+        }
+        removeLinkedTerminalTag(shop, cashierId);
+        saveShopTag(centralBank, shop);
+        return new ShopActionResult(true,
+                "Removed the terminal link for missing cashier " + cashierId + ".");
     }
 
     public static void unlinkCashierTerminal(MinecraftServer server,
@@ -12470,13 +12525,24 @@ public final class ShopService {
         List<CashierSummary> cashiers = server == null
                 ? List.of()
                 : collectCashiers(server, centralBank, ownerId, selectedShop.contains(TAG_ID) ? selectedShop.getUUID(TAG_ID) : null);
-        int cashierCount = cashiers.size();
-        int linkedCashiers = 0;
+        // Merge live entities with persisted terminal links so cashiers standing in
+        // unloaded chunks still count instead of reading as lost configuration.
+        Set<UUID> knownCashierIds = new HashSet<>();
         for (CashierSummary summary : cashiers) {
-            if (summary.linkedTerminal()) {
-                linkedCashiers++;
+            if (summary.cashierId() != null) {
+                knownCashierIds.add(summary.cashierId());
             }
         }
+        Set<UUID> persistedLinkedIds = collectPersistedLinkedCashierIds(selectedShop);
+        knownCashierIds.addAll(persistedLinkedIds);
+        Set<UUID> linkedCashierIds = new HashSet<>(persistedLinkedIds);
+        for (CashierSummary summary : cashiers) {
+            if (summary.linkedTerminal() && summary.cashierId() != null) {
+                linkedCashierIds.add(summary.cashierId());
+            }
+        }
+        int cashierCount = knownCashierIds.size();
+        int linkedCashiers = linkedCashierIds.size();
         int shoppingBags = 0;
         if (server != null && centralBank != null && ownerId != null && selectedShop.contains(TAG_ID)) {
             shoppingBags = countShoppingBagsInStockroom(server, centralBank, ownerId, selectedShop.getUUID(TAG_ID));
@@ -15778,8 +15844,32 @@ public final class ShopService {
             if (shopName.isBlank()) {
                 shopName = "Shop";
             }
-            boolean changed = false;
             Set<String> assigned = collectAssignedPalletRefSet(shop);
+            if (assigned.isEmpty()) {
+                // No assigned delivery pallets means no labels to compute; skipping the
+                // claim scan avoids force-loading this shop's chunks every second.
+                continue;
+            }
+            if (anyShopChunksUnloaded(server, shop)) {
+                // Shop area not observable: keep the last-known label targets without
+                // scanning. Label application is chunk-guarded, so unloaded targets
+                // are no-ops until a player loads the area again.
+                for (Tag palletTag : shop.getList(TAG_ORDER_PALLETS, Tag.TAG_COMPOUND)) {
+                    if (!(palletTag instanceof CompoundTag assignedPallet)) {
+                        continue;
+                    }
+                    PalletRef lastKnown = legacyAssignedPalletRef(assignedPallet);
+                    if (lastKnown == null || lastKnown.pos() == null) {
+                        continue;
+                    }
+                    String encoded = encodeOrderPalletRef(lastKnown.dimensionId(), lastKnown.pos());
+                    if (!encoded.isBlank()) {
+                        desired.put(encoded, shopName);
+                    }
+                }
+                continue;
+            }
+            boolean changed = false;
             Map<String, PalletRef> liveLookup = buildLivePalletLookup(server, deliveryPalletSearchClaims(shop));
             for (String key : assigned) {
                 if (key == null || key.isBlank()) {
@@ -16994,26 +17084,15 @@ public final class ShopService {
                     "Cashier removed because its plot claim was removed."
             );
             teller.discard();
+            // Drop the discarded cashier's terminal link too, or a link whose terminal
+            // is still inside the remaining claims would survive as a ghost employee.
+            removeLinkedTerminalTag(shopTag, teller.getUUID());
             removed++;
         }
         return removed;
     }
 
-    private static Set<UUID> collectLiveCashierIdsForShop(MinecraftServer server, CompoundTag shopTag) {
-        if (server == null || shopTag == null || !shopTag.contains(TAG_OWNER) || !shopTag.contains(TAG_ID)) {
-            return null;
-        }
-        UUID ownerId = shopTag.getUUID(TAG_OWNER);
-        UUID shopId = shopTag.getUUID(TAG_ID);
-        ListTag claims = shopTag.getList(TAG_CLAIMS, Tag.TAG_COMPOUND);
-        Set<UUID> ids = new HashSet<>();
-        for (BankTellerEntity teller : collectCashierEntitiesInClaims(server, claims, ownerId, shopId)) {
-            ids.add(teller.getUUID());
-        }
-        return ids;
-    }
-
-    private static int pruneTerminalLinksOutsideClaims(CompoundTag shopTag, Set<UUID> validCashierIds) {
+    private static int pruneTerminalLinksOutsideClaims(CompoundTag shopTag) {
         if (shopTag == null) {
             return 0;
         }
@@ -17030,7 +17109,6 @@ public final class ShopService {
                     removed++;
                     continue;
                 }
-                UUID cashierId = entry.getUUID(TAG_CASHIER_ID);
                 String dim = entry.getString(TAG_DIM);
                 BlockPos pos = new BlockPos(entry.getInt(TAG_X), entry.getInt(TAG_Y), entry.getInt(TAG_Z));
                 if (!isInsideClaims(claims, dim, pos)) {

@@ -21,6 +21,9 @@ public final class BankLevelService {
     private static final long ACCOUNT_SCORE = 5L;
     private static final int BASE_SAFE_ROW_UNITS = 16;
     private static final int SAFE_ROW_UNITS_PER_LEVEL = 8;
+    // Level 1 keeps the historical flat cap of 5 so no pre-leveling bank ends up over capacity.
+    private static final int BASE_BANK_TELLER_CAPACITY = 5;
+    private static final int BANK_TELLER_CAPACITY_PER_LEVEL = 1;
 
     private BankLevelService() {
     }
@@ -93,7 +96,8 @@ public final class BankLevelService {
     }
 
     public static int bankTellerCapacityForLevel(int level) {
-        return 1 + (clampLevel(level) / 5);
+        int safeLevel = clampLevel(level);
+        return BASE_BANK_TELLER_CAPACITY + ((safeLevel - 1) * BANK_TELLER_CAPACITY_PER_LEVEL);
     }
 
     public static String levelRoadmapReport(CentralBank centralBank, Bank bank) {

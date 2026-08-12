@@ -15972,7 +15972,8 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 0xFF102238, 0xFF244B73);
         graphics.drawString(this.font, tr("Bank Teller NPCs"), tellerX + 16, tellerY + 18, 0xFFFFFFFF, false);
         graphics.drawString(this.font,
-                tr(data.bankTellers().size() + " bound to this bank"),
+                tr(data.bankTellers().size() + " of " + data.bankTellerCapacity()
+                        + " capacity bound to this bank"),
                 tellerX + 16, tellerY + 36, 0xFF9FB8D2, false);
         int tellerCardY = tellerY + 52;
         if (data.bankTellers().isEmpty()) {
@@ -25731,6 +25732,7 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
                 "Account target: " + Math.max(0, node.accountTarget()) + " active accounts",
                 "Safe row capacity: " + Math.max(0, node.safeRowCapacity()) + " row units",
                 "Deposit box capacity: " + (Math.max(0, node.safeRowCapacity()) * 4) + " boxes",
+                "Bank teller capacity: " + Math.max(0, node.bankTellerCapacity()) + " tellers",
                 "Derived level: " + (snapshot == null ? node.level() : snapshot.derivedLevel())
                         + (snapshot != null && snapshot.manual() ? " | Manual override active" : "")
         };
@@ -25738,23 +25740,28 @@ public class BankOwnerPcScreen extends Screen implements OwnerPcClientScreen {
             graphics.drawString(this.font, fitToWidth(row, modalW - 16), modalX + 8, lineY, 0xFFE1EEFF, false);
             lineY += 13;
         }
-        if (!unlocks.isEmpty()) {
-            lineY += 4;
-            graphics.drawString(this.font, tr("Unlocks"), modalX + 8, lineY, 0xFFFFD166, false);
-            lineY += 13;
-            for (int i = 0; i < visibleUnlocks; i++) {
-                graphics.drawString(this.font, fitToWidth("- " + unlocks.get(i), modalW - 16), modalX + 8, lineY, 0xFFEAD9A6, false);
-                lineY += 12;
-            }
-            if (unlocks.size() > visibleUnlocks) {
-                graphics.drawString(this.font, "+" + (unlocks.size() - visibleUnlocks) + " more", modalX + 8, lineY, 0xFFCDBE8C, false);
-            }
-        }
-
         int closeW = 74;
         int closeH = 22;
         int closeX = modalX + modalW - closeW - 8;
         int closeY = modalY + modalH - closeH - 8;
+        if (!unlocks.isEmpty()) {
+            lineY += 4;
+            graphics.drawString(this.font, tr("Unlocks"), modalX + 8, lineY, 0xFFFFD166, false);
+            lineY += 13;
+            // Keep unlock text clear of the Back button: rows near its vertical band must
+            // not extend under it, whatever the string length or locale.
+            for (int i = 0; i < visibleUnlocks; i++) {
+                int rowWidth = lineY + 9 >= closeY ? (closeX - modalX - 12) : (modalW - 16);
+                graphics.drawString(this.font, fitToWidth("- " + unlocks.get(i), rowWidth), modalX + 8, lineY, 0xFFEAD9A6, false);
+                lineY += 12;
+            }
+            if (unlocks.size() > visibleUnlocks) {
+                int rowWidth = lineY + 9 >= closeY ? (closeX - modalX - 12) : (modalW - 16);
+                graphics.drawString(this.font,
+                        fitToWidth("+" + (unlocks.size() - visibleUnlocks) + " more", rowWidth),
+                        modalX + 8, lineY, 0xFFCDBE8C, false);
+            }
+        }
         drawInlineActionButton(graphics, closeX, closeY, closeW, closeH, "Back", 0xFF6BAED6);
         bankLevelRoadmapModalCloseHitbox = new RectHitbox(closeX, closeY, closeW, closeH);
         graphics.pose().popPose();

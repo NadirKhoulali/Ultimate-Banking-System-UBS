@@ -102,6 +102,9 @@ class SafePremiseMutationServiceTest {
         premises(duplicateIds).add(emptyPremise(TARGET_ID, BANK_ID, TARGET_BOX));
         premises(duplicateIds).add(emptyPremise(TARGET_ID, OTHER_BANK_ID, SIBLING_BOX));
         assertCreateRejected(duplicateIds, BANK_ID,
+                new Box("minecraft:overworld", 8, 65, 8, 18, 75, 18),
+                new Exit("minecraft:overworld", 19, 70, 12, 0.0F));
+        assertCreateSucceeds(duplicateIds, BANK_ID,
                 new Box("minecraft:the_nether", 0, 40, 0, 5, 45, 5),
                 new Exit("minecraft:the_nether", -1, 42, 2, 0.0F));
 
@@ -119,13 +122,63 @@ class SafePremiseMutationServiceTest {
         Map<String, Object> invalidPremise = emptyPremise(TARGET_ID, BANK_ID, TARGET_BOX);
         invalidPremise.put("safeAreas", "not-a-list");
         premises(malformedChildren).add(invalidPremise);
-        assertCreateRejected(malformedChildren, BANK_ID, SIBLING_BOX,
+        assertCreateRejected(malformedChildren, BANK_ID,
+                new Box("minecraft:overworld", 8, 65, 8, 18, 75, 18),
+                new Exit("minecraft:overworld", 19, 70, 12, 0.0F));
+        assertCreateSucceeds(malformedChildren, BANK_ID, SIBLING_BOX,
                 new Exit("minecraft:overworld", 29, 64, 35, 0.0F));
 
         assertCreateRejected(metadata(), BANK_ID, TARGET_BOX,
                 new Exit("minecraft:the_nether", -1, 64, 5, 0.0F));
         assertCreateRejected(metadata(), BANK_ID, TARGET_BOX,
                 new Exit("minecraft:overworld", 5, 65, 5, 0.0F));
+    }
+
+    @Test
+    void createDetailNamesTheBlockingPremise() throws Exception {
+        Map<String, Object> migrated = metadata();
+        String migrationId = migrationPremiseId(BANK_ID, TARGET_BOX);
+        premises(migrated).add(emptyPremise(migrationId, BANK_ID, TARGET_BOX));
+
+        Object overlapResult = create(migrated, BANK_ID,
+                new Box("minecraft:overworld", -5, 55, -5, 20, 80, 20),
+                new Exit("minecraft:overworld", 21, 64, 5, 0.0F));
+        assertFalse(success(overlapResult));
+        assertTrue(detail(overlapResult).contains("overlaps"),
+                "overlap rejections must name the conflict: " + detail(overlapResult));
+        assertTrue(detail(overlapResult).contains("auto-created from a legacy safe area"),
+                "migration-owned blockers must be identified: " + detail(overlapResult));
+
+        Map<String, Object> malformedSibling = metadata();
+        Map<String, Object> broken = emptyPremise(TARGET_ID, BANK_ID, TARGET_BOX);
+        broken.put("mode", "NOT_A_MODE");
+        premises(malformedSibling).add(broken);
+        Object blockedResult = create(malformedSibling, BANK_ID,
+                new Box("minecraft:overworld", 5, 62, 5, 15, 72, 15),
+                new Exit("minecraft:overworld", 16, 64, 8, 0.0F));
+        assertFalse(success(blockedResult));
+        assertTrue(detail(blockedResult).contains("unreadable saved data"),
+                "opaque blockers must be identified: " + detail(blockedResult));
+        assertCreateSucceeds(malformedSibling, BANK_ID, SIBLING_BOX,
+                new Exit("minecraft:overworld", 29, 64, 35, 0.0F));
+    }
+
+    @Test
+    void mutationsAfterOpaqueEntriesHitTheCorrectRawEntry() throws Exception {
+        Map<String, Object> metadata = metadata();
+        Map<String, Object> broken = emptyPremise(SIBLING_ID, BANK_ID, SIBLING_BOX);
+        broken.put("mode", "NOT_A_MODE");
+        premises(metadata).add(broken);
+        premises(metadata).add(emptyPremise(TARGET_ID, BANK_ID, TARGET_BOX));
+
+        Object modeResult = setMode(metadata, BANK_ID, TARGET_ID, "STAFF_ONLY");
+
+        assertTrue(success(modeResult));
+        Map<String, Object> updated = committedMetadata(modeResult);
+        assertEquals("NOT_A_MODE", string(premises(updated).get(0), "mode"),
+                "the opaque sibling must remain untouched");
+        assertEquals("STAFF_ONLY", string(premises(updated).get(1), "mode"),
+                "the valid premise after the opaque entry must be the one mutated");
     }
 
     @Test
@@ -258,7 +311,7 @@ class SafePremiseMutationServiceTest {
         Class<?> resultClass = type("SafePremiseMutationResult");
         Class<?> policyClass = type("SafePremiseDeletionPolicy");
         assertTrue(resultClass.isRecord(), "mutation results must be immutable value records");
-        assertEquals(List.of("success", "metadata", "blockers"),
+        assertEquals(List.of("success", "metadata", "blockers", "detail"),
                 Arrays.stream(resultClass.getRecordComponents()).map(component -> component.getName()).toList());
         assertTrue(policyClass.isEnum());
         assertEquals(List.of("NON_EMPTY", "MIGRATION_BACKED", "ASSIGNED", "ROUTED", "ACTIVE"),
@@ -275,6 +328,22 @@ class SafePremiseMutationServiceTest {
         assertNull(committedMetadata(result));
         assertEquals(List.of(), blockerNames(result));
         assertInputUnchanged(before, metadata);
+    }
+
+    private static void assertCreateSucceeds(Map<String, Object> metadata,
+                                             UUID bankId,
+                                             Box box,
+                                             Exit exit) throws Exception {
+        Map<String, Object> before = deepCopyMap(metadata);
+        Object result = create(metadata, bankId, box, exit);
+        assertTrue(success(result),
+                "non-overlapping claims must succeed even when unrelated stored premises are malformed");
+        assertNotNull(committedMetadata(result));
+        assertInputUnchanged(before, metadata);
+    }
+
+    private static String detail(Object result) throws Exception {
+        return (String) invoke(result, "detail");
     }
 
     private static void assertSetExitRejected(Map<String, Object> metadata, Exit exit)

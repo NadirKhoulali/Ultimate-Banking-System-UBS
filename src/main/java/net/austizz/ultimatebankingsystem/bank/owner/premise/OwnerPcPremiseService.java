@@ -260,8 +260,13 @@ public final class OwnerPcPremiseService {
                 authority.metadata(), bankId, bounds,
                 new SafeExitSnapshot(exit.dimension(), exit.x(), exit.y(), exit.z(), exit.yaw()));
         if (!mutation.success()) {
-            return fail(bankId, action, "",
-                    "Premise claim failed because its bounds overlap or the live setup changed.");
+            String detail = mutation.detail();
+            if (detail.length() > 300) {
+                detail = detail.substring(0, 297) + "...";
+            }
+            return fail(bankId, action, "", detail.isBlank()
+                    ? "Premise claim failed because its bounds overlap or the live setup changed."
+                    : "Premise claim failed: " + detail + ".");
         }
         String createdId = premiseIds(mutation.metadata(), bankId).stream()
                 .filter(id -> !beforeIds.contains(id))

@@ -230,7 +230,7 @@ class OwnerPcPremisePayloadTest {
                 "safeEscrowCases", "safePolicyMode", "safePolicyAmount", "safeRentPeriodTicks",
                 "safeOverdueTicks", "safeAreaSummaries", "safeBoxAssignments", "safeLockedQueue",
                 "playerEmployees", "bankTellers", "vaultSetups", "safeSetupObjective", "premises",
-                "viewingRoomCapacity", "viewingRooms", "safeAccessLogs", "safeAlarm",
+                "viewingRoomCapacity", "bankTellerCapacity", "viewingRooms", "safeAccessLogs", "safeAlarm",
                 "vaultStorageClaims");
 
         RecordComponent[] components = dataClass.getRecordComponents();

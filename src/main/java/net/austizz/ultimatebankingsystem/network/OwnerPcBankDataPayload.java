@@ -71,6 +71,7 @@ public record OwnerPcBankDataPayload(
         OwnerPcSetupObjectivePayload safeSetupObjective,
         List<OwnerPcPremisePayload> premises,
         int viewingRoomCapacity,
+        int bankTellerCapacity,
         List<OwnerPcViewingRoomPayload> viewingRooms,
         List<OwnerPcSafeAccessLogPayload> safeAccessLogs,
         OwnerPcSafeAlarmPayload safeAlarm,
@@ -156,6 +157,7 @@ public record OwnerPcBankDataPayload(
                         OwnerPcPremisePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
                                 .encode(buf, payload.premises());
                         buf.writeVarInt(payload.viewingRoomCapacity());
+                        buf.writeVarInt(payload.bankTellerCapacity());
                         OwnerPcViewingRoomPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
                                 .encode(buf, payload.viewingRooms());
                         OwnerPcSafeAccessLogPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256))
@@ -225,6 +227,7 @@ public record OwnerPcBankDataPayload(
                             OwnerPcSetupObjectivePayload.STREAM_CODEC.decode(buf),
                             OwnerPcPremisePayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                             buf.readVarInt(),
+                            buf.readVarInt(),
                             OwnerPcViewingRoomPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                             OwnerPcSafeAccessLogPayload.STREAM_CODEC.apply(ByteBufCodecs.list(256)).decode(buf),
                             OwnerPcSafeAlarmPayload.STREAM_CODEC.decode(buf),
@@ -254,6 +257,7 @@ public record OwnerPcBankDataPayload(
                 : safeSetupObjective;
         premises = premises == null ? List.of() : List.copyOf(premises);
         viewingRoomCapacity = Math.max(0, viewingRoomCapacity);
+        bankTellerCapacity = Math.max(0, bankTellerCapacity);
         viewingRooms = viewingRooms == null ? List.of() : List.copyOf(viewingRooms);
         safeAccessLogs = safeAccessLogs == null ? List.of() : List.copyOf(safeAccessLogs);
         safeAlarm = safeAlarm == null
