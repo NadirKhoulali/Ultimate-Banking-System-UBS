@@ -7,6 +7,7 @@ import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
 import net.austizz.ultimatebankingsystem.bank.safebox.escort.SafeBoxEscortSession;
 import net.austizz.ultimatebankingsystem.bank.safebox.setup.SafeExitSnapshot;
 import net.austizz.ultimatebankingsystem.bank.safebox.zone.SafeBoxZoneCache;
+import net.austizz.ultimatebankingsystem.bank.safebox.zone.SafeBoxZoneEjectionPlan;
 import net.austizz.ultimatebankingsystem.bank.safebox.zone.SafeBoxZoneIndex;
 import net.austizz.ultimatebankingsystem.bank.safebox.zone.SafeBoxZonePolicy;
 import net.austizz.ultimatebankingsystem.util.RegistryKeysCompat;
@@ -16,6 +17,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -103,12 +105,17 @@ public final class SafeBoxEscortEvents {
             return;
         }
         Optional<SafeExitSnapshot> exit = decision.exit();
-        if (exit.isPresent()) {
-            ServerLevel level = level(server, exit.get().dimension());
+        Optional<SafeBoxZoneEjectionPlan> ejection = SafeBoxZoneEjectionPlan.from(decision);
+        if (ejection.isPresent()) {
+            SafeBoxZoneEjectionPlan target = ejection.orElseThrow();
+            ServerLevel level = level(server, target.dimension());
             if (level != null) {
-                SafeExitSnapshot target = exit.get();
-                player.teleportTo(level, target.x() + 0.5D, target.y(), target.z() + 0.5D,
-                        target.yaw(), player.getXRot());
+                player.teleportTo(level, target.x(), target.y(), target.z(), target.yaw(), player.getXRot());
+                if (target.cancelMotion()) {
+                    player.setDeltaMovement(Vec3.ZERO);
+                    player.hurtMarked = true;
+                    player.fallDistance = 0.0F;
+                }
             }
         }
         if (claimMessage(server, player.getUUID(), tick)) {

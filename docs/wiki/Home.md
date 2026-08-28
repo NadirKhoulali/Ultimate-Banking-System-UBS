@@ -1,6 +1,6 @@
 # Ultimate Banking System Wiki
 
-This wiki documents UBS `2.1.0` for Minecraft `1.21.1` on NeoForge.
+This wiki documents UBS `2.1.1` for Minecraft `1.21.1` on NeoForge.
 
 ## Player Guides
 

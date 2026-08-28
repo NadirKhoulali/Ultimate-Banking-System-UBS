@@ -2,6 +2,24 @@
 
 All notable changes to Ultimate Banking System are documented here.
 
+## [2.1.1] - 2026-08-28
+
+### Added
+
+- Added live NeoEssentials leaderboard registrations for UBS player, shop, and bank metrics.
+- Added PAPI-compatible and NeoEssentials-compatible placeholder coverage for current UBS state.
+- Added support for counting loose tender, money stacks, wallets, backpacks, and nested container inventories through the standard NeoForge item-handler capability.
+
+### Fixed
+
+- Fixed UBS leaderboards excluding operator accounts through an unintended exemption permission.
+- Fixed central-bank accounts and balances being counted twice because the central bank is also stored in its own bank registry.
+- Fixed physical-cash placeholder values omitting wallet cash and money-stack tender.
+
+### Compatibility
+
+- Backpack and container support is capability-based and does not require a hard dependency on Sophisticated Backpacks or any other specific inventory mod.
+
 ## [2.1.0] - 2026-07-24
 
 ### Added

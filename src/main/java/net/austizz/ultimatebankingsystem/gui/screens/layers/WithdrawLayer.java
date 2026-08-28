@@ -26,6 +26,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
 
     private static final String[] PRESET_AMOUNTS = {"20", "50", "100", "200", "500"};
 
+    private final String prefilledAmount;
     private EditBox amountField;
     private String resultMessage = null;
     private boolean resultSuccess = false;
@@ -38,7 +39,12 @@ public class WithdrawLayer extends AbstractScreenLayer {
     private final List<NineSliceTexturedButton> presetButtons = new ArrayList<>();
 
     public WithdrawLayer(Minecraft minecraft) {
+        this(minecraft, null);
+    }
+
+    public WithdrawLayer(Minecraft minecraft, String prefilledAmount) {
         super(minecraft);
+        this.prefilledAmount = prefilledAmount;
     }
 
     @Override
@@ -53,13 +59,13 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
 
-        int customTop = panelTop + 154;
+        int customTop = panelTop + (bankScreen.isCompactLayout() ? 130 : 154);
         int btnSpacing = 4;
         int btnWidth = (contentWidth - ((PRESET_AMOUNTS.length - 1) * btnSpacing)) / PRESET_AMOUNTS.length;
         btnWidth = Math.max(40, btnWidth);
         int totalBtnWidth = PRESET_AMOUNTS.length * btnWidth + (PRESET_AMOUNTS.length - 1) * btnSpacing;
         int startX = panelLeft + (panelWidth - totalBtnWidth) / 2;
-        int presetY = panelTop + 126;
+        int presetY = panelTop + (bankScreen.isCompactLayout() ? 104 : 126);
 
         var selected = ClientATMData.getSelectedAccount();
         if (selected != null) {
@@ -82,7 +88,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
                 UbsTranslations.literal(MoneyText.abbreviateWithDollar(amt)).withStyle(ChatFormatting.WHITE),
                 btn -> sendWithdraw(amt)
             ));
-            button.active = parseMoneyOrZero(amt).compareTo(effectiveWithdrawalLimit) <= 0;
+            button.active = parseMoneyOrZero(amt).compareTo(availableNow()) <= 0;
             presetButtons.add(button);
         }
 
@@ -93,6 +99,9 @@ public class WithdrawLayer extends AbstractScreenLayer {
         amountField.setHint(UbsTranslations.literal("Custom amount...").withStyle(ChatFormatting.WHITE));
         amountField.setMaxLength(15);
         styleEditBox(amountField);
+        if (prefilledAmount != null && !prefilledAmount.isBlank()) {
+            amountField.setValue(prefilledAmount);
+        }
         addWidget(amountField);
 
         addWidget(new NineSliceTexturedButton(
@@ -132,8 +141,16 @@ public class WithdrawLayer extends AbstractScreenLayer {
                 return;
             }
 
-            if (requestAmount.compareTo(effectiveWithdrawalLimit) > 0) {
-                resultMessage = "Amount exceeds active limit of $" + MoneyText.abbreviate(effectiveWithdrawalLimit) + ".";
+            if (requestAmount.signum() <= 0) {
+                resultMessage = "Enter an amount greater than zero.";
+                resultSuccess = false;
+                return;
+            }
+
+            BigDecimal available = availableNow();
+            if (requestAmount.compareTo(available) > 0) {
+                resultMessage = "Amount exceeds the $" + MoneyText.abbreviate(available)
+                        + " currently available at this ATM.";
                 resultSuccess = false;
                 return;
             }
@@ -176,7 +193,7 @@ public class WithdrawLayer extends AbstractScreenLayer {
         dailyResetEpochMillis = nextDailyReset;
 
         for (int i = 0; i < presetButtons.size() && i < PRESET_AMOUNTS.length; i++) {
-            presetButtons.get(i).active = parseMoneyOrZero(PRESET_AMOUNTS[i]).compareTo(effectiveWithdrawalLimit) <= 0;
+            presetButtons.get(i).active = parseMoneyOrZero(PRESET_AMOUNTS[i]).compareTo(availableNow()) <= 0;
         }
     }
 
@@ -234,40 +251,56 @@ public class WithdrawLayer extends AbstractScreenLayer {
         int panelHeight = bankScreen.getPanelHeight();
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
-        int customTop = panelTop + 154;
+        int customTop = panelTop + (bankScreen.isCompactLayout() ? 130 : 154);
         int fieldY = customTop + 20;
 
         drawCenteredFittedString(graphics, "Withdraw Cash",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        int metricTop = panelTop + 48;
-        int metricGap = 8;
-        int metricWidth = (contentWidth - metricGap) / 2;
-        int metricRowStep = 24;
-        drawMetricCell(graphics, "Per-withdrawal limit", MoneyText.abbreviateWithDollar(defaultWithdrawalLimit),
-                contentLeft + 6, metricTop, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
-        drawMetricCell(graphics, "Active withdrawal limit", MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit),
-                contentLeft + 6 + metricWidth + metricGap, metricTop, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
-        drawMetricCell(graphics, "Daily withdrawal limit", MoneyText.abbreviateWithDollar(dailyWithdrawalLimit),
-                contentLeft + 6, metricTop + metricRowStep, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
-        drawMetricCell(graphics, "Used today", MoneyText.abbreviateWithDollar(dailyWithdrawnToday),
-                contentLeft + 6 + metricWidth + metricGap, metricTop + metricRowStep, metricWidth - 6, COLOR_LABEL, COLOR_VALUE);
-        drawMetricCell(graphics, "Remaining today", MoneyText.abbreviateWithDollar(dailyRemaining),
-                contentLeft + 6, metricTop + (metricRowStep * 2), metricWidth - 6, COLOR_LABEL, COLOR_SUCCESS);
-        drawMetricCell(graphics, "Daily reset", formatResetEpoch(dailyResetEpochMillis),
-                contentLeft + 6 + metricWidth + metricGap, metricTop + (metricRowStep * 2), metricWidth - 6, COLOR_LABEL, COLOR_MUTED);
+        int summaryTop = panelTop + 46;
+        int summaryBottom = panelTop + (bankScreen.isCompactLayout() ? 94 : 113);
+        drawSectionBox(graphics, contentLeft, summaryTop, contentLeft + contentWidth, summaryBottom);
+        if (resultMessage != null) {
+            drawWrappedCentered(graphics, resultMessage, panelLeft + panelWidth / 2,
+                    summaryTop + 12, contentWidth - 20,
+                    resultSuccess ? COLOR_SUCCESS : COLOR_ERROR, 2);
+        } else {
+            BigDecimal balance = selectedBalance();
+            BigDecimal available = availableNow();
+            drawMetricRow(graphics, "Account balance", MoneyText.abbreviateWithDollar(balance),
+                    contentLeft + 7, summaryTop + 7, contentWidth - 14, contentWidth / 2, COLOR_LABEL, COLOR_VALUE);
+            drawMetricRow(graphics, "Available now", MoneyText.abbreviateWithDollar(available),
+                    contentLeft + 7, summaryTop + 20, contentWidth - 14, contentWidth / 2, COLOR_LABEL, COLOR_SUCCESS);
+            drawMetricRow(graphics, "Per-withdrawal cap", MoneyText.abbreviateWithDollar(effectiveWithdrawalLimit),
+                    contentLeft + 7, summaryTop + 33, contentWidth - 14, contentWidth / 2, COLOR_LABEL, COLOR_VALUE);
+
+            int progressY = summaryBottom - 4;
+            int progressWidth = contentWidth - 14;
+            graphics.fill(contentLeft + 7, progressY, contentLeft + 7 + progressWidth, progressY + 3, 0xFF0A1728);
+            double ratio = dailyWithdrawalLimit.signum() <= 0 ? 0.0
+                    : dailyWithdrawnToday.divide(dailyWithdrawalLimit, 4, java.math.RoundingMode.HALF_UP).doubleValue();
+            int filled = (int) Math.round(progressWidth * Math.max(0.0, Math.min(1.0, ratio)));
+            graphics.fill(contentLeft + 7, progressY, contentLeft + 7 + filled, progressY + 3, 0xFF42C9F5);
+        }
+
+        int presetLabelY = panelTop + (bankScreen.isCompactLayout() ? 96 : 116);
+        drawFittedString(graphics,
+                "QUICK CASH  |  Daily remaining " + MoneyText.abbreviateWithDollar(dailyRemaining),
+                contentLeft + 2, presetLabelY, contentWidth - 4, COLOR_MUTED);
 
         graphics.drawString(font, UbsClientTranslations.resolve("Custom Amount"), contentLeft + 6, customTop + 6, COLOR_LABEL);
 
-        if (resultMessage != null) {
-            int resultY = fieldY + 28;
-            int maxResultY = panelTop + panelHeight - 50;
-            if (resultY > maxResultY) {
-                resultY = maxResultY;
-            }
-            int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
-            drawCenteredFittedString(graphics, resultMessage, panelLeft + panelWidth / 2, resultY, contentWidth, color);
-        }
+        drawRightAlignedFittedString(graphics, "Dispenses to held wallet or inventory",
+                panelLeft + panelWidth - 14, panelTop + panelHeight - 33, contentWidth - 66, COLOR_MUTED);
+    }
+
+    private BigDecimal selectedBalance() {
+        var selected = ClientATMData.getSelectedAccount();
+        return selected == null ? BigDecimal.ZERO : parseMoneyOrZero(selected.balance());
+    }
+
+    private BigDecimal availableNow() {
+        return selectedBalance().min(effectiveWithdrawalLimit).min(dailyRemaining).max(BigDecimal.ZERO);
     }
 
     private static BigDecimal parseMoneyOrZero(String raw) {

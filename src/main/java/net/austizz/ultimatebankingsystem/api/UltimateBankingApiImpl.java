@@ -10,6 +10,7 @@ import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
 import net.austizz.ultimatebankingsystem.item.DollarBills;
 import net.austizz.ultimatebankingsystem.item.ModItems;
+import net.austizz.ultimatebankingsystem.item.WalletData;
 import net.austizz.ultimatebankingsystem.shop.ShopMarketPriceService;
 import net.austizz.ultimatebankingsystem.network.ServerNotification;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
@@ -42,7 +43,7 @@ import java.util.regex.Pattern;
 final class UltimateBankingApiImpl implements UltimateBankingApi {
     private static final UUID SHOP_TERMINAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:shop-terminal".getBytes());
     private static final UUID API_EXTERNAL_ID = UUID.nameUUIDFromBytes("ultimatebankingsystem:api-external".getBytes());
-    private static final String API_VERSION = "2.1.0";
+    private static final String API_VERSION = "2.1.1";
     private static final int DEFAULT_TRANSACTION_LIMIT = 50;
     private static final int MAX_TRANSACTION_LIMIT = 500;
     private static final int MAX_REFERENCE_LENGTH = 160;
@@ -50,7 +51,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             "net.austizz.ultimatebankingsystem.network.DeliveryAlertPayload";
     private static final List<Integer> SUPPORTED_BILL_DENOMINATIONS = List.of(100, 50, 20, 10, 5, 2, 1);
     private static final List<Integer> SUPPORTED_COIN_DENOMINATIONS_CENTS = List.of(50, 25, 10, 5, 1);
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([A-Za-z0-9_\\-]+)%");
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([A-Za-z0-9_\\-]+)%|\\{([A-Za-z0-9_\\-]+)\\}");
     private static final List<String> SUPPORTED_PLACEHOLDERS = List.of(
             "%ubs_player_total_balance%",
             "%ubs_player_total_balance_raw%",
@@ -74,6 +75,16 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             "%ubs_bank_reserve_raw_<bank-uuid>%",
             "%ubs_bank_total_deposits_<bank-uuid>%",
             "%ubs_bank_total_deposits_raw_<bank-uuid>%"
+    );
+
+    private static final List<String> CANONICAL_PLACEHOLDERS = List.of(
+            "{ubs_balance}", "{ubs_balance_raw}", "{ubs_total_balance}", "{ubs_total_balance_raw}",
+            "{ubs_primary_balance}", "{ubs_primary_balance_raw}", "{ubs_primary_account_id}",
+            "{ubs_primary_account_type}", "{ubs_primary_bank_id}", "{ubs_primary_bank_name}",
+            "{ubs_account_count}", "{ubs_has_account}", "{ubs_has_primary_account}",
+            "{ubs_cash_balance}", "{ubs_cash_balance_raw}", "{ubs_account_status}",
+            "{ubs_owned_bank_count}", "{ubs_owns_bank}", "{ubs_owned_shop_count}", "{ubs_owns_shop}",
+            "{ubs_server_bank_count}", "{ubs_server_shop_count}"
     );
 
     @Override
@@ -726,7 +737,8 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         if (player == null) {
             return 0;
         }
-        return DollarBills.totalCashValueCents(DollarBills.getAvailableCashCounts(player));
+        long total = DollarBills.totalAvailableTenderCents(player);
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0L, total));
     }
 
     @Override
@@ -1540,10 +1552,7 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             return "";
         }
         String trimmed = token.trim();
-        String normalized = trimmed;
-        if (normalized.startsWith("%") && normalized.endsWith("%") && normalized.length() > 2) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
+        String normalized = normalizePlaceholderToken(trimmed);
         normalized = normalized.toLowerCase(Locale.ROOT);
         if (!normalized.startsWith("ubs_")) {
             return "";
@@ -1551,6 +1560,69 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
 
         if (playerId != null) {
             AccountHolder primary = findPrimaryAccount(centralBank, playerId);
+            if ("ubs_balance".equals(normalized) || "ubs_primary_balance".equals(normalized)) {
+                return formatMoneyDisplay(primary == null ? BigDecimal.ZERO : primary.getBalance());
+            }
+            if ("ubs_balance_raw".equals(normalized) || "ubs_primary_balance_raw".equals(normalized)) {
+                return formatMoneyRaw(primary == null ? BigDecimal.ZERO : primary.getBalance());
+            }
+            if ("ubs_total_balance".equals(normalized) || "ubs_player_total_balance".equals(normalized)) {
+                return formatMoneyDisplay(getPlayerTotalBalance(playerId).balanceAfter());
+            }
+            if ("ubs_total_balance_raw".equals(normalized) || "ubs_player_total_balance_raw".equals(normalized)) {
+                return formatMoneyRaw(getPlayerTotalBalance(playerId).balanceAfter());
+            }
+            if ("ubs_account_count".equals(normalized) || "ubs_player_account_count".equals(normalized)) {
+                return String.valueOf(getPlayerAccountCount(playerId));
+            }
+            if ("ubs_has_account".equals(normalized)) {
+                return String.valueOf(getPlayerAccountCount(playerId) > 0);
+            }
+            if ("ubs_has_primary_account".equals(normalized)) {
+                return String.valueOf(primary != null);
+            }
+            if ("ubs_cash_balance".equals(normalized)) {
+                return formatMoneyDisplay(BigDecimal.valueOf(getPlayerCashOnHandCents(playerId), 2));
+            }
+            if ("ubs_cash_balance_raw".equals(normalized)) {
+                return formatMoneyRaw(BigDecimal.valueOf(getPlayerCashOnHandCents(playerId), 2));
+            }
+            if ("ubs_account_status".equals(normalized)) {
+                return primary == null ? "NONE" : getAccountStatus(primary.getAccountUUID());
+            }
+            if ("ubs_primary_account_id".equals(normalized)) {
+                return primary == null ? "" : primary.getAccountUUID().toString();
+            }
+            if ("ubs_primary_account_type".equals(normalized)) {
+                return primary == null || primary.getAccountType() == null ? "" : primary.getAccountType().label;
+            }
+            if ("ubs_primary_bank_id".equals(normalized)) {
+                return primary == null ? "" : primary.getBankId().toString();
+            }
+            if ("ubs_primary_bank_name".equals(normalized)) {
+                if (primary == null) {
+                    return "";
+                }
+                Bank bank = centralBank.getBank(primary.getBankId());
+                return bank == null ? "" : bank.getBankName();
+            }
+            if ("ubs_owned_bank_count".equals(normalized)) {
+                return String.valueOf(UltimateBankingApiProvider.banks().getOwnedBanks(playerId).size());
+            }
+            if ("ubs_owns_bank".equals(normalized)) {
+                return String.valueOf(UltimateBankingApiProvider.banks().playerOwnsAnyBank(playerId));
+            }
+            if ("ubs_owned_shop_count".equals(normalized)) {
+                return String.valueOf(UltimateBankingApiProvider.shops().getOwnedShops(playerId).size());
+            }
+            if ("ubs_owns_shop".equals(normalized)) {
+                return String.valueOf(UltimateBankingApiProvider.shops().playerOwnsAnyShop(playerId));
+            }
+            if ("ubs_player_name".equals(normalized)) {
+                MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+                ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(playerId);
+                return player == null ? "" : player.getGameProfile().getName();
+            }
             if ("ubs_player_total_balance".equals(normalized)) {
                 return formatMoneyDisplay(getPlayerTotalBalance(playerId).balanceAfter());
             }
@@ -1610,6 +1682,13 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
             }
         }
 
+        if ("ubs_server_bank_count".equals(normalized)) {
+            return String.valueOf(centralBank.getBanks().size());
+        }
+        if ("ubs_server_shop_count".equals(normalized)) {
+            return String.valueOf(UltimateBankingApiProvider.shops().getShops().size());
+        }
+
         if (normalized.startsWith("ubs_bank_name_")) {
             UUID bankId = parseBankIdSuffix(normalized, "ubs_bank_name_");
             if (bankId == null) {
@@ -1650,7 +1729,8 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
         Matcher matcher = PLACEHOLDER_PATTERN.matcher(text);
         StringBuffer out = new StringBuffer();
         while (matcher.find()) {
-            String fullToken = "%" + matcher.group(1) + "%";
+            String rawToken = matcher.group(1) == null ? matcher.group(2) : matcher.group(1);
+            String fullToken = matcher.group(1) == null ? "{" + rawToken + "}" : "%" + rawToken + "%";
             String replacement = resolvePlaceholder(playerId, fullToken);
             if (replacement == null || replacement.isEmpty()) {
                 replacement = fullToken;
@@ -1663,7 +1743,25 @@ final class UltimateBankingApiImpl implements UltimateBankingApi {
 
     @Override
     public List<String> getSupportedPlaceholders() {
-        return SUPPORTED_PLACEHOLDERS;
+        ArrayList<String> supported = new ArrayList<>(SUPPORTED_PLACEHOLDERS);
+        supported.addAll(CANONICAL_PLACEHOLDERS);
+        CANONICAL_PLACEHOLDERS.stream()
+                .map(value -> "%" + value.substring(1, value.length() - 1) + "%")
+                .forEach(supported::add);
+        return List.copyOf(supported);
+    }
+
+    private String normalizePlaceholderToken(String token) {
+        String normalized = token == null ? "" : token.trim();
+        if ((normalized.startsWith("%") && normalized.endsWith("%"))
+                || (normalized.startsWith("{") && normalized.endsWith("}"))) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
+        normalized = normalized.toLowerCase(Locale.ROOT);
+        if (!normalized.startsWith("ubs_")) {
+            normalized = "ubs_" + normalized;
+        }
+        return normalized;
     }
 
     private Object createDeliveryAlertPayload(String title,

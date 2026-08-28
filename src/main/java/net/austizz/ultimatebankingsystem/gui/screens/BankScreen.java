@@ -17,8 +17,6 @@ public class BankScreen extends Screen {
 
     private final Deque<ScreenLayer> layerStack = new ArrayDeque<>();
 
-    private static final int PANEL_WIDTH = 304;
-    private static final int PANEL_HEIGHT = 252;
     private static final int HEADER_HEIGHT = 24;
     private static final int INNER_MARGIN = 6;
 
@@ -27,19 +25,23 @@ public class BankScreen extends Screen {
     }
 
     public int getPanelLeft() {
-        return (this.width - PANEL_WIDTH) / 2;
+        return (this.width - getPanelWidth()) / 2;
     }
 
     public int getPanelTop() {
-        return (this.height - PANEL_HEIGHT) / 2;
+        return (this.height - getPanelHeight()) / 2;
     }
 
     public int getPanelWidth() {
-        return PANEL_WIDTH;
+        return AtmScreenLayout.forViewport(this.width, this.height).width();
     }
 
     public int getPanelHeight() {
-        return PANEL_HEIGHT;
+        return AtmScreenLayout.forViewport(this.width, this.height).height();
+    }
+
+    public boolean isCompactLayout() {
+        return AtmScreenLayout.forViewport(this.width, this.height).compact();
     }
 
     public ScreenLayer getTopLayer() {
@@ -185,8 +187,10 @@ public class BankScreen extends Screen {
 
         int left = getPanelLeft();
         int top = getPanelTop();
-        int right = left + PANEL_WIDTH;
-        int bottom = top + PANEL_HEIGHT;
+        int panelWidth = getPanelWidth();
+        int panelHeight = getPanelHeight();
+        int right = left + panelWidth;
+        int bottom = top + panelHeight;
 
         // Outer ATM shell
         graphics.fill(left - 3, top - 3, right + 3, bottom + 3, 0xE60A1222);
@@ -194,7 +198,7 @@ public class BankScreen extends Screen {
 
         // Main panel body gradient
         for (int y = top; y < bottom; y++) {
-            float ratio = (float) (y - top) / (float) Math.max(1, PANEL_HEIGHT - 1);
+            float ratio = (float) (y - top) / (float) Math.max(1, panelHeight - 1);
             int rowColor = lerpColor(0xE616273F, 0xE60E182A, ratio);
             graphics.fill(left, y, right, y + 1, rowColor);
         }
@@ -230,7 +234,7 @@ public class BankScreen extends Screen {
         graphics.drawCenteredString(
             this.font,
             UbsTranslations.literal("ATM MACHINE"),
-            left + PANEL_WIDTH / 2,
+            left + panelWidth / 2,
             top + 8,
             0xFFFFFFFF
         );

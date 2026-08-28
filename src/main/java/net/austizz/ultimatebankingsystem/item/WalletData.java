@@ -251,6 +251,20 @@ public final class WalletData {
         setCashCounts(stack, counts);
     }
 
+    public static boolean canAddCashPlan(ItemStack stack, int[] plan) {
+        if (!isWallet(stack) || plan == null) {
+            return false;
+        }
+        int[] counts = getCashCounts(stack);
+        for (int i = 0; i < counts.length && i < plan.length; i++) {
+            int addition = Math.max(0, plan[i]);
+            if ((long) counts[i] + addition > Integer.MAX_VALUE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean removeCashPlan(ItemStack stack, int[] plan) {
         if (!isWallet(stack) || plan == null) {
             return false;

@@ -1,13 +1,13 @@
 # Developer Integration Tutorial
 
-This guide targets UBS `2.1.0`, Minecraft `1.21.1`, NeoForge, and Java `21`.
+This guide targets UBS `2.1.1`, Minecraft `1.21.1`, NeoForge, and Java `21`.
 
 ## 1. Identity
 
 - Mod ID: `ultimatebankingsystem`
 - Group: `net.austizz.ultimatebankingsystem`
 - Artifact: `ultimatebankingsystem`
-- API version: `2.1.0`
+- API version: `2.1.1`
 
 ## 2. Add UBS to Development
 
@@ -19,16 +19,16 @@ repositories {
 }
 
 dependencies {
-    compileOnly name: "ultimatebankingsystem-2.1.0"
-    localRuntime name: "ultimatebankingsystem-2.1.0"
+    compileOnly name: "ultimatebankingsystem-2.1.1"
+    localRuntime name: "ultimatebankingsystem-2.1.1"
 }
 ```
 
 For local Maven publication, run `gradlew.bat publishToMavenLocal` in UBS and add `mavenLocal()` plus:
 
 ```gradle
-compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.0"
-localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.0"
+compileOnly "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.1"
+localRuntime "net.austizz.ultimatebankingsystem:ultimatebankingsystem:2.1.1"
 ```
 
 Do not shade or jarJar UBS.
@@ -41,7 +41,7 @@ Required integration:
 [[dependencies.yourmod]]
 modId="ultimatebankingsystem"
 type="required"
-versionRange="[2.1.0,)"
+versionRange="[2.1.1,)"
 ordering="AFTER"
 side="BOTH"
 ```

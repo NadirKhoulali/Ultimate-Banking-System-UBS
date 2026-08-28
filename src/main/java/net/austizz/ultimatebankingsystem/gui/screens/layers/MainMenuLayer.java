@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.math.BigDecimal;
 
 public class MainMenuLayer extends AbstractScreenLayer {
 
@@ -34,8 +35,7 @@ public class MainMenuLayer extends AbstractScreenLayer {
         int panelWidth = bankScreen.getPanelWidth();
 
         int contentLeft = panelLeft + 14;
-        int contentRight = panelLeft + panelWidth - 14;
-        int contentWidth = contentRight - contentLeft;
+        int contentWidth = panelWidth - 28;
         List<AccountSummary> accounts = ClientATMData.getAccounts();
 
         if (accounts.size() == 1 && ClientATMData.getSelectedAccount() == null) {
@@ -48,48 +48,54 @@ public class MainMenuLayer extends AbstractScreenLayer {
             return;
         }
 
-        int selectBtnY = panelTop + 76;
-        if (!accounts.isEmpty()) {
-            addWidget(new NineSliceTexturedButton(
-                    contentLeft, selectBtnY,
-                    contentWidth, 22,
-                    ATM_BUTTONS, 0, 0, 120, 20, 120, 40,
-                    4, 4, 4, 4,
-                    UbsTranslations.literal("Select Account").withStyle(ChatFormatting.WHITE),
-                    btn -> bankScreen.pushLayer(new AccountSelectionLayer(minecraft))
-            ));
-        }
-
-        int operationStartY = panelTop + 108;
+        int operationStartY = panelTop + (bankScreen.isCompactLayout() ? 94 : 104);
         boolean hasSelection = ClientATMData.getSelectedAccount() != null;
-        int columnGap = 10;
-        int buttonWidth = (contentWidth - columnGap) / 2;
+        int columns = 3;
+        int columnGap = 7;
+        int buttonWidth = (contentWidth - (columnGap * (columns - 1))) / columns;
         int buttonHeight = 22;
-        int leftColX = contentLeft;
-        int rightColX = leftColX + buttonWidth + columnGap;
-        int rowSpacing = 32;
+        int rowSpacing = bankScreen.isCompactLayout() ? 27 : 31;
 
-        addOpButton(leftColX, operationStartY, buttonWidth, buttonHeight, "Withdraw Cash", hasSelection,
-                btn -> bankScreen.pushLayer(new WithdrawLayer(minecraft)));
-        addOpButton(leftColX, operationStartY + rowSpacing, buttonWidth, buttonHeight, "Transfer Funds", hasSelection,
-                btn -> bankScreen.pushLayer(new TransferLayer(minecraft)));
-        addOpButton(leftColX, operationStartY + rowSpacing * 2, buttonWidth, buttonHeight, "Transaction History", hasSelection,
-                btn -> bankScreen.pushLayer(new TransactionHistoryLayer(minecraft)));
-
-        addOpButton(rightColX, operationStartY, buttonWidth, buttonHeight, "Deposit Cash", hasSelection,
-                btn -> bankScreen.pushLayer(new DepositLayer(minecraft)));
-        addOpButton(rightColX, operationStartY + rowSpacing, buttonWidth, buttonHeight, "Balance Inquiry", hasSelection,
-                btn -> bankScreen.pushLayer(new BalanceInquiryLayer(minecraft)));
-        addOpButton(rightColX, operationStartY + rowSpacing * 2, buttonWidth, buttonHeight, "Account Settings", hasSelection,
-                btn -> bankScreen.pushLayer(new AccountSettingsLayer(minecraft)));
-
-        int payRequestY = operationStartY + rowSpacing * 3;
-        addOpButton(contentLeft, payRequestY, contentWidth, 20, "Pay Requests", hasSelection,
-                btn -> bankScreen.pushLayer(new PayRequestsLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 0,
+                "Withdraw", hasSelection, btn -> bankScreen.pushLayer(new WithdrawLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 1,
+                "Deposit", hasSelection, btn -> bankScreen.pushLayer(new DepositLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 2,
+                "Fast Cash", hasSelection, btn -> bankScreen.pushLayer(new WithdrawLayer(minecraft, "100")));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 3,
+                "Transfer", hasSelection, btn -> bankScreen.pushLayer(new TransferLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 4,
+                "Balance", hasSelection, btn -> bankScreen.pushLayer(new BalanceInquiryLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 5,
+                "Mini Statement", hasSelection, btn -> bankScreen.pushLayer(new TransactionHistoryLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 6,
+                "Pay Requests", hasSelection, btn -> bankScreen.pushLayer(new PayRequestsLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 7,
+                "Settings", hasSelection, btn -> bankScreen.pushLayer(new AccountSettingsLayer(minecraft)));
+        addGridButton(contentLeft, operationStartY, buttonWidth, columnGap, rowSpacing, 8,
+                "Switch Account", !accounts.isEmpty(), btn -> {
+                    ClientATMData.setAuthenticatedAccountId(null);
+                    bankScreen.pushLayer(new AccountSelectionLayer(minecraft));
+                });
 
         if (accounts.isEmpty()) {
             operationButtons.forEach(btn -> btn.active = false);
         }
+    }
+
+    private void addGridButton(int startX,
+                               int startY,
+                               int width,
+                               int columnGap,
+                               int rowSpacing,
+                               int index,
+                               String label,
+                               boolean active,
+                               Consumer<NineSliceTexturedButton> onPress) {
+        int column = index % 3;
+        int row = index / 3;
+        addOpButton(startX + column * (width + columnGap), startY + row * rowSpacing,
+                width, 22, label, active, onPress);
     }
 
     private void addOpButton(int x, int y, int width, int height, String label, boolean active,
@@ -115,25 +121,39 @@ public class MainMenuLayer extends AbstractScreenLayer {
         int contentRight = panelLeft + panelWidth - 14;
         int contentWidth = contentRight - contentLeft;
 
-        int cardTop = panelTop + 36;
-        int cardBottom = cardTop + 32;
+        int cardTop = panelTop + 35;
+        int cardBottom = cardTop + (bankScreen.isCompactLayout() ? 48 : 56);
         drawSectionBox(graphics, contentLeft, cardTop, contentRight, cardBottom);
 
-        graphics.drawString(minecraft.font, UbsClientTranslations.resolve("Selected Account"), contentLeft + 8, cardTop + 6, COLOR_LABEL);
-
         AccountSummary selected = ClientATMData.getSelectedAccount();
-        String selectedLine = selected == null
-                ? "No account selected"
-                : selected.accountType() + " @ " + selected.bankName();
+        if (selected == null) {
+            drawCenteredFittedString(graphics, "No account selected",
+                    panelLeft + panelWidth / 2, cardTop + 18, contentWidth - 12, COLOR_MUTED);
+        } else {
+            int innerLeft = contentLeft + 8;
+            int innerRight = contentRight - 8;
+            String bankLine = selected.bankName() + (selected.isPrimary() ? "  |  PRIMARY" : "");
+            drawFittedString(graphics, bankLine, innerLeft, cardTop + 6, contentWidth - 16,
+                    selected.isPrimary() ? COLOR_SUCCESS : COLOR_LABEL);
+            String shortId = selected.accountId().toString().substring(0, 8).toUpperCase();
+            drawFittedString(graphics, selected.accountType() + "  |  •••• " + shortId,
+                    innerLeft, cardTop + 18, contentWidth - 16, COLOR_MUTED);
 
-        drawCenteredFittedString(
-                graphics,
-                selectedLine,
-                panelLeft + panelWidth / 2,
-                cardTop + 18,
-                contentWidth - 12,
-                selected == null ? COLOR_MUTED : 0xFFFFFFAA
-        );
+            BigDecimal balance = parseMoney(selected.balance());
+            BigDecimal available = balance.min(parseMoney(selected.effectiveWithdrawalLimit()))
+                    .min(parseMoney(selected.dailyWithdrawalRemaining())).max(BigDecimal.ZERO);
+            graphics.drawString(minecraft.font, UbsClientTranslations.resolve("Balance"),
+                    innerLeft, cardTop + 32, COLOR_LABEL);
+            drawFittedString(graphics, net.austizz.ultimatebankingsystem.util.MoneyText.abbreviateWithDollar(balance),
+                    innerLeft + 45, cardTop + 32, Math.max(60, contentWidth / 2 - 45), COLOR_VALUE);
+            drawRightAlignedFittedString(graphics,
+                    "ATM available " + net.austizz.ultimatebankingsystem.util.MoneyText.abbreviateWithDollar(available),
+                    innerRight, cardTop + 32, Math.max(95, contentWidth / 2), COLOR_SUCCESS);
+        }
+
+        int serviceLabelY = panelTop + (bankScreen.isCompactLayout() ? 84 : 94);
+        graphics.drawString(minecraft.font, UbsClientTranslations.resolve("ATM SERVICES"),
+                contentLeft + 2, serviceLabelY, COLOR_LABEL);
 
         if (ClientATMData.getAccounts().isEmpty()) {
             drawCenteredFittedString(
@@ -144,6 +164,14 @@ public class MainMenuLayer extends AbstractScreenLayer {
                     contentWidth,
                     COLOR_MUTED
             );
+        }
+    }
+
+    private static BigDecimal parseMoney(String raw) {
+        try {
+            return raw == null || raw.isBlank() ? BigDecimal.ZERO : new BigDecimal(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return BigDecimal.ZERO;
         }
     }
 }

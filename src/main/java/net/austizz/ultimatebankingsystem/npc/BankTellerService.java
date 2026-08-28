@@ -25,6 +25,7 @@ import net.austizz.ultimatebankingsystem.network.BankTellerAccountSummary;
 import net.austizz.ultimatebankingsystem.network.BankTellerOpenPayload;
 import net.austizz.ultimatebankingsystem.network.BankTellerSafeBoxState;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.payments.WalletBankingCashService;
 import net.austizz.ultimatebankingsystem.util.ItemStackDataCompat;
 import net.austizz.ultimatebankingsystem.util.MoneyText;
 import net.minecraft.core.BlockPos;
@@ -415,11 +416,18 @@ public final class BankTellerService {
         if (plan == null) {
             return ActionResult.fail("Cannot dispense this amount with available cash denominations.");
         }
+        WalletBankingCashService.CashStorage cashStorage = WalletBankingCashService.resolve(player);
+        if (!cashStorage.canAdd(plan)) {
+            return ActionResult.fail("The held wallet cannot hold this withdrawal.");
+        }
         if (!source.RemoveBalance(amount)) {
             return ActionResult.fail("Insufficient funds.");
         }
 
-        DollarBills.giveCash(player, plan);
+        if (!cashStorage.add(player, plan)) {
+            source.AddBalance(amount);
+            return ActionResult.fail("Could not store the withdrawal in " + cashStorage.label() + ".");
+        }
         source.addTransaction(new UserTransaction(
                 source.getAccountUUID(),
                 BANK_TELLER_TERMINAL_ID,
@@ -427,7 +435,8 @@ public final class BankTellerService {
                 LocalDateTime.now(),
                 "TELLER_CASH_WITHDRAW"
         ));
-        return ActionResult.ok("Withdrew $" + amount.toPlainString() + " as cash: " + DollarBills.formatCashPlan(plan));
+        return ActionResult.ok("Withdrew $" + amount.toPlainString() + " to "
+                + cashStorage.label() + ": " + DollarBills.formatCashPlan(plan));
     }
 
     private static ActionResult handleDepositCash(CentralBank centralBank,
@@ -449,16 +458,19 @@ public final class BankTellerService {
             return ActionResult.fail("Deposit amount must be at least $0.01.");
         }
 
-        int[] available = DollarBills.getAvailableTenderAsCashCounts(player);
+        WalletBankingCashService.CashStorage cashStorage = WalletBankingCashService.resolve(player);
+        int[] available = cashStorage.availableCounts(player);
         int[] plan = DollarBills.findCashDepositPlan(cents, available);
         if (plan == null) {
-            return ActionResult.fail("You do not carry an exact cash combination for $" + amount.toPlainString() + ".");
+            return ActionResult.fail("Your " + cashStorage.label()
+                    + " cannot form an exact cash combination for $" + amount.toPlainString() + ".");
         }
 
-        DollarBills.removeTender(player, plan);
+        if (!cashStorage.remove(player, plan)) {
+            return ActionResult.fail("Cash changed before the deposit could finish.");
+        }
         if (!destination.AddBalance(amount)) {
-            // Safety rollback: if account mutation fails, give tender back immediately.
-            DollarBills.giveCash(player, plan);
+            cashStorage.add(player, plan);
             return ActionResult.fail("Could not deposit into the selected account.");
         }
 
@@ -469,7 +481,8 @@ public final class BankTellerService {
                 LocalDateTime.now(),
                 "TELLER_CASH_DEPOSIT"
         ));
-        return ActionResult.ok("Deposited $" + amount.toPlainString() + " from carried cash: " + DollarBills.formatCashPlan(plan));
+        return ActionResult.ok("Deposited $" + amount.toPlainString() + " from "
+                + cashStorage.label() + ": " + DollarBills.formatCashPlan(plan));
     }
 
     private static ActionResult handleDepositAllCash(CentralBank centralBank,
@@ -480,18 +493,21 @@ public final class BankTellerService {
             return ActionResult.fail("Select one of your accounts first.");
         }
 
-        int[] available = DollarBills.getAvailableTenderAsCashCounts(player);
+        WalletBankingCashService.CashStorage cashStorage = WalletBankingCashService.resolve(player);
+        int[] available = cashStorage.availableCounts(player);
         long totalCents = DollarBills.totalCashValueCentsLong(available);
         if (totalCents <= 0L) {
-            return ActionResult.fail("You are not carrying any cash to deposit.");
+            return ActionResult.fail("There is no " + cashStorage.label() + " to deposit.");
         }
 
         BigDecimal amount = BigDecimal.valueOf(totalCents, 2).setScale(2, RoundingMode.UNNECESSARY);
         int[] fullPlan = available.clone();
 
-        DollarBills.removeTender(player, fullPlan);
+        if (!cashStorage.remove(player, fullPlan)) {
+            return ActionResult.fail("Cash changed before the deposit could finish.");
+        }
         if (!destination.AddBalance(amount)) {
-            DollarBills.giveCash(player, fullPlan);
+            cashStorage.add(player, fullPlan);
             return ActionResult.fail("Could not deposit into the selected account.");
         }
 
@@ -502,7 +518,8 @@ public final class BankTellerService {
                 LocalDateTime.now(),
                 "TELLER_CASH_DEPOSIT_ALL"
         ));
-        return ActionResult.ok("Deposited all carried cash ($" + amount.toPlainString() + "): " + DollarBills.formatCashPlan(fullPlan));
+        return ActionResult.ok("Deposited all " + cashStorage.label() + " ($"
+                + amount.toPlainString() + "): " + DollarBills.formatCashPlan(fullPlan));
     }
 
     private static ActionResult handleChequeToAccount(CentralBank centralBank,

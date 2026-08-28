@@ -24,6 +24,7 @@ public class DepositLayer extends AbstractScreenLayer {
     private EditBox amountField;
     private String resultMessage = "";
     private boolean resultSuccess = false;
+    private static final String[] QUICK_AMOUNTS = {"20", "50", "100", "500"};
 
     public DepositLayer(Minecraft minecraft) {
         super(minecraft);
@@ -38,7 +39,7 @@ public class DepositLayer extends AbstractScreenLayer {
 
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
-        int sectionTop = panelTop + 58;
+        int sectionTop = panelTop + (bankScreen.isCompactLayout() ? 80 : 88);
 
         amountField = new AtmEditBox(font, contentLeft, sectionTop + 22, contentWidth, 20, UbsTranslations.literal(""));
         amountField.setMaxLength(20);
@@ -46,34 +47,32 @@ public class DepositLayer extends AbstractScreenLayer {
         styleEditBox(amountField);
         addWidget(amountField);
 
-        int quickBtnY = sectionTop + 54;
-        int quickBtnWidth = (contentWidth - 12) / 3;
-        int spacing = 6;
+        int quickBtnY = sectionTop + 50;
+        int spacing = 5;
+        int quickBtnWidth = (contentWidth - spacing * (QUICK_AMOUNTS.length - 1)) / QUICK_AMOUNTS.length;
+        for (int i = 0; i < QUICK_AMOUNTS.length; i++) {
+            String quickAmount = QUICK_AMOUNTS[i];
+            addWidget(new NineSliceTexturedButton(
+                    contentLeft + i * (quickBtnWidth + spacing), quickBtnY, quickBtnWidth, 20,
+                    ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
+                    UbsTranslations.literal("$" + quickAmount).withStyle(ChatFormatting.WHITE),
+                    btn -> amountField.setValue(quickAmount)
+            ));
+        }
 
+        int actionGap = 7;
+        int actionWidth = (contentWidth - actionGap) / 2;
         addWidget(new NineSliceTexturedButton(
-                contentLeft, quickBtnY, quickBtnWidth, 20,
-                ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                UbsTranslations.literal("$50").withStyle(ChatFormatting.WHITE),
-                btn -> amountField.setValue("50")
-        ));
-        addWidget(new NineSliceTexturedButton(
-                contentLeft + quickBtnWidth + spacing, quickBtnY, quickBtnWidth, 20,
-                ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                UbsTranslations.literal("$100").withStyle(ChatFormatting.WHITE),
-                btn -> amountField.setValue("100")
-        ));
-        addWidget(new NineSliceTexturedButton(
-                contentLeft + (quickBtnWidth + spacing) * 2, quickBtnY, quickBtnWidth, 20,
-                ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
-                UbsTranslations.literal("$500").withStyle(ChatFormatting.WHITE),
-                btn -> amountField.setValue("500")
-        ));
-
-        addWidget(new NineSliceTexturedButton(
-                contentLeft, sectionTop + 84, contentWidth, 20,
+                contentLeft, sectionTop + 79, actionWidth, 20,
                 ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
                 UbsTranslations.literal("Confirm Deposit").withStyle(ChatFormatting.WHITE),
                 btn -> sendDeposit()
+        ));
+        addWidget(new NineSliceTexturedButton(
+                contentLeft + actionWidth + actionGap, sectionTop + 79, actionWidth, 20,
+                ATM_BUTTONS, 0, 0, 120, 20, 120, 40, 4, 4, 4, 4,
+                UbsTranslations.literal("Deposit All Cash").withStyle(ChatFormatting.WHITE),
+                btn -> sendDeposit("ALL")
         ));
 
         addWidget(new NineSliceTexturedButton(
@@ -87,7 +86,10 @@ public class DepositLayer extends AbstractScreenLayer {
     }
 
     private void sendDeposit() {
-        String amount = amountField.getValue().trim();
+        sendDeposit(amountField.getValue().trim());
+    }
+
+    private void sendDeposit(String amount) {
         if (amount.isEmpty()) {
             resultMessage = "Please enter an amount.";
             resultSuccess = false;
@@ -114,6 +116,16 @@ public class DepositLayer extends AbstractScreenLayer {
             resultMessage = "Deposit successful! New balance: " + MoneyText.abbreviateWithDollar(payload.newBalance());
             resultSuccess = true;
             amountField.setValue("");
+            AccountSummary selected = ClientATMData.getSelectedAccount();
+            if (selected != null) {
+                ClientATMData.setSelectedAccount(new AccountSummary(
+                        selected.accountId(), selected.accountType(), selected.bankName(), payload.newBalance(),
+                        selected.isPrimary(), selected.pinSet(), selected.defaultWithdrawalLimit(),
+                        selected.effectiveWithdrawalLimit(), selected.temporaryWithdrawalLimit(),
+                        selected.temporaryLimitExpiresAtGameTime(), selected.dailyWithdrawalLimit(),
+                        selected.dailyWithdrawnToday(), selected.dailyWithdrawalRemaining(),
+                        selected.dailyResetEpochMillis()));
+            }
         } else {
             resultMessage = payload.errorMessage().isEmpty()
                     ? "Deposit failed."
@@ -129,18 +141,32 @@ public class DepositLayer extends AbstractScreenLayer {
         int panelWidth = bankScreen.getPanelWidth();
         int contentLeft = panelLeft + 14;
         int contentWidth = panelWidth - 28;
-        int sectionTop = panelTop + 58;
-        int sectionBottom = sectionTop + 112;
+        int sectionTop = panelTop + (bankScreen.isCompactLayout() ? 80 : 88);
 
         drawCenteredFittedString(graphics, "Deposit Funds",
                 panelLeft + panelWidth / 2, panelTop + 31, contentWidth, COLOR_TITLE);
 
-        graphics.drawString(font, UbsClientTranslations.resolve("Amount to Deposit"), contentLeft + 6, sectionTop + 6, COLOR_LABEL);
-
+        AccountSummary selected = ClientATMData.getSelectedAccount();
+        int cardTop = panelTop + 45;
+        int cardBottom = sectionTop - 8;
+        drawSectionBox(graphics, contentLeft, cardTop, contentLeft + contentWidth, cardBottom);
         if (!resultMessage.isEmpty()) {
-            int color = resultSuccess ? COLOR_SUCCESS : COLOR_ERROR;
             drawCenteredFittedString(graphics, resultMessage,
-                    panelLeft + panelWidth / 2, panelTop + 44, contentWidth, color);
+                    panelLeft + panelWidth / 2, cardTop + 11, contentWidth - 14,
+                    resultSuccess ? COLOR_SUCCESS : COLOR_ERROR);
+        } else if (selected != null) {
+            drawFittedString(graphics, selected.bankName() + "  |  " + selected.accountType(),
+                    contentLeft + 7, cardTop + 6, contentWidth - 14, COLOR_LABEL);
+            drawRightAlignedFittedString(graphics, MoneyText.abbreviateWithDollar(selected.balance()),
+                    contentLeft + contentWidth - 7, cardTop + 18, contentWidth / 2, COLOR_VALUE);
+            drawFittedString(graphics, "Destination account", contentLeft + 7, cardTop + 18,
+                    contentWidth / 2, COLOR_MUTED);
         }
+
+        graphics.drawString(font, UbsClientTranslations.resolve("CASH DEPOSIT AMOUNT"), contentLeft + 2, sectionTop + 6, COLOR_LABEL);
+
+        drawRightAlignedFittedString(graphics, "Uses held wallet first, otherwise inventory",
+                panelLeft + panelWidth - 14, panelTop + bankScreen.getPanelHeight() - 33,
+                contentWidth - 66, COLOR_MUTED);
     }
 }

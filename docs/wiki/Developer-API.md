@@ -1,6 +1,6 @@
 # Developer API
 
-UBS exposes server-side Java interfaces for NeoForge `1.21.1`. Version `2.1.0` adds the authoritative economy module used by the Ages of War web gateway: institutional accounts, explicit grants, reconciliation snapshots, durable idempotent operations, revisions, and monetary escrow. The `2.0.0` finance, cash, notification, market-price, bank, shop, heist, and discovery interfaces remain available.
+UBS exposes server-side Java interfaces for NeoForge `1.21.1`. Version `2.1.1` is the current API release and includes the authoritative economy module used by the Ages of War web gateway: institutional accounts, explicit grants, reconciliation snapshots, durable idempotent operations, revisions, and monetary escrow. The `2.0.0` finance, cash, notification, market-price, bank, shop, heist, and discovery interfaces remain available.
 
 ## Entry Points
 
@@ -15,7 +15,7 @@ var heists = UltimateBankingApiProvider.heists();
 var economy = UltimateBankingApiProvider.economy();
 ```
 
-`finance.getApiVersion()` and `economy.getApiVersion()` return `2.1.0`.
+`finance.getApiVersion()` and `economy.getApiVersion()` return `2.1.1`.
 
 ## Contract and Threading
 
@@ -39,7 +39,7 @@ var economy = UltimateBankingApiProvider.economy();
 - `ApiNotificationResult` and `ApiAlertResult`: UI-delivery outcomes.
 - `ApiEconomyOperationResult`: durable authoritative receipt with status/code, stable operation ID, duplicate flag, economy revision, transaction IDs, affected accounts, and optional escrow state.
 
-## Authoritative Economy Module (2.1.0)
+## Authoritative Economy Module (2.1.1)
 
 `UltimateBankingApiProvider.economy()` is the integration seam for remote projections and commands. Its interface deliberately has four methods:
 
@@ -349,7 +349,82 @@ Registry implementations isolate provider exceptions so one addon does not break
 
 ## Placeholders
 
-`resolvePlaceholder`, `resolvePlaceholders`, and `getSupportedPlaceholders` support player balances/accounts and bank identity/status/reserve/deposit values. Raw variants return decimal strings for sorting; formatted variants use UBS money formatting.
+UBS resolves placeholders live from the current server state. Values are not cached, so account balances, ownership, account status, and shop/bank counts reflect the result of the most recent completed server-side operation.
+
+The public resolver is available through `UltimateBankingApiProvider.get()`:
+
+```java
+String value = UltimateBankingApiProvider.get().resolvePlaceholder(player.getUUID(), "%ubs_primary_balance_raw%");
+String text = UltimateBankingApiProvider.get().resolvePlaceholders(player.getUUID(),
+        "Balance: %ubs_primary_balance% | Bank: {ubs_primary_bank_name}");
+```
+
+The resolver accepts both PAPI-style `%ubs_<key>%` and NeoEssentials-style `{ubs_<key>}` syntax. Existing `ubs_player_*` and bank UUID placeholder names remain supported. Unknown placeholders resolve to an empty value through the direct API and remain unchanged when embedded in text.
+
+### Canonical player placeholders
+
+| Placeholder | Meaning |
+|---|---|
+| `{ubs_balance}` / `{ubs_balance_raw}` | Primary account balance, formatted or plain decimal |
+| `{ubs_total_balance}` / `{ubs_total_balance_raw}` | Sum of all player accounts |
+| `{ubs_primary_account_id}` | Primary account UUID |
+| `{ubs_primary_account_type}` | Display label for the primary account type |
+| `{ubs_primary_bank_id}` / `{ubs_primary_bank_name}` | Primary account's bank |
+| `{ubs_account_count}` | Number of accounts owned by the player |
+| `{ubs_has_account}` / `{ubs_has_primary_account}` | `true` or `false` |
+| `{ubs_cash_balance}` / `{ubs_cash_balance_raw}` | Total UBS physical tender currently carried by the online player, including loose bills, coins, money stacks, cash stored in wallets, and tender inside backpacks or other containers exposing the standard NeoForge item-handler capability |
+| `{ubs_account_status}` | Primary account status, or `NONE` |
+| `{ubs_owned_bank_count}` / `{ubs_owns_bank}` | Bank ownership summary |
+| `{ubs_owned_shop_count}` / `{ubs_owns_shop}` | Shop ownership summary |
+| `{ubs_player_name}` | Current online player name |
+
+`raw` values are decimal strings suitable for sorting or machine processing. Formatted money values use the configured UBS currency symbol and display abbreviation.
+
+### Server placeholders
+
+`{ubs_server_bank_count}` and `{ubs_server_shop_count}` expose the current number of registered banks and shops. These are available only when the UBS server data is loaded.
+
+### NeoEssentials
+
+When NeoEssentials is installed, UBS detects its placeholder API at server start and registers the canonical keys as individual live providers. This avoids a hard dependency and keeps UBS loadable without NeoEssentials. NeoEssentials consumers can therefore use `{ubs_primary_balance}`, `{ubs_primary_account_id}`, and the other canonical keys directly.
+
+#### NeoEssentials leaderboards
+
+When NeoEssentials is installed, UBS also registers these live boards through `com.zerog.neoessentials.leaderboard.LeaderboardAPI`:
+
+| Board ID | Ranking |
+| --- | --- |
+| `ubs_player_balance` | Total player account balances |
+| `ubs_player_accounts` | Number of player accounts |
+| `ubs_player_businesses` | Owned shops plus owned custom banks |
+| `ubs_shop_revenue` | Best shop revenue per shop operator |
+| `ubs_shop_level` | Highest shop level per shop operator |
+| `ubs_shop_claims` | Total claimed shop regions per shop operator |
+| `ubs_bank_deposits` | Customer deposits per bank operator |
+| `ubs_bank_accounts` | Customer account count per bank operator |
+| `ubs_bank_reserves` | Declared reserves per bank operator |
+
+The boards use NeoEssentials' standard `{leaderboard_<board_id>:<rank>:name}` and `{leaderboard_<board_id>:<rank>:value}` placeholders and are available to `/leaderboard`, holograms, tablists, and other NeoEssentials consumers. Values are read from UBS data when NeoEssentials refreshes its leaderboard cache; UBS does not create demo rows or placeholder values.
+
+NeoEssentials currently accepts only `UUID -> Number` leaderboard providers and resolves names from player profiles. Consequently, shop and bank boards are operator-backed: a player with multiple shops or banks appears once, with shop revenue/level/claims using the best or aggregate operator metric described above. This preserves correct player names and compatibility with the current NeoEssentials API. A future NeoEssentials named-entity provider can expose individual shop and bank names without changing the UBS metric definitions.
+
+Example tablist lines:
+
+```text
+Top player: {leaderboard_ubs_player_balance:1:name} {leaderboard_ubs_player_balance:1:value}
+Top shop operator: {leaderboard_ubs_shop_revenue:1:name} {leaderboard_ubs_shop_revenue:1:value}
+Top bank operator: {leaderboard_ubs_bank_deposits:1:name} {leaderboard_ubs_bank_deposits:1:value}
+```
+
+The registrations are optional and reflection-based, so UBS remains loadable when NeoEssentials is absent. They are installed again on each server start, matching NeoEssentials' in-memory registration lifecycle.
+
+### PAPI compatibility
+
+The canonical names deliberately follow the PlaceholderAPI expansion convention: `%ubs_primary_balance%`, `%ubs_balance_raw%`, and so on. A pure NeoForge server cannot load Bukkit's PlaceholderAPI expansion classes, so UBS does not bundle or shade PAPI. Hybrid servers or a PAPI bridge should delegate the expansion's `onRequest` parameter to `net.austizz.ultimatebankingsystem.api.placeholder.PapiPlaceholderBridge.resolve(UUID, String)`; text consumers can delegate to `resolveText`. This keeps PAPI optional while preserving the standard `%ubs_<key>%` contract.
+
+### Full legacy list
+
+`getSupportedPlaceholders()` returns both the legacy `%ubs_player_*%`/bank UUID forms and the canonical brace forms. Check this list instead of hardcoding a version-specific set.
 
 ## Compatibility
 

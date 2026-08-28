@@ -6,6 +6,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.player.Inventory;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.items.IItemHandler;
 
 import java.math.BigDecimal;
 import java.util.function.IntFunction;
@@ -15,6 +17,8 @@ import java.util.function.ToIntFunction;
  * Utility methods for handling physical USD cash items (bills + coins).
  */
 public final class DollarBills {
+
+    private static final int MAX_NESTED_INVENTORY_DEPTH = 8;
 
     public static final int[] DENOMINATIONS_DESC = {100, 50, 20, 10, 5, 2, 1};
     public static final int[] CASH_DENOMINATIONS_CENTS_DESC = {10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50, 25, 10, 5, 1};
@@ -87,6 +91,53 @@ public final class DollarBills {
         long total = 0L;
         for (int i = 0; i < counts.length && i < CASH_DENOMINATIONS_CENTS_DESC.length; i++) {
             total += (long) counts[i] * CASH_DENOMINATIONS_CENTS_DESC[i];
+        }
+        return total;
+    }
+
+    /**
+     * Returns all accessible UBS cash carried by a player. In addition to the
+     * main inventory and offhand, this follows standard NeoForge item-handler
+     * capabilities exposed by backpacks and other container items, including
+     * nested containers up to a bounded depth.
+     */
+    public static long totalAvailableTenderCents(ServerPlayer player) {
+        if (player == null) {
+            return 0L;
+        }
+        long total = 0L;
+        total += totalTenderInStacks(player.getInventory().items, 0);
+        total += totalTenderInStacks(player.getInventory().offhand, 0);
+        return Math.max(0L, total);
+    }
+
+    private static long totalTenderInStacks(Iterable<ItemStack> stacks, int depth) {
+        long total = 0L;
+        for (ItemStack stack : stacks) {
+            total += totalTenderInStack(stack, depth);
+        }
+        return total;
+    }
+
+    private static long totalTenderInStack(ItemStack stack, int depth) {
+        if (stack == null || stack.isEmpty()) {
+            return 0L;
+        }
+
+        long total = physicalTenderCents(stack.getItem()) * (long) stack.getCount();
+        if (WalletData.isWallet(stack)) {
+            total += WalletData.totalCashCents(stack) * (long) stack.getCount();
+        }
+
+        if (depth >= MAX_NESTED_INVENTORY_DEPTH) {
+            return total;
+        }
+        IItemHandler handler = stack.getCapability(Capabilities.ItemHandler.ITEM);
+        if (handler == null) {
+            return total;
+        }
+        for (int slot = 0; slot < handler.getSlots(); slot++) {
+            total += totalTenderInStack(handler.getStackInSlot(slot), depth + 1);
         }
         return total;
     }

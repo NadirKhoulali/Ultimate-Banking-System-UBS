@@ -2,7 +2,7 @@
 
 Ultimate Banking System is a NeoForge `1.21.1` economy, banking, retail, security, and heist mod built around physical world interactions and multiplayer server management.
 
-Current release: `2.1.0`
+Current release: `2.1.1`
 
 ## Highlights
 
@@ -15,7 +15,7 @@ Current release: `2.1.0`
 - RFID readers, programmable access cards, signal targets, per-player door authorization, and heist spoofing
 - Multiplayer bank heists with crews, planning, masks, saws, lockpicks, thermal drills, computer hacks, duffel loot, alarms, extraction zones, cooldowns, and recovery safeguards
 - Unified claim mode with tactical outlines, collision validation, private claim visibility, and responsive controls
-- Public Java API `2.1.0` for finance, institutional accounts, durable idempotent operations, monetary escrow, notifications, market prices, server discovery, bank management, shop management, and heist state/actions
+- Public Java API `2.1.1` for finance, institutional accounts, durable idempotent operations, monetary escrow, notifications, market prices, server discovery, bank management, shop management, and heist state/actions
 
 The release jar does not contain an embedded HTTP server or browser-based administration panel. Server management remains in game and through the Java API.
 

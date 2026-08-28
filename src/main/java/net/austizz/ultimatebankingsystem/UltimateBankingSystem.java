@@ -6,6 +6,7 @@ import net.austizz.ultimatebankingsystem.bank.Bank;
 import net.austizz.ultimatebankingsystem.bank.BankRegulationService;
 import net.austizz.ultimatebankingsystem.bank.centralbank.CentralBank;
 import net.austizz.ultimatebankingsystem.bank.handler.BankManager;
+import net.austizz.ultimatebankingsystem.api.placeholder.UbsPlaceholderIntegrations;
 import net.austizz.ultimatebankingsystem.bank.owner.setup.BankSetupObjectiveSyncService;
 import net.austizz.ultimatebankingsystem.bank.safebox.SafetyDepositBoxService;
 import net.austizz.ultimatebankingsystem.claim.ClaimModeService;
@@ -53,6 +54,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -130,6 +132,7 @@ public class UltimateBankingSystem {
     @SubscribeEvent
     public void onServerStarting(ServerAboutToStartEvent event) {
         BankManager.init(event.getServer());
+        UbsPlaceholderIntegrations.install();
         PickpocketService.onServerStarting();
         WorldCashEconomyService.onServerStarting();
         lastAutosaveTick = -1L;
@@ -138,6 +141,13 @@ public class UltimateBankingSystem {
         hudStateCache.clear();
         bankSetupObjectiveCache.clear();
         resetPerformanceAnalytics();
+    }
+
+    @SubscribeEvent
+    public void onServerStarted(ServerStartingEvent event) {
+        // NeoEssentials creates its runtime leaderboard registry by server-starting.
+        // Register again here so optional API boards are present after that lifecycle step.
+        UbsPlaceholderIntegrations.install();
     }
 
     @SubscribeEvent

@@ -5,6 +5,7 @@ import net.austizz.ultimatebankingsystem.UltimateBankingSystem;
 import net.austizz.ultimatebankingsystem.Config;
 import net.austizz.ultimatebankingsystem.account.AccountAccessMessages;
 import net.austizz.ultimatebankingsystem.account.AccountHolder;
+import net.austizz.ultimatebankingsystem.account.AtmWithdrawalPolicy;
 import net.austizz.ultimatebankingsystem.account.transaction.UserTransaction;
 import net.austizz.ultimatebankingsystem.api.UltimateBankingApiProvider;
 import net.austizz.ultimatebankingsystem.bank.Bank;
@@ -40,6 +41,7 @@ import net.austizz.ultimatebankingsystem.heist.HeistService;
 import net.austizz.ultimatebankingsystem.npc.BankTellerService;
 import net.austizz.ultimatebankingsystem.npc.ShopCashierInteractionManager;
 import net.austizz.ultimatebankingsystem.payments.CreditCardService;
+import net.austizz.ultimatebankingsystem.payments.WalletBankingCashService;
 import net.austizz.ultimatebankingsystem.payrequest.PayRequestManager;
 import net.austizz.ultimatebankingsystem.pickpocket.PickpocketService;
 import net.austizz.ultimatebankingsystem.phone.SmartphoneService;
@@ -56,6 +58,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.*;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -561,7 +564,18 @@ public final class ModPayloads {
         BigDecimal temporaryLimit = account.getTemporaryWithdrawalLimitIfActive(gameTime);
         BigDecimal dailyLimit = account.getConfiguredDailyWithdrawalLimit();
         BigDecimal dailyWithdrawn = account.getDailyWithdrawnAmount();
-        BigDecimal dailyRemaining = account.getRemainingDailyWithdrawalLimit();
+        AtmWithdrawalPolicy.Input policyInput = buildAtmWithdrawalPolicyInput(
+                centralBank, bank, account, BigDecimal.ZERO, gameTime);
+        AtmWithdrawalPolicy.Decision policy = AtmWithdrawalPolicy.evaluate(policyInput);
+        BigDecimal bankSingleLimit = policyInput.bankSingleLimit();
+        BigDecimal projectedDefaultLimit = defaultLimit.min(bankSingleLimit);
+        BigDecimal projectedEffectiveLimit = effectiveLimit.min(bankSingleLimit);
+        BigDecimal projectedDailyLimit = dailyLimit
+                .min(policyInput.bankPlayerDailyLimit())
+                .min(policyInput.bankDailyLimit());
+        BigDecimal projectedDailyRemaining = policy.accountDailyRemaining()
+                .min(policy.bankPlayerDailyRemaining())
+                .min(policy.bankDailyRemaining());
         return new AccountSummary(
                 account.getAccountUUID(),
                 account.getAccountType().label,
@@ -569,15 +583,62 @@ public final class ModPayloads {
                 account.getBalance().toPlainString(),
                 account.isPrimaryAccount(),
                 account.hasPin(),
-                defaultLimit.toPlainString(),
-                effectiveLimit.toPlainString(),
+                projectedDefaultLimit.toPlainString(),
+                projectedEffectiveLimit.toPlainString(),
                 temporaryLimit == null ? "" : temporaryLimit.toPlainString(),
                 account.getTemporaryWithdrawalLimitExpiresAtGameTime(gameTime),
-                dailyLimit.toPlainString(),
+                projectedDailyLimit.toPlainString(),
                 dailyWithdrawn.toPlainString(),
-                dailyRemaining.toPlainString(),
+                projectedDailyRemaining.toPlainString(),
                 account.getDailyWithdrawalResetEpochMillis()
         );
+    }
+
+    private static AtmWithdrawalPolicy.Input buildAtmWithdrawalPolicyInput(CentralBank centralBank,
+                                                                           Bank bank,
+                                                                           AccountHolder account,
+                                                                           BigDecimal requested,
+                                                                           long gameTime) {
+        BigDecimal globalSingle = BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_SINGLE_TRANSACTION.get()));
+        BigDecimal globalPlayerDaily = BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_DAILY_PLAYER_VOLUME.get()));
+        BigDecimal globalBankDaily = BigDecimal.valueOf(Math.max(1, Config.GLOBAL_MAX_DAILY_BANK_VOLUME.get()));
+        CompoundTag metadata = centralBank == null || bank == null
+                ? null
+                : centralBank.getOrCreateBankMetadata(bank.getBankId());
+        BigDecimal bankSingle = positiveMetadataLimit(metadata, "limitSingle", globalSingle);
+        BigDecimal bankPlayerDaily = positiveMetadataLimit(metadata, "limitDailyPlayer", globalPlayerDaily);
+        BigDecimal bankDaily = positiveMetadataLimit(metadata, "limitDailyBank", globalBankDaily);
+        BigDecimal bankDailyUsed = bank == null ? BigDecimal.ZERO : bank.getBankAccounts().values().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(AccountHolder::getDailyOutgoingTransactionVolume)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new AtmWithdrawalPolicy.Input(
+                requested,
+                account.getBalance(),
+                account.getEffectiveWithdrawalLimit(gameTime),
+                account.getConfiguredDailyWithdrawalLimit(),
+                account.getDailyWithdrawnAmount(),
+                bankSingle,
+                bankPlayerDaily,
+                account.getDailyOutgoingTransactionVolume(),
+                bankDaily,
+                bankDailyUsed
+        );
+    }
+
+    private static BigDecimal positiveMetadataLimit(CompoundTag metadata,
+                                                    String key,
+                                                    BigDecimal fallback) {
+        if (metadata == null || !metadata.contains(key)) {
+            return fallback;
+        }
+        try {
+            BigDecimal value = new BigDecimal(metadata.getString(key).trim());
+            return value.signum() > 0 ? value : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     // ─── Shop Terminal ─────────────────────────────────────────────────
@@ -2295,31 +2356,12 @@ public final class ModPayloads {
             }
 
             long gameTime = currentOverworldGameTime(server);
-            BigDecimal effectiveLimit = account.getEffectiveWithdrawalLimit(gameTime);
-            if (withdrawAmount.compareTo(effectiveLimit) > 0) {
-                sendWithdrawResponse(
-                        player,
-                        account,
-                        false,
-                        account.getBalance().toPlainString(),
-                        "Amount exceeds your active ATM withdrawal limit of $" + effectiveLimit.toPlainString() + "."
-                );
-                return;
-            }
-
-            BigDecimal dailyLimit = account.getConfiguredDailyWithdrawalLimit();
-            BigDecimal dailyWithdrawn = account.getDailyWithdrawnAmount();
-            BigDecimal remainingToday = account.getRemainingDailyWithdrawalLimit();
-            if (withdrawAmount.compareTo(remainingToday) > 0) {
-                sendWithdrawResponse(
-                        player,
-                        account,
-                        false,
-                        account.getBalance().toPlainString(),
-                        "Daily ATM limit exceeded. Limit: $" + dailyLimit.toPlainString()
-                                + ", used today: $" + dailyWithdrawn.toPlainString()
-                                + ", remaining: $" + remainingToday.toPlainString() + "."
-                );
+            Bank bank = centralBank.getBank(account.getBankId());
+            AtmWithdrawalPolicy.Decision withdrawalDecision = AtmWithdrawalPolicy.evaluate(
+                    buildAtmWithdrawalPolicyInput(centralBank, bank, account, withdrawAmount, gameTime));
+            if (!withdrawalDecision.allowed()) {
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(),
+                        withdrawalDenialMessage(withdrawalDecision));
                 return;
             }
 
@@ -2334,8 +2376,21 @@ public final class ModPayloads {
                 return;
             }
 
-            boolean success = account.RemoveBalance(withdrawAmount);
+            int withdrawDollars = withdrawCents / 100;
+            int[] withdrawPlan = DollarBills.buildWithdrawPlan(withdrawDollars);
+            if (withdrawPlan == null) {
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(),
+                        "ATM could not dispense the requested bill combination.");
+                return;
+            }
+            WalletBankingCashService.CashStorage cashStorage = WalletBankingCashService.resolve(player);
+            if (!cashStorage.canAdd(withdrawPlan)) {
+                sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(),
+                        "The held wallet cannot hold this withdrawal.");
+                return;
+            }
 
+            boolean success = account.RemoveBalance(withdrawAmount);
             if (!success) {
                 UltimateBankingSystem.LOGGER.info("[UBS] Withdraw ${} from account {} — success: {}",
                     payload.amount(), payload.accountId(), false);
@@ -2345,17 +2400,14 @@ public final class ModPayloads {
 
             account.registerDailyWithdrawal(withdrawAmount);
 
-            int withdrawDollars = withdrawCents / 100;
-            int[] withdrawPlan = DollarBills.buildWithdrawPlan(withdrawDollars);
-            if (withdrawPlan == null) {
+            if (!cashStorage.add(player, withdrawPlan)) {
                 account.AddBalance(withdrawAmount);
                 account.rollbackDailyWithdrawal(withdrawAmount);
                 sendWithdrawResponse(player, account, false, account.getBalance().toPlainString(),
-                        "ATM could not dispense the requested bill combination.");
+                        "ATM could not store the withdrawal in " + cashStorage.label() + ".");
                 return;
             }
 
-            DollarBills.giveBills(player, withdrawPlan);
             account.addTransaction(new UserTransaction(
                 payload.accountId(),
                 ATM_TERMINAL_ID,
@@ -2371,6 +2423,25 @@ public final class ModPayloads {
         });
     }
 
+    private static String withdrawalDenialMessage(AtmWithdrawalPolicy.Decision decision) {
+        String available = decision.availableNow().setScale(2, RoundingMode.HALF_EVEN).toPlainString();
+        return switch (decision.denial()) {
+            case INVALID_AMOUNT -> "Amount must be greater than zero.";
+            case INSUFFICIENT_FUNDS -> "Insufficient funds. Available balance: $" + available + ".";
+            case ACCOUNT_SINGLE_LIMIT -> "Amount exceeds your active ATM withdrawal limit. Available now: $"
+                    + available + ".";
+            case ACCOUNT_DAILY_LIMIT -> "Your account's daily ATM cash limit has been reached. Available now: $"
+                    + available + ".";
+            case BANK_SINGLE_LIMIT -> "Amount exceeds this bank's single-withdrawal limit. Available now: $"
+                    + available + ".";
+            case BANK_PLAYER_DAILY_LIMIT -> "This bank's daily outgoing limit for your account has been reached. Available now: $"
+                    + available + ".";
+            case BANK_DAILY_LIMIT -> "This bank has reached its daily outgoing capacity. Available now: $"
+                    + available + ".";
+            case NONE -> "Withdrawal unavailable. Available now: $" + available + ".";
+        };
+    }
+
     private static void handleWithdrawResponse(WithdrawResponsePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientPayloadInvoker.invoke("handleWithdrawResponse", payload));
     }
@@ -2383,29 +2454,6 @@ public final class ModPayloads {
             var server = player.getServer();
             var centralBank = BankManager.getCentralBank(server);
             if (centralBank == null) return;
-
-            BigDecimal amount;
-            try {
-                amount = new BigDecimal(payload.amount());
-            } catch (NumberFormatException e) {
-                PacketDistributor.sendToPlayer(player,
-                    new DepositResponsePayload(false, "0", "Invalid amount format."));
-                return;
-            }
-
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                PacketDistributor.sendToPlayer(player,
-                    new DepositResponsePayload(false, "0", "Amount must be greater than zero."));
-                return;
-            }
-
-            int depositCents = parseAmountToCents(amount);
-            if (depositCents <= 0) {
-                PacketDistributor.sendToPlayer(player,
-                    new DepositResponsePayload(false, "0", "Amount must be a positive value with up to 2 decimals."));
-                return;
-            }
-            BigDecimal depositAmount = BigDecimal.valueOf(depositCents, 2);
 
             AccountHolder account = centralBank.SearchForAccountByAccountId(payload.accountId());
             if (account == null) {
@@ -2427,14 +2475,43 @@ public final class ModPayloads {
                 return;
             }
 
-            int[] availableCash = DollarBills.getAvailableTenderAsCashCounts(player);
+            WalletBankingCashService.CashStorage cashStorage = WalletBankingCashService.resolve(player);
+            int[] availableCash = cashStorage.availableCounts(player);
             long availableTotalCentsLong = DollarBills.totalCashValueCentsLong(availableCash);
             int availableTotalCents = (int) Math.min(availableTotalCentsLong, Integer.MAX_VALUE);
+            int depositCents;
+            if ("ALL".equalsIgnoreCase(payload.amount().trim())) {
+                depositCents = availableTotalCents;
+            } else {
+                BigDecimal amount;
+                try {
+                    amount = new BigDecimal(payload.amount());
+                } catch (NumberFormatException e) {
+                    PacketDistributor.sendToPlayer(player,
+                        new DepositResponsePayload(false, account.getBalance().toPlainString(), "Invalid amount format."));
+                    return;
+                }
+                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                    PacketDistributor.sendToPlayer(player,
+                        new DepositResponsePayload(false, account.getBalance().toPlainString(), "Amount must be greater than zero."));
+                    return;
+                }
+                depositCents = parseAmountToCents(amount);
+            }
+            if (depositCents <= 0) {
+                PacketDistributor.sendToPlayer(player,
+                    new DepositResponsePayload(false, account.getBalance().toPlainString(),
+                        availableTotalCents <= 0
+                            ? "No depositable cash was found in the held wallet or inventory."
+                            : "Amount must be a positive value with up to 2 decimals."));
+                return;
+            }
+            BigDecimal depositAmount = BigDecimal.valueOf(depositCents, 2);
             if (availableTotalCentsLong < depositCents) {
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(false, account.getBalance().toPlainString(),
-                        "Not enough cash on hand. You have $"
-                                + DollarBills.formatCents(availableTotalCents) + " in physical cash."));
+                        "Not enough " + cashStorage.label() + ". You have $"
+                                + DollarBills.formatCents(availableTotalCents) + "."));
                 return;
             }
 
@@ -2446,7 +2523,12 @@ public final class ModPayloads {
                 return;
             }
 
-            DollarBills.removeTender(player, depositPlan);
+            if (!cashStorage.remove(player, depositPlan)) {
+                PacketDistributor.sendToPlayer(player,
+                    new DepositResponsePayload(false, account.getBalance().toPlainString(),
+                        "Cash changed before the deposit could finish."));
+                return;
+            }
             boolean success = account.AddBalance(depositAmount);
 
             UltimateBankingSystem.LOGGER.info("[UBS] Deposit ${} to account {} — success: {}",
@@ -2465,7 +2547,7 @@ public final class ModPayloads {
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(true, account.getBalance().toPlainString(), ""));
             } else {
-                DollarBills.giveCash(player, depositPlan);
+                cashStorage.add(player, depositPlan);
                 PacketDistributor.sendToPlayer(player,
                     new DepositResponsePayload(false, account.getBalance().toPlainString(), "Deposit failed."));
             }
