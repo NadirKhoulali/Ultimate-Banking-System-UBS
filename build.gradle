@@ -131,6 +131,10 @@ configurations {
 }
 
 dependencies {
+    // Official NeoEssentials runtime for local leaderboard/placeholder development.
+    // UBS keeps the integration optional through reflection.
+    localRuntime files("libs/neoessentials-1.0.6-1.21.x+build.11-all.jar")
+
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"

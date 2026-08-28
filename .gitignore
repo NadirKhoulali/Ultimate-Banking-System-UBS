@@ -35,6 +35,7 @@ bin/
 ### Minecraft Modding ###
 run/
 !**/src/**/run/
+libs/neoessentials-*.jar
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/

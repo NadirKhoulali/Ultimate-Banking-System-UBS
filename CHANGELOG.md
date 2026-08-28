@@ -2,6 +2,27 @@
 
 All notable changes to Ultimate Banking System are documented here.
 
+## [2.1.2] - 2026-08-28
+
+### Added
+
+- Added player leaderboards for wealth, banking activity, and business ownership.
+- Added named shop leaderboards for revenue, level, and growth momentum.
+- Added named bank leaderboards for deposits, customers, and reserves.
+- Added currency formatting to all money-based leaderboard values.
+
+### Changed
+
+- Shop and bank leaderboard entries now display the actual shop or bank name instead of the owner's player profile.
+- Removed the obsolete shop claims leaderboard and legacy owner-based shop/bank rankings.
+- Made NeoEssentials leaderboard registration resilient to startup manager initialization order.
+- Added NeoEssentials Build 11 as a local development runtime dependency.
+
+### Compatibility
+
+- Existing player leaderboard IDs remain available: `ubs_player_balance`, `ubs_player_accounts`, and `ubs_player_businesses`.
+- The public Java API remains at `2.1.1`; this is a mod release version bump only.
+
 ## [2.1.1] - 2026-08-28
 
 ### Added

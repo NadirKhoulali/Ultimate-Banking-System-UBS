@@ -2,7 +2,7 @@
 
 Ultimate Banking System is a NeoForge `1.21.1` economy, banking, retail, security, and heist mod built around physical world interactions and multiplayer server management.
 
-Current release: `2.1.1`
+Current release: `2.1.2`
 
 ## Highlights
 

@@ -145,9 +145,9 @@ public class UltimateBankingSystem {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartingEvent event) {
-        // NeoEssentials creates its runtime leaderboard registry by server-starting.
-        // Register again here so optional API boards are present after that lifecycle step.
-        UbsPlaceholderIntegrations.install();
+        // NeoEssentials finishes constructing its leaderboard manager during startup.
+        // Re-register on the next server tick against the final manager and loaded world.
+        event.getServer().execute(UbsPlaceholderIntegrations::install);
     }
 
     @SubscribeEvent
